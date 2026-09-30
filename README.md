@@ -23,6 +23,8 @@ Three entry points, one configuration file, one engine:
 This assumes BetaSuite is already installed and runnable; it does not
 cover installation.
 
+**Original project by [solarorb93](https://github.com/solarorb93/BetaSuite).** This fork is optimized for performance and efficacy.
+
 ---
 
 ## Contents
