@@ -127,8 +127,31 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Editor swaps and backups
 *.swp
 *.un~
 *.md~
 *.py~
 *.py~~
+
+# IDE configuration (local machine-specific)
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# BetaSuite runtime outputs (local machine-specific)
+# Keep directory structure for examples, ignore contents
+output/
+cache/
+*.log.json
+
+# Local test runs (transient)
+run_keys/
+**/.pytest_cache/
+**/.coverage
