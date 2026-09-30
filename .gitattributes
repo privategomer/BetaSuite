@@ -1,0 +1,27 @@
+# Consistent line endings across platforms
+* text=auto
+
+# Source code — Unix line endings, UTF-8
+*.py text eol=lf
+*.sh text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary/executable files
+*.pyc binary
+*.so binary
+*.egg-info/** binary
+
+# Test configuration
+*.cfg text eol=lf
+
+# Shell scripts must be executable
+*.sh text eol=lf diff=perl
+
+# Documentation
+*.md text eol=lf diff=markdown
+README* text eol=lf diff=markdown
+
+# Exclude .gitattributes itself from diffs
+.gitattributes diff merge=union

@@ -1,0 +1,36 @@
+[
+  {
+    "name": "vulva interpolation_max_gap 0.3 (tighter than the current ceiling)",
+    "item_overrides": { "exposed_vulva": { "interpolation_max_gap": 0.3 } }
+  },
+  {
+    "name": "vulva interpolation_max_gap 2.0 (only matters if video_censor_fps/time_safety also raised - see note below)",
+    "item_overrides": { "exposed_vulva": { "interpolation_max_gap": 2.0 } }
+  },
+  {
+    "name": "vulva video_censor_fps 8->14 style track-matching room (approximate: run this via a real tune_sweep.sh fps=14 pass, then replay against THAT cache - fps changes detections, so it can't be replayed against the fps=8 cache)",
+    "item_overrides": { "exposed_vulva": { "time_safety": 0.45 } }
+  },
+  {
+    "name": "breast<-face_femme suppression loosened (lower min_iou + lower margin, only face_femme/face_masc changed - covered_breast/exposed_belly/exposed_buttocks/exposed_chest are copied unchanged from betaconfig.py's current exposed_breast rules, since a class_suppression variant replaces the WHOLE rule list for that label, not just the rule you're changing - see this script's docstring)",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast",   "margin": 0.13, "min_iou": 0.55 },
+        { "suppressed_by": "face_femme",       "margin": 0.10, "min_iou": 0.20 },
+        { "suppressed_by": "face_masc",        "margin": 0.10, "min_iou": 0.20 },
+        { "suppressed_by": "exposed_belly",    "margin": 0.15, "min_iou": 0.10 },
+        { "suppressed_by": "exposed_buttocks", "margin": 0.15, "min_iou": 0.30 },
+        { "suppressed_by": "exposed_chest",    "margin": 0.15, "min_iou": 0.85 }
+    ] }
+  },
+  {
+    "name": "breast<-face suppression tightened (raise the bar so fewer breast boxes get suppressed by a nearby face, only face_femme/face_masc changed - the rest copied unchanged from betaconfig.py, same reason as above)",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast",   "margin": 0.13, "min_iou": 0.55 },
+        { "suppressed_by": "face_femme",       "margin": 0.25, "min_iou": 0.45 },
+        { "suppressed_by": "face_masc",        "margin": 0.25, "min_iou": 0.45 },
+        { "suppressed_by": "exposed_belly",    "margin": 0.15, "min_iou": 0.10 },
+        { "suppressed_by": "exposed_buttocks", "margin": 0.15, "min_iou": 0.30 },
+        { "suppressed_by": "exposed_chest",    "margin": 0.15, "min_iou": 0.85 }
+    ] }
+  }
+]
