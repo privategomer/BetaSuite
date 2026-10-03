@@ -1,0 +1,5 @@
+# NVIDIA GPU install (CUDA 12 build of onnxruntime + CUDA 12 / cuDNN 9 runtime wheels).
+# onnxruntime-gpu 1.27+ defaults to CUDA 13 on PyPI; keep the upper bound until the libs below move to cu13.
+-r requirements.txt
+onnxruntime-gpu>=1.21,<1.27
+-r gpu-requirements.txt

@@ -3,7 +3,7 @@ test_detector_invariants.py - the properties the detector adapters must
 hold, independent of any model file being present.
 
 Three things are asserted here, each of which was a real defect or a
-real unverified assumption before 2.1:
+real unverified assumption in earlier versions:
 
   1. BATCH SIZE INVARIANCE
      nn_batch_size is deliberately excluded from the detection cache
@@ -175,7 +175,7 @@ class TestBatchSizeInvariance( unittest.TestCase ):
         self.assertEqual( session.batch_sizes_seen, [ 3, 2 ] )
 
     def test_retinanet_ignores_the_removed_top_level_setting( self ):
-        # betaconfig.nn_batch_size stopped being read in 2.5. Setting it
+        # betaconfig.nn_batch_size stopped being read. Setting it
         # must not change what the backend batches at.
         #
         # The restore below deletes the attribute when it did not exist
@@ -220,7 +220,7 @@ class TestBatchSizeInvariance( unittest.TestCase ):
 
 def _scalar_reference_decode( raw_output, pad_w, pad_h, max_size, size, candidate_floor ):
     """
-    The pre-2.1 per-anchor Python decode, transcribed.
+    The earlier per-anchor Python decode, transcribed.
 
     Kept as the reference the vectorised implementation must match. NMS
     is left out: it is the same OpenCV call in both, and comparing

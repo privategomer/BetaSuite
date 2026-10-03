@@ -37,6 +37,7 @@ def get_session():
         '../resources/model/detector_v2_default_checkpoint.onnx'.
     """
     if betaconfig.gpu_enabled:
+        bu_detector.preload_cuda_libraries()
         providers = [ ( 'CUDAExecutionProvider', { 'device_id': betaconfig.cuda_device_id } ) ]
     else:
         providers = [ ( 'CPUExecutionProvider', {} ) ]
@@ -134,7 +135,7 @@ def get_raw_model_output( img_array, session ):
         Batches session.run() calls the SELECTED BACKEND's resolved
         nn_batch_size images at a time instead of always calling it once
         per image. This used to read the module-level
-        betaconfig.nn_batch_size, which was removed in 2.5 - leaving it
+        betaconfig.nn_batch_size, which was removed - leaving it
         would have pinned this path to 1 no matter what the backend
         block said. At nn_batch_size=1 this is byte-for-byte the same behavior as the
         original one-image-per-call loop (each batch below has exactly

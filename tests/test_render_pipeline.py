@@ -7,7 +7,7 @@ most expensive to redo, so the properties asserted here are about
 trusting what is already on disk:
 
   A chunk is trusted only when ffmpeg succeeded, the container is
-  readable, AND the frame count matches what was planned. Before 2.1 a
+  readable, AND the frame count matches what was planned. Previously a
   chunk whose decode died mid-file was a perfectly valid video that was
   simply too short - it passed the container check, got promoted, and a
   later resume skipped it, silently truncating the output.

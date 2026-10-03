@@ -83,6 +83,8 @@ ipython_config.py
 
 # pyenv
 .python-version
+# ...except the repo's pinned version, read by setup.sh / setup.ps1 / uv
+!/.python-version
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.

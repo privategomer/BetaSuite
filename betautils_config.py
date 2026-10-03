@@ -540,7 +540,7 @@ def _validate_class_suppression( errors, valid_classes ):
     known_rule_keys = { 'suppressed_by', 'margin', 'min_iou' }
 
     if getattr( betaconfig, 'class_suppression', None ) is not None:
-        errors.append( "betaconfig.class_suppression is no longer read (removed in 2.5) - label "
+        errors.append( "betaconfig.class_suppression is no longer read - label "
             "vocabularies differ between models, so a shared ruleset can name classes a backend has "
             "never heard of. Move it into detector_backend[<name>]['class_suppression'], or delete "
             "it. Leaving it here would silently do nothing." )
@@ -1336,11 +1336,11 @@ def _validate_picture_sizes( errors ):
     """
     Check every backend's resolved picture_sizes.
 
-    picture_sizes became backend-resolvable in 2.1 (see
+    picture_sizes became backend-resolvable (see
     betautils_detector.get_picture_sizes): a detection size that is
     correct for one model can be badly wrong for another, and the
-    adapter knows its own native size. In 2.5 the shared
-    betaconfig.picture_sizes fallback was removed entirely, so a stale
+    adapter knows its own native size. The shared
+    betaconfig.picture_sizes fallback was later removed entirely, so a stale
     module-level value is reported here rather than silently ignored.
     Each backend's RESOLVED list is checked, so a bad value in an
     unselected backend is caught before it is relied on. Per-adapter
@@ -1348,7 +1348,7 @@ def _validate_picture_sizes( errors ):
     enforced by that adapter's own validate_backend_config.
     """
     if getattr( betaconfig, 'picture_sizes', None ) is not None:
-        errors.append( "betaconfig.picture_sizes is no longer read (removed in 2.5) - a detection "
+        errors.append( "betaconfig.picture_sizes is no longer read - a detection "
             "size is a property of the model, so move this value into "
             "detector_backend[<name>]['picture_sizes'], or delete it and let the adapter's native "
             "size apply. Leaving it here would silently do nothing." )
@@ -1536,7 +1536,7 @@ def _validate_nn_batch_size( errors ):
     Only the module-level betaconfig.nn_batch_size tier was removed.
     """
     if getattr( betaconfig, 'nn_batch_size', None ) is not None:
-        errors.append( "betaconfig.nn_batch_size is no longer read (removed in 2.5) - move it to "
+        errors.append( "betaconfig.nn_batch_size is no longer read - move it to "
             "detector_backend['defaults']['nn_batch_size'] for a value shared by every backend, or "
             "to detector_backend[<name>]['nn_batch_size'] for one model. Leaving it here would "
             "silently do nothing." )

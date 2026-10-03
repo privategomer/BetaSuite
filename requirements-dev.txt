@@ -1,0 +1,2 @@
+# Developer tools: tools/release/release.py
+semver>=3,<4

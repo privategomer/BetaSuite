@@ -120,7 +120,7 @@ class TestDetectionKeySensitivity( unittest.TestCase ):
     """
     The detection key must change exactly when raw detections would.
 
-    Before 2.1 the cache path carried only size/fps/min_prob, so
+    Previously the cache path carried only size/fps/min_prob, so
     changing nudenet_v3's nms_iou or candidate_floor silently served
     back detections computed under the old value.
     """
@@ -185,7 +185,7 @@ class TestDetectionKeySensitivity( unittest.TestCase ):
 class TestCensorKeySensitivity( unittest.TestCase ):
     """
     Every setting that changes rendered output must change the censor
-    key. Before 2.1 the output filename deliberately excluded tracking
+    key. Previously the output filename deliberately excluded tracking
     settings, so re-running with a changed track_max_gap overwrote the
     previous output and left nothing to compare.
     """

@@ -126,7 +126,7 @@ def _raw_boxes_for_size( image, size, session, image_hash ):
         used_neural_net is True if this required an actual model
         inference (cache miss), False if served entirely from cache.
     """
-    # backend name baked into the cache path (as of v2.0.0's adapter
+    # backend name baked into the cache path (part of the adapter
     # architecture) so switching betaconfig.detector_backend['selected']
     # can never silently serve back a different model's stale
     # detections under the same cache key - see betautils_cache_paths.

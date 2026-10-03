@@ -19,7 +19,7 @@ censor_img_for_boxes is called concurrently by parallel render workers
 (see betautils_render). It therefore must not mutate the box dicts it is
 given, and it does not: it sorts a copy, and the overlap-merge
 strategies build new dicts rather than editing the originals. That was
-also a correctness bug in its own right - the pre-2.1 'single-pass'
+also a correctness bug in its own right - the earlier 'single-pass'
 merge widened the caller's box dicts in place, and because merges only
 ever expand, a censor region ratcheted outward frame after frame and
 never shrank back.
@@ -79,7 +79,7 @@ def censor_scale_for_image_box( image, feature_w, feature_h ):
       'none'     1
           strength is used as a raw pixel count.
 
-    An unrecognised strategy returns 1 rather than None. The pre-2.1
+    An unrecognised strategy returns 1 rather than None. The earlier
     version fell off the end of the function and returned None, which
     became `strength * None` and a TypeError deep inside a render chunk.
 
@@ -174,7 +174,7 @@ def resolve_censor_shape( resolved_style, item_default_shape ):
 #
 # A mask depends only on (shape, width, height, feather) - never on
 # pixel content - so it is a pure function and can be memoised. It was
-# rebuilt from scratch for every box on every frame before 2.1, and the
+# rebuilt from scratch for every box on every frame previously, and the
 # feather step is a Gaussian blur whose kernel scales with the box:
 # feather 0.55 on a 300px box is a 167-tap blur, 17.6ms, once per frame.
 #
@@ -1043,7 +1043,7 @@ def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None ):
         vid_w, vid_h: Frame size, in pixels.
         parts_to_blur: The resolved per-label settings. Passed in by the
             caller so the whole table is built once per video instead of
-            once per detection - before 2.1 this function called
+            once per detection - previously this function called
             get_parts_to_blur() itself, rebuilding and re-resolving the
             entire table for every one of tens of thousands of raw
             detections.
@@ -1058,7 +1058,7 @@ def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None ):
         provisional box may only CONTINUE an already-established track,
         never start one - see betautils_track.smooth_boxes. When
         min_prob_continue is unset the two gates are identical and
-        nothing is ever provisional, which is exactly the pre-2.1
+        nothing is ever provisional, which is exactly the earlier
         behaviour.
     """
     if parts_to_blur is None:
@@ -1295,7 +1295,7 @@ def censor_image( image, box ):
     # censor_scale_for_image_box for why a per-frame size flickers.
     # Falls back to the live box for anything that has no track behind it
     # (betastare's stills, betavision's live capture, a hand-built box in
-    # a bench or test), which is the pre-2.6 behaviour.
+    # a bench or test), which is the earlier behaviour.
     scale_w = box.get( 'style_scale_w' )
     scale_h = box.get( 'style_scale_h' )
 

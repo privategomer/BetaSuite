@@ -182,13 +182,13 @@ def run_variant( flat_raw, vid_w, vid_h, smooth_boxes_fn, apply_suppression_fn,
             if backend_setting is not None and backend_name in backend_setting:
                 backend_setting[ backend_name ][ 'class_suppression' ] = merged_suppression
             else:
-                # The flat betaconfig.class_suppression fallback was removed
-                # in 2.5, so writing it here would patch nothing and every
+                # The flat betaconfig.class_suppression fallback was removed,
+                # so writing it here would patch nothing and every
                 # variant would silently replay identical results. Fail
                 # loudly instead of reporting a meaningless comparison.
                 raise RuntimeError(
                     "cannot apply a class_suppression patch: betaconfig.detector_backend has no "
-                    "block for backend %r. Suppression rules are per-backend as of 2.5, so there "
+                    "block for backend %r. Suppression rules are per-backend, so there "
                     "is nowhere to put the patch."%( backend_name, ) )
 
         # Memoised views of betaconfig are stale the moment this
@@ -288,7 +288,7 @@ def main():
     args = parser.parse_args()
 
     # Resolve per backend rather than from the shared betaconfig list:
-    # since v2.1 a backend can declare its own picture_sizes, or inherit
+    # a backend can declare its own picture_sizes, or inherit
     # its model's native sizes, so the shared list is frequently not the
     # size anything was actually detected at.
     args.picture_sizes = bu_cache.resolve_picture_sizes(

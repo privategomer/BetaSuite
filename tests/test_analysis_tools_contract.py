@@ -3,7 +3,7 @@ test_analysis_tools_contract.py - the contract every analysis and tuning
 tool depends on, tested directly so a refactor of the pipeline cannot
 break the whole tuning suite silently again.
 
-This exists because of a real, expensive failure. The v2.1.0 refactor
+This exists because of a real, expensive failure. One refactor
 moved smooth_boxes and apply_class_suppression out of betatv.py into
 betautils_track.py, and moved every tracking knob out of the shared
 betaconfig.item_overrides into each backend's own
@@ -17,7 +17,7 @@ that reads the cache and replays the pipeline, in three distinct ways:
      least - it was found the morning after an overnight run.
 
   2. Every tool defaulted --picture-sizes to the shared
-     betaconfig.picture_sizes, which since v2.1 is not the size any
+     betaconfig.picture_sizes, which is no longer the size any
      backend necessarily runs at. The tools looked for caches at a size
      nothing had written and reported "no detection caches found" for
      backends that had a complete set. SILENT: an empty report reads
@@ -201,7 +201,7 @@ class TestPictureSizeResolutionFollowsTheBackend( unittest.TestCase ):
             "an explicit --picture-sizes must still be able to inspect an old configuration's caches" )
 
     def test_no_tool_reads_the_removed_shared_picture_sizes( self ):
-        # betaconfig.picture_sizes was removed in 2.5. A tool still
+        # betaconfig.picture_sizes was removed. A tool still
         # READING it would now raise AttributeError, or resolve to
         # nothing and report 'no caches found' for a backend whose caches
         # are complete. Mentions in help strings and docstrings are fine

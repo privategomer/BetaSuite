@@ -33,7 +33,7 @@ def _ffmpeg_available():
 def _reference_seek_sampling( capture, vid_fps, sample_fps, offset_seconds,
                               num_frames, max_seconds ):
     """
-    The pre-2.1 detection loop, transcribed exactly.
+    The earlier detection loop, transcribed exactly.
 
     Kept here, in the test, as the thing the fast path must match. It
     seeks to each sampled frame in turn and reads one frame.
@@ -77,7 +77,7 @@ class TestSampleFrameMapping( unittest.TestCase ):
         self.assertAlmostEqual( bu_video.sample_time( 9, 0.0, 9 ), 1.0 )
 
     def test_sample_zero_rounds_and_later_samples_floor( self ):
-        # An asymmetry inherited from the pre-2.1 loop and preserved
+        # An asymmetry inherited from the earlier loop and preserved
         # deliberately: changing it would shift every sampled frame by up
         # to one frame and invalidate every cached detection.
         self.assertEqual( bu_video.sample_frame_index( 0, 0.4, 10, 9 ), 4 )

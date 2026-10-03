@@ -24,7 +24,7 @@ import betaconst
 # boxes_to_shared_array / shared_array_to_boxes below). This is what lets
 # BetaVision's IPC carry any detector adapter's output (see
 # betautils_detector.py) - a variable number of boxes, each with a
-# canonical string class_id - rather than the old v1.0.0 IPC, which
+# canonical string class_id - rather than the original IPC, which
 # shared RAW MODEL TENSORS sized for one specific model's fixed
 # 300-detection output shape and had to be redesigned, not just resized,
 # to support swapping adapters at all.
@@ -79,7 +79,7 @@ def shm_name_for_screenshot():
     The fixed shared-memory segment name BetaVision's capture and detect
     processes use to exchange the single raw screenshot.
 
-    As of v2.0.0 there's exactly one such segment (the raw, unprocessed
+    There's exactly one such segment (the raw, unprocessed
     capture) rather than one per configured detection size - see
     betavision-screenshot.py's module docstring for why preprocessing
     moved downstream into betavision-detect.py.

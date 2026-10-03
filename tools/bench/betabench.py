@@ -308,7 +308,7 @@ def bench_decode( args, logger ):
         limit_seconds = args.seconds
         limit_frames = min( num_frames, limit_seconds * vid_fps )
 
-        # Strategy A: one seek per sample, the pre-2.1 behaviour.
+        # Strategy A: one seek per sample, the earlier behaviour.
         capture = cv2.VideoCapture( path )
         started = time.perf_counter()
         seek_samples = 0

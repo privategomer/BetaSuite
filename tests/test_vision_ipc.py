@@ -1,12 +1,12 @@
 """
-test_vision_ipc.py - regression tests for BetaVision's v2.0.0 shared-
+test_vision_ipc.py - regression tests for BetaVision's shared-
 memory IPC redesign (betautils_vision.py's box_record_dtype /
 boxes_to_shared_array / shared_array_to_boxes).
 
 Covers:
     - a variable-length list of raw box dicts round-trips correctly
       through the fixed-size structured array used for shared memory
-      (the core mechanism that replaced v1.0.0's fixed-300-detection
+      (the core mechanism that replaced the original fixed-300-detection
       raw-tensor IPC, which was hardcoded to one specific model's
       output shape)
     - overflow beyond betaconst.bv_detect_max_boxes is clamped, not a

@@ -31,7 +31,7 @@ def open_detection_shared_memory():
     into (see that file's init_output_shared_memory /
     publish_detection_output).
 
-    As of v2.0.0 this is already-parsed raw box dicts (canonical string
+    This is already-parsed raw box dicts (canonical string
     class_id, coordinates already in full-screen pixel space) packed
     into a fixed-size betautils_vision.box_record_dtype array - not raw
     model tensors - so no per-adapter scale factors need computing here

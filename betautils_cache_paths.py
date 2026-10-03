@@ -19,7 +19,7 @@ result that made no sense.
 
 tests/test_cache_path_duplicates_stay_in_sync.py is the regression guard.
 
-CACHE KEY MODEL (v2.1.0)
+CACHE KEY MODEL
 ------------------------
 Output is produced by three independent stages. Each has its own key, so
 changing one stage's settings invalidates exactly that stage and no
@@ -44,7 +44,7 @@ more. All three appear in the final output filename.
   encode key     "e<4 hex>"   how the finished frames are compressed
       codec, CRF, preset, container.
 
-Before v2.1.0 the output filename embedded only a narrow "censor hash"
+Previously the output filename embedded only a narrow "censor hash"
 that deliberately excluded tracking settings, so re-running with a
 changed track_max_gap silently overwrote the previous output. That was a
 documented footgun; it is now simply fixed. Every setting that changes
@@ -1085,8 +1085,8 @@ def resolve_picture_sizes( requested, backend_name ):
     Decide which picture_sizes a tool should look for, per backend.
 
     Every analysis and tuning tool used to default its --picture-sizes
-    flag to betaconfig.picture_sizes. That was correct before v2.1,
-    when one shared list governed every backend. It is wrong now:
+    flag to betaconfig.picture_sizes. That was correct when one
+    shared list governed every backend. It is wrong now:
     picture_sizes resolves per backend (a backend's own block, then
     detector_backend['defaults'], then the adapter's native sizes, then
     the shared list), so nudenet_v3 runs at 320 or 640 while the shared

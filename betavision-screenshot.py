@@ -7,7 +7,7 @@ screenshot of the configured screen region (betaconfig.vision_cap_*) and
 publishes the raw, unprocessed screenshot into shared memory for
 betavision-detect.py to pick up. Runs forever; stop with Ctrl+C.
 
-As of v2.0.0, this stage publishes ONE raw screenshot rather than a
+This stage publishes ONE raw screenshot rather than a
 separate pre-resized/pre-processed copy per configured detection size -
 preprocessing (resize/pad/normalize) is adapter-private (see
 betautils_detector.py's module docstring on why it isn't shared), so it

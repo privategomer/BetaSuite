@@ -20,8 +20,9 @@ Three entry points, one configuration file, one engine:
 - **this file** — how to run it, what the architecture is, the complete
   settings catalogue, and how to test and measure.
 
-This assumes BetaSuite is already installed and runnable; it does not
-cover installation.
+This assumes BetaSuite is already installed and runnable. For
+installation, see **[SETUP.md](SETUP.md)** (setup script or manual steps,
+Linux and Windows).
 
 **Original project by [solarorb93](https://github.com/solarorb93/BetaSuite).** This fork is optimized for performance and efficacy.
 
@@ -38,6 +39,7 @@ cover installation.
 - [Resumability, interrupts and crash recovery](#resumability-interrupts-and-crash-recovery)
 - [Measuring and tuning](#measuring-and-tuning)
 - [Testing](#testing)
+- [Versions and releases](#versions-and-releases)
 - [Performance notes](#performance-notes)
 - [Known limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
@@ -512,8 +514,8 @@ clip-a1b2c3d4e5f6a7b8-320-9-d5418a7-c3bd954-e1638.mp4
 expansion, so a filename can always be decoded back into the settings
 that produced it.
 
-**Anything that changes the bytes on disk changes the filename.** Before
-v2.1.0 the name carried a narrow hash that excluded every tracking
+**Anything that changes the bytes on disk changes the filename.** Earlier
+versions of the name carried a narrow hash that excluded every tracking
 setting, so re-running with a changed `track_max_gap` silently
 overwrote the previous output.
 
@@ -561,7 +563,7 @@ and resumes from the first missing one.
 
 > The frame-count check is not redundant with the container check. A
 > chunk whose decode died mid-file is a perfectly valid video that is
-> simply too short: before v2.1.0 it passed the container check, got
+> simply too short: previously it passed the container check, got
 > promoted, and a later resume skipped it — silently truncating the
 > output.
 
@@ -575,7 +577,7 @@ its attempts is skipped; the batch continues.
 promoting a partial chunk. A second Ctrl-C exits immediately. The
 process exits 130.
 
-> Before v2.1.0 the per-file handler caught `BaseException`, so Ctrl-C
+> Previously the per-file handler caught `BaseException`, so Ctrl-C
 > was reported as a failed file, logged, slept a second, and moved to
 > the next one — you had to press it once per remaining file. The render
 > loop caught it too and fed it into the retry-with-backoff path. Now
@@ -589,7 +591,7 @@ H.264 with the system ffmpeg and cached. Everything downstream —
 including the shot-cut scan and the render — then reads the transcoded
 copy, and the frame count is re-read from it.
 
-> Before v2.1.0 the transcode repointed only the main capture. The
+> Previously the transcode repointed only the main capture. The
 > shot-cut scanner still opened the original file that OpenCV had just
 > proved it could not decode, got no frames, and silently cached an
 > empty cut list for the whole video. The chunk planner also still used
@@ -687,7 +689,7 @@ tells you what is selected *now*; the cache tells you what was *run*.
 Those differ the moment a variant is swapped, and the difference is not
 academic:
 
-> Before v2.1.1 every tool defaulted to the shared
+> Previously every tool defaulted to the shared
 > `betaconfig.picture_sizes`. A full overnight run of nudenet at both
 > 320n and 640m left three complete cache sets on disk, and every
 > analysis tool reported on one of them, because config had been left at
@@ -772,7 +774,7 @@ from the difference.
 Every tool that replays the pipeline imports the real
 `betautils_track` functions and observes their decisions through
 `betautils_track.tracking_observer`, a supported extension point.
-Before v2.1.1 several of them read `betatv.py`'s source text and
+Previously several of them read `betatv.py`'s source text and
 `exec`'d the extracted function bodies instead — which broke the
 morning after an overnight run, when those functions moved to a module
 of their own. `tests/test_analysis_tools_contract.py` now fails if any
@@ -815,9 +817,43 @@ themselves if ffmpeg is unavailable. No test needs a model file.
 
 ---
 
+## Versions and releases
+
+The release version lives in `VERSION` and follows
+[semantic versioning](https://semver.org/). `--version` on any entry
+point prints the version of the code you are running:
+
+```bash
+python3 betatv.py --version
+# BetaSuite 1.1.0                    a clean checkout of tag v1.1.0, or a zip download
+# BetaSuite 1.1.0+3.g1a2b3c4         3 commits past v1.1.0
+# BetaSuite 1.1.0+3.g1a2b3c4.dirty   ...with uncommitted changes
+```
+
+The same string is in BetaTV's startup log line and in every stats row
+(`betasuite_version`), so a timing can always be traced to the code that
+produced it.
+
+To cut a release, note your changes under a `## Unreleased` heading in
+`CHANGELOG.md` as you go (optional), then run:
+
+```bash
+pip install -r requirements-dev.txt      # once: the semver package
+python3 tools/release/release.py         # or --dry-run to see the plan
+```
+
+It lists the commits since the last tag, suggests a bump (`major` for
+"BREAKING" or `type!:`, `minor` for subjects starting with feat/add/new,
+`patch` otherwise), and asks before each step: bump `VERSION`, date the
+CHANGELOG entry (drafting one from the commit subjects if there's no
+`Unreleased` section), run the tests, commit and tag, push, and create the
+GitHub release. Everything is logged to `tools/release/release.log`.
+
+---
+
 ## Performance notes
 
-The changes in v2.1.0, and what each was worth. Measured figures are
+The main performance changes in this fork, and what each was worth. Measured figures are
 from the machine they were taken on; re-measure yours with
 `betabench`.
 

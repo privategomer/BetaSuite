@@ -1,0 +1,4 @@
+# BetaSuite core dependencies (shared by CPU and GPU installs).
+# PROVISIONAL pins: replace with the versions from a known-good env.
+numpy>=1.26,<3
+opencv-python>=4.10,<5

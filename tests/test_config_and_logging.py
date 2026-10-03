@@ -3,8 +3,8 @@ test_config_and_logging.py - fail-fast validation, resolution order,
 and the logging/progress plumbing.
 
 Validation exists so a bad setting produces a specific message before
-any real work, rather than a KeyError an hour into a render. Every check
-added in 2.1 is covered here, along with the ones most likely to be
+any real work, rather than a KeyError an hour into a render. Every validation
+check is covered here, along with the ones most likely to be
 silently wrong:
 
   - a setting that resolves per backend, set in the wrong place
@@ -109,7 +109,7 @@ class TestPictureSizeValidation( ConfigHarness ):
 
     def test_nudenet_rejects_a_size_of_zero( self ):
         # 'native resolution, no resize' is a retinanet-only concept;
-        # this adapter needs a fixed square blob. Before 2.1 this was a
+        # this adapter needs a fixed square blob. Previously this was a
         # runtime ValueError mid-render, not a startup error.
         backend = copy.deepcopy( betaconfig.detector_backend )
         backend['nudenet_v3']['picture_sizes'] = [ 0 ]
@@ -189,8 +189,8 @@ class TestBackendSettingResolution( ConfigHarness ):
         self.assertEqual( bu_detector.get_nn_batch_size( 'retinanet_v2' ), 3 )
 
     def test_the_removed_top_level_setting_no_longer_resolves( self ):
-        # The module-level betaconfig.nn_batch_size tier was dropped in
-        # 2.5. With no backend block and no 'defaults' entry, resolution
+        # The module-level betaconfig.nn_batch_size tier was dropped.
+        # With no backend block and no 'defaults' entry, resolution
         # lands on the hardcoded 1 rather than the stale shared value.
         self.set_config( 'detector_backend', {
             'selected': 'retinanet_v2', 'nudenet_v3': {}, 'retinanet_v2': {} } )
@@ -535,7 +535,7 @@ class TestLoggingPlumbing( unittest.TestCase ):
 
 class TestProgressReporter( unittest.TestCase ):
     """
-    The pre-2.1 loops printed once per frame. Piped to a log that is one
+    The earlier loops printed once per frame. Piped to a log that is one
     more copy of the whole line per frame, which is how a 90-second
     video produced a 16KB single-line log.
     """

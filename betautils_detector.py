@@ -264,7 +264,7 @@ def get_nn_batch_size( backend_name=None ):
 
     Resolution: backend block -> detector_backend['defaults'] -> 1.
 
-    The module-level betaconfig.nn_batch_size tier was removed in 2.5:
+    The module-level betaconfig.nn_batch_size tier was removed:
     batching is a VRAM/throughput property of a model, so it belongs in
     detector_backend. detector_backend['defaults'] is kept because a
     backend that has not stated a preference should still get a sane
@@ -290,7 +290,7 @@ def get_picture_sizes( backend_name=None ):
     a size it was neither exported nor validated at is both slower and
     less accurate. nudenet_v3's 320n export fed a 1280x1280 blob is 16x
     the anchors and a receptive field four times too small relative to
-    object scale - it was the single largest cost in the pre-2.1
+    object scale - it was the single largest cost in the earlier
     detection pass, and it silently biased every tuning number derived
     from that backend's output.
 
@@ -299,7 +299,7 @@ def get_picture_sizes( backend_name=None ):
         2. detector_backend['defaults']['picture_sizes']
         3. the adapter's native_picture_sizes() for the active variant
 
-    The module-level betaconfig.picture_sizes tier was removed in 2.5:
+    The module-level betaconfig.picture_sizes tier was removed:
     a detection size is a property of the model and its export, so a
     shared value could only ever be right for one backend at a time. A
     backend that declares neither its own picture_sizes nor a native
@@ -337,8 +337,8 @@ def get_class_suppression( backend_name=None ):
 
     Resolution: backend block -> detector_backend['defaults'] -> {}.
 
-    The module-level betaconfig.class_suppression tier was removed in
-    2.5 for the same reason the rules are per-backend at all: the label
+    The module-level betaconfig.class_suppression tier was removed for
+    the same reason the rules are per-backend at all: the label
     vocabularies differ between models, so a shared ruleset could name
     classes one backend has never heard of.
 
@@ -379,7 +379,7 @@ def get_detection_identity( backend_name=None ):
     Folded into the detection cache key by betautils_cache_paths, so
     changing (say) nudenet_v3's nms_iou correctly invalidates cached
     detections instead of silently serving back results produced under
-    the old value - which it did before 2.1.
+    the old value - which it did previously.
 
     Returns:
         A JSON-serialisable dict, {} for an adapter with no such settings.
@@ -508,6 +508,37 @@ def get_item_overrides( label, backend_name=None, variant_name=None ):
 # Shared session construction
 # ---------------------------------------------------------------------------
 
+_cuda_libraries_preloaded = False
+
+
+def preload_cuda_libraries( logger=None ):
+    """
+    Load the CUDA and cuDNN libraries that pip installed into the venv.
+
+    requirements-gpu.txt ships CUDA 12 / cuDNN 9 as nvidia-* wheels so no
+    system toolkit is needed, but onnxruntime does not search those
+    site-packages folders on its own. Without this, the CUDA provider fails
+    to load (libcublasLt.so.12 not found) and the run quietly lands on CPU.
+    onnxruntime.preload_dlls() (1.21+) loads them from site-packages first,
+    falling back to the system path. Safe to call more than once.
+    """
+    global _cuda_libraries_preloaded
+    if _cuda_libraries_preloaded:
+        return
+    _cuda_libraries_preloaded = True
+
+    import onnxruntime
+    if not hasattr( onnxruntime, 'preload_dlls' ):
+        return
+    try:
+        onnxruntime.preload_dlls()
+    except Exception as e:
+        import betautils_log as bu_log
+        ( logger or bu_log.get_logger() ).warning(
+            "onnxruntime.preload_dlls() failed (%s); CUDA and cuDNN must then be on the "
+            "system library path"%(e) )
+
+
 def build_onnx_session( model_path, logger=None, backend_name=None ):
     """
     Create an ONNX Runtime session and verify which provider it got.
@@ -543,6 +574,7 @@ def build_onnx_session( model_path, logger=None, backend_name=None ):
                 model_path, backend_name or selected_backend_name() ) )
 
     if getattr( betaconfig, 'gpu_enabled', 0 ):
+        preload_cuda_libraries( logger )
         providers = [
             ( 'CUDAExecutionProvider', { 'device_id': getattr( betaconfig, 'cuda_device_id', 0 ) } ),
             ( 'CPUExecutionProvider', {} ),

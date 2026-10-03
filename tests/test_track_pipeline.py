@@ -1,8 +1,8 @@
 """
 test_track_pipeline.py - the detection -> renderable-boxes stages.
 
-Covers betautils_track's four filters and the tracking rules added in
-2.1, each of which can remove a detection and therefore has to be
+Covers betautils_track's four filters and the tracking rules, each
+of which can remove a detection and therefore has to be
 provably conservative when it is off:
 
     apply_cross_size_dedup      no-op with one picture size

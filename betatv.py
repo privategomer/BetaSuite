@@ -37,7 +37,7 @@ tuning and analysis tools can import directly:
     betautils_render    chunked, parallel rendering and muxing
     betautils_cache_paths   every cache path, output name and cache key
 
-Before 2.1, tracking and suppression lived here, which is why
+Previously, tracking and suppression lived here, which is why
 tools/tuning/replay_tune.py had to read this file's source text and exec
 the two function bodies out of it to be sure it was testing the real
 code.
@@ -59,6 +59,7 @@ import betautils_render as bu_render
 import betautils_signals as bu_signals
 import betautils_track as bu_track
 import betautils_video as bu_video
+import betautils_version as bu_version
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +113,9 @@ def _log_run_banner( logger ):
     """
     backend = bu_detector.selected_backend_name()
     variant = bu_detector.selected_variant_name( backend )
-    logger.info( "BetaTV starting: backend=%s%s picture_sizes=%s video_censor_fps=%s "
+    logger.info( "BetaTV %s starting: backend=%s%s picture_sizes=%s video_censor_fps=%s "
                  "nn_batch_size=%s global_min_prob=%s"%(
+        bu_version.get_version(),
         backend,
         ' variant=%s'%(variant) if variant else '',
         bu_detector.get_picture_sizes( backend ),
@@ -201,7 +203,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     Note:
         All three keys are in the output filename, so two runs that
         differ in ANY setting that changes the bytes on disk get
-        different names. Before 2.1 only a narrow "censor hash" was
+        different names. Previously only a narrow "censor hash" was
         embedded, deliberately excluding every tracking setting, so
         re-running with a changed track_max_gap silently overwrote the
         previous output and left nothing to compare.
@@ -246,7 +248,7 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
 
     Frames are fetched by betautils_video.iter_sampled_frames, which
     decodes sequentially and skips unwanted frames with grab(). The
-    pre-2.1 loop seeked once per sample, which on a long-GOP stream cost
+    earlier loop seeked once per sample, which on a long-GOP stream cost
     roughly 40x more per sampled frame.
 
     Args:
@@ -424,7 +426,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         betautils_signals.Interrupted: the user asked to stop. Deliberately
             NOT caught here - `except Exception` below gives the run its
             one-bad-file-is-not-fatal behaviour, and an interrupt must
-            pass straight through it. Before 2.1 this caught
+            pass straight through it. Previously this caught
             BaseException, so Ctrl-C was reported as a failed file and
             the run simply moved on to the next one.
     """
@@ -629,6 +631,7 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
         'encode_seconds': round( encode_seconds, 3 ),
         'total_seconds': round( total_seconds, 3 ),
         # Run identity - what produced these numbers.
+        'betasuite_version': bu_version.get_version(),
         'detector_backend': backend_name,
         'detector_variant': bu_detector.selected_variant_name( backend_name ),
         'execution_providers': bu_detector.session_provider_summary( session ),

@@ -270,7 +270,7 @@ class TestFullRun( BetaTvHarness ):
             self.assertIn( key, row )
 
     def test_changing_a_tracking_setting_changes_the_output_name( self ):
-        # The pre-2.1 filename deliberately excluded tracking settings,
+        # The earlier filename deliberately excluded tracking settings,
         # so re-running with a changed track_max_gap silently overwrote
         # the previous output and left nothing to compare.
         import copy
@@ -396,7 +396,7 @@ class TestPreviewMode( BetaTvHarness ):
             self.assertEqual( self.run_one(), 'processed' )
 
     def test_a_preview_window_bounds_the_shot_cut_scan( self ):
-        # Before 2.1 a 20-second preview of a two-hour file still paid
+        # Previously a 20-second preview of a two-hour file still paid
         # for a two-hour histogram scan.
         betaconfig.preview_mode_enabled = True
         betaconfig.preview_max_seconds = 1

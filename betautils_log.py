@@ -19,7 +19,7 @@ per-box detail that would drown a debug log.
 Everything a run prints goes through this module. Bare print() in the
 pipeline is a bug: it bypasses the level filter, bypasses the log file,
 and (in the per-frame case) produced 16KB of carriage-return spam per
-video in the pre-2.1 logs.
+video in the earlier logs.
 """
 
 import json
@@ -161,7 +161,7 @@ class ProgressReporter:
     """
     Rate-limited progress output for a tight per-frame loop.
 
-    The problem this solves: the pre-2.1 detection and render loops each
+    The problem this solves: the earlier detection and render loops each
     called print(..., end='\\r') once per frame. On a tty that is a
     redraw; piped to a log file it is one more copy of the whole line,
     which is how a 90-second video produced a 16KB single-line log.
