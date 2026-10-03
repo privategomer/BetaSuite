@@ -29,7 +29,7 @@ third frame can cost more than decoding all of them. Measured on
 grab() also skips the colour conversion and the numpy allocation that
 read() performs, so the frames we throw away cost almost nothing.
 
-The pre-2.1 detection loop seeked once per sample. This module's
+The earlier detection loop seeked once per sample. This module's
 docstring said not to, and the shot-cut scanner said not to; the
 detection loop did it anyway. Both now go through
 iter_sampled_frames().
@@ -74,7 +74,7 @@ def sample_frame_index( sample_index, offset_seconds, vid_fps, sample_fps ):
 
     Sample 0 rounds the offset to the nearest frame; every later sample
     floors its own timestamp. That asymmetry is inherited from the
-    pre-2.1 loop and is preserved deliberately: changing it would shift
+    earlier loop and is preserved deliberately: changing it would shift
     every sampled frame by up to one frame, which would invalidate every
     cached detection and every tuning number derived from one. For an
     offset of 0 the two agree anyway.
@@ -103,7 +103,7 @@ def iter_sampled_frames( cap, vid_fps, sample_fps, offset_seconds=0.0,
     we do. Performs at most ONE seek, to position the capture at the
     first sample (needed for a preview offset or a checkpoint resume).
 
-    Stopping conditions, in the same order the pre-2.1 loop applied them:
+    Stopping conditions, in the same order the earlier loop applied them:
       - the next sample's frame index reaches num_frames
       - the next sample's timestamp reaches offset_seconds + max_seconds
       - the decoder runs out of frames
@@ -216,7 +216,7 @@ def detect_shot_cuts( cap, vid_fps, sample_fps, threshold=0.6, max_seconds=None 
             fewer, more confident cuts.
         max_seconds: Stop scanning after this many seconds from the
             capture's current position, or None to scan to EOF. A
-            preview run passes its window here; before 2.1 a 20-second
+            preview run passes its window here; previously a 20-second
             preview of a two-hour file still paid for a two-hour scan.
 
     Returns:
@@ -396,7 +396,7 @@ def video_file_has_audio( filepath, timeout=120 ):
 
     Returns False rather than raising when ffprobe fails, so a probe
     failure degrades to "render without audio" instead of aborting the
-    file. The pre-2.1 version let the exception propagate.
+    file. The earlier version let the exception propagate.
     """
     command = [ "ffprobe", '-loglevel', 'error',
                 '-show_entries', 'stream=index,codec_type', '-of', 'csv=p=0', filepath ]
@@ -567,7 +567,7 @@ class VideoSource:
 
     Holds both paths on purpose. After a transcode fallback these differ,
     and confusing them is a real bug this class exists to prevent:
-    before 2.1 the transcode repointed only the main capture, so the
+    previously the transcode repointed only the main capture, so the
     shot-cut scanner still opened the original AV1 file that OpenCV had
     just proven it could not decode, got no frames, and silently cached
     an empty cut list for the whole video.

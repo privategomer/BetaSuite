@@ -24,7 +24,7 @@ The render is the slowest stage on a long video, so its shape matters:
               shape-mask cache.
 
   ONE ENCODE  Chunks are encoded directly as H.264 and concatenated by
-              stream copy; audio is muxed by stream copy too. Before 2.1
+              stream copy; audio is muxed by stream copy too. Previously
               the pipeline wrote mpeg4 -qscale 1 chunks, concatenated
               them, and then re-encoded the entire video to H.264 - a
               whole extra encode of every output, and two generations of
@@ -639,8 +639,8 @@ def chunk_is_complete( plan, verify_frame_counts=True ):
 
     Checks three things, because the container check alone cannot see
     the failure that matters most: a chunk whose decode died halfway is
-    a perfectly valid video file that is simply too short, and before
-    2.1 it was promoted, trusted on resume, and silently truncated the
+    a perfectly valid video file that is simply too short, and previously
+    it was promoted, trusted on resume, and silently truncated the
     output.
 
     Args:

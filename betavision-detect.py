@@ -10,7 +10,7 @@ the image has actually changed since the last check, and publishes the
 resulting raw boxes back to shared memory for betavision-censor.py to
 turn into censor boxes. Runs forever; stop with Ctrl+C.
 
-As of v2.0.0, preprocessing (resize/pad/normalize) happens here, per
+Preprocessing (resize/pad/normalize) happens here, per
 configured size, immediately before that size's detection call - see
 betavision-screenshot.py's module docstring for why that moved out of
 the capture stage.
@@ -79,7 +79,7 @@ def init_output_shared_memory():
     Create the shared-memory segments this process publishes detected
     raw boxes into, for betavision-censor.py to read.
 
-    Unlike v1.0.0's IPC (which shared raw model tensors sized for one
+    Unlike the original IPC (which shared raw model tensors sized for one
     specific model's fixed-300-detection output shape), this publishes
     already-parsed raw box dicts - packed into a fixed-size structured
     array via betautils_vision.boxes_to_shared_array - so it works
@@ -273,7 +273,7 @@ def main():
             # moved out of the capture stage).
             # Sizes resolve per backend (betautils_detector.get_picture_sizes):
             # the shared betaconfig.picture_sizes this used to read was
-            # removed in 2.5, and reading it here would raise AttributeError.
+            # removed, and reading it here would raise AttributeError.
             all_raw_boxes = []
             for size in bu_detector.get_picture_sizes():
                 all_raw_boxes.extend( detector.raw_boxes_for_img( local_screenshot, size, session, last_timestamp ) )

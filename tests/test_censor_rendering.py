@@ -357,7 +357,7 @@ class TestCensorScaleStrategy( unittest.TestCase ):
         betaconfig.censor_scale_strategy = self.original
 
     def test_an_unknown_strategy_returns_one_rather_than_none( self ):
-        # The pre-2.1 version fell off the end and returned None, which
+        # The earlier version fell off the end and returned None, which
         # became `strength * None` and a TypeError deep inside a render.
         betaconfig.censor_scale_strategy = 'not-a-strategy'
         image = np.zeros( ( 100, 100, 3 ), dtype=np.uint8 )

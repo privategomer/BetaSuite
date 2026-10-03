@@ -186,7 +186,7 @@ def main():
 
     # Every backend is timed at every size, so the output stays a
     # rectangular size-by-backend table and a column really is
-    # comparable. What changed in v2.1 is the DEFAULT set of sizes: the
+    # comparable. What changed is the DEFAULT set of sizes: the
     # shared betaconfig.picture_sizes is no longer what any given
     # backend runs at, so timing nudenet_v3 at 1280 (its old shared
     # size) answers a question nobody is asking. The union of each
@@ -207,8 +207,8 @@ def main():
     print( "sizes: %s"%(sizes) )
     if args.batch_size is None:
         # per-backend resolution (see betautils_detector.get_nn_batch_size) -
-        # each backend times at its OWN configured batch size, since v2.0.0
-        # retired the one-shared-value assumption; printed per-backend below
+        # each backend times at its OWN configured batch size, since the adapter
+        # architecture retired the one-shared-value assumption; printed per-backend below
         # instead of once up front.
         print( "batch size: per-backend (betaconfig.detector_backend[<name>]['nn_batch_size'], via betautils_detector.get_nn_batch_size)" )
     else:

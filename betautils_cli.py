@@ -23,6 +23,7 @@ left unset keeps whatever betaconfig.py already says.
 import argparse
 
 import betautils_detector as bu_detector
+import betautils_version as bu_version
 
 # Declarative table describing every optional CLI override: which
 # argparse destination it reads from (the attribute name argparse
@@ -67,7 +68,7 @@ _ALWAYS_AVAILABLE_OVERRIDES = [
 #
 # These used to be mirrored onto module-level betaconfig attributes as
 # well, for a config with no detector_backend section. Those tiers were
-# removed in 2.5, so the mirror would write an attribute nothing reads -
+# removed, so the mirror would write an attribute nothing reads -
 # and validate_config now reports a stale module-level nn_batch_size or
 # picture_sizes as an error, which would make every run using one of
 # these flags fail validation. The mirror is gone for that reason.
@@ -103,6 +104,8 @@ def _add_always_available_flags( parser ):
         parser: The argparse.ArgumentParser to add flags to (mutated in
             place).
     """
+    parser.add_argument( '--version', action='version',
+        version='BetaSuite %s'%( bu_version.get_version() ) )
     parser.add_argument( '--backend', choices=bu_detector.registered_backend_names(),
         help="override betaconfig.detector_backend['selected'] for this run only. Precedence: "
              "BETASUITE_DETECTOR_BACKEND_OVERRIDE env var (if set) wins over this flag, which wins "

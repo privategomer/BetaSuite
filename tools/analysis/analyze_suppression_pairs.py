@@ -84,8 +84,8 @@ HISTOGRAM_PAIRS = [
 ]
 
 def label_of(raw, classes):
-    # raw['class_id'] is already BetaSuite's canonical string label as
-    # of v2.0.0 (see betautils_detector.py) - 'classes' arg kept for
+    # raw['class_id'] is already BetaSuite's canonical string label
+    # (see betautils_detector.py) - 'classes' arg kept for
     # call-site compatibility but no longer used for a lookup here.
     return raw['class_id']
 

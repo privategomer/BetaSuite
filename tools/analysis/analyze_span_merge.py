@@ -84,7 +84,7 @@ def _load_real_pipeline_functions():
 
     This used to regex the functions out of betatv.py's source text and
     exec them. That coupled the tool to another file's line-by-line
-    layout, so the v2.1.0 refactor - which only moved those functions
+    layout, so a refactor - which only moved those functions
     into betautils_track.py - broke it with a RuntimeError at startup.
     Importing them means the tool replays exactly the code the real run
     used, and a future move is a rename, not a breakage.
@@ -156,7 +156,7 @@ def main():
     args = parser.parse_args()
 
     # Resolve per backend rather than from the shared betaconfig list:
-    # since v2.1 a backend can declare its own picture_sizes, or inherit
+    # a backend can declare its own picture_sizes, or inherit
     # its model's native sizes, so the shared list is frequently not the
     # size anything was actually detected at.
     args.picture_sizes = bu_cache.resolve_picture_sizes(

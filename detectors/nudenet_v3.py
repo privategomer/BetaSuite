@@ -209,7 +209,7 @@ def detection_identity( config ):
     """
     The settings that change which raw detections come out of this model.
 
-    Folded into the detection cache key. Before 2.1, changing nms_iou or
+    Folded into the detection cache key. Previously, changing nms_iou or
     candidate_floor silently reused detections computed under the old
     value; this is what fixes that.
     """
@@ -402,7 +402,7 @@ def decode_output( raw_output, pad_w, pad_h, max_size, size,
     """
     Turn one image's raw (22, N) model output into surviving detections.
 
-    Fully vectorised. The pre-2.1 implementation iterated every anchor in
+    Fully vectorised. The earlier implementation iterated every anchor in
     Python, calling np.amax and np.argmax on an 18-element slice each
     time; at a 1280 blob that is 33,600 iterations and roughly 97ms per
     frame, which was the single largest cost in the detection pass. The

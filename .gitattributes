@@ -9,6 +9,10 @@
 *.txt text eol=lf
 *.cfg text eol=lf
 
+# Windows scripts: CRLF so cmd.exe and PowerShell parse them reliably
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 # Binary/executable files
 *.pyc binary
 *.so binary

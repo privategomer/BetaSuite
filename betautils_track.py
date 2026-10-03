@@ -17,7 +17,7 @@ that owns each stage:
                                 smooth position, interpolate gaps,
                                 confirm tracks, and drop what fails
 
-These lived inside betatv.py before 2.1, which meant the replay/tuning
+These lived inside betatv.py previously, which meant the replay/tuning
 tools could not import them: tools/tuning/replay_tune.py literally read
 betatv.py's source text, sliced the two function bodies out of it, and
 exec'd them, so that it could be sure it was testing the real code. That
@@ -99,7 +99,7 @@ def apply_cross_size_dedup( raw_boxes, settings=None ):
 
     With more than one entry in picture_sizes the model runs once per
     size and the same object produces one detection per size, at the
-    same timestamp with the same label. Nothing merged them before 2.1:
+    same timestamp with the same label. Nothing merged them previously:
     class_suppression only ever compares DIFFERENT labels, so both
     survived, both became censorable boxes, and smooth_boxes built two
     separate tracks for one instance - which then independently resolved
@@ -427,7 +427,7 @@ def apply_class_suppression( raw_boxes, suppression_rules=None, parts_to_blur=No
         {'total', 'renderable'} dict: 'total' is every time the rule
         fired, 'renderable' is the subset where the suppressed detection
         had cleared its own label's min_prob and so would really have
-        been drawn. Before 2.1 only the total was reported, which
+        been drawn. Previously only the total was reported, which
         overstated how much work a rule was doing, because most of what
         it suppressed was below min_prob and headed for the bin anyway.
     """
@@ -666,13 +666,13 @@ def apply_class_promotion( raw_boxes, promotion_rules=None ):
 # return value, and none of it should be - it is diagnostic detail that
 # would cost every real run to carry.
 #
-# Before 2.1 those tools got at it by reading betatv.py's SOURCE TEXT,
+# Previously those tools got at it by reading betatv.py's SOURCE TEXT,
 # regex-matching the smooth_boxes body out of it, string-replacing
 # instrumentation calls into specific lines, and exec'ing the result.
 # That worked until any of those lines moved, at which point the tools
 # failed with "its structure has changed since this tool was written
-# against it" - which is exactly what happened to three of them in the
-# 2.1 refactor.
+# against it" - which is exactly what happened to three of them in a
+# refactor.
 #
 # This is the supported extension point instead. An observer is a plain
 # object with any subset of the three methods below; missing ones are
@@ -911,7 +911,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         This is what removes a single-frame false positive that would
         otherwise paint a censor blob for time_safety seconds.
         min_track_hits defaults to 1, which admits every track and is
-        exactly the pre-2.1 behaviour.
+        exactly the earlier behaviour.
 
     Args:
         boxes: Censorable boxes from process_raw_box, any order, all
@@ -1496,8 +1496,8 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
     The whole detection -> renderable-boxes pipeline, in one call.
 
     One function so betatv.py, betastare.py and the replay tooling all
-    run the same stages in the same order with the same settings. Before
-    2.1 this sequence was open-coded in betatv.py and re-derived by
+    run the same stages in the same order with the same settings. Previously
+    this sequence was open-coded in betatv.py and re-derived by
     exec-ing betatv.py's source in the replay tool.
 
     Args:

@@ -69,7 +69,7 @@ def native_picture_sizes( config ):
     Unlike nudenet_v3 this export has no single validated input size -
     it was trained on variable-size input and is routinely run at 1280.
     Returning [] defers to betaconfig.picture_sizes, preserving the
-    pre-2.1 behaviour for this backend exactly.
+    earlier behaviour for this backend exactly.
     """
     return []
 
@@ -181,7 +181,7 @@ def get_raw_model_output( img_array, session, batch_size=None ):
         image: boxes (n, 300, 4), scores (n, 300), classes (n, 300).
 
     Note:
-        Before 2.1 this read the TOP-LEVEL betaconfig.nn_batch_size
+        Previously this read the TOP-LEVEL betaconfig.nn_batch_size
         rather than the per-backend resolved value, so
         detector_backend['retinanet_v2']['nn_batch_size'] = 2 was
         silently ignored: betatv buffered two frames, handed them over,

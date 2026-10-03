@@ -1,5 +1,5 @@
 """
-test_detector_adapter.py - regression tests for the v2.0.0 detector-
+test_detector_adapter.py - regression tests for the detector-
 adapter interface (betautils_detector.py, detectors/retinanet_v2.py).
 
 Covers:
@@ -41,7 +41,7 @@ class TestCanonicalVocabulary( unittest.TestCase ):
         self.assertIsInstance( betaconst.classes, dict )
 
     def test_classes_has_eighteen_labels( self ):
-        # was 16 pre-v2.0.0; grew to 18 when the nudenet_v3 adapter
+        # was originally 16; grew to 18 when the nudenet_v3 adapter
         # added covered_armpits/covered_anus (real distinctions the
         # RetinaNet-era vocabulary never had - see betaconst.py and
         # detectors/nudenet_v3.py's module docstrings)
@@ -179,7 +179,7 @@ class TestGetNnBatchSize( unittest.TestCase ):
         self.assertEqual( bu_detector.get_nn_batch_size(), 4 )
 
     def test_the_removed_top_level_setting_is_ignored( self ):
-        # betaconfig.nn_batch_size stopped being read in 2.5. A stale value
+        # betaconfig.nn_batch_size stopped being read. A stale value
         # there must not quietly win; validate_config reports it instead.
         betaconfig.detector_backend = {
             'selected': 'retinanet_v2',
@@ -251,7 +251,7 @@ class TestGetClassSuppression( unittest.TestCase ):
         self.assertEqual( bu_detector.get_class_suppression( 'nudenet_v3' ), nudenet_rules )
 
     def test_the_removed_top_level_ruleset_is_ignored( self ):
-        # betaconfig.class_suppression stopped being read in 2.5: label
+        # betaconfig.class_suppression stopped being read: label
         # vocabularies differ between models, so a shared ruleset can name
         # classes a backend has never heard of. A stale value there must
         # not quietly apply; validate_config reports it instead.

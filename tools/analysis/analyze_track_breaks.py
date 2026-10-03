@@ -273,8 +273,8 @@ def _swept_overrides( backend_name, labels, match_mult, gap_mult ):
     """
     Temporarily apply one sweep point to the BACKEND's override block.
 
-    Why not betaconfig.item_overrides, which is what this did before
-    v2.1: get_item_overrides() merges a backend's own block on top of
+    Why not betaconfig.item_overrides, which is what this used to
+    do: get_item_overrides() merges a backend's own block on top of
     the shared one for every backend-tunable key, and both
     match_distance_multiplier and track_max_gap are backend-tunable. So
     a sweep that wrote to the shared dict was silently overwritten by
@@ -550,7 +550,7 @@ def main():
         print( "what 'no-nearby-track' should do, and it differs per sweep. Across the MATCH-DISTANCE sweep it must stay flat: match " )
         print( "distance cannot change whether anything was live for this label, so movement there means something is wrong. Across the " )
         print( "TRACK_MAX_GAP sweep it should FALL, and that fall is the mechanism working, not a fault: a larger gap keeps tracks " )
-        print( "eligible for longer, so fewer moments have nothing live to match against. Before 2.1.1 this tool told you a fall meant " )
+        print( "eligible for longer, so fewer moments have nothing live to match against. Earlier versions of this tool told you a fall meant " )
         print( "'something's off' in both sweeps, which is wrong for the gap sweep and sent at least one reader looking for a bug." )
         print()
 

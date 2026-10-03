@@ -316,7 +316,7 @@ def main():
              "so widening it again later needs no re-run" )
     args = parser.parse_args()
 
-    # paired_style is a backend-tunable item override since v2.1, so
+    # paired_style is a backend-tunable item override, so
     # which labels are worth checking is a per-backend question - the
     # labels are resolved inside the backend loop below, not once here
     # from whichever backend happens to be selected.

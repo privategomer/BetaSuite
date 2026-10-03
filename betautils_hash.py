@@ -56,7 +56,7 @@ _file_hash_memo = None
 _file_hash_memo_dirty = False
 _file_hash_lock = threading.RLock()
 
-# 4 MiB. The pre-2.1 value was 8192 bytes, which made hashing a 5GB file
+# 4 MiB. The earlier value was 8192 bytes, which made hashing a 5GB file
 # ~640k Python-level read calls; the hash itself was never the bottleneck,
 # the call overhead was.
 _FILE_HASH_CHUNK_BYTES = 4 * 1024 * 1024

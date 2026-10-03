@@ -192,7 +192,7 @@ def _swept_alpha( backend_name, labels, alpha ):
     Setting betaconfig.default_position_smoothing alone is not enough,
     and was the reason an alpha sweep could come back suspiciously
     flat. default_position_smoothing is only the FALLBACK: any label
-    with its own position_smoothing override keeps it, and since v2.1
+    with its own position_smoothing override keeps it, and
     that override can live in the backend's own
     detector_backend[<name>]['item_overrides'] block, which
     get_item_overrides merges on top of the shared one.

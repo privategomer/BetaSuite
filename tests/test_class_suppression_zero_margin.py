@@ -115,7 +115,7 @@ class TestClassSuppressionZeroMargin( unittest.TestCase ):
         # present, as long as nothing else is a hard error.
         #
         # retinanet_v2 needs an explicit picture_sizes here: it declares
-        # no native size, and since 2.5 there is no shared
+        # no native size, and there is no longer a shared
         # betaconfig.picture_sizes to fall back on, so an empty block
         # would be a genuine hard error and mask what this test checks.
         betaconfig.detector_backend = {

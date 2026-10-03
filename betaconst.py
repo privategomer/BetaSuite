@@ -19,8 +19,8 @@ global_min_prob = 0.20
 # Bumped whenever the on-disk shape of a cached raw box record changes,
 # so old caches are recognised as stale rather than misread.
 #
-#   1 -> 2 (v2.0.0)   class_id became a canonical string label
-#   2 -> 3 (v2.1.0)   raw boxes carry 'size' (the picture_sizes entry
+#   1 -> 2   class_id became a canonical string label
+#   2 -> 3   raw boxes carry 'size' (the picture_sizes entry
 #                     that produced them) for cross-size dedup, and the
 #                     cache path format changed to a content-addressed
 #                     detection key (see betautils_cache_paths.py)

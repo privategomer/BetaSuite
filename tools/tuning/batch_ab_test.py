@@ -52,7 +52,7 @@ The FIRST value in --batch-sizes is treated as the trusted baseline
 (normally 1 - BetaSuite's original, known-working, one-frame-per-call
 behavior) that every other batch size is compared against.
 
-Backend-aware as of v2.0.0's multi-adapter architecture: by default this
+Backend-aware through the multi-adapter architecture: by default this
 runs the FULL comparison once per registered detector backend (see
 betautils_detector.py's _BACKENDS), each entirely real (cache cleared,
 real betatv.py subprocess run), and closes with a cross-backend summary
@@ -525,7 +525,7 @@ def main():
     args = parser.parse_args()
 
     # Resolve per backend rather than from the shared betaconfig list:
-    # since v2.1 a backend can declare its own picture_sizes, or inherit
+    # a backend can declare its own picture_sizes, or inherit
     # its model's native sizes, so the shared list is frequently not the
     # size anything was actually detected at.
     args.picture_sizes = bu_cache.resolve_picture_sizes(

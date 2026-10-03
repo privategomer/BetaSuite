@@ -81,7 +81,7 @@ Changing one invalidates exactly that stage:
 expansion, so a filename from months ago can be decoded back into the
 settings that produced it.
 
-**Why this matters.** Before v2.1.0 the filename carried a narrow hash
+**Why this matters.** Previously the filename carried a narrow hash
 that deliberately excluded every tracking setting. Re-running with a
 changed `track_max_gap` produced the same filename, silently overwrote
 the previous output, and left nothing to compare. Now anything that
@@ -111,7 +111,7 @@ entry looked complete while describing settings the render never used.
 person tuning would and asserts the key moves. Add a setting that
 changes rendered output, add it to `censor_identity()` and to that file.
 
-> **Changed in 2.5:** structure profiles, `default_style_min_dwell_seconds`,
+> **Changed:** structure profiles, `default_style_min_dwell_seconds`,
 > `default_profile_enabled`, `shot_cut_threshold` and
 > `shot_cut_detection_enabled` joined the censor key. Existing rendered
 > outputs get new filenames on the next run. Nothing is lost — the old
@@ -201,7 +201,7 @@ detector_backend['defaults']['nn_batch_size']     ← shared default
 1                                                 ← last resort
 ```
 
-> **Changed in 2.5.** The module-level `betaconfig.nn_batch_size`
+> **Changed.** The module-level `betaconfig.nn_batch_size`
 > fallback was removed, but the `'defaults'` tier was deliberately
 > kept — unlike `picture_sizes` and `class_suppression`, this is a
 > VRAM/throughput knob rather than a statement about what the model
@@ -221,7 +221,7 @@ back off one step:
 python3 tools/bench/betabench.py detect --batch-sizes 1 2 4 8
 ```
 
-> Before v2.1.0 the `retinanet_v2` adapter read the **top-level**
+> Previously the `retinanet_v2` adapter read the **top-level**
 > `betaconfig.nn_batch_size` rather than the per-backend value. Setting
 > it in the backend block did nothing: the frame buffer collected two
 > frames, handed them over, and the adapter split them straight back
@@ -288,7 +288,7 @@ detector_backend['defaults']['picture_sizes']     ← shared default
 the variant's native size                         ← convention
 ```
 
-> **Changed in 2.5.** The module-level `betaconfig.picture_sizes`
+> **Changed.** The module-level `betaconfig.picture_sizes`
 > fallback was removed. A detection size is a property of the model and
 > its export, so a single shared number could only ever be right for one
 > backend at a time: `nudenet_v3/640m` wants 640, `retinanet_v2` wants
@@ -366,7 +366,7 @@ invalidates every cached detection and forces a full re-detect. That is
 the honest cost of the change, and the reason to prefer per-label
 `min_prob` whenever the label gate is the one actually binding.
 
-> **Changed in 2.5:** lowered from 0.20 to 0.12, to admit the low-score
+> **Changed:** lowered from 0.20 to 0.12, to admit the low-score
 > detections behind "obvious content gets nothing at all". Watch the
 > false-positive rate after this change; if it rises more than the
 > recall gain is worth, raise it back toward 0.16 rather than putting
@@ -419,7 +419,7 @@ real — look at output at two or three values before committing.
 
 The **lower** threshold a detection needs to **continue** an
 already-established track. `None` disables hysteresis entirely, which is
-the default and is exactly the pre-v2.1.0 behaviour.
+the default and is exactly the earlier behaviour.
 
 **The analogy.** A thermostat. If it started and stopped heating at the
 same temperature it would chatter on and off around the set point, so it
@@ -617,7 +617,7 @@ Rules are **per-backend**, resolved as
 `detector_backend[<name>]['class_suppression']` →
 `detector_backend['defaults']['class_suppression']` → `{}`.
 
-> **Changed in 2.5.** The module-level `betaconfig.class_suppression`
+> **Changed.** The module-level `betaconfig.class_suppression`
 > fallback was removed. Label vocabularies differ between models, so a
 > shared ruleset can name classes a backend has never heard of, and an
 > IoU threshold calibrated against one model's box geometry says nothing
@@ -957,7 +957,7 @@ of 1.1px, alpha 0.70 gives 2.7px. The jump size is the responsiveness —
 a box that moves 1.1px per frame while the subject moves more than that
 is being left behind.
 
-> **Changed in 2.5:** raised from 0.50 to 0.65, for censor blocks that
+> **Changed:** raised from 0.50 to 0.65, for censor blocks that
 > keep up with movement. The cost is a little more visible jitter on a
 > static subject; if that reads worse than the lag did, 0.55 splits the
 > difference.
@@ -1186,7 +1186,7 @@ people — and resolve independently.
 ### `default_min_track_hits` (per-label: `min_track_hits`)
 
 Real detections a track must accumulate before **any** of its boxes are
-rendered. **1**, which renders every track and is the pre-v2.1.0
+rendered. **1**, which renders every track and is the earlier
 behaviour.
 
 **The analogy.** Waiting for a second opinion before acting. One
@@ -1217,7 +1217,7 @@ only if single-frame noise is a visible problem. Drop the boxes of an
 unconfirmed track and its interpolated boxes go with it — a track that
 never confirmed contributes nothing at all.
 
-> **Changed in 2.5.** Both `nudenet_v3` labels moved from 3 back to 2.
+> **Changed.** Both `nudenet_v3` labels moved from 3 back to 2.
 > At 3, a track needs a third of a second of continuous detection at
 > `video_censor_fps = 9` before rendering anything — which looks exactly
 > like a missed detection on brief or partially-occluded content, and is
@@ -2063,7 +2063,7 @@ mosaic                          hex
 A **lower** `strength` means **less** obscuring (smaller blocks). Real
 testing showed low values letting too much detail through.
 
-> The hex grid was rewritten in v2.1.0 from a per-cell mask-and-scan
+> The hex grid was rewritten from a per-cell mask-and-scan
 > loop into one analytic labelling pass: 21–175 ms per box per frame
 > down to about a millisecond. It is also a correct non-overlapping
 > tessellation now, where the old generator produced overlapping
@@ -2239,7 +2239,7 @@ floor is buying motion tolerance and paying for it in bleed:
 | 0.18 |  90 ms |  +69 ms |
 | 0.11 |  56 ms |    0 ms — no margin for a dropped frame |
 
-> **Changed in 2.6:** `exposed_breast` 0.35 → 0.22 and `exposed_vulva`
+> **Changed:** `exposed_breast` 0.35 → 0.22 and `exposed_vulva`
 > 0.27 → 0.20, reported as censoring that appears before an exposure and
 > persists after it. Both keep a full sampling interval of overlap, so
 > neither opens a gap; what they give up is tolerance for a subject that
@@ -2308,7 +2308,7 @@ cost of more concat work. Preview runs always use one chunk.
 
 **True**. Compare frames actually written against frames planned.
 
-> Before v2.1.0 a chunk whose decode died mid-file was a perfectly valid
+> Previously a chunk whose decode died mid-file was a perfectly valid
 > video file that was simply too short. It passed the container check,
 > got promoted, and a later resume skipped it — silently truncating the
 > output. The container check cannot see this; only the count can.
@@ -2326,7 +2326,7 @@ most material, 0 is truly lossless, 51 is worst. Preset is the
 speed/size trade: `ultrafast` through `veryslow`, same quality target,
 bigger files at faster presets.
 
-> v2.1.0 removed an entire encode. The pipeline used to write
+> One change removed an entire encode. The pipeline used to write
 > `mpeg4 -qscale 1` chunks, concatenate them, and then re-encode the
 > whole video to H.264 — a full extra encode of every output and two
 > generations of lossy compression. Chunks are now encoded directly as
@@ -2391,7 +2391,7 @@ across a directory of differently-sized videos:
 **`preview_random_slice`** picks a random offset per file when
 `preview_start_seconds` is unset, and logs the offset so you can pin it.
 
-The shot-cut scan is bounded by the preview window. Before v2.1.0 a
+The shot-cut scan is bounded by the preview window. Previously a
 20-second preview of a two-hour file still paid for a two-hour
 histogram scan.
 
@@ -2414,7 +2414,7 @@ Two independent levels so the file keeps the detail while the terminal
 stays readable. `trace` is for per-frame and per-box detail that would
 drown a debug log.
 
-> Before v2.1.0 the detection and render loops each printed once per
+> Previously the detection and render loops each printed once per
 > frame with a carriage return. On a terminal that is a redraw; piped to
 > a log file it is one more copy of the whole line, which is how a
 > 90-second video produced a 16 KB single-line log. Progress is now
@@ -2545,7 +2545,7 @@ group. `analyze_style_flicker.py` prints the resulting expected share
 per label, which is the number to check a change against rather than
 counting entries by eye.
 
-**Stickers were halved in v2.1.1.** They had drifted to 50% of
+**Stickers were halved.** They had drifted to 50% of
 `exposed_vulva` resolves (three sticker entries at weight 1 against
 three blur entries at weight 1) and 24% of `exposed_breast` resolves
 (3.2 of 13.4 total). They are now 25% and 14%. The variety is
@@ -2560,13 +2560,13 @@ above the cheapest styles, so its weight is the single largest
 style-side lever on render time — and render was 84% of that run's wall
 clock.
 
-> Read those render numbers with the spread in mind. Before v2.1.1 the
+> Read those render numbers with the spread in mind. Previously the
 > bench took a single timed burst per style and reported 0.27ms and
 > 1.12ms for two identical configurations in the same run. It now takes
 > several trials, reports their median, and prints the spread; treat any
 > difference smaller than the printed spread as noise.
 
-**`exposed_breast` gained eight tight-crop variants in 2.5.** Each of
+**`exposed_breast` gained eight tight-crop variants.** Each of
 the four non-bar, non-sticker groups — gaussian blur, box blur, mosaic
 pixel, hex pixel — got two extra entries replicating that group's two
 median-strength configurations (strength 30 and 40) at
@@ -2615,7 +2615,7 @@ low/mid/high rather than a full cross product. More feathering than
 vulva, because the opaque and blocky styles need a soft edge to read as
 intentional censoring rather than a hard cutout.
 
-### Per-variant overrides (v2.1.2)
+### Per-variant overrides
 
 `item_overrides` now resolves through **three** tiers, most general to
 most specific:
@@ -2646,7 +2646,7 @@ that is silence, not disagreement.
 The variant is now part of the **censor key**, so two variants with
 different tracking settings no longer share rendered output.
 
-### A note on the first live tuning run (v2.1.1)
+### A note on the first live tuning run
 
 The first `auto_tune.py --apply` run produced values that should not be
 trusted, and both causes are fixed. They are recorded here because the
@@ -2695,7 +2695,7 @@ read.
 
 `exposed_vulva`'s `track_max_gap` was reverted to 21.6 as a result.
 
-### `nudenet_v3` — `track_max_gap`, doubled in v2.1.1
+### `nudenet_v3` — `track_max_gap`, doubled
 
 **`exposed_vulva`: 10.8 → 21.6. `exposed_breast`: 13.5 → 27.0.**
 
