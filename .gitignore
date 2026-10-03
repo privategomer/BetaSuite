@@ -157,3 +157,4 @@ cache/
 run_keys/
 **/.pytest_cache/
 **/.coverage
+tools/release/release-notes.md
