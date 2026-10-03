@@ -30,6 +30,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( __file__ ), '..', '..' ) )
 VERSION_FILE = os.path.join( REPO_ROOT, 'VERSION' )
@@ -146,7 +147,7 @@ def date_changelog( text, version, today, subjects ):
     "## Unreleased" section (renamed), or a new section drafted from the
     commit subjects, inserted above the first existing release.
     """
-    heading = '## %s (%s)'%( version, today )
+    heading = '## %s (%s)'%( version, today ) if today else None
     lines = text.splitlines( keepends=True )
 
     def section_bounds( pattern ):
@@ -160,7 +161,8 @@ def date_changelog( text, version, today, subjects ):
     bounds = section_bounds( r'^## %s\b'%( re.escape( version ) ) ) or section_bounds( r'^## Unreleased\b' )
     if bounds:
         start, end = bounds
-        lines[start] = heading + '\n'
+        if heading:
+            lines[start] = heading + '\n'
         notes = ''.join( lines[start + 1:end] ).strip()
         return ''.join( lines ), notes
 
@@ -227,7 +229,12 @@ def release( args ):
     for s in subjects:
         log.info( '  - %s'%(s) )
     if version_is_tagged and not subjects:
-        raise Abort( 'nothing to release: no commits since %s'%(last_tag) )
+        # Already released locally. Pick up where an earlier run stopped:
+        # push and/or create the GitHub release if either is missing.
+        log.info( 'v%s is already tagged here; checking whether it still needs publishing'%(current) )
+        with open( CHANGELOG, encoding='utf-8' ) as f:
+            _, notes = date_changelog( f.read(), current, None, [] )
+        return publish( args, branch, current, notes )
 
     # --- choose the version
     suggestion = suggest_bump( subjects, version_is_tagged )
@@ -289,21 +296,53 @@ def release( args ):
     run( [ 'git', 'tag', '-a', 'v%s'%(new), '-m', 'v%s'%(new) ] )
     log.info( 'done: committed and tagged v%s'%(new) )
 
-    # --- publish
-    if not ask( 'Push the commit and tag to origin?', False, args.yes ):
-        log.info( 'not pushed. Later: git push origin %s --follow-tags'%(branch) )
+    return publish( args, branch, new, notes )
+
+
+def publish( args, branch, version, notes ):
+    """Push the branch and tag, then create the GitHub release. Safe to re-run."""
+    tag = 'v%s'%(version)
+    remote_tag = run( [ 'git', 'ls-remote', '--tags', 'origin', 'refs/tags/%s'%(tag) ], check=False )
+    if remote_tag:
+        log.info( '%s is already on origin'%(tag) )
+    elif ask( 'Push %s and tag %s to origin?'%( branch, tag ), False, args.yes ):
+        run( [ 'git', 'push', 'origin', branch, '--follow-tags' ] )
+        log.info( 'done: pushed %s and %s'%( branch, tag ) )
+    else:
+        log.info( 'not pushed. Later: git push origin %s --follow-tags, then re-run this script'%(branch) )
         return 0
-    run( [ 'git', 'push', 'origin', branch, '--follow-tags' ] )
-    log.info( 'done: pushed %s and v%s'%( branch, new ) )
 
     gh = shutil.which( 'gh' )
-    if gh and ask( 'Create the GitHub release v%s with these notes?'%(new), True, args.yes ):
-        run( [ gh, 'release', 'create', 'v%s'%(new), '--title', 'v%s'%(new), '--notes', notes ] )
-        log.info( 'done: GitHub release v%s created'%(new) )
-    elif not gh:
-        log.info( 'GitHub CLI not found; create the release on GitHub from tag v%s'%(new) )
-    return 0
+    if not gh:
+        log.info( 'GitHub CLI not found; create the release on GitHub from tag %s'%(tag) )
+        return 0
+    if run( [ gh, 'release', 'view', tag ], check=False, capture=False ) == 0:
+        log.info( 'GitHub release %s already exists; nothing left to do'%(tag) )
+        return 0
+    if not ask( 'Create the GitHub release %s with these notes?'%(tag), True, args.yes ):
+        log.info( 'no GitHub release created. Re-run this script later to create it' )
+        return 0
 
+    notes_file = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), 'release-notes.md' )
+    with open( notes_file, 'w', encoding='utf-8', newline='\n' ) as f:
+        f.write( notes + '\n' )
+    cmd = [ gh, 'release', 'create', tag, '--title', tag, '--notes-file', notes_file, '--verify-tag' ]
+    for attempt in range( 1, 4 ):
+        if run( cmd, check=False, capture=False ) == 0:
+            log.info( 'done: GitHub release %s created'%(tag) )
+            os.remove( notes_file )
+            return 0
+        # GitHub sometimes answers 5xx; a release created despite the error must not be duplicated.
+        if run( [ gh, 'release', 'view', tag ], check=False, capture=False ) == 0:
+            log.info( 'done: GitHub release %s exists (created despite the error)'%(tag) )
+            os.remove( notes_file )
+            return 0
+        if attempt < 3:
+            log.warning( 'gh release create failed (attempt %d of 3; see the log); retrying in %ds'%(
+                attempt, 10 * attempt ) )
+            time.sleep( 10 * attempt )
+    raise Abort( 'could not create the GitHub release %s. The tag is pushed; re-run this script '
+                 'later to try again (notes kept in %s)'%( tag, notes_file ) )
 
 if __name__ == '__main__':
     sys.exit( main() )
