@@ -2,7 +2,7 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
-## 1.1.0 (2026-10-01)
+## 1.1.0 (2026-10-03)
 
 ### Added
 
