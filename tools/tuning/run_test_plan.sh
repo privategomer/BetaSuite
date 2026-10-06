@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # run_test_plan.sh - runs the full picture_size/fps sweep + nn_batch_size
 # test sequence in order, pausing at the two points that actually need a
 # human: watching the rendered previews to pick a picture_sizes candidate,
@@ -13,6 +13,10 @@
 #
 # Override the pinned preview slice if you want:
 #     PREVIEW_START_SECONDS=450 PREVIEW_SECONDS=33 ./run_test_plan.sh
+
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
 
 set -euo pipefail
 
@@ -52,7 +56,7 @@ PREVIEW_START_SECONDS="$PREVIEW_START_SECONDS" PREVIEW_SECONDS="$PREVIEW_SECONDS
 
 echo
 echo "=== step 3/4: summarizing sweep ==="
-python3 "$ANALYSIS_DIR/summarize_tune_sweep.py" --preview-offset "$PREVIEW_START_SECONDS"
+"$PYTHON_BIN" "$ANALYSIS_DIR/summarize_tune_sweep.py" --preview-offset "$PREVIEW_START_SECONDS"
 
 pause "Sweep done. Go watch the preview outputs for each picture_sizes combo now and decide which one (or two, for a normal/strict split) you want nn_batch_size tested against."
 
@@ -67,7 +71,7 @@ CHOSEN_FPS="${CHOSEN_FPS:-8}"
 
 echo
 echo "=== step 4/4: nn_batch_size test on picture_sizes=[$CHOSEN_SIZES] fps=$CHOSEN_FPS ==="
-python3 "$SCRIPT_DIR/batch_ab_test.py" --batch-sizes 1 4 8 \
+"$PYTHON_BIN" "$SCRIPT_DIR/batch_ab_test.py" --batch-sizes 1 4 8 \
     --picture-sizes $CHOSEN_SIZES \
     --video-censor-fps "$CHOSEN_FPS" \
     --preview-start-seconds "$PREVIEW_START_SECONDS" \

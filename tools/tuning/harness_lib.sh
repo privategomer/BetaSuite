@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # harness_lib.sh - shared logging + control-flow helpers for single-click
 # harness scripts. Source this near the top of any harness:
 #
@@ -48,6 +48,10 @@
 #       or (b) is genuinely optional - the harness should have a sane
 #       default it proceeds with (logged at warn level) rather than hang
 #       forever on a prompt nobody can see.
+
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
 
 set -uo pipefail
 

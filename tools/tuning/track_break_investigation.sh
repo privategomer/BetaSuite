@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # track_break_investigation.sh - single-click investigation of the track
 # continuity breaks (resets) analyze_jitter.py flagged: why they happen,
 # and what loosening match-distance/max_gap would actually do about them.
@@ -34,6 +34,10 @@
 # lives in tools/tuning/ - pin CWD to the core dir (two levels up) so the
 # log path and analyze_*.py invocations below behave exactly as they did
 # when this script sat directly in the core dir.
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ANALYSIS_DIR="$CORE_DIR/tools/analysis"
@@ -50,13 +54,13 @@ fi
 log_info "=== track_break_investigation.sh starting ==="
 log_info "log level: $LOG_LEVEL - full detail always in $HARNESS_LOG_FILE regardless of this setting"
 
-run_logged "analyze_jitter.py (baseline reference)" python3 "$ANALYSIS_DIR/analyze_jitter.py"
+run_logged "analyze_jitter.py (baseline reference)" "$PYTHON_BIN" "$ANALYSIS_DIR/analyze_jitter.py"
 JITTER_STATUS=$?
 if [ $JITTER_STATUS -ne 0 ]; then
     log_warn "analyze_jitter.py exited with status $JITTER_STATUS - continuing anyway, analyze_track_breaks.py doesn't depend on it"
 fi
 
-run_logged "analyze_track_breaks.py (root-cause + multiplier sweep)" python3 "$ANALYSIS_DIR/analyze_track_breaks.py"
+run_logged "analyze_track_breaks.py (root-cause + multiplier sweep)" "$PYTHON_BIN" "$ANALYSIS_DIR/analyze_track_breaks.py"
 BREAKS_STATUS=$?
 if [ $BREAKS_STATUS -ne 0 ]; then
     log_error "analyze_track_breaks.py exited with status $BREAKS_STATUS - check $HARNESS_LOG_FILE for the real error before trusting any earlier steps' output"

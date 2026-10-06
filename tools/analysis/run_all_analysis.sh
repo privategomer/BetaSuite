@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # run_all_analysis.sh - everything worth knowing about the run that just
 # finished, in one command.
@@ -78,6 +78,10 @@
 # stop the suite; the summary at the end says which ones did, and the
 # exit status is non-zero if any did, so this is safe to schedule.
 
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,7 +142,7 @@ if [ "$QUICK" -eq 1 ]; then
 fi
 echo
 echo "Configurations this run will cover (read from the cache, not from config):"
-python3 - <<'PYEOF'
+"$PYTHON_BIN" - <<'PYEOF'
 import sys
 sys.path.insert( 0, '.' )
 import betautils_cache_paths as bu_cache
@@ -161,25 +165,25 @@ fi
 # Each entry: <label>|<command>. The label is what the summary prints.
 declare -a STEPS=()
 
-STEPS+=("summarize_run|python3 $SCRIPT_DIR/summarize_run.py")
+STEPS+=("summarize_run|${PYTHON_BIN} $SCRIPT_DIR/summarize_run.py")
 
 if [ "$QUICK" -eq 0 ]; then
-    STEPS+=("betabench_all|python3 $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_render_noapprox|python3 $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_all|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 else
     # structure is cache-only and the profile question depends on it,
     # so --quick keeps it alongside geometry.
-    STEPS+=("betabench_cache_only|python3 $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_structure|python3 $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_cache_only|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_structure|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 fi
 
-STEPS+=("analyze_suppression_pairs|python3 $SCRIPT_DIR/analyze_suppression_pairs.py")
-STEPS+=("analyze_geometry_impact|python3 $SCRIPT_DIR/analyze_geometry_impact.py ${PASSTHROUGH[*]:-}")
-STEPS+=("analyze_score_distribution|python3 $SCRIPT_DIR/analyze_score_distribution.py ${PASSTHROUGH[*]:-}")
-STEPS+=("analyze_jitter|python3 $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLAG --sweep-alpha $ALPHA_SWEEP ${PASSTHROUGH[*]:-}")
-STEPS+=("analyze_track_breaks|python3 $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
-STEPS+=("analyze_style_flicker|python3 $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
-STEPS+=("auto_tune_dry_run|python3 $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+STEPS+=("analyze_suppression_pairs|${PYTHON_BIN} $SCRIPT_DIR/analyze_suppression_pairs.py")
+STEPS+=("analyze_geometry_impact|${PYTHON_BIN} $SCRIPT_DIR/analyze_geometry_impact.py ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_score_distribution|${PYTHON_BIN} $SCRIPT_DIR/analyze_score_distribution.py ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_jitter|${PYTHON_BIN} $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLAG --sweep-alpha $ALPHA_SWEEP ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
+STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
 declare -a RESULTS=()
 TOTAL=${#STEPS[@]}
@@ -286,7 +290,7 @@ echo "full logs: $LOG_DIR"
 echo
 echo "Next: the tuner above ran as a DRY RUN and wrote nothing. When you agree with what"
 echo "it proposed, apply it with:"
-echo "    python3 tools/tuning/auto_tune.py --apply"
+echo "    ${PYTHON_BIN} tools/tuning/auto_tune.py --apply"
 echo "It backs betaconfig.py up before every write and verifies each value took effect."
 
 for r in "${RESULTS[@]}"; do

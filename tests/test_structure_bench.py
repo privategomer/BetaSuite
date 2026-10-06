@@ -130,6 +130,57 @@ class TestStructureBench( unittest.TestCase ):
         finally:
             bu_cache.betaconst.shot_cut_dir = saved_dir
 
+    def test_the_shot_shares_are_weighted_by_duration_not_by_count( self ):
+        # The arithmetic, driven through the real function rather than
+        # handed in. A mutation changing these sums to counts passed
+        # every recommendation test, because those pass the fractions in
+        # as row values and never reach this code.
+        #
+        # 'flurry' is nineteen 0.1s cuts in the first two seconds of a
+        # ~22s span, then nothing: 19 of its 21 SHOTS are short, but only
+        # about 9% of its RUNTIME is. Counting shots would report ~90%.
+        tmp = tempfile.mkdtemp()
+        saved_dir = betaconst.shot_cut_dir
+        bu_cache.betaconst.shot_cut_dir = tmp
+        try:
+            fps = betaconfig.video_censor_fps
+            threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+            bu_hash.write_json( [ round( 0.1 * n, 2 ) for n in range( 1, 20 ) ],
+                                bu_cache.shot_cut_path_for( 'flurry', fps, threshold ) )
+            raw = [ _box( 'flurry', i / 9.0, 700, 400 ) for i in range( 200 ) ]
+            row = self._rows( raw )['flurry']
+
+            self.assertLess( row['short_shot_fraction'], 0.25,
+                "short-shot share must be a share of RUNTIME; counting shots "
+                "would put this near 0.9" )
+            self.assertLess( row['mid_shot_fraction'], 0.5,
+                "so this file must not be recommended as a compilation" )
+            self.assertEqual( row['recommended_profile'], 'scene' )
+            # The median DOES read as rapid-fire here, which is exactly
+            # why it is not what decides.
+            self.assertLess( row['median_shot_seconds'], 0.2 )
+        finally:
+            bu_cache.betaconst.shot_cut_dir = saved_dir
+
+    def test_sustained_short_shots_do_reach_the_compilation_share( self ):
+        # The other side of the same coin: a file genuinely made of short
+        # shots must report a high duration share, or the measure would
+        # just always say "scene".
+        tmp = tempfile.mkdtemp()
+        saved_dir = betaconst.shot_cut_dir
+        bu_cache.betaconst.shot_cut_dir = tmp
+        try:
+            fps = betaconfig.video_censor_fps
+            threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+            bu_hash.write_json( [ round( 3.0 * n, 2 ) for n in range( 1, 8 ) ],
+                                bu_cache.shot_cut_path_for( 'comp', fps, threshold ) )
+            raw = [ _box( 'comp', i / 9.0, 700, 400 ) for i in range( 200 ) ]
+            row = self._rows( raw )['comp']
+            self.assertGreaterEqual( row['mid_shot_fraction'], 0.5 )
+            self.assertEqual( row['recommended_profile'], 'compilation' )
+        finally:
+            bu_cache.betaconst.shot_cut_dir = saved_dir
+
     def test_a_file_with_no_shot_cut_cache_reports_unknown_not_zero( self ):
         # "no cuts detected" and "cuts never looked for" are different
         # facts, and reporting the second as the first would make a file
@@ -238,3 +289,310 @@ class TestRenderBenchStyleDedup( unittest.TestCase ):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestFolderRecommendation( unittest.TestCase ):
+    """
+    Which source folder a measured file belongs in.
+
+    profile_by_source_dir makes the folder decide how a file is
+    censored, which moves the burden onto sorting correctly. These are
+    the boundaries that turn the structure measurements above into a
+    folder, so that sorting is measured rather than eyeballed.
+    """
+
+    def row( self, **over ):
+        base = { 'p90_simultaneous': 1, 'left_half_fraction': 0.2,
+                 'short_shot_fraction': 0.0, 'mid_shot_fraction': 0.0 }
+        base.update( over )
+        return base
+
+    def pick( self, quick=0.15, quick_name='quick_cut', **over ):
+        return betabench._recommend_profile( self.row( **over ), quick, quick_name )[0]
+
+    # --- split-screen, which is the whole reason this lives in betabench
+
+    def test_the_split_screen_signature_is_recognised( self ):
+        # Several boxes live at once, split evenly between screen halves.
+        # No timing measure can see this, which is why the old standalone
+        # classifier could never recommend split-screen at all.
+        self.assertEqual(
+            self.pick( p90_simultaneous=8, left_half_fraction=0.50 ),
+            'split_screen' )
+
+    def test_several_subjects_all_on_one_side_is_not_split_screen( self ):
+        # A couple in frame together, action on one side. High
+        # simultaneity, lopsided placement.
+        self.assertNotEqual(
+            self.pick( p90_simultaneous=8, left_half_fraction=0.13 ),
+            'split_screen' )
+
+    def test_one_subject_centred_is_not_split_screen( self ):
+        # Even left-half share but only one box live: a single subject
+        # crossing the middle, not two panes.
+        self.assertNotEqual(
+            self.pick( p90_simultaneous=1, left_half_fraction=0.50 ),
+            'split_screen' )
+
+    def test_split_screen_is_tested_before_the_timing_boundaries( self ):
+        # A split-screen compilation is a split-screen problem first: the
+        # failure is spatial, a loose match radius dragging a censor
+        # across the divider, and that happens whatever the cut rate.
+        self.assertEqual(
+            self.pick( p90_simultaneous=8, left_half_fraction=0.50,
+                       short_shot_fraction=0.9, mid_shot_fraction=1.0 ),
+            'split_screen' )
+
+    def test_an_unknown_left_half_share_cannot_claim_split_screen( self ):
+        # Frame size unavailable, so the spatial test has no input. It
+        # must decline rather than guess.
+        self.assertNotEqual(
+            self.pick( p90_simultaneous=9, left_half_fraction=None ),
+            'split_screen' )
+
+    # --- the timing boundaries, weighted by duration
+
+    def test_rapid_cutting_is_quick_cut( self ):
+        self.assertEqual(
+            self.pick( short_shot_fraction=0.30, mid_shot_fraction=1.0 ),
+            'quick_cut' )
+
+    def test_a_compilation_is_mostly_short_shots_by_runtime( self ):
+        self.assertEqual(
+            self.pick( short_shot_fraction=0.01, mid_shot_fraction=0.9 ),
+            'compilation' )
+
+    def test_a_single_scene_is_mostly_long_shots( self ):
+        self.assertEqual(
+            self.pick( short_shot_fraction=0.01, mid_shot_fraction=0.05 ),
+            'scene' )
+
+    def test_a_flurry_is_a_scene_not_a_compilation( self ):
+        # Nineteen 0.1s false cuts then one 28s take: 7% of runtime in
+        # short shots, so a scene. A median shot length would read 0.1s
+        # and call it the fastest-cutting file in the corpus.
+        self.assertEqual(
+            self.pick( short_shot_fraction=0.067, mid_shot_fraction=0.067 ),
+            'scene' )
+
+    def test_the_quick_cut_boundary_is_inclusive( self ):
+        self.assertEqual( self.pick( quick=0.15, short_shot_fraction=0.15 ),
+                          'quick_cut' )
+        self.assertNotEqual( self.pick( quick=0.15, short_shot_fraction=0.1499 ),
+                             'quick_cut' )
+
+    def test_the_compilation_boundary_is_inclusive( self ):
+        exact = betabench.COMPILATION_MIN_RUNTIME_FRACTION
+        self.assertEqual( self.pick( mid_shot_fraction=exact ), 'compilation' )
+        self.assertEqual( self.pick( mid_shot_fraction=exact - 0.001 ), 'scene' )
+
+    def test_no_cuts_found_is_a_scene_and_says_so( self ):
+        profile, why = betabench._recommend_profile(
+            self.row( short_shot_fraction=None, mid_shot_fraction=None ),
+            0.15, 'quick_cut' )
+        self.assertEqual( profile, 'scene' )
+        self.assertIn( 'no shot cuts', why )
+
+    def test_no_configured_quick_boundary_means_no_quick_recommendation( self ):
+        # Rather than inventing one, fall through to the boundaries this
+        # bench does own.
+        self.assertEqual(
+            self.pick( quick=None, quick_name=None,
+                       short_shot_fraction=0.9, mid_shot_fraction=1.0 ),
+            'compilation' )
+
+    def test_every_recommendation_carries_a_reason( self ):
+        for over in ( { 'p90_simultaneous': 8, 'left_half_fraction': 0.5 },
+                      { 'short_shot_fraction': 0.5, 'mid_shot_fraction': 1.0 },
+                      { 'mid_shot_fraction': 0.8 },
+                      { 'mid_shot_fraction': 0.0 },
+                      { 'short_shot_fraction': None, 'mid_shot_fraction': None } ):
+            _profile, why = betabench._recommend_profile(
+                self.row( **over ), 0.15, 'quick_cut' )
+            self.assertTrue( why and why.strip(), over )
+
+
+class TestQuickCutThresholdComesFromConfig( unittest.TestCase ):
+    """
+    The bench must not restate a boundary the app owns.
+
+    A bench with its own copy would recommend a folder the app then
+    disagrees with, and files would be sorted on advice the app ignores.
+    """
+
+    def setUp( self ):
+        self._saved = betabench.betaconfig.detector_backend
+        betabench.betaconfig.detector_backend = {
+            'selected': 'nudenet_v3',
+            'nudenet_v3': { 'profiles': {
+                'default': 'scene',
+                'match_on': 'short_shot_fraction',
+                'variants': {
+                    'quick_cut': { 'min_short_shot_fraction': 0.42 },
+                    'scene': {},
+                },
+            } },
+        }
+        betabench.bu_config.invalidate_config_caches()
+
+    def tearDown( self ):
+        betabench.betaconfig.detector_backend = self._saved
+        betabench.bu_config.invalidate_config_caches()
+
+    def profiles( self ):
+        return betabench.betaconfig.detector_backend['nudenet_v3']['profiles']
+
+    def test_the_threshold_tracks_config( self ):
+        threshold, name = betabench._quick_cut_threshold()
+        self.assertAlmostEqual( threshold, 0.42 )
+        self.assertEqual( name, 'quick_cut' )
+
+    def test_a_different_match_on_disables_it( self ):
+        # Reading a short-shot threshold while the app selects on cuts
+        # per minute would be advice the app never acts on.
+        self.profiles()['match_on'] = 'cuts_per_min'
+        betabench.bu_config.invalidate_config_caches()
+        self.assertEqual( betabench._quick_cut_threshold(), ( None, None ) )
+
+    def test_a_manual_only_variant_is_not_offered( self ):
+        self.profiles()['variants']['quick_cut']['manual_only'] = True
+        betabench.bu_config.invalidate_config_caches()
+        self.assertEqual( betabench._quick_cut_threshold(), ( None, None ) )
+
+
+class TestFolderForProfile( unittest.TestCase ):
+
+    def setUp( self ):
+        self._saved = getattr( betabench.betaconfig, 'profile_by_source_dir', None )
+
+    def tearDown( self ):
+        betabench.betaconfig.profile_by_source_dir = self._saved
+
+    def test_the_mapping_is_inverted( self ):
+        betabench.betaconfig.profile_by_source_dir = { 'quick-cut': 'quick_cut' }
+        self.assertEqual( betabench._folder_for_profile( 'quick_cut' ), 'quick-cut' )
+
+    def test_an_unmapped_profile_has_no_folder( self ):
+        betabench.betaconfig.profile_by_source_dir = { 'scene': 'scene' }
+        self.assertIsNone( betabench._folder_for_profile( 'quick_cut' ) )
+
+    def test_the_shallowest_folder_wins( self ):
+        betabench.betaconfig.profile_by_source_dir = {
+            'compilation/split': 'split_screen', 'split-screen': 'split_screen' }
+        self.assertEqual( betabench._folder_for_profile( 'split_screen' ),
+                          'split-screen' )
+
+
+class TestMoveScript( unittest.TestCase ):
+    """
+    The generated sorting script.
+
+    It exists instead of moving files here because the recommendations
+    rest on boundaries read off small samples: someone should read the
+    reasons before seventy files move.
+    """
+
+    MOVES = [ { 'source': 'a.mp4', 'source_path': '/vids/a.mp4',
+                'dest_dir': '/vids/compilation', 'from': '(root)',
+                'to': 'compilation', 'why': 'a.mp4: 90% of runtime in sub-10s shots' },
+              { 'source': "b's film.mkv", 'source_path': "/vids/b's film.mkv",
+                'dest_dir': '/vids/scene', 'from': 'comps',
+                'to': 'scene', 'why': "b's film.mkv: only 5% in sub-10s shots" } ]
+
+    def write( self, moves=None ):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile( suffix='.sh', delete=False )
+        handle.close()
+        betabench._write_move_script(
+            handle.name, self.MOVES if moves is None else moves, _quiet_logger() )
+        with open( handle.name ) as f:
+            return handle.name, f.read()
+
+    def test_the_script_is_valid_bash( self ):
+        path, _text = self.write()
+        import subprocess
+        result = subprocess.run( [ 'bash', '-n', path ], capture_output=True, text=True )
+        self.assertEqual( result.returncode, 0, result.stderr )
+
+    def test_it_never_overwrites( self ):
+        # mv -n is the whole safety story: a name collision must leave
+        # both files alone rather than destroying one.
+        import re
+        _path, text = self.write()
+        self.assertIn( 'mv -n', text )
+        self.assertNotIn( 'mv -f', text )
+        # A destructive command as a COMMAND, not the letters 'rm'
+        # appearing inside a word like "confirm". Checked per line, with
+        # comments stripped, so prose cannot pass or fail this.
+        for line in text.split( '\n' ):
+            code = line.split( '#' )[0].strip() if not line.lstrip().startswith( '#' ) else ''
+            self.assertIsNone(
+                re.search( r'(^|[;&|]\s*)(rm|rmdir|unlink|shred|truncate)\s', code ),
+                "destructive command in: %r"%(line,) )
+
+    def test_paths_with_quotes_and_spaces_survive( self ):
+        # A filename with an apostrophe is the classic way a generated
+        # script turns into an arbitrary command.
+        _path, text = self.write()
+        self.assertIn( """'/vids/b'\\''s film.mkv'""", text )
+
+    def test_every_move_carries_its_reason_as_a_comment( self ):
+        _path, text = self.write()
+        for move in self.MOVES:
+            self.assertIn( move['why'], text )
+
+    def test_it_creates_the_destination( self ):
+        _path, text = self.write()
+        self.assertIn( 'mkdir -p', text )
+
+    def test_it_checks_the_source_still_exists( self ):
+        # So a re-run after a partial move reports rather than errors.
+        _path, text = self.write()
+        self.assertIn( 'if [[ ! -f "$src" ]]', text )
+
+    def test_it_is_executable( self ):
+        path, _text = self.write()
+        self.assertTrue( os.access( path, os.X_OK ) )
+
+    def test_an_empty_move_list_still_writes_a_valid_script( self ):
+        path, text = self.write( moves=[] )
+        import subprocess
+        self.assertEqual(
+            subprocess.run( [ 'bash', '-n', path ] ).returncode, 0 )
+        self.assertIn( 'moved $moved', text )
+
+    def test_the_script_actually_moves_a_file( self ):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join( root, 'clip.mp4' )
+            open( src, 'w' ).write( 'x' )
+            dest = os.path.join( root, 'compilation' )
+            script = os.path.join( root, 'moves.sh' )
+            betabench._write_move_script( script, [ {
+                'source': 'clip.mp4', 'source_path': src, 'dest_dir': dest,
+                'from': '(root)', 'to': 'compilation', 'why': 'test' } ],
+                _quiet_logger() )
+            subprocess.run( [ 'bash', script ], capture_output=True, text=True )
+            self.assertFalse( os.path.exists( src ), "source should be gone" )
+            self.assertTrue( os.path.exists( os.path.join( dest, 'clip.mp4' ) ) )
+
+    def test_re_running_the_script_is_harmless( self ):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join( root, 'clip.mp4' )
+            open( src, 'w' ).write( 'original' )
+            dest = os.path.join( root, 'scene' )
+            script = os.path.join( root, 'moves.sh' )
+            betabench._write_move_script( script, [ {
+                'source': 'clip.mp4', 'source_path': src, 'dest_dir': dest,
+                'from': '(root)', 'to': 'scene', 'why': 'test' } ],
+                _quiet_logger() )
+            subprocess.run( [ 'bash', script ], capture_output=True, text=True )
+            # Put a DIFFERENT file back at the old name, then re-run: the
+            # already-moved copy must not be clobbered.
+            open( src, 'w' ).write( 'different' )
+            result = subprocess.run( [ 'bash', script ], capture_output=True, text=True )
+            with open( os.path.join( dest, 'clip.mp4' ) ) as f:
+                self.assertEqual( f.read(), 'original',
+                                  "mv -n must not overwrite the moved file" )
+            self.assertIn( 'skip', result.stdout )

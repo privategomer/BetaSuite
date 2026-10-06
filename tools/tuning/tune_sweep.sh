@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # tune_sweep.sh - runs betatv.py in preview mode once per combination of
 # picture_sizes / video_censor_fps listed below, all against the SAME
 # pinned preview slice (so speed/quality differences you see afterward are
@@ -20,7 +20,7 @@
 # You run this yourself - it just repeatedly invokes betatv.py with CLI
 # overrides (see betautils_cli.py). It never edits betaconfig.py; nothing
 # here is a permanent change. After it finishes, run:
-#     python3 tools/analysis/summarize_tune_sweep.py --preview-offset $PREVIEW_START_SECONDS
+#     "$PYTHON_BIN" tools/analysis/summarize_tune_sweep.py --preview-offset $PREVIEW_START_SECONDS
 # to get a table comparing detection_seconds/encode_seconds/label_counts
 # across every combination - passing --preview-offset matters: without it,
 # older rows from a different preview slice (different footage) get mixed
@@ -35,6 +35,10 @@
 # preview passes over every one of them - trim the folder down to 1-2
 # representative videos first if you just want a quick read on the effect
 # of one knob, or trim these arrays down to fewer values.
+
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
 
 set -euo pipefail
 
@@ -83,7 +87,7 @@ for sizes in "${PICTURE_SIZES_OPTIONS[@]}"; do
     for fps in "${FPS_OPTIONS[@]}"; do
         run_count=$((run_count + 1))
         echo "=== sweep run $run_count/$total_runs: picture_sizes=[$sizes] video_censor_fps=$fps ==="
-        python3 betatv.py \
+        "$PYTHON_BIN" betatv.py \
             --preview on \
             --preview-start-seconds "$PREVIEW_START_SECONDS" \
             --preview-seconds "$PREVIEW_SECONDS" \
@@ -93,4 +97,4 @@ for sizes in "${PICTURE_SIZES_OPTIONS[@]}"; do
 done
 
 echo
-echo "sweep done ($total_runs runs). Now run: python3 tools/analysis/summarize_tune_sweep.py --preview-offset $PREVIEW_START_SECONDS"
+echo "sweep done ($total_runs runs). Now run: ${PYTHON_BIN} tools/analysis/summarize_tune_sweep.py --preview-offset $PREVIEW_START_SECONDS"

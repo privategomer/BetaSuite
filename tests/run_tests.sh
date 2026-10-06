@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # run_tests.sh - run every automated test.
 #
 # These are fast, hermetic tests: no real video decoding except the few
@@ -16,7 +16,11 @@
 # does. Running discovery from inside tests/ silently failed to import
 # eleven of these modules and still reported a pass for the rest.
 
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../tools/lib/python_env.sh"
+
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-exec python3 -m unittest discover -s tests -t . -p 'test_*.py' -v "$@"
+exec "$PYTHON_BIN" -m unittest discover -s tests -t . -p 'test_*.py' -v "$@"

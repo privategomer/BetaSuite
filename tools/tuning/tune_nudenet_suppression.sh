@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # tune_nudenet_suppression.sh - single-click harness for the nudenet_v3
 # class_suppression tuning workflow described in CONFIG_REFERENCE.md's
 # "class_suppression is per-backend" section:
@@ -75,6 +75,10 @@
 #   HARNESS_LOG_FILE        log file path (default: tune_nudenet_suppression.log
 #                           next to this script)
 
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,13 +88,13 @@ source "$SCRIPT_DIR/harness_lib.sh"
 
 cd "$CORE_DIR"
 
-if [ -f ../bin/activate ]; then
-    # shellcheck disable=SC1091
-    source ../bin/activate
-    log_debug "activated venv at ../bin/activate"
-else
-    log_warn "no venv found at ../bin/activate - continuing with whatever python3 is on PATH"
-fi
+# The venv is resolved by tools/lib/python_env.sh, sourced above, which
+# picks this repo's .venv explicitly. This used to source ../bin/activate,
+# the layout from before the venv moved inside the repo, so on any current
+# checkout it always took the "no venv found" branch and silently ran
+# against whatever python3 was on PATH.
+log_debug "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
+python_env_require cv2 || exit 1
 
 REPLAY_VARIANTS_FILE="${REPLAY_VARIANTS_FILE:-$SCRIPT_DIR/replay_variants_nudenet_v3.json}"
 PREVIEW_SECONDS="${PREVIEW_SECONDS:-}"
@@ -134,7 +138,7 @@ declare -a STEP_RESULTS=()
 # --- 1. analyze_suppression_pairs.py: real overlap stats, all cached backends ---
 log_info "=== [1/4] analyze_suppression_pairs.py ==="
 SUPPRESSION_STATS_TMP="$(mktemp)"
-if run_logged "analyze_suppression_pairs.py" python3 "$SCRIPT_DIR/../analysis/analyze_suppression_pairs.py"; then
+if run_logged "analyze_suppression_pairs.py" "$PYTHON_BIN" "$SCRIPT_DIR/../analysis/analyze_suppression_pairs.py"; then
     STEP_RESULTS+=("OK   [1/4] analyze_suppression_pairs.py")
 else
     STEP_RESULTS+=("FAIL [1/4] analyze_suppression_pairs.py (see log)")
@@ -145,12 +149,12 @@ fi
 # detection re-run - and keeps derive_suppression_rules.py's input exactly
 # matching what step 1 above already showed, rather than trying to
 # re-extract it from the interleaved harness log).
-python3 "$SCRIPT_DIR/../analysis/analyze_suppression_pairs.py" > "$SUPPRESSION_STATS_TMP" 2>>"$HARNESS_LOG_FILE"
+"$PYTHON_BIN" "$SCRIPT_DIR/../analysis/analyze_suppression_pairs.py" > "$SUPPRESSION_STATS_TMP" 2>>"$HARNESS_LOG_FILE"
 
 # --- 2. derive_suppression_rules.py: candidate rules from step 1's real output ---
 log_info "=== [2/4] derive_suppression_rules.py ==="
 DERIVED_RULES_OUT="$SCRIPT_DIR/derived_suppression_rules_$(date +%Y%m%d_%H%M%S).txt"
-if python3 "$SCRIPT_DIR/derive_suppression_rules.py" "$SUPPRESSION_STATS_TMP" > "$DERIVED_RULES_OUT" 2>>"$HARNESS_LOG_FILE"; then
+if "$PYTHON_BIN" "$SCRIPT_DIR/derive_suppression_rules.py" "$SUPPRESSION_STATS_TMP" > "$DERIVED_RULES_OUT" 2>>"$HARNESS_LOG_FILE"; then
     log_info "derive_suppression_rules.py finished - candidates written to $DERIVED_RULES_OUT"
     STEP_RESULTS+=("OK   [2/4] derive_suppression_rules.py -> $DERIVED_RULES_OUT")
 else
@@ -161,7 +165,7 @@ rm -f "$SUPPRESSION_STATS_TMP"
 
 # --- 3. replay_tune.py, once per video, against the nudenet_v3 variants file ---
 log_info "=== [3/4] replay_tune.py (per video under uncensored_vids, backend: $BACKEND, variants: $(basename "$REPLAY_VARIANTS_FILE")) ==="
-VIDEO_LIST=$(python3 -c "
+VIDEO_LIST=$("$PYTHON_BIN" -c "
 import betaconst, os
 for root, d_names, f_names in os.walk(betaconst.video_path_uncensored):
     for fname in f_names:
@@ -173,7 +177,7 @@ if [ -z "$VIDEO_LIST" ]; then
 else
     while IFS= read -r fname; do
         [ -z "$fname" ] && continue
-        if run_logged "replay_tune.py --video $fname" python3 "$SCRIPT_DIR/replay_tune.py" --video "$fname" --preview-start-seconds "$PREVIEW_START_SECONDS" --variants "$REPLAY_VARIANTS_FILE" --backend "$BACKEND"; then
+        if run_logged "replay_tune.py --video $fname" "$PYTHON_BIN" "$SCRIPT_DIR/replay_tune.py" --video "$fname" --preview-start-seconds "$PREVIEW_START_SECONDS" --variants "$REPLAY_VARIANTS_FILE" --backend "$BACKEND"; then
             STEP_RESULTS+=("OK   [3/4] replay_tune.py --video $fname")
         else
             STEP_RESULTS+=("FAIL [3/4] replay_tune.py --video $fname (missing cache for this video/offset? see log)")
@@ -185,12 +189,12 @@ fi
 # best-effort, same as tune_harness.sh/run_all_analysis.sh - a tool
 # erroring on one moved/renamed source file shouldn't block the rest.
 log_info "=== [4/4] analyze_jitter.py / analyze_track_breaks.py (best-effort) ==="
-if run_logged "analyze_jitter.py" python3 "$SCRIPT_DIR/../analysis/analyze_jitter.py"; then
+if run_logged "analyze_jitter.py" "$PYTHON_BIN" "$SCRIPT_DIR/../analysis/analyze_jitter.py"; then
     STEP_RESULTS+=("OK   [4/4] analyze_jitter.py")
 else
     STEP_RESULTS+=("FAIL [4/4] analyze_jitter.py (see log)")
 fi
-if run_logged "analyze_track_breaks.py" python3 "$SCRIPT_DIR/../analysis/analyze_track_breaks.py"; then
+if run_logged "analyze_track_breaks.py" "$PYTHON_BIN" "$SCRIPT_DIR/../analysis/analyze_track_breaks.py"; then
     STEP_RESULTS+=("OK   [4/4] analyze_track_breaks.py")
 else
     STEP_RESULTS+=("FAIL [4/4] analyze_track_breaks.py (see log)")
