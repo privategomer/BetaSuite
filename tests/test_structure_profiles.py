@@ -248,37 +248,43 @@ class TestCutRateDenominator( unittest.TestCase ):
     that slice scored 4 and picked the slow one. Identical footage
     density, opposite answers, and the wrong one is confidently wrong.
 
-    This is arithmetic rather than a call into betatv, because the
-    calculation is three lines inside process_one_video and reproducing
-    the surrounding orchestration would test the harness, not the rule.
+    These call structure_signals, the function betatv, the tuning replay
+    and betabench all use. They used to recompute the rate inside the
+    test, which is how betabench shipped the spread form a second time
+    with this whole class still passing: it was testing its own copy.
     """
 
     @staticmethod
-    def rate( cut_count, scanned_seconds ):
-        if not cut_count or not scanned_seconds or scanned_seconds <= 0:
-            return None
-        return 60.0 * cut_count / scanned_seconds
+    def rate( cut_times, scanned_seconds ):
+        return bu_detector.structure_signals( cut_times, scanned_seconds ).cuts_per_min
 
     def test_two_close_cuts_in_a_long_slice_is_a_slow_rate( self ):
         # The exact case that misfired in a real run.
-        self.assertAlmostEqual( self.rate( 2, 30.0 ), 4.0 )
+        self.assertAlmostEqual( self.rate( [ 14.0, 14.1 ], 30.0 ), 4.0 )
 
     def test_cut_spacing_does_not_change_the_rate( self ):
         # Whether the cuts are bunched or spread, two cuts in thirty
         # seconds is two cuts in thirty seconds.
-        self.assertEqual( self.rate( 2, 30.0 ), self.rate( 2, 30.0 ) )
+        self.assertEqual( self.rate( [ 14.0, 14.1 ], 30.0 ),
+                          self.rate( [ 0.5, 29.5 ], 30.0 ) )
 
     def test_a_genuinely_fast_slice_still_reads_fast( self ):
-        self.assertAlmostEqual( self.rate( 50, 30.0 ), 100.0 )
+        self.assertAlmostEqual( self.rate( [ 0.6 * n for n in range( 50 ) ], 30.0 ), 100.0 )
 
-    def test_no_cuts_yields_no_rate( self ):
-        self.assertIsNone( self.rate( 0, 30.0 ) )
+    def test_no_cuts_in_a_scanned_window_is_a_rate_of_zero( self ):
+        # Measured, and the answer is zero. This used to be None, the
+        # same as never scanning, which is the conflation the whole
+        # structure layer exists to avoid.
+        self.assertEqual( self.rate( [], 30.0 ), 0.0 )
+
+    def test_never_scanned_yields_no_rate( self ):
+        self.assertIsNone( self.rate( None, 30.0 ) )
 
     def test_a_zero_length_window_yields_no_rate( self ):
         # Guards a division by zero on a file whose duration could not
         # be determined.
-        self.assertIsNone( self.rate( 5, 0.0 ) )
-        self.assertIsNone( self.rate( 5, None ) )
+        self.assertIsNone( self.rate( [ 1.0 ], 0.0 ) )
+        self.assertIsNone( self.rate( [ 1.0 ], None ) )
 
     def test_the_computed_rate_selects_a_sane_profile( self ):
         # Ties the arithmetic to the consequence. Under the shipped
@@ -290,7 +296,7 @@ class TestCutRateDenominator( unittest.TestCase ):
             betaconfig.detector_backend[backend]['profiles'] = copy.deepcopy( PROFILES )
             bu_config.invalidate_config_caches()
             self.assertEqual(
-                bu_detector.select_profile_name( self.rate( 2, 30.0 ) ), 'scene' )
+                bu_detector.select_profile_name( self.rate( [ 14.0, 14.1 ], 30.0 ) ), 'scene' )
         finally:
             betaconfig.detector_backend = saved
             bu_config.invalidate_config_caches()

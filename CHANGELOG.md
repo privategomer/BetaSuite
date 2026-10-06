@@ -2,6 +2,35 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `tools/bench/structure_survey.sh`: one command that measures every source file in `resources/uncensored_vids/` and the staging tree `resources/source/` and writes a reviewable `mv -n` script sorting them into profile folders. Three phases: whole-file shot-cut scans on the CPU, detection-only geometry slices on the GPU (asks first; runs when unattended), then the table and the script. Logs everything to `../output/benchmarks/structure_survey_<timestamp>/`, terminal filtered by `LOG_LEVEL`
+- `betabench structure-scan`: whole-file shot-cut scans for every source file not yet scanned, files in parallel (one worker per core, at most 4; 2 workers ran 1.36x faster than 1 on a 2-core box). Written to the exact cache betatv's full run reads, so the real run finds its scan done. `--geometry-slices N` then runs detection without rendering on N 20-second slices spread through each file (25/50/75% for 3, never the start), which is what split-screen is recognised from
+- With a declared profile (`--profile`, a path pattern or a source folder) betatv runs the shot-cut scan on a background thread alongside detection instead of in front of it. Same function, same cache, same cuts reach tracking; only the timing changes. The scan took 4m38s ahead of detection on a 35-minute file. A finished file with a declared profile also skips without scanning
+- After that background scan the run log says what measurement alone would have chosen, as a warning when that profile samples more densely than the declared one (a file in `compilation/` measuring as `quick_cut`: 9 fps instead of 18 means fewer detections on the shortest shots)
+
+### Changed
+
+- `betabench structure` works per source file, enumerated from disk across both trees, instead of per cache of one detection configuration. New columns say how much footage the timing rests on and whether it was the whole file or a slice, and how many sampled frames the geometry rests on. A file never scanned shows `?` and is never moved
+- `--write-move-script` only scripts moves that pass every safety rule: whole-file timing evidence, never lowering the sample rate, never overriding a `manual_only` folder on timing alone unless the move raises the sample rate, and only from the tree root or a mapped folder. The rest are listed with the rule that held them back. Moves stay inside the tree their file is in
+- The tuning replay (`auto_tune`) selects each video's profile the way a real run does: from the cached shot-cut scan through the same selector, with the folder convention applied, cuts passed to tracking, and the replayed detections' own sample rate
+- File hashes are also memoised by inode, so moving a file (sorting, staging into `uncensored_vids/`, archiving to `completed/`) no longer re-reads it in full. One survey spent 4m39s re-hashing ~70 files after they were sorted. Analysis tools now persist the memo too; only betatv and betastare did, so every analyzer re-hashed archived files on every run
+- `betabench` exits non-zero when a subcommand fails, and its log file defaults to `trace`. A harness wrapping it reported a failed phase as finished
+- `betaconfig.py` comments cut to one-line headers; the rationale they carried is in CONFIG_REFERENCE.md. Every value is unchanged, so no cache key moves
+- The shot-cut scan responds to Ctrl-C
+
+### Fixed
+
+- `tools/lib/python_env.sh` was excluded from git by the template `.gitignore`'s unanchored `lib/` rule, so on a fresh clone of 1.2.0 every shell script failed on its first line. The rule is anchored to the repo root and a test fails if any sourced file is missing or ignored
+- A shot-cut scan that found zero cuts was treated the same as no scan at all: it logged `configured default (no shot-cut data)` and fell through to the default profile (13 of 56 files in one preview run), and betabench showed `n/a`. Zero cuts now measures as one shot over the whole window. The outcome only matched before because the shipped default is `scene`
+- `betabench structure` divided by the time between the first and last censored detection instead of the footage scanned. A file whose boxes fell in one sampled frame scored 600,000,000 cuts a minute and was recommended for `quick-cut/`. It now uses the same window betatv selects with
+- `betabench structure` never saw files sampled at a non-global rate: 8 of 56 in one survey, exactly the files the app had measured as `quick_cut`
+- Preview slices at a non-zero offset handed tracking cut times on the scan's own timeline, so every cut fell before the slice's first detection and tracking matched straight across cuts. Full runs and offset-0 previews were unaffected. Existing offset-preview outputs are not re-rendered automatically, since no key changed
+- A preview window running past the end of a short file counted the missing seconds in the structure denominator
+- The test suite wrote into the real `../output/`: ~230 lines per run into a live `betasuite.log` and ~48 run-key records where betabench discovers configurations. Tests now get a throwaway output root, and a test fails if a new output path is added without it
+
 ## 1.2.0 (2026-10-06)
 
 ### Added

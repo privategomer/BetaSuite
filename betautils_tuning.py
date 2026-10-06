@@ -64,6 +64,7 @@ import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_track as bu_track
+import betautils_video as bu_video
 
 
 # ---------------------------------------------------------------------------
@@ -345,31 +346,47 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         metrics['videos_measured'] += 1
         metrics['raw_detections'] += len( raw_boxes )
         frame_area = float( vid_w * vid_h )
-        shot_cuts = ( shot_cuts_by_hash or {} ).get( file_hash )
+        detection_name = bu_cache.parse_any_cache_name( cache_paths[0] ) or {}
 
         # Replay under the SAME structure profile a real run of this video
-        # would select, and at the sample rate that profile asks for.
+        # would select, from the same measurement, through the same
+        # selector, including the folder convention.
         #
         # Without this the replay measured a configuration that never
-        # runs: it read the un-profiled item_overrides values while every
-        # real run applies a profile on top of them. On this footage that
-        # meant sweeping track_max_gap around a 0.16s baseline when scene
-        # files actually run at 3.0s and compilation files at 0.20s, so
-        # both the baseline and every candidate described nothing real.
+        # runs. It first read the un-profiled values while every real run
+        # applied a profile. It then passed only a cut rate while profiles
+        # had moved to matching on short_shot_fraction, so EVERY replayed
+        # video fell through to the default; it never passed source_path,
+        # so no folder rule applied; and auto_tune never passed any cuts
+        # at all, so replays also tracked straight across scene cuts.
         #
-        # scanned_seconds comes from the SAMPLE timestamps, not from the
-        # spread of the cuts. Samples are uniform across the window that
-        # was scanned, so their span measures that window; the cuts are
-        # sparse and their span does not (the mistake that once scored a
-        # 2-cut clip at 1237 cuts/min).
-        cuts_per_min = None
-        if shot_cuts:
-            times = [ raw['t'] for raw in raw_boxes if 't' in raw ]
-            scanned_seconds = ( max( times ) - min( times ) ) if len( times ) > 1 else 0
-            if scanned_seconds > 0:
-                cuts_per_min = 60.0 * len( shot_cuts ) / scanned_seconds
-        profile_name = bu_detector.select_profile_name( cuts_per_min, backend_name )
-        sample_fps = bu_detector.get_profile_sample_fps( profile_name, backend_name )
+        # The window comes from the cut cache's own filename via
+        # scanned_window_seconds. It used to be the spread of the replayed
+        # detections, which measures the nudity rather than the footage.
+        duration_seconds = bu_video.probe_duration_seconds( video_path )
+        if shot_cuts_by_hash is not None and file_hash in shot_cuts_by_hash:
+            # Caller-supplied cuts are on the detection timeline and cover
+            # the whole file.
+            tracking_cuts = shot_cuts_by_hash[file_hash]
+            signals = bu_detector.structure_signals( tracking_cuts, duration_seconds )
+        else:
+            cached = bu_video.cached_shot_cuts(
+                file_hash, betaconfig.video_censor_fps,
+                getattr( betaconfig, 'shot_cut_threshold', 0.5 ), duration_seconds,
+                prefer_preview_suffix=detection_name.get( 'preview_suffix', '' ) )
+            if cached is None:
+                tracking_cuts, signals = None, bu_detector.structure_signals( None, None )
+            else:
+                tracking_cuts = bu_video.absolute_cut_times( cached.cuts, cached.offset_seconds )
+                signals = bu_detector.structure_signals( cached.cuts, cached.scanned_seconds )
+        profile_name = bu_detector.select_profile_name(
+            signals.cuts_per_min, backend_name, source_path=video_path,
+            short_shot_fraction=signals.short_shot_fraction )
+        # The rate the replayed detections were actually sampled at, read
+        # from their cache name. The profile's own rate describes a run
+        # that may never have happened on this data.
+        sample_fps = ( detection_name.get( 'fps' )
+                       or bu_detector.get_profile_sample_fps( profile_name, backend_name ) )
 
         with _style_choice_held_fixed():
             with bu_track.tracking_observer( observer ):
@@ -378,7 +395,7 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
                 # it without touching the cached parse.
                 rendered, stats = bu_track.prepare_boxes_for_render(
                     raw_boxes, vid_w, vid_h,
-                    shot_cut_times=shot_cuts, backend_name=backend_name,
+                    shot_cut_times=tracking_cuts, backend_name=backend_name,
                     profile_name=profile_name, sample_fps=sample_fps )
 
         metrics['rendered_boxes'] += len( rendered )

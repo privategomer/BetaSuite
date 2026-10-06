@@ -57,6 +57,7 @@ a filename can always be decoded back into the config that produced it.
 
 import glob
 import os
+import re
 import statistics
 
 import betaconst
@@ -419,6 +420,77 @@ def shot_cut_path_for( file_hash, fps, threshold, preview_suffix='',
     bound = '' if not preview_max_seconds else '-max%gs'%(preview_max_seconds)
     return os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f%s%s.gz'%(
         file_hash, fps, threshold, bound, preview_suffix ) )
+
+
+def parse_shot_cut_path( path ):
+    """
+    Pull a shot-cut cache filename apart: the inverse of shot_cut_path_for.
+
+    Offline tools (betabench, the tuning replay) read caches a run
+    already wrote and need the WINDOW that run scanned, which the
+    filename records and the cut list does not: '-max<N>s' is a
+    preview's bound and '-preview@<X>s' its offset. Before this existed
+    they globbed on the hash and took whichever file was newest, then
+    guessed the window from the spread of their own detections.
+
+    Returns:
+        A dict with file_hash, fps, threshold, max_seconds (None for a
+        whole-file scan), preview_suffix and offset_seconds, or None
+        when the name is not a shot-cut cache this module wrote.
+    """
+    base = os.path.basename( path )
+    if not base.endswith( '.gz' ):
+        return None
+    match = _SHOT_CUT_NAME.match( base[ : -len( '.gz' ) ] )
+    if not match:
+        return None
+    offset = match.group( 'offset' )
+    max_seconds = match.group( 'max' )
+    return {
+        'file_hash': match.group( 'hash' ),
+        'fps': float( match.group( 'fps' ) ),
+        'threshold': float( match.group( 'threshold' ) ),
+        'max_seconds': float( max_seconds ) if max_seconds else None,
+        'preview_suffix': match.group( 'preview' ) or '',
+        'offset_seconds': float( offset ) if offset else 0.0,
+    }
+
+
+_SHOT_CUT_NAME = re.compile(
+    r'^(?P<hash>[0-9a-f]+)-(?P<fps>[0-9.e+]+)-(?P<threshold>[0-9]+\.[0-9]{3})'
+    r'(?:-max(?P<max>[0-9.e+]+)s)?'
+    r'(?P<preview>-preview(?:@(?P<offset>[0-9.]+)s)?)?$' )
+
+
+def shot_cut_caches_for( file_hash, fps, threshold ):
+    """
+    Every shot-cut cache on disk for one video at one cadence, best first.
+
+    Best means a whole-file scan, then previews newest first. A whole
+    file is the only window that can say what the file IS; a 20-second
+    slice from the start mostly measures the intro.
+
+    Returns:
+        A list of (path, parsed) pairs, parsed as parse_shot_cut_path.
+    """
+    prefix = os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f'%( file_hash, fps, threshold ) )
+    found = []
+    for path in glob.glob( glob.escape( prefix ) + '*.gz' ):
+        parsed = parse_shot_cut_path( path )
+        if not parsed or parsed['file_hash'] != file_hash:
+            continue
+        if abs( parsed['fps'] - float( fps ) ) > 1e-9:
+            continue
+        if abs( parsed['threshold'] - float( threshold ) ) > 5e-4:
+            continue
+        found.append( ( path, parsed ) )
+    # No bound means the scan ran to the end of the file. That includes
+    # a '-preview' scan of a file shorter than its slice, which betatv
+    # processes whole, so it is a whole-file measurement too.
+    whole = [ item for item in found if item[1]['max_seconds'] is None ]
+    sliced = sorted( ( item for item in found if item not in whole ),
+                     key=lambda item: os.path.getmtime( item[0] ), reverse=True )
+    return whole + sliced
 
 
 def transcode_path_for( file_hash ):
@@ -899,6 +971,17 @@ def configuration_label_of_cache_filename( name ):
         preview_suffix=parsed['preview_suffix'] ).label
 
 
+def configuration_variant_of_cache_filename( name ):
+    """
+    Which model variant ('320n', '640m', ...) wrote this cache file, or
+    None when the filename or its run key cannot say.
+    """
+    parsed = parse_any_cache_name( name )
+    if not parsed:
+        return None
+    return _variant_from_identity( _identity_for_detection_key( parsed['detection_key'] ) )
+
+
 def backend_of_cache_filename( name ):
     """
     Which backend produced a cache file, read from its own filename.
@@ -1243,6 +1326,11 @@ def build_hash_to_video_path( target_hashes ):
         if not remaining:
             break
         _walk_and_hash_for( target_hashes, remaining, found, search_dir )
+    # Persist what was hashed. Only betatv and betastare used to flush the
+    # memo, so betabench, auto_tune and every analyzer re-read each
+    # archived file in full on every run, and run_all_analysis.sh paid
+    # that once per analyzer.
+    bu_hash.flush_file_hash_memo()
     return found
 
 

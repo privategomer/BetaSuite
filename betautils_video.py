@@ -35,17 +35,22 @@ detection loop did it anyway. Both now go through
 iter_sampled_frames().
 """
 
+import logging
 import math
 import os
 import shutil
 import subprocess
+import threading
+import time
 
 import cv2
 
 import betaconst
 import betautils_cache_paths as bu_cache
+import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
+import betautils_signals as bu_signals
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +253,11 @@ def detect_shot_cuts( cap, vid_fps, sample_fps, threshold=0.6, max_seconds=None 
         if not cap.grab():
             break
         if frame_idx == next_sample_frame:
+            # A full scan of a long file takes minutes. Without this a
+            # Ctrl-C waited for it to finish, and when the scan runs on a
+            # background thread alongside detection nothing else would
+            # ever stop it.
+            bu_signals.check()
             retrieved, frame = cap.retrieve()
             if not retrieved or frame is None:
                 break
@@ -704,6 +714,160 @@ def open_video_source( path, file_hash, logger=None ):
     return VideoSource( path, decode_path, cap, vid_fps, num_frames, width, height, transcoded )
 
 
+def absolute_cut_times( shot_cut_times, offset_seconds ):
+    """
+    Cut times on the detection timeline, from a scan's own timeline.
+
+    detect_shot_cuts counts frames from wherever its capture starts, so
+    a scan of a preview slice at offset X reports a cut 3s into the
+    slice as 3.0. Detections are stamped offset + index / fps
+    (sample_time), so the same moment is X + 3.0 there. Tracking was
+    handed the scan's times unchanged: every cut of an offset slice
+    landed before the slice's first detection, no cut ever fell between
+    two detections, and tracking matched across every cut as if there
+    were none. Offset-0 runs, every full run among them, were unaffected.
+
+    The scan's own timeline is kept for the cache and for the structure
+    measures, which are spans within the window and want it to start at
+    zero. This converts only at the hand-off to tracking.
+
+    Returns:
+        A new list, or None when shot_cut_times is None.
+    """
+    if shot_cut_times is None:
+        return None
+    if not offset_seconds:
+        return list( shot_cut_times )
+    return [ round( float( t ) + float( offset_seconds ), 3 ) for t in shot_cut_times ]
+
+
+_DURATION_CACHE = {}
+
+
+def probe_duration_seconds( path ):
+    """
+    A video's length in seconds, the way betatv measures it.
+
+    Frame count over frame rate from OpenCV, which is what
+    open_video_source reads and therefore what betatv's own structure
+    window is built from. An offline tool computing the window any other
+    way would measure a different denominator for the same file.
+
+    Returns:
+        Seconds, or None when the file cannot be read.
+    """
+    if path in _DURATION_CACHE:
+        return _DURATION_CACHE[path]
+    capture = cv2.VideoCapture( path )
+    try:
+        vid_fps = capture.get( cv2.CAP_PROP_FPS )
+        num_frames = capture.get( cv2.CAP_PROP_FRAME_COUNT )
+    finally:
+        capture.release()
+    duration = ( num_frames / vid_fps ) if vid_fps and num_frames and num_frames > 0 else None
+    _DURATION_CACHE[path] = duration
+    return duration
+
+
+class CachedShotCuts( object ):
+    """A cut list read from cache, with the window that scan covered."""
+    __slots__ = ( 'cuts', 'scanned_seconds', 'offset_seconds', 'cache_path', 'is_whole_file' )
+
+    def __init__( self, cuts, scanned_seconds, offset_seconds, cache_path, is_whole_file ):
+        # cuts are on the scan's own timeline, starting at the window's
+        # start; see absolute_cut_times before handing them to tracking.
+        self.cuts = cuts
+        self.scanned_seconds = scanned_seconds
+        self.offset_seconds = offset_seconds
+        self.cache_path = cache_path
+        self.is_whole_file = is_whole_file
+
+
+def cached_shot_cuts( file_hash, sample_fps, threshold, duration_seconds,
+                      prefer_preview_suffix=None ):
+    """
+    The best cached shot-cut scan for one video, for tools that read
+    what a run already wrote rather than scanning themselves.
+
+    Best is a whole-file scan when one exists; see shot_cut_caches_for.
+    The window comes from the cache's own filename and the video's
+    duration through scanned_window_seconds, the same denominator betatv
+    uses, never from the spread of anything detected.
+
+    Args:
+        file_hash: Content hash of the source video.
+        sample_fps: The cadence the scan ran at (betaconfig.video_censor_fps).
+        threshold: betaconfig.shot_cut_threshold.
+        duration_seconds: From probe_duration_seconds, or None. None
+            leaves the window unknown, so the cuts read back unmeasured.
+        prefer_preview_suffix: When given, a scan of exactly that slice
+            wins over the default order, so a replay of a slice's
+            detections measures the window that slice's run measured.
+
+    Returns:
+        A CachedShotCuts, or None when no readable cache exists. None
+        means "never scanned", which callers must not read as zero cuts.
+    """
+    candidates = bu_cache.shot_cut_caches_for( file_hash, sample_fps, threshold )
+    if prefer_preview_suffix is not None:
+        candidates = ( [ c for c in candidates if c[1]['preview_suffix'] == prefer_preview_suffix ]
+                       + [ c for c in candidates if c[1]['preview_suffix'] != prefer_preview_suffix ] )
+    for path, parsed in candidates:
+        try:
+            cuts = sorted( float( t ) for t in bu_hash.read_json( path ) )
+        except Exception:                                  # noqa: BLE001
+            continue
+        window = bu_detector.scanned_window_seconds(
+            duration_seconds, parsed['offset_seconds'], parsed['max_seconds'] )
+        return CachedShotCuts( cuts, window, parsed['offset_seconds'], path,
+                               parsed['max_seconds'] is None )
+    return None
+
+
+class BackgroundShotCutScan( object ):
+    """
+    shot_cuts_for_source on a worker thread, joined with result().
+
+    Detection never reads shot cuts; only tracking does, after detection
+    finishes. So when the profile, and with it the sample rate, is known
+    before the scan (declared by --profile, a path pattern or a source
+    folder), the scan can run alongside detection instead of in front of
+    it. On a 35-minute file the scan alone took 4m38s before detection
+    started. The result is the same list either way, from the same
+    function with the same cache; only the timing moves.
+
+    A thread rather than a process: decoding and calcHist release the
+    GIL, the capture is the scan's own, and a thread needs no pickling.
+    Daemon so a hard exit cannot hang on it; the cache write is atomic,
+    so dying mid-scan leaves nothing half-written. A Ctrl-C reaches the
+    scan through bu_signals.check() in detect_shot_cuts.
+    """
+
+    def __init__( self, *args, **kwargs ):
+        self._args = args
+        self._kwargs = kwargs
+        self._cuts = None
+        self._error = None
+        self._thread = threading.Thread(
+            target=self._run, name='shot-cut-scan', daemon=True )
+        self._thread.start()
+
+    def _run( self ):
+        try:
+            self._cuts = shot_cuts_for_source( *self._args, **self._kwargs )
+        except BaseException as err:                       # noqa: BLE001
+            # Re-raised in the caller's thread by result(), including
+            # Interrupted, so a stop requested mid-scan still stops the run.
+            self._error = err
+
+    def result( self ):
+        """Wait for the scan and return what shot_cuts_for_source returned."""
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
+        return self._cuts
+
+
 def shot_cuts_for_source( source, file_hash, sample_fps, threshold,
                           preview_offset_seconds=0.0, preview_max_seconds=None,
                           preview_suffix='', enabled=True, logger=None ):
@@ -725,16 +889,19 @@ def shot_cuts_for_source( source, file_hash, sample_fps, threshold,
             whole file.
         preview_suffix: Cache-key suffix from
             betautils_cache_paths.preview_cache_suffix.
-        enabled: False returns [] with no scan and no cache read, so a
-            project that never sees quick-cut footage pays nothing.
+        enabled: False returns None with no scan and no cache read, so
+            a project that never sees quick-cut footage pays nothing.
         logger: Optional logger.
 
     Returns:
-        A sorted list of cut timestamps in seconds.
+        A sorted list of cut timestamps in seconds, [] when the scan
+        found none, or None when scanning is disabled. Disabled used to
+        return [] as well, which made "never looked" indistinguishable
+        from "looked and found no cuts" for every caller downstream.
     """
     logger = logger or bu_log.get_logger()
     if not enabled:
-        return []
+        return None
 
     cache_path = bu_cache.shot_cut_path_for(
         file_hash, sample_fps, threshold, preview_suffix, preview_max_seconds )
@@ -761,3 +928,43 @@ def shot_cuts_for_source( source, file_hash, sample_fps, threshold,
         os.path.basename( source.original_path ), len( cut_times ) ) )
     bu_hash.write_json( cut_times, cache_path )
     return cut_times
+
+
+SCAN_WORKER_PATHS = ( 'shot_cut_dir', 'transcode_cache_dir', 'file_hash_cache_path' )
+
+
+def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None ):
+    """
+    A whole-file shot-cut scan for a worker process, written to betatv's
+    own cache. Lives here rather than in betabench so a process pool can
+    pickle it by module name.
+
+    The cache path is exactly the one betatv's full run computes (no
+    preview bound, no suffix, the global sample rate), so this is work the
+    real run would otherwise do itself, serially, in front of detection.
+    Done here it is done once, ahead of time, across all cores.
+
+    const_paths carries the parent's cache paths into the worker. Under a
+    spawn start method (macOS, Windows) the child re-imports betaconst
+    and would otherwise write wherever the defaults point, which is not
+    where a parent with overridden paths will look.
+
+    Returns (path, cut_count or None, seconds, error or None).
+    """
+    for name, value in ( const_paths or {} ).items():
+        setattr( betaconst, name, value )
+    worker_logger = logging.getLogger( 'betasuite.scan-worker' )
+    if not worker_logger.handlers:
+        worker_logger.addHandler( logging.NullHandler() )
+    worker_logger.propagate = False
+    started = time.perf_counter()
+    try:
+        source = open_video_source( path, file_hash, worker_logger )
+        try:
+            cuts = shot_cuts_for_source( source, file_hash, fps, threshold,
+                                         logger=worker_logger )
+        finally:
+            source.cap.release()
+        return ( path, len( cuts ), time.perf_counter() - started, None )
+    except Exception as err:                               # noqa: BLE001
+        return ( path, None, time.perf_counter() - started, repr( err ) )
