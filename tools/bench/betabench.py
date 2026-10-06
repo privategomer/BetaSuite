@@ -1182,6 +1182,194 @@ def _per_configuration( kind, body ):
     return run
 
 
+# --- Folder recommendation -------------------------------------------------
+# The structure bench already measures everything needed to say which
+# source folder a file belongs in (see profile_by_source_dir in
+# CONFIG_REFERENCE.md). These are the boundaries it applies.
+#
+# The split-screen signature. Panes coexist rather than cut, so a
+# split-screen file is invisible to every timing measure and shows up
+# spatially instead: several boxes live at once, split evenly between the
+# screen halves and staying there. Read off a 9-file sample, where split
+# files ran p90 simultaneous 5-9 with left-half near 0.50 and the one
+# non-split file with high simultaneity sat at left-half 0.13. A sample
+# that small makes these a starting point, not a tuned setting.
+SPLIT_MIN_P90_SIMULTANEOUS = 5
+SPLIT_LEFT_HALF_RANGE = ( 0.40, 0.60 )
+
+# The compilation boundary: footage that spends most of its runtime in
+# shots of a few seconds. Measured by DURATION, never by counting shots.
+# A median shot length gets this backwards on real footage: a scene with
+# one flurry of twenty 0.1s false cuts in it has a 0.1s median while
+# 93% of its runtime is a single long take, and a genuinely fast-cutting
+# file measured a LONGER 0.50s median. Ranked by median those two come
+# out in the wrong order; ranked by duration share they separate by 5x.
+COMPILATION_SHOT_SECONDS = 10.0
+COMPILATION_MIN_RUNTIME_FRACTION = 0.5
+
+
+def _quick_cut_threshold( backend_name=None ):
+    """
+    The configured short-shot share at which quick_cut takes over.
+
+    Read from betaconfig rather than restated here, so this bench cannot
+    recommend a folder the app would then disagree with. Returns
+    (threshold, profile_name), or (None, None) when no auto-selectable
+    variant sets one.
+    """
+    profiles = bu_detector.get_profiles( backend_name )
+    if profiles.get( 'match_on' ) != 'short_shot_fraction':
+        return ( None, None )
+    best = ( None, None )
+    for name, variant in ( profiles.get( 'variants' ) or {} ).items():
+        if variant.get( 'manual_only' ):
+            continue
+        threshold = variant.get( 'min_short_shot_fraction' )
+        if threshold is None:
+            continue
+        if best[0] is None or threshold < best[0]:
+            best = ( threshold, name )
+    return best
+
+
+def _folder_for_profile( profile_name ):
+    """
+    The folder that maps to a profile, or None.
+
+    Inverts betaconfig.profile_by_source_dir so this reports the folder
+    the user actually configured rather than a name invented here. With
+    several folders mapping to one profile the shallowest is reported,
+    because that is where a new file of that kind would normally go.
+    """
+    mapping = getattr( betaconfig, 'profile_by_source_dir', None ) or {}
+    candidates = [ key for key, name in mapping.items() if name == profile_name ]
+    if not candidates:
+        return None
+    return sorted( candidates, key=lambda key: (
+        len( bu_detector._dir_key_parts( key ) ), key ) )[0]
+
+
+def _recommend_profile( row, quick_threshold, quick_profile ):
+    """
+    Which profile a measured file's structure puts it in, and why.
+
+    Order matters. Split-screen is tested first because its failure mode
+    is spatial, not temporal: a generous match radius merges two panes'
+    subjects into one track and drags a censor across the divider, and
+    that happens whatever the cut rate. A split-screen compilation is
+    still a split-screen problem first.
+
+    Returns (profile_name, reason).
+    """
+    p90 = row.get( 'p90_simultaneous' ) or 0
+    left = row.get( 'left_half_fraction' )
+    low, high = SPLIT_LEFT_HALF_RANGE
+    if ( p90 >= SPLIT_MIN_P90_SIMULTANEOUS
+         and left is not None and low <= left <= high ):
+        return ( 'split_screen',
+                 '%d boxes live at once, %.0f%% of them in the left half: '
+                 'subjects sit on both sides and stay there'%( p90, 100 * left ) )
+
+    short = row.get( 'short_shot_fraction' )
+    mid = row.get( 'mid_shot_fraction' )
+
+    if short is None:
+        # Measured, and no cuts were found. A single continuous take as
+        # far as this can see. It is also what split-screen looks like,
+        # which is why the spatial test runs first.
+        return ( 'scene', 'no shot cuts found' )
+
+    if ( quick_threshold is not None and quick_profile
+         and short >= quick_threshold ):
+        return ( quick_profile,
+                 '%.0f%% of runtime in sub-%gs shots, at or over the '
+                 'configured %.0f%%'%( 100 * short, bu_detector.SHORT_SHOT_SECONDS,
+                                       100 * quick_threshold ) )
+
+    if mid is not None and mid >= COMPILATION_MIN_RUNTIME_FRACTION:
+        return ( 'compilation',
+                 '%.0f%% of runtime in sub-%gs shots, at or over this '
+                 'bench\'s %.0f%%'%( 100 * mid, COMPILATION_SHOT_SECONDS,
+                                     100 * COMPILATION_MIN_RUNTIME_FRACTION ) )
+
+    return ( 'scene', 'only %.0f%% of runtime in sub-%gs shots'%(
+        100 * ( mid or 0.0 ), COMPILATION_SHOT_SECONDS ) )
+
+
+def _write_move_script( path, moves, logger ):
+    """
+    Write a reviewable shell script that sorts the source tree.
+
+    A script rather than doing the moves here, for two reasons: this
+    bench's job is to measure, and the recommendations include a
+    compilation boundary read off a small sample. Someone should read
+    the reasons before 70 files move.
+
+    Every move is `mv -n`, which never overwrites. The script checks
+    each source still exists, counts what it did, and is safe to re-run:
+    a second run finds the files already moved and does nothing.
+    """
+    lines = [
+        '#!/bin/bash',
+        '# Generated by betabench structure. Sorts source videos into the',
+        '# folders betaconfig.profile_by_source_dir maps to profiles.',
+        '#',
+        '# READ THE REASONS BELOW FIRST. The compilation/scene boundary is a',
+        '# heuristic read off a small sample, and split-screen is detected',
+        '# from box geometry, not from anything infallible.',
+        '#',
+        '# Every move is `mv -n`: it will not overwrite an existing file.',
+        '# Safe to re-run; already-moved files are skipped.',
+        '',
+        'set -uo pipefail',
+        'moved=0; skipped=0',
+        '',
+        'move_one() {',
+        '    local src="$1" dest_dir="$2"',
+        '    if [[ ! -f "$src" ]]; then',
+        '        echo "skip (not found): $src"; skipped=$((skipped+1)); return',
+        '    fi',
+        '    mkdir -p "$dest_dir" || return',
+        '    if mv -n "$src" "$dest_dir"/; then',
+        '        if [[ -f "$src" ]]; then',
+        '            echo "skip (target exists): $src"; skipped=$((skipped+1))',
+        '        else',
+        '            echo "moved: $src -> $dest_dir/"; moved=$((moved+1))',
+        '        fi',
+        '    else',
+        '        echo "FAILED: $src"; skipped=$((skipped+1))',
+        '    fi',
+        '}',
+        '',
+    ]
+    for move in moves:
+        lines.append( '# %s'%( move['why'], ) )
+        lines.append( 'move_one %s %s'%(
+            _shell_quote( move['source_path'] ),
+            _shell_quote( move['dest_dir'] ) ) )
+        lines.append( '' )
+    lines += [
+        'echo',
+        'echo "moved $moved file(s), skipped $skipped"',
+        'echo "Re-run betabench structure afterwards to confirm each file"',
+        'echo "now sits where its measured structure puts it."',
+        '',
+    ]
+    directory = os.path.dirname( os.path.abspath( path ) )
+    if directory:
+        os.makedirs( directory, exist_ok=True )
+    with open( path, 'w', newline='\n' ) as handle:
+        handle.write( '\n'.join( lines ) )
+    os.chmod( path, 0o755 )
+    logger.info( "move script written to %s (%d move(s)). Read it, then run it."%(
+        path, len( moves ) ) )
+
+
+def _shell_quote( text ):
+    """Single-quote a path for the generated script, safely."""
+    return "'" + str( text ).replace( "'", "'\\''" ) + "'"
+
+
 def _bench_structure_one( args, logger, config, raw_boxes ):
     """
     Describe each source video's STRUCTURE, per video rather than pooled.
@@ -1262,11 +1450,25 @@ def _bench_structure_one( args, logger, config, raw_boxes ):
                 cuts = None
 
         cuts_per_min, median_shot = None, None
+        short_fraction, mid_fraction = None, None
         if cuts is not None:
             cuts_per_min = 60.0 * len( cuts ) / span
-            if len( cuts ) > 1:
-                shots = [ b - a for a, b in zip( sorted( cuts ), sorted( cuts )[1:] ) ]
-                median_shot = statistics.median( shots ) if shots else None
+            # shot_spans_for counts the opening span (0 to the first cut)
+            # and the closing one (last cut to the end of the window) as
+            # shots, which the gaps-only version below did not. Leaving
+            # them out makes a long file with two adjacent cuts look
+            # entirely composed of one-second shots.
+            spans = bu_detector.shot_spans_for( cuts, span )
+            total = sum( spans )
+            if spans and total > 0:
+                ordered = sorted( spans )
+                middle = len( ordered ) // 2
+                median_shot = ( ordered[middle] if len( ordered ) % 2
+                                else 0.5 * ( ordered[middle - 1] + ordered[middle] ) )
+                short_fraction = sum(
+                    s for s in spans if s < bu_detector.SHORT_SHOT_SECONDS ) / total
+                mid_fraction = sum(
+                    s for s in spans if s < COMPILATION_SHOT_SECONDS ) / total
 
         # Simultaneous boxes: how many of this label are live in one
         # sampled frame. High values mean several subjects, which is
@@ -1309,28 +1511,47 @@ def _bench_structure_one( args, logger, config, raw_boxes ):
             'cuts': len( cuts ) if cuts is not None else None,
             'cuts_per_min': round( cuts_per_min, 1 ) if cuts_per_min is not None else None,
             'median_shot_seconds': round( median_shot, 2 ) if median_shot else None,
+            'short_shot_fraction': ( round( short_fraction, 4 )
+                                     if short_fraction is not None else None ),
+            'mid_shot_fraction': ( round( mid_fraction, 4 )
+                                   if mid_fraction is not None else None ),
             'median_simultaneous': median_simul,
             'p90_simultaneous': p90_simul,
             'left_half_fraction': round( left_half, 3 ) if left_half is not None else None,
             'median_area_fraction': round( area_fraction, 5 ) if area_fraction else None,
+            'source_path': path,
         } )
 
     if not rows:
         return {}
 
+    quick_threshold, quick_profile = _quick_cut_threshold(
+        getattr( args, 'backend', None ) )
+    for row in rows:
+        profile, why = _recommend_profile( row, quick_threshold, quick_profile )
+        row['recommended_profile'] = profile
+        row['recommended_reason'] = why
+        row['recommended_folder'] = _folder_for_profile( profile )
+        parts = bu_detector.source_dir_parts( row.get( 'source_path' ) )
+        row['current_folder'] = ( '/'.join( parts ) if parts
+                                  else ( '(root)' if parts == () else None ) )
+
     logger.info( "" )
     logger.info( "Per-video structure (censored labels only):" )
-    logger.info( "  %-34s %7s %8s %8s %7s %7s %7s"%(
-        'source', 'mins', 'cuts/min', 'med shot', 'simul', 'p90', 'L-half' ) )
+    logger.info( "  %-32s %6s %7s %6s %6s %5s %6s  %s"%(
+        'source', 'mins', 'cuts/m', '<1s', '<10s', 'p90', 'L-half', 'belongs in' ) )
     for row in rows:
-        logger.info( "  %-34s %7.1f %8s %8s %7s %7s %7s"%(
-            row['source'][:34],
+        logger.info( "  %-32s %6.1f %7s %6s %6s %5s %6s  %s"%(
+            row['source'][:32],
             row['span_seconds'] / 60.0,
-            '%.1f'%row['cuts_per_min'] if row['cuts_per_min'] is not None else '  n/a',
-            '%.2fs'%row['median_shot_seconds'] if row['median_shot_seconds'] else '   n/a',
-            row['median_simultaneous'],
+            '%.1f'%row['cuts_per_min'] if row['cuts_per_min'] is not None else 'n/a',
+            ( '%.0f%%'%(100 * row['short_shot_fraction'])
+              if row['short_shot_fraction'] is not None else 'n/a' ),
+            ( '%.0f%%'%(100 * row['mid_shot_fraction'])
+              if row['mid_shot_fraction'] is not None else 'n/a' ),
             row['p90_simultaneous'],
-            '%.2f'%row['left_half_fraction'] if row['left_half_fraction'] is not None else ' n/a' ) )
+            '%.2f'%row['left_half_fraction'] if row['left_half_fraction'] is not None else 'n/a',
+            row['recommended_profile'] ) )
 
     known = [ r for r in rows if r['cuts_per_min'] is not None ]
     if known:
@@ -1355,13 +1576,84 @@ def _bench_structure_one( args, logger, config, raw_boxes ):
                      "the single most useful structural number here." )
 
     logger.info( "" )
-    logger.info( "reading this: 'simul' is how many boxes of a censored label are live in one "
-                 "sampled frame - consistently 2+ means several subjects, which is what makes "
-                 "a loose match_distance risky. 'L-half' near 0.50 with high 'simul' is the "
-                 "split-screen signature: boxes split evenly between screen halves and stay "
-                 "there. Near 0 or 1 means the action sits on one side." )
+    logger.info( "reading this: '<1s' and '<10s' are the share of RUNTIME in shots shorter "
+                 "than that, not the share of shots - a scene with one flurry of false cuts "
+                 "has a tiny median shot and a tiny duration share, and only the second one "
+                 "is right about the footage. 'p90' is how many boxes of a censored label are "
+                 "live in one sampled frame at the 90th percentile; 'L-half' near 0.50 with a "
+                 "high p90 is the split-screen signature, boxes split evenly between screen "
+                 "halves and staying there. Near 0 or 1 means the action sits on one side." )
 
+    _report_folder_moves( args, rows, logger, quick_threshold, quick_profile )
     return { 'structure': rows }
+
+
+def _report_folder_moves( args, rows, logger, quick_threshold, quick_profile ):
+    """
+    What sorting the source tree would change, and optionally a script.
+
+    Only reports a move when the file's current folder differs from the
+    one its measured structure points at. A file already in the right
+    place, or one whose recommended profile has no folder configured,
+    produces nothing.
+    """
+    root = betaconst.video_path_uncensored
+    moves = []
+    for row in rows:
+        folder = row.get( 'recommended_folder' )
+        current = row.get( 'current_folder' )
+        if not folder or current is None or row.get( 'source_path' ) is None:
+            continue
+        if current == folder:
+            continue
+        moves.append( {
+            'source': row['source'],
+            'source_path': row['source_path'],
+            'dest_dir': os.path.join( root, folder ),
+            'from': current,
+            'to': folder,
+            'why': '%s: %s'%( row['source'], row['recommended_reason'] ),
+        } )
+
+    logger.info( "" )
+    if not getattr( betaconfig, 'profile_by_source_dir', None ):
+        logger.info( "profile_by_source_dir is empty, so no folder maps to a profile and "
+                     "sorting these files would change nothing. See CONFIG_REFERENCE.md -> "
+                     "'The source folder convention'." )
+        return
+    logger.info( "=== source folder: %d file(s) sit elsewhere than their structure says ==="%(
+        len( moves ), ) )
+    if not moves:
+        logger.info( "none: every measured file already sits in the folder its structure "
+                     "points at" )
+    for move in moves:
+        logger.info( "  %s/ -> %s/   %s"%( move['from'], move['to'], move['source'] ) )
+        logger.debug( "      %s"%( move['why'], ) )
+
+    if quick_threshold is not None:
+        logger.info( "" )
+        logger.info( "quick-cut boundary: %.0f%% of runtime in sub-%gs shots, read from "
+                     "betaconfig (profile %r), so this cannot contradict what the app "
+                     "would select"%( 100 * quick_threshold,
+                                      bu_detector.SHORT_SHOT_SECONDS, quick_profile ) )
+    logger.info( "compilation boundary: %.0f%% of runtime in sub-%gs shots. THIS BENCH'S "
+                 "heuristic, not a tuned app setting, because 'compilation' is manual_only "
+                 "and has no configured threshold: treat compilation-vs-scene as advisory "
+                 "and check the numbers above"%(
+                     100 * COMPILATION_MIN_RUNTIME_FRACTION, COMPILATION_SHOT_SECONDS ) )
+    logger.info( "split-screen: p90 simultaneous >= %d with left-half share in %.2f-%.2f. "
+                 "Read off a 9-file sample, so verify a file before trusting it"%(
+                     SPLIT_MIN_P90_SIMULTANEOUS, *SPLIT_LEFT_HALF_RANGE ) )
+
+    target = getattr( args, 'write_move_script', None )
+    if target and moves:
+        _write_move_script( target, moves, logger )
+    elif target:
+        logger.info( "no moves to write, so no script was created" )
+    elif moves:
+        logger.info( "" )
+        logger.info( "re-run with --write-move-script moves.sh to get a reviewable script "
+                     "that performs these moves with mv -n" )
 
 
 bench_geometry    = _per_configuration( 'geometry',    _bench_geometry_one )
@@ -1429,6 +1721,11 @@ def build_parser():
         help="seconds of video to measure (default: 30)" )
     parser.add_argument( '--max-frames', type=int, default=120,
         help="cap on sampled frames per measurement, for 'detect' (default: 120)" )
+    parser.add_argument( '--write-move-script', default=None, metavar='PATH',
+        help="structure only: write a reviewable shell script that sorts the source "
+             "videos into the folders profile_by_source_dir maps to profiles. Every "
+             "move is 'mv -n', which never overwrites, and the script is safe to "
+             "re-run. Nothing is moved by betabench itself" )
     parser.add_argument( '--sample-fps', type=float, default=None,
         help="sampling rate to measure at (default: betaconfig.video_censor_fps)" )
 

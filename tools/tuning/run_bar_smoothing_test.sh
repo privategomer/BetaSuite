@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # run_bar_smoothing_test.sh - single-click entry point for
 # run_bar_smoothing_test.py (see that file's docstring for what it does
 # and why it needs to exist separately from replay_tune.py).
@@ -25,6 +25,10 @@
 # history) - so if a real production run is in progress, wait for it to
 # finish first (same wait-loop tune_harness.sh uses).
 
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
+
 set -uo pipefail
 
 cd "$(dirname "$0")"
@@ -41,7 +45,7 @@ done
 echo "GPU clear, no other betatv.py process detected. proceeding."
 echo
 
-python3 run_bar_smoothing_test.py
+"$PYTHON_BIN" run_bar_smoothing_test.py
 STATUS=$?
 
 echo

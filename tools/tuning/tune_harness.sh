@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # tune_harness.sh - sequences the full post-run tuning workflow, unattended:
 #
 #   0. waits for any already-running betatv.py process to finish before
@@ -46,6 +46,10 @@
 # exiting immediately - harmless here since the shell redirect creates the
 # file before the script even starts, but it's the safer habit generally)
 
+# Resolve the project venv explicitly rather than trusting PATH.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
+
 set -uo pipefail
 
 # this script lives in tools/tuning/ - CORE_DIR is the actual BetaSuite-0.2.4
@@ -88,7 +92,7 @@ echo "GPU clear, no other betatv.py process detected. proceeding."
 # --- 1. batch_ab_test.py: baseline (1) vs the real nn_batch_size (2) at fps=9 ---
 echo
 echo "=== [1/5] batch_ab_test.py --batch-sizes 1 2 --video-censor-fps $VIDEO_CENSOR_FPS ==="
-python3 "$SCRIPT_DIR/batch_ab_test.py" --batch-sizes 1 2 --video-censor-fps "$VIDEO_CENSOR_FPS"
+"$PYTHON_BIN" "$SCRIPT_DIR/batch_ab_test.py" --batch-sizes 1 2 --video-censor-fps "$VIDEO_CENSOR_FPS"
 BATCH_STATUS=$?
 if [ $BATCH_STATUS -ne 0 ]; then
     echo "WARNING: batch_ab_test.py exited with status $BATCH_STATUS, check the output above before trusting the steps below"
@@ -97,12 +101,12 @@ fi
 # --- 2. summarize_tune_sweep.py, scoped to this run's slice ---
 echo
 echo "=== [2/5] summarize_tune_sweep.py --preview-offset $PREVIEW_START_SECONDS ==="
-python3 "$ANALYSIS_DIR/summarize_tune_sweep.py" --preview-offset "$PREVIEW_START_SECONDS"
+"$PYTHON_BIN" "$ANALYSIS_DIR/summarize_tune_sweep.py" --preview-offset "$PREVIEW_START_SECONDS"
 
 # --- 3. analyze_suppression_pairs.py ---
 echo
 echo "=== [3/5] analyze_suppression_pairs.py ==="
-python3 "$ANALYSIS_DIR/analyze_suppression_pairs.py"
+"$PYTHON_BIN" "$ANALYSIS_DIR/analyze_suppression_pairs.py"
 
 # --- 4. replay_tune.py, once per video, against the fresh fps=9 preview cache from step 1 ---
 # (nn_batch_size isn't part of the detection cache key - batching shouldn't
@@ -110,25 +114,25 @@ python3 "$ANALYSIS_DIR/analyze_suppression_pairs.py"
 # just populated, regardless of which batch size wrote it)
 echo
 echo "=== [4/5] replay_tune.py (per video, fps=9 preview-slice cache from step 1, variants from replay_variants_example.json) ==="
-VIDEO_LIST=$(python3 -c "
+VIDEO_LIST=$("$PYTHON_BIN" -c "
 import betaconst, os
 for root, d_names, f_names in os.walk(betaconst.video_path_uncensored):
     for fname in f_names:
         print(fname)
 ")
 if [ -z "$VIDEO_LIST" ]; then
-    echo "no video files found under $(python3 -c 'import betaconst; print(betaconst.video_path_uncensored)') - skipping replay_tune.py"
+    echo "no video files found under $("$PYTHON_BIN" -c 'import betaconst; print(betaconst.video_path_uncensored)') - skipping replay_tune.py"
 else
     while IFS= read -r fname; do
         echo "--- replay_tune.py --video \"$fname\" ---"
-        python3 "$SCRIPT_DIR/replay_tune.py" --video "$fname" --preview-start-seconds "$PREVIEW_START_SECONDS" --variants "$SCRIPT_DIR/replay_variants_example.json"
+        "$PYTHON_BIN" "$SCRIPT_DIR/replay_tune.py" --video "$fname" --preview-start-seconds "$PREVIEW_START_SECONDS" --variants "$SCRIPT_DIR/replay_variants_example.json"
     done <<< "$VIDEO_LIST"
 fi
 
 # --- 5. analyze_jitter.py ---
 echo
 echo "=== [5/5] analyze_jitter.py ==="
-python3 "$ANALYSIS_DIR/analyze_jitter.py"
+"$PYTHON_BIN" "$ANALYSIS_DIR/analyze_jitter.py"
 
 echo
 echo "=== tune_harness.sh finished at $(date) ==="

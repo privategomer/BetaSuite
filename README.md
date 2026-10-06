@@ -308,9 +308,12 @@ folder is selected by measurement instead, so the convention is additive
 and you are never forced to classify a file to process it. Adding a
 folder is adding a line.
 
-`tools/analysis/classify_sources.sh` measures every source file and
-reports which folder it belongs in. Scan only: no detection, no
-rendering, and it moves nothing.
+`betabench structure` measures every source file and reports which
+folder it belongs in, including split-screen, which the timing measures
+cannot see. `--write-move-script moves.sh` writes a reviewable script
+that performs the moves with `mv -n`; betabench never moves a file
+itself. It reads caches a run already wrote, so run a `--preview` pass
+over the tree first.
 
 | Setting | Default | What it does |
 |---|---|---|

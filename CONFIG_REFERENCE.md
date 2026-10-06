@@ -1370,8 +1370,8 @@ shots under a second, and a compilation's shots are seconds long, so it
 measures identically to a single scene: both report near zero. Separating
 them needs a second signal at a longer cutoff, and `match_on` reads one
 signal. Rather than invent a threshold that cannot work, `compilation` is
-reached by folder. `classify_sources.sh` does apply a longer-cutoff
-measure to recommend the folder, and that boundary belongs to the tool,
+reached by folder. `betabench structure` does apply a longer-cutoff
+measure to recommend that folder, and that boundary belongs to the bench,
 not to the app, precisely because it is not tuned.
 
 ### Why the signal is a duration share and not a median shot length
@@ -1731,37 +1731,67 @@ same folder are all hard errors with the specific message.
 **It is in the censor key**, so retuning the map does not serve back a
 render made under the old one.
 
-### Sorting the files: `classify_sources.sh`
+### Sorting the files: `betabench structure`
 
-The convention puts the burden on sorting correctly, and the signal that
-decides is how much of the RUNTIME sits in short shots, which nobody
-eyeballs accurately. `tools/analysis/classify_sources.sh` measures it:
+The convention puts the burden on sorting correctly, and the measures
+that decide it are not ones anyone eyeballs accurately. `betabench
+structure` measures them per file and says which folder each belongs in:
 
 ```bash
-./tools/analysis/classify_sources.sh          # probe windows, fast
-FULL=1 ./tools/analysis/classify_sources.sh   # whole files, slow
+python3 tools/bench/betabench.py structure
+python3 tools/bench/betabench.py structure --write-move-script moves.sh
 ```
 
-It runs the shot-cut scan only, no detection and no rendering, reuses the
-app's own shot-cut cache, writes nothing to the source tree and moves no
-files. It prints the measured structure per file and the moves that would
-put each one where it belongs.
+It reads caches a run already wrote, so it needs a run over the tree
+first. A `--preview` run is enough and is cheap. Nothing here changes
+config, and betabench never moves a file itself.
 
-Three things about it worth knowing before acting on its output:
+```
+  source                        mins  cuts/m    <1s   <10s   p90 L-half  belongs in
+  three_sec_comp.mp4             0.4    19.0     0%   100%     1   1.00  compilation
+  long_take.mp4                  0.4     2.7     0%     0%     1   1.00  scene
+  panes.mp4                      0.4     0.0    n/a    n/a     6   0.50  split_screen
+```
 
-- **It never recommends split-screen**, for the reason above. It flags
-  files whose NAME hints at one and asks you to look, and it leaves
-  anything already in the split-screen folder alone.
-- **The quick-cut boundary is read from `betaconfig`**, so the tool
-  cannot recommend a folder the app would then disagree with. The
-  compilation/scene boundary is the tool's own heuristic (50% of runtime
-  in sub-10s shots) because `compilation` is `manual_only` and has no
-  configured threshold. Treat compilation-vs-scene as advisory.
-- **It measures several windows and pools them.** One window is not
-  enough: a single 45s window of one real file measured 2.9% of runtime
-  in short shots and a single 20s window of the same file measured 20.0%,
-  which fall on opposite sides of the quick-cut boundary. `--full`
-  removes the doubt at the cost of decoding everything.
+**It can call split-screen, and this is the reason it lives here.** The
+spatial signals need boxes, so they only exist after detection has run.
+That is a real constraint on *profile selection*, which happens before
+detection and therefore cannot use them. It is not a constraint on
+*sorting*, which is a one-time offline decision you can afford a run for.
+An earlier standalone scan-only classifier was built around the
+pre-detection limit by mistake and so could never recommend
+`split-screen` at all, which is most of what the sorting is for.
+
+**The boundaries, and which are trustworthy:**
+
+| boundary | value | owned by |
+|---|---|---|
+| quick-cut | share of runtime in sub-1s shots | **betaconfig**, so it cannot contradict what the app selects |
+| compilation | 50% of runtime in sub-10s shots | this bench, because `compilation` is `manual_only` and has no configured threshold |
+| split-screen | p90 simultaneous >= 5 with left-half share 0.40-0.60 | this bench, read off a 9-file sample |
+
+Treat the bottom two as advisory and read the numbers. The split-screen
+signature in particular came off nine files, where split ones ran p90
+5-9 at left-half near 0.50 and the one non-split file with high
+simultaneity sat at left-half 0.13.
+
+**Order of tests.** Split-screen is checked first, before either timing
+boundary. Its failure mode is spatial rather than temporal: a generous
+match radius merges two panes' subjects into one track and drags a censor
+across the divider, and that happens whatever the cut rate. A
+split-screen compilation is a split-screen problem first.
+
+**`--write-move-script`** writes a reviewable shell script rather than
+moving anything:
+
+- every move is `mv -n`, which never overwrites
+- each move carries the measured reason as a comment above it
+- it checks each source still exists, so it is safe to re-run; a second
+  run finds the files already moved and does nothing
+- paths are shell-quoted, so a filename with an apostrophe or a space
+  cannot turn into a command
+
+Read the reasons before running it. Seventy files is a lot to put back.
 
 ### Forcing a profile: `--profile NAME`
 
