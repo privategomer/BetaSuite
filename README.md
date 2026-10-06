@@ -285,17 +285,38 @@ flicker. Reference:
 
 One set of timing values cannot serve a fast-cut compilation, a
 single-scene video and a split-screen layout. Profiles are a fourth
-override tier, selected per video from its measured shot structure.
+override tier, chosen per video by the folder it sits in, or by its
+measured shot structure when no folder claims it.
 
-Three ship: `scene` (the default and catch-all), `quick_cut`
-(auto-selected on fast-cut footage, samples at 18 fps), and
-`split_screen` (`manual_only`, since no measurement available before
-detection runs can identify a split-screen layout, so reach it with
-`--profile split_screen` or a `profile_by_path_pattern` rule).
+Four ship:
+
+| Profile | Reached by | For |
+|---|---|---|
+| `scene` | the default and catch-all | one subject, long takes |
+| `quick_cut` | measured, or `quick-cut/` | sub-second shots. Samples at 18 fps |
+| `compilation` | `compilation/` | subject changes every few seconds |
+| `split_screen` | `split-screen/` | panes side by side |
+
+`compilation` and `split_screen` are `manual_only`: nothing measurable
+before detection runs separates either from a single scene, so they are
+reached by folder, `--profile`, or a `profile_by_path_pattern` rule.
+
+**The folder convention.** `profile_by_source_dir` maps a folder under
+`resources/uncensored_vids/` to a profile. Deepest match wins, so a child
+folder overrides its parent. Anything in the root or in an unmapped
+folder is selected by measurement instead, so the convention is additive
+and you are never forced to classify a file to process it. Adding a
+folder is adding a line.
+
+`tools/analysis/classify_sources.sh` measures every source file and
+reports which folder it belongs in. Scan only: no detection, no
+rendering, and it moves nothing.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `default_profile_enabled` | `True` | master switch. `False` ignores every profile and uses the un-profiled settings |
+| `profile_by_source_dir` | none | `{folder: profile}` under the uncensored root. Deepest match wins; unmapped folders and the root are measured |
+| `profile_by_path_pattern` | none | `{glob: profile}`, matched on full path and bare filename. Outranks the folder convention |
+| `default_profile_enabled` | `True` | master switch. `False` ignores every profile and uses the un-profiled settings. A folder rule and `--profile` still win |
 | `detector_backend[<backend>]['profiles']['default']` | — | profile used when a video has no shot-cut data |
 | `detector_backend[<backend>]['profiles']['match_on']` | `'cuts_per_min'` | the measurement profiles are selected by: `'short_shot_fraction'` (recommended) or `'cuts_per_min'` |
 | `detector_backend[<backend>]['profiles']['variants'][<name>]['min_short_shot_fraction']` | — | least share of runtime in sub-1s shots this profile claims, 0 to 1. Read when `match_on` is `'short_shot_fraction'` |

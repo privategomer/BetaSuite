@@ -1275,38 +1275,48 @@ and one shooting a sprint do not argue about which shutter speed is
 compilation that changes women every four seconds is the same category
 error.
 
-**The three footage types, and why they conflict.**
+**The four footage types, and why they conflict.**
 
 ```
-QUICK CUT                 SINGLE SCENE              SPLIT SCREEN
-cut cut cut cut cut       |                         ┌─────┬─────┐
- |   |   |   |   |        one woman, four minutes   │  A  │  B  │
- A   B   C   D   E        she turns away at 0:38    ├─────┼─────┤
- new subject each time    and back at 0:41          │  C  │  D  │
-                                                    └─────┴─────┘
-                                                    four at once,
-                                                    all the way through
+QUICK CUT            COMPILATION          SINGLE SCENE         SPLIT SCREEN
+cut cut cut cut      cut    cut    cut    |                    ┌─────┬─────┐
+ |   |   |   |        |      |      |     one woman, minutes   │  A  │  B  │
+ A   B   C   D        A      B      C     she turns away at    ├─────┼─────┤
+sub-second shots     shots of seconds     0:38, back at 0:41   │  C  │  D  │
+                                                               └─────┴─────┘
+                                                               all at once,
+                                                               all the way
 
-needs: give up FAST       needs: hold on LONG       needs: stay SEPARATE
-a track outliving its     a track that gives up     a generous match radius
-cut keeps drawing a       at 0.2s drops the          merges two panes into
-censor on whoever         censor every time she      one track and drags the
-replaced her             turns, leaving her         censor across the
-                         exposed                    divider
+give up FAST         give up SOON         hold on LONG         stay SEPARATE
+a track outliving    the same failure,    a track that gives   a generous match
+its cut draws a      slower: censors      up at 0.2s drops     radius merges two
+censor on whoever    walk onto the next   the censor every     panes into one
+replaced her         clip's subject       time she turns       track and drags
+                                                               the censor across
+                                                               the divider
 ```
 
-A `track_max_gap` short enough for the left column drops censors in the
-middle one. One long enough for the middle column paints censors on the
-wrong people in the left. Both are censoring failures, in opposite
-directions, so no compromise value is safe for both. The right column
-fails on a different axis entirely, spatial rather than temporal, which
-is why it needs its own profile rather than a point between the other
-two.
+The three on the left are one axis, how fast a track must give up, and
+they differ by roughly an order of magnitude each: 0.20s, 1.5s, 3.0s for
+`exposed_breast`. The fourth fails on a different axis entirely, spatial
+rather than temporal, which is why it needs its own profile rather than a
+point along that line.
 
-**How a profile is chosen.** Every video is measured from its shot-cut
-scan, and the profile with the **highest threshold the measurement
-clears** wins. Thresholds can therefore be written in any order, and
-adding a third profile cannot silently reorder the other two.
+A `track_max_gap` short enough for the quick-cut column drops censors in
+the single-scene one. One long enough for single-scene paints censors on
+the wrong people in quick-cut. Both are censoring failures, in opposite
+directions, so no compromise value is safe across them.
+
+**How a profile is chosen.** Two ways, and the first one short-circuits
+the second:
+
+1. **The folder it sits in**, via `profile_by_source_dir`. See "The
+   source folder convention" below. This is how `compilation` and
+   `split_screen` are reached at all, since neither is measurable.
+2. **Measurement**, for anything no folder rule claims: the profile with
+   the **highest threshold the measurement clears** wins. Thresholds can
+   therefore be written in any order, and adding one cannot silently
+   reorder the others.
 
 `match_on` picks which measurement decides, and each signal reads its own
 per-variant threshold key:
@@ -1331,6 +1341,10 @@ per-variant threshold key:
                                     'style_min_dwell_seconds': 2.5 },
             },
         },
+        'compilation': {
+            'manual_only': True,     # not measurable, see below
+            'item_overrides': { ... },
+        },
         'split_screen': {
             'manual_only': True,     # see "Split-screen layouts" below
             'item_overrides': { ... },
@@ -1344,11 +1358,21 @@ per-variant threshold key:
 
 ```
 short-shot share:  0 ───────────── 0.15 ─────────────→ 1
-profile chosen:    [     scene     ][    quick_cut    ]
+measured as:       [     scene     ][    quick_cut    ]
 
-split_screen sits outside this line entirely: manual_only, so
-reached only by --profile or profile_by_path_pattern.
+compilation and split_screen sit outside this line entirely: both are
+manual_only, so they are reached by folder, --profile or a path
+pattern, never by measurement.
 ```
+
+**Why `compilation` is `manual_only`.** `short_shot_fraction` only counts
+shots under a second, and a compilation's shots are seconds long, so it
+measures identically to a single scene: both report near zero. Separating
+them needs a second signal at a longer cutoff, and `match_on` reads one
+signal. Rather than invent a threshold that cannot work, `compilation` is
+reached by folder. `classify_sources.sh` does apply a longer-cutoff
+measure to recommend the folder, and that boundary belongs to the tool,
+not to the app, precisely because it is not tuned.
 
 ### Why the signal is a duration share and not a median shot length
 
@@ -1483,14 +1507,20 @@ ran 0.1-3.0 cuts/min against scene files at 0.8-3.3. There is no
 threshold to place.
 
 So `split_screen` ships `manual_only: True`, which makes it invisible to
-automatic selection while still reachable by name:
+automatic selection while still reachable three other ways. The folder is
+the normal one:
 
+```python
+profile_by_source_dir = {               # the convention: sort it there
+    'split-screen': 'split_screen',
+}
+```
 ```bash
-betatv.py --profile split_screen        # one run
+betatv.py --profile split_screen        # one run, overrides everything
 ```
 ```python
-profile_by_path_pattern = {             # standing rule
-    '*/splitscreen/*': 'split_screen',
+profile_by_path_pattern = {             # by name, for an odd one out
+    '*multicam*': 'split_screen',
 }
 ```
 
@@ -1597,6 +1627,141 @@ between them. The object was seen before and after.
 scene profile. Breasts are detected far more densely (209,977 vs 46,666
 detections on the same corpus), so its gaps are short and a long bridge
 would mostly paper over tracking mistakes rather than real dropouts.
+
+### The source folder convention
+
+`profile_by_source_dir` makes the folder a video sits in decide how it is
+censored. Drop a file in `split-screen/` and it is treated as a
+split-screen layout, with no measurement involved.
+
+```python
+profile_by_source_dir = {
+    'scene':        'scene',
+    'compilation':  'compilation',
+    'quick-cut':    'quick_cut',
+    'split-screen': 'split_screen',
+}
+```
+
+```
+resources/uncensored_vids/
+├── scene/          -> scene          one subject, long takes
+├── compilation/    -> compilation    subject changes every few seconds
+├── quick-cut/      -> quick_cut      sub-second shots, 18fps sampling
+├── split-screen/   -> split_screen   panes side by side
+├── titty_drops/    -> not mapped, so MEASURED
+└── loose_file.mp4  -> in the root, so MEASURED
+```
+
+**Why a folder and not a measurement.** Two reasons. The useful
+distinctions are not all measurable: nothing available before detection
+runs can see a split-screen layout, because panes coexist rather than
+cut, so a split-screen compilation measures like a quiet scene. And
+sorting files into folders is something a person does once and can then
+see at a glance, which a threshold buried in config is not.
+
+**Keys are folder names, not globs.** Nothing has to be escaped, and a
+key can never match part of a filename by accident. They are named
+relative to `betaconst.video_path_uncensored`. Matching ignores case, so
+a folder on disk called `Compilation` still matches the key
+`compilation`: a key that silently failed to match would hand the file
+to measurement while looking configured.
+
+**Not mapped means measured.** A file sitting directly in the root, or
+in any folder with no key, falls through to automatic selection by
+measured shot structure. Only a folder named in the mapping opts out.
+That is what makes the convention additive: you are never forced to
+classify a file to process it.
+
+**Adding a folder is adding a line.** Make the folder, add the key,
+done. There is no code change and no new threshold to tune.
+
+**Nesting, and why it matters.** A key may name a nested folder, and the
+**deepest matching key wins**, so a child overrides its parent:
+
+```python
+profile_by_source_dir = {
+    'compilation':              'compilation',
+    'compilation/split-screen': 'split_screen',
+}
+```
+
+That is how one broad folder holding mixed material gets a corner for the
+exception. It is a real case: a `comps/` folder of 35 files held 4
+split-screen layouts mixed in with 31 sequential compilations, and no
+single mapping is right for both halves. Declaration order does not
+matter; only depth does, so adding a key cannot silently reorder the
+others.
+
+**Precedence**, most specific first:
+
+```
+1. --profile / force_structure_profile    one run, one answer
+2. profile_by_path_pattern                a glob, can name one file
+3. profile_by_source_dir                  the folder convention
+4. measured shot structure                match_on + thresholds
+5. the configured default
+```
+
+A path pattern outranks a folder because it can target a single file, and
+a rule about one file is a more specific statement than a rule about a
+folder of them. Both outrank measurement, because both are someone saying
+what the footage is rather than a proxy guessing. A folder rule also beats
+`default_profile_enabled = False`, for the same reason `--profile` does:
+sorting a file into `split-screen/` and silently getting no profile is the
+looks-like-it-worked failure.
+
+**The run log names the rule that decided**, not just the profile:
+
+```
+structure profile: split_screen via source folder split-screen/ (no shot-cut data), sampling at 9 fps
+structure profile: quick_cut via measured short_shot_fraction (23.6% of runtime in short shots), sampling at 18 fps
+```
+
+Without that, a folder key matching nothing on disk looks configured
+while quietly falling through to measurement, and the log gives no way to
+tell those two apart.
+
+**Validation is strict about it**, because every mistake here is a quiet
+one. A key naming no variant, an empty key, a key that normalises away to
+nothing (`'.'` or `'/'`, which would match every file), a `..` that
+climbs out of the tree, a pasted absolute path, and two spellings of the
+same folder are all hard errors with the specific message.
+
+**It is in the censor key**, so retuning the map does not serve back a
+render made under the old one.
+
+### Sorting the files: `classify_sources.sh`
+
+The convention puts the burden on sorting correctly, and the signal that
+decides is how much of the RUNTIME sits in short shots, which nobody
+eyeballs accurately. `tools/analysis/classify_sources.sh` measures it:
+
+```bash
+./tools/analysis/classify_sources.sh          # probe windows, fast
+FULL=1 ./tools/analysis/classify_sources.sh   # whole files, slow
+```
+
+It runs the shot-cut scan only, no detection and no rendering, reuses the
+app's own shot-cut cache, writes nothing to the source tree and moves no
+files. It prints the measured structure per file and the moves that would
+put each one where it belongs.
+
+Three things about it worth knowing before acting on its output:
+
+- **It never recommends split-screen**, for the reason above. It flags
+  files whose NAME hints at one and asks you to look, and it leaves
+  anything already in the split-screen folder alone.
+- **The quick-cut boundary is read from `betaconfig`**, so the tool
+  cannot recommend a folder the app would then disagree with. The
+  compilation/scene boundary is the tool's own heuristic (50% of runtime
+  in sub-10s shots) because `compilation` is `manual_only` and has no
+  configured threshold. Treat compilation-vs-scene as advisory.
+- **It measures several windows and pools them.** One window is not
+  enough: a single 45s window of one real file measured 2.9% of runtime
+  in short shots and a single 20s window of the same file measured 20.0%,
+  which fall on opposite sides of the quick-cut boundary. `--full`
+  removes the doubt at the cost of decoding everything.
 
 ### Forcing a profile: `--profile NAME`
 

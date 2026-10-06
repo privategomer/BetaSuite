@@ -31,8 +31,16 @@ class TestClassSuppressionZeroMargin( unittest.TestCase ):
         self._had_detector_backend = hasattr( betaconfig, 'detector_backend' )
         if self._had_detector_backend:
             self._orig_detector_backend = betaconfig.detector_backend
+        # These tests swap in a minimal backend that declares no
+        # profiles block. The live profile_by_source_dir names real
+        # profiles, so leaving it in place makes every key a hard
+        # validation error and masks the warning channel under test.
+        # Clearing it keeps the fixture to the one thing it is about.
+        self._orig_source_dirs = getattr( betaconfig, 'profile_by_source_dir', None )
+        betaconfig.profile_by_source_dir = None
 
     def tearDown( self ):
+        betaconfig.profile_by_source_dir = self._orig_source_dirs
         if self._had_detector_backend:
             betaconfig.detector_backend = self._orig_detector_backend
         elif hasattr( betaconfig, 'detector_backend' ):

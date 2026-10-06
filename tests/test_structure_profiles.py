@@ -35,6 +35,7 @@ import unittest
 sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 
 import betaconfig
+import betaconst
 
 import betautils_config as bu_config
 import betautils_detector as bu_detector
@@ -723,3 +724,323 @@ class TestMatchOnValidation( ProfileHarness ):
         # as a valid config failing validation or the reverse.
         self.assertEqual( set( bu_detector.PROFILE_THRESHOLD_KEYS ),
                           { 'cuts_per_min', 'short_shot_fraction' } )
+
+
+class SourceDirHarness( ProfileHarness ):
+    """
+    profile_by_source_dir: the folder convention.
+
+    Drop a video in 'split-screen/' and it is censored as a split-screen
+    layout, no measurement involved. Exists because the useful
+    distinctions are not all measurable (nothing available before
+    detection sees a split-screen layout) and because sorting files into
+    folders is something a person does once and can see at a glance.
+    """
+
+    ROOT = '/videos/uncensored/'
+
+    def setUp( self ):
+        super().setUp()
+        self._saved_dirs = getattr( betaconfig, 'profile_by_source_dir', None )
+        self._saved_patterns = getattr( betaconfig, 'profile_by_path_pattern', None )
+        betaconfig.profile_by_source_dir = None
+        betaconfig.profile_by_path_pattern = None
+        self._saved_root = betaconst.video_path_uncensored
+        betaconst.video_path_uncensored = self.ROOT
+        # A manual_only third variant, because reaching one of those is
+        # the main thing the folder convention exists to do.
+        self.profiles()['variants']['split_screen'] = {
+            'manual_only': True,
+            'item_overrides': { 'exposed_breast': { 'track_max_gap': 2.0 } },
+        }
+        bu_config.invalidate_config_caches()
+
+    def tearDown( self ):
+        betaconst.video_path_uncensored = self._saved_root
+        betaconfig.profile_by_source_dir = self._saved_dirs
+        betaconfig.profile_by_path_pattern = self._saved_patterns
+        super().tearDown()
+
+    def _map( self, mapping ):
+        betaconfig.profile_by_source_dir = mapping
+        bu_config.invalidate_config_caches()
+
+    def pick( self, relative, cuts_per_min=4.0 ):
+        return bu_detector.select_profile_name(
+            cuts_per_min, source_path=self.ROOT + relative )
+
+
+class TestSourceDirParts( SourceDirHarness ):
+    """Where a file sits relative to the uncensored root."""
+
+    def parts( self, relative ):
+        return bu_detector.source_dir_parts( self.ROOT + relative )
+
+    def test_a_file_in_the_root_has_no_folder( self ):
+        # () not None: "in the root" is a real answer, and it is the one
+        # that means "fall through to measurement".
+        self.assertEqual( self.parts( 'loose.mp4' ), () )
+
+    def test_a_file_in_a_folder_reports_that_folder( self ):
+        self.assertEqual( self.parts( 'scene/a.mp4' ), ( 'scene', ) )
+
+    def test_nested_folders_report_every_segment( self ):
+        self.assertEqual( self.parts( 'comps/split/a.mp4' ), ( 'comps', 'split' ) )
+
+    def test_segments_are_lowercased( self ):
+        self.assertEqual( self.parts( 'Scene/A.mp4' ), ( 'scene', ) )
+
+    def test_a_file_outside_the_tree_is_none_not_empty( self ):
+        # None and () must not collapse: () means "in the root" and
+        # takes measurement, None means the question does not apply.
+        self.assertIsNone(
+            bu_detector.source_dir_parts( '/somewhere/else/a.mp4' ) )
+
+    def test_no_path_is_none( self ):
+        self.assertIsNone( bu_detector.source_dir_parts( None ) )
+        self.assertIsNone( bu_detector.source_dir_parts( '' ) )
+
+    def test_a_missing_root_is_none_rather_than_a_guess( self ):
+        betaconst.video_path_uncensored = None
+        self.assertIsNone( self.parts( 'scene/a.mp4' ) )
+
+    def test_redundant_separators_do_not_invent_segments( self ):
+        self.assertEqual( self.parts( 'scene//a.mp4' ), ( 'scene', ) )
+        self.assertEqual( self.parts( './scene/a.mp4' ), ( 'scene', ) )
+
+
+class TestSourceDirSelection( SourceDirHarness ):
+
+    def test_a_mapped_folder_supplies_the_profile( self ):
+        self._map( { 'split-screen': 'split_screen' } )
+        self.assertEqual( self.pick( 'split-screen/a.mp4' ), 'split_screen' )
+
+    def test_a_mapped_folder_beats_the_measurement( self ):
+        # A rate that would otherwise select compilation.
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual( self.pick( 'scene/a.mp4', cuts_per_min=999.0 ), 'scene' )
+
+    def test_a_file_in_the_root_is_measured_not_mapped( self ):
+        # The stated rule: only a folder named in the mapping opts out of
+        # measurement. The root never does.
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual( self.pick( 'loose.mp4', cuts_per_min=999.0 ), 'compilation' )
+
+    def test_an_unmapped_folder_is_measured_not_mapped( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual(
+            self.pick( 'titty_drops/a.mp4', cuts_per_min=999.0 ), 'compilation' )
+
+    def test_a_folder_rule_reaches_a_manual_only_profile( self ):
+        # The whole point: split_screen is invisible to measurement, so
+        # no cut rate can reach it however extreme.
+        self.assertNotEqual(
+            bu_detector.select_profile_name( 99999.0 ), 'split_screen',
+            "precondition: measurement must never pick a manual_only profile" )
+        self._map( { 'split-screen': 'split_screen' } )
+        self.assertEqual( self.pick( 'split-screen/a.mp4' ), 'split_screen' )
+
+    def test_case_does_not_matter( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual( self.pick( 'Scene/a.mp4' ), 'scene' )
+        self.assertEqual( self.pick( 'SCENE/a.mp4' ), 'scene' )
+
+    def test_a_key_spelled_with_stray_separators_still_matches( self ):
+        self._map( { 'scene/': 'scene' } )
+        self.assertEqual( self.pick( 'scene/a.mp4' ), 'scene' )
+
+    def test_a_subfolder_inherits_its_parents_rule( self ):
+        self._map( { 'compilation': 'compilation' } )
+        self.assertEqual( self.pick( 'compilation/2024/a.mp4' ), 'compilation' )
+
+    def test_the_deepest_key_wins( self ):
+        self._map( { 'compilation': 'compilation',
+                     'compilation/split-screen': 'split_screen' } )
+        self.assertEqual( self.pick( 'compilation/a.mp4' ), 'compilation' )
+        self.assertEqual(
+            self.pick( 'compilation/split-screen/a.mp4' ), 'split_screen' )
+
+    def test_the_deepest_key_wins_whatever_the_declaration_order( self ):
+        # Dict order must not decide which rule applies, or adding a key
+        # could silently reorder the others.
+        deep_first = { 'compilation/split-screen': 'split_screen',
+                       'compilation': 'compilation' }
+        self._map( deep_first )
+        self.assertEqual(
+            self.pick( 'compilation/split-screen/a.mp4' ), 'split_screen' )
+
+    def test_a_sibling_prefix_does_not_match( self ):
+        # 'comp' must not claim 'compilation/': folder keys are path
+        # segments, not string prefixes.
+        self._map( { 'comp': 'scene' } )
+        self.assertEqual(
+            self.pick( 'compilation/a.mp4', cuts_per_min=999.0 ), 'compilation' )
+
+    def test_no_mapping_at_all_is_harmless( self ):
+        self._map( None )
+        self.assertEqual( self.pick( 'scene/a.mp4', cuts_per_min=999.0 ),
+                          'compilation' )
+        self._map( {} )
+        self.assertEqual( self.pick( 'scene/a.mp4', cuts_per_min=999.0 ),
+                          'compilation' )
+
+    def test_an_unknown_profile_name_falls_through_and_fails_validation( self ):
+        self._map( { 'scene': 'nosuchprofile' } )
+        self.assertEqual( self.pick( 'scene/a.mp4', cuts_per_min=999.0 ),
+                          'compilation',
+                          "an unknown name must not select nothing silently" )
+        self.assertTrue( any( 'profile_by_source_dir' in e
+                              for e in bu_config._collect_validation_errors() ) )
+
+    def test_the_mapping_is_in_the_censor_key( self ):
+        # A retune of the folder map changes rendered output, so it must
+        # not reuse a cached render made under the old map.
+        import betautils_cache_paths as bu_cache
+        self._map( None )
+        before = bu_cache.censor_key()
+        self._map( { 'scene': 'scene' } )
+        self.assertNotEqual( before, bu_cache.censor_key() )
+
+    def test_the_resolved_settings_follow_the_folder( self ):
+        self._map( { 'scene': 'scene', 'quick': 'compilation' } )
+        slow = bu_detector.get_profile_item_overrides(
+            self.pick( 'scene/a.mp4' ), 'exposed_breast', self.backend )
+        fast = bu_detector.get_profile_item_overrides(
+            self.pick( 'quick/a.mp4' ), 'exposed_breast', self.backend )
+        self.assertNotEqual( slow['track_max_gap'], fast['track_max_gap'] )
+
+
+class TestSourceDirPrecedence( SourceDirHarness ):
+    """
+    Folder rules sit below path patterns and above measurement.
+
+    A path pattern can name a single file, and a rule about one file is a
+    more specific statement than a rule about a folder of them.
+    """
+
+    def test_an_explicit_profile_beats_a_folder_rule( self ):
+        self._map( { 'scene': 'scene' } )
+        betaconfig.force_structure_profile = 'compilation'
+        bu_config.invalidate_config_caches()
+        self.assertEqual( self.pick( 'scene/a.mp4' ), 'compilation' )
+
+    def test_a_path_pattern_beats_a_folder_rule( self ):
+        self._map( { 'scene': 'scene' } )
+        betaconfig.profile_by_path_pattern = { '*oddball*': 'compilation' }
+        bu_config.invalidate_config_caches()
+        self.assertEqual( self.pick( 'scene/oddball.mp4' ), 'compilation' )
+        self.assertEqual( self.pick( 'scene/ordinary.mp4' ), 'scene' )
+
+    def test_a_folder_rule_beats_the_off_switch( self ):
+        # Same reasoning as --profile: sorting a file into split-screen/
+        # and silently getting no profile because profiles were disabled
+        # is the looks-like-it-worked failure.
+        self._map( { 'scene': 'scene' } )
+        betaconfig.default_profile_enabled = False
+        bu_config.invalidate_config_caches()
+        self.assertEqual( self.pick( 'scene/a.mp4' ), 'scene' )
+        self.assertIsNone( self.pick( 'loose.mp4' ),
+                           "an unmapped file still honours the off switch" )
+
+
+class TestSelectionReason( SourceDirHarness ):
+    """
+    Every selection reports which rule decided.
+
+    Without it a folder key matching nothing on disk looks configured
+    while quietly falling through to measurement, and the log gives no
+    way to tell the two apart.
+    """
+
+    def reason( self, relative, cuts_per_min=4.0 ):
+        return bu_detector.profile_selection(
+            cuts_per_min, source_path=self.ROOT + relative )[1]
+
+    def test_the_folder_rule_is_named( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertIn( 'scene', self.reason( 'scene/a.mp4' ) )
+        self.assertIn( 'folder', self.reason( 'scene/a.mp4' ) )
+
+    def test_the_reason_names_the_key_that_matched_not_the_files_folder( self ):
+        # A file in compilation/2024/ matched the key 'compilation'.
+        # Reporting '2024' would send someone looking for a key that
+        # does not exist.
+        self._map( { 'compilation': 'compilation' } )
+        reason = self.reason( 'compilation/2024/a.mp4' )
+        self.assertIn( 'compilation', reason )
+        self.assertNotIn( '2024', reason )
+
+    def test_measurement_is_named_when_it_decides( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertIn( 'measured', self.reason( 'loose.mp4', cuts_per_min=999.0 ) )
+
+    def test_a_forced_profile_is_named( self ):
+        betaconfig.force_structure_profile = 'scene'
+        bu_config.invalidate_config_caches()
+        self.assertIn( 'profile', self.reason( 'loose.mp4' ) )
+
+    def test_a_path_pattern_is_named( self ):
+        betaconfig.profile_by_path_pattern = { '*x*': 'scene' }
+        bu_config.invalidate_config_caches()
+        self.assertIn( 'pattern', self.reason( 'x.mp4' ) )
+
+    def test_the_default_is_named_when_nothing_was_measured( self ):
+        self.assertIn( 'default', self.reason( 'loose.mp4', cuts_per_min=None ) )
+
+    def test_select_profile_name_agrees_with_profile_selection( self ):
+        # The wrapper must not drift from the function it wraps.
+        self._map( { 'scene': 'scene', 'q': 'compilation' } )
+        for relative in ( 'scene/a.mp4', 'q/a.mp4', 'loose.mp4', 'unmapped/a.mp4' ):
+            path = self.ROOT + relative
+            self.assertEqual(
+                bu_detector.select_profile_name( 999.0, source_path=path ),
+                bu_detector.profile_selection( 999.0, source_path=path )[0],
+                relative )
+
+
+class TestSourceDirValidation( SourceDirHarness ):
+
+    def errors( self ):
+        return [ e for e in bu_config._collect_validation_errors()
+                 if 'profile_by_source_dir' in e ]
+
+    def test_a_good_mapping_passes( self ):
+        self._map( { 'scene': 'scene', 'comps/2024': 'compilation' } )
+        self.assertEqual( self.errors(), [] )
+
+    def test_a_non_dict_fails( self ):
+        self._map( [ 'scene' ] )
+        self.assertTrue( any( 'must be a dict' in e for e in self.errors() ) )
+
+    def test_an_unknown_profile_name_fails( self ):
+        self._map( { 'scene': 'nope' } )
+        self.assertTrue( any( 'names no variant' in e for e in self.errors() ) )
+
+    def test_an_empty_key_fails( self ):
+        self._map( { '': 'scene' } )
+        self.assertTrue( self.errors() )
+
+    def test_a_key_that_normalises_to_nothing_fails( self ):
+        # '/' or '.' would match every file and silently cancel the
+        # root-falls-through-to-measurement rule.
+        for key in ( '.', './', ' ' ):
+            self._map( { key: 'scene' } )
+            self.assertTrue( self.errors(), repr( key ) )
+
+    def test_traversal_fails( self ):
+        self._map( { '../elsewhere': 'scene' } )
+        self.assertTrue( any( 'climbs above' in e for e in self.errors() ) )
+
+    def test_an_absolute_path_fails( self ):
+        # A pasted absolute path would match nothing, silently.
+        self._map( { '/home/me/vids/scene': 'scene' } )
+        self.assertTrue( any( 'absolute' in e for e in self.errors() ) )
+
+    def test_two_spellings_of_one_folder_fail( self ):
+        # Both would match, and which won would depend on dict order.
+        self._map( { 'comps': 'scene', 'Comps/': 'compilation' } )
+        self.assertTrue( any( 'spelled differently' in e for e in self.errors() ) )
+
+    def test_a_non_string_key_fails( self ):
+        self._map( { 5: 'scene' } )
+        self.assertTrue( self.errors() )

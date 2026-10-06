@@ -527,7 +527,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             shot_cut_times, scanned_seconds )
         short_shot_fraction = bu_detector.short_shot_fraction_for(
             shot_cut_times, scanned_seconds )
-        profile_name = bu_detector.select_profile_name(
+        profile_name, profile_reason = bu_detector.profile_selection(
             cuts_per_min, source_path=os.path.join( root, fname ),
             short_shot_fraction=short_shot_fraction )
         sample_fps = bu_detector.get_profile_sample_fps( profile_name )
@@ -544,9 +544,13 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             else:
                 measured = ( "%.1f cuts/min"%(cuts_per_min,)
                              if cuts_per_min is not None else None )
-            logger.info( "structure profile: %s (%s), sampling at %s fps"%(
-                profile_name,
-                measured or "no shot-cut data, using the default",
+            # Name the rule that decided, not only the measurement. A
+            # folder key that matches no folder on disk looks configured
+            # while quietly falling through to measurement, and without
+            # this the log gives no way to tell the two apart.
+            logger.info( "structure profile: %s via %s (%s), sampling at %s fps"%(
+                profile_name, profile_reason,
+                measured or "no shot-cut data",
                 sample_fps ) )
 
         if paths is None or paths['sample_fps'] != sample_fps:

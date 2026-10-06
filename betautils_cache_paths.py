@@ -299,6 +299,7 @@ def censor_identity( backend_name=None ):
         # and --profile changes that without touching the block.
         'force_structure_profile':   getattr( betaconfig, 'force_structure_profile', None ),
         'profile_by_path_pattern':   getattr( betaconfig, 'profile_by_path_pattern', None ),
+        'profile_by_source_dir':     getattr( betaconfig, 'profile_by_source_dir', None ),
     }
 
 

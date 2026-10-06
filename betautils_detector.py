@@ -57,6 +57,7 @@ import importlib
 import os
 
 import betaconfig
+import betaconst
 
 
 # Process-scoped backend override, read from the environment rather than
@@ -632,6 +633,149 @@ def get_profiles( backend_name=None ):
     return profiles if isinstance( profiles, dict ) else {}
 
 
+def _dir_key_parts( key ):
+    """
+    A directory key split into comparable segments.
+
+    Accepts either separator and tolerates doubled or trailing ones, so
+    'comps', 'comps/', 'comps//' and 'comps\\' are one key. A LEADING
+    separator is tolerated here but rejected by validation, because at
+    that point the key is indistinguishable from a pasted absolute path,
+    and an absolute path that silently matches nothing is worse than a
+    rejected one.
+
+    Segments are lowercased: a key that silently failed to match because
+    the folder on disk is 'Comps' would hand that file to automatic
+    selection while looking configured, and a quietly wrong profile is
+    the failure this module works hardest to avoid.
+
+    '..' is NOT filtered out here. Callers rely on seeing it to detect a
+    path that climbed out of the tree.
+    """
+    text = str( key ).replace( '\\', '/' )
+    return tuple( part.lower() for part in text.split( '/' )
+                  if part not in ( '', '.' ) )
+
+
+def source_dir_parts( source_path, uncensored_root=None ):
+    """
+    Where a source file sits relative to the uncensored-video root.
+
+    Args:
+        source_path: Path to the source video, absolute or relative.
+        uncensored_root: Root of the source tree. Defaults to
+            betaconst.video_path_uncensored.
+
+    Returns:
+        A tuple of lowercased directory segments between the root and
+        the file, empty for a file sitting directly in the root, or None
+        when the file is outside the tree or the root is unknown. None
+        and () are different facts: () means "in the root", which takes
+        automatic selection, while None means the question does not
+        apply.
+    """
+    if not source_path:
+        return None
+    root = uncensored_root or getattr( betaconst, 'video_path_uncensored', None )
+    if not root:
+        return None
+    try:
+        relative = os.path.relpath( os.path.abspath( str( source_path ) ),
+                                    os.path.abspath( str( root ) ) )
+    except ValueError:
+        # Windows: different drives have no relative path between them.
+        return None
+    parts = _dir_key_parts( os.path.dirname( relative ) )
+    if parts and parts[0] == '..':
+        return None
+    return parts
+
+
+def profile_for_source_dir( source_path, backend_name=None, uncensored_root=None ):
+    """
+    The profile a file's own folder asks for, or None.
+
+    See source_dir_rule, which also reports WHICH key matched. This
+    returns just the name.
+    """
+    return source_dir_rule( source_path, backend_name, uncensored_root )[0]
+
+
+def source_dir_rule( source_path, backend_name=None, uncensored_root=None ):
+    """
+    The profile a file's own folder asks for, and the key that said so.
+
+    betaconfig.profile_by_source_dir maps a folder, named relative to
+    the uncensored-video root, to a profile:
+
+        profile_by_source_dir = {
+            'scene':        'scene',
+            'compilation':  'compilation',
+            'quick-cut':    'quick_cut',
+            'split-screen': 'split_screen',
+        }
+
+    This is the folder convention: drop a video in 'split-screen/' and it
+    is censored as a split-screen layout, with no measurement involved.
+    It exists because the useful distinctions are not all measurable -
+    a split-screen layout is invisible to every signal available before
+    detection runs - and because sorting files into folders is something
+    a person does once and can see at a glance.
+
+    Add a folder by adding a line. The keys are ordinary folder names,
+    not globs, so nothing has to be escaped and a name can never match
+    part of a filename by accident.
+
+    NESTING. A key may name a nested folder, and the DEEPEST matching
+    key wins, so a child folder overrides its parent:
+
+        profile_by_source_dir = {
+            'compilation':              'compilation',
+            'compilation/split-screen': 'split_screen',
+        }
+
+    That is how one broad folder holding mixed material gets a corner
+    for the exception, rather than forcing a choice that is wrong for
+    part of its contents.
+
+    NOT MAPPED MEANS MEASURED. A file directly in the root, or in any
+    folder with no key, falls through to automatic selection by measured
+    shot structure. Only a folder named here opts out of measurement.
+
+    An unknown profile name is ignored here and reported by validation.
+    Selecting nothing silently would render the wrong thing and report
+    success.
+
+    Returns:
+        (profile_name, matched_key) where matched_key is the folder key
+        that decided, as a '/'-joined string, for the run log. Both are
+        None when no key matches.
+    """
+    mapping = getattr( betaconfig, 'profile_by_source_dir', None )
+    if not mapping:
+        return ( None, None )
+    parts = source_dir_parts( source_path, uncensored_root )
+    if not parts:
+        # None (outside the tree) and () (in the root) both mean no
+        # folder rule applies.
+        return ( None, None )
+    variants = get_profiles( backend_name ).get( 'variants' ) or {}
+    best_depth, best_name, best_key = 0, None, None
+    for key, name in mapping.items():
+        key_parts = _dir_key_parts( key )
+        if not key_parts:
+            # An empty key would match every file, which is what the
+            # root fallthrough already means. Ignored, and reported by
+            # validation.
+            continue
+        if parts[:len( key_parts )] == key_parts and len( key_parts ) > best_depth:
+            best_depth = len( key_parts )
+            best_name, best_key = name, '/'.join( key_parts )
+    if best_name is None or best_name not in variants:
+        return ( None, None )
+    return ( best_name, best_key )
+
+
 def profile_for_path( source_path, backend_name=None ):
     """
     The profile a file's own path asks for, or None.
@@ -771,7 +915,40 @@ def median_shot_seconds_for( shot_cut_times, scanned_seconds=None ):
 def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
                          short_shot_fraction=None ):
     """
-    Which profile this video's measured shot structure should use.
+    Which profile this video should use. See profile_selection.
+
+    Returns just the name. Callers that want to report WHY a profile was
+    chosen use profile_selection instead.
+    """
+    return profile_selection( cuts_per_min, backend_name, source_path,
+                              short_shot_fraction )[0]
+
+
+def profile_selection( cuts_per_min, backend_name=None, source_path=None,
+                       short_shot_fraction=None ):
+    """
+    Which profile this video should use, and which rule decided.
+
+    PRECEDENCE, most specific first:
+
+        1. --profile / force_structure_profile   one run, one answer
+        2. profile_by_path_pattern               a glob, can name one file
+        3. profile_by_source_dir                 the folder convention
+        4. measured shot structure               match_on + thresholds
+        5. the configured default
+
+    A path pattern outranks the folder convention because it can target
+    a single file, and a rule about one file is a more specific statement
+    than a rule about a folder of them. Both outrank measurement, because
+    both are someone saying what the footage is rather than a proxy
+    guessing.
+
+    Returns:
+        (profile_name, reason). profile_name is None when this backend
+        has no profiles or profiles are switched off. reason is a short
+        phrase naming the rule that decided, for the run log: a folder
+        key that matches nothing on disk otherwise looks configured
+        while quietly falling through to measurement.
 
     Two signals are available, both from the shot-cut scan, which is the
     only measurement that has run by the time a profile must be chosen.
@@ -800,10 +977,6 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
         source_path: Full path, for profile_by_path_pattern rules.
         short_shot_fraction: Share of runtime in short shots, 0 to 1, or
             None when unavailable. Same None semantics.
-
-    Returns:
-        A profile name, or None when this backend has no profiles or
-        profiles are switched off.
     """
     profiles = get_profiles( backend_name )
     variants = profiles.get( 'variants' ) or {}
@@ -814,24 +987,30 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
     # confusing failure the off-switch comment below describes.
     forced = getattr( betaconfig, 'force_structure_profile', None )
     if forced:
-        return forced if forced in variants else None
+        return ( ( forced, 'forced by --profile' ) if forced in variants
+                 else ( None, 'forced profile %r is not a variant'%(forced,) ) )
 
     # A path rule is a standing explicit choice, so it outranks the cut
     # rate and the off switch for the same reason --profile does. It loses
     # to --profile, which is the one-off override.
     by_path = profile_for_path( source_path, backend_name )
     if by_path:
-        return by_path
+        return ( by_path, 'matched profile_by_path_pattern' )
+
+    # The folder convention. Below path patterns, above measurement.
+    by_dir, matched_key = source_dir_rule( source_path, backend_name )
+    if by_dir:
+        return ( by_dir, 'source folder %s/'%( matched_key, ) )
 
     # The off switch. Without this check the setting existed in config
     # and in the censor key but was read by nothing, so turning profiles
     # off changed the output filename and not the output - the most
     # confusing possible failure, because it looks like it worked.
     if not getattr( betaconfig, 'default_profile_enabled', True ):
-        return None
+        return ( None, 'profiles disabled' )
 
     if not variants:
-        return None
+        return ( None, 'backend has no profiles' )
 
     # manual_only profiles are invisible to automatic selection. They
     # exist so a profile can be written for footage the cut rate cannot
@@ -840,18 +1019,22 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
     auto = { name: variant for name, variant in variants.items()
              if not variant.get( 'manual_only' ) }
     if not auto:
-        return None
+        return ( None, 'every profile is manual_only' )
 
     default_name = profiles.get( 'default' )
+    fallback = ( ( default_name, 'the configured default' )
+                 if default_name in auto
+                 else ( None, 'the default names no auto-selectable variant' ) )
+
     match_on = profiles.get( 'match_on', 'cuts_per_min' )
     threshold_key = PROFILE_THRESHOLD_KEYS.get( match_on )
     if threshold_key is None:
-        return default_name if default_name in auto else None
+        return fallback
 
     measured = ( short_shot_fraction if match_on == 'short_shot_fraction'
                  else cuts_per_min )
     if measured is None:
-        return default_name if default_name in auto else None
+        return fallback
 
     # Highest threshold the measurement clears, so thresholds can be
     # written in any order and adding one cannot silently reorder the
@@ -866,8 +1049,8 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
             best_name, best_threshold = name, threshold
 
     if best_name is not None:
-        return best_name
-    return default_name if default_name in auto else None
+        return ( best_name, 'measured %s'%( match_on, ) )
+    return fallback
 
 
 def get_profile_sample_fps( profile_name, backend_name=None ):
