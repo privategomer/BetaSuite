@@ -27,10 +27,17 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  cross_size_dedup['iou_threshold'].
     hysteresis   What does each label's score distribution look like?
                  Suggests min_prob and min_prob_continue.
-    structure    Per video, not pooled: how fast does it cut, how many
-                 subjects are on screen, where do they sit in frame?
-                 Decides whether footage needs per-profile settings, and
-                 which profile a file belongs to.
+    structure    Per source file, not pooled: how fast does it cut, how
+                 many subjects are on screen, where do they sit in frame?
+                 Recommends a source folder per file, in uncensored_vids/
+                 and in the staging tree (resources/source/), and with
+                 --write-move-script writes the safe moves as a script.
+    structure-scan
+                 Whole-file shot-cut scans for every source file not yet
+                 scanned, in parallel on the CPU, written to the cache the
+                 next real run reads. --geometry-slices N also runs
+                 detection (no render) on N slices spread through each
+                 file, which is what split-screen is recognised from.
     all          Every read-only subcommand, in order.
 
 RUNNING IT
@@ -51,8 +58,9 @@ OUTPUT
     the console stays readable. Machine-readable results are written
     alongside it as results.json.
 
-    structure / geometry / suppression / dedup / hysteresis read the
-    detection caches a real run already produced. They do not run the model, so
+    geometry / suppression / dedup / hysteresis read the detection
+    caches a real run already produced, and structure reads those plus
+    the shot-cut caches. They do not run the model, so
     they are fast and they describe exactly what your last real run saw.
     Run betatv.py first if the cache is empty.
 """
@@ -198,7 +206,7 @@ def find_sample_videos( limit ):
     found = []
     for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
         for fname in sorted( file_names ):
-            if fname.lower().endswith( ( '.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v' ) ):
+            if fname.lower().endswith( VIDEO_EXTENSIONS ):
                 found.append( os.path.join( root, fname ) )
     return found[:limit]
 
@@ -1249,53 +1257,6 @@ def _folder_for_profile( profile_name ):
         len( bu_detector._dir_key_parts( key ) ), key ) )[0]
 
 
-def _recommend_profile( row, quick_threshold, quick_profile ):
-    """
-    Which profile a measured file's structure puts it in, and why.
-
-    Order matters. Split-screen is tested first because its failure mode
-    is spatial, not temporal: a generous match radius merges two panes'
-    subjects into one track and drags a censor across the divider, and
-    that happens whatever the cut rate. A split-screen compilation is
-    still a split-screen problem first.
-
-    Returns (profile_name, reason).
-    """
-    p90 = row.get( 'p90_simultaneous' ) or 0
-    left = row.get( 'left_half_fraction' )
-    low, high = SPLIT_LEFT_HALF_RANGE
-    if ( p90 >= SPLIT_MIN_P90_SIMULTANEOUS
-         and left is not None and low <= left <= high ):
-        return ( 'split_screen',
-                 '%d boxes live at once, %.0f%% of them in the left half: '
-                 'subjects sit on both sides and stay there'%( p90, 100 * left ) )
-
-    short = row.get( 'short_shot_fraction' )
-    mid = row.get( 'mid_shot_fraction' )
-
-    if short is None:
-        # Measured, and no cuts were found. A single continuous take as
-        # far as this can see. It is also what split-screen looks like,
-        # which is why the spatial test runs first.
-        return ( 'scene', 'no shot cuts found' )
-
-    if ( quick_threshold is not None and quick_profile
-         and short >= quick_threshold ):
-        return ( quick_profile,
-                 '%.0f%% of runtime in sub-%gs shots, at or over the '
-                 'configured %.0f%%'%( 100 * short, bu_detector.SHORT_SHOT_SECONDS,
-                                       100 * quick_threshold ) )
-
-    if mid is not None and mid >= COMPILATION_MIN_RUNTIME_FRACTION:
-        return ( 'compilation',
-                 '%.0f%% of runtime in sub-%gs shots, at or over this '
-                 'bench\'s %.0f%%'%( 100 * mid, COMPILATION_SHOT_SECONDS,
-                                     100 * COMPILATION_MIN_RUNTIME_FRACTION ) )
-
-    return ( 'scene', 'only %.0f%% of runtime in sub-%gs shots'%(
-        100 * ( mid or 0.0 ), COMPILATION_SHOT_SECONDS ) )
-
-
 def _write_move_script( path, moves, logger ):
     """
     Write a reviewable shell script that sorts the source tree.
@@ -1370,265 +1331,448 @@ def _shell_quote( text ):
     return "'" + str( text ).replace( "'", "'\\''" ) + "'"
 
 
-def _bench_structure_one( args, logger, config, raw_boxes ):
+# --- Source tree survey ----------------------------------------------------
+# structure works per SOURCE FILE, enumerated from disk, not per detection
+# cache. It used to iterate the caches of one detection configuration at
+# the global sample rate, so every file a profile had sampled at another
+# rate was invisible: 8 of 56 files in one survey, exactly the 8 the app
+# had measured as quick_cut. Starting from the files also lets it say
+# which ones were never measured instead of silently omitting them.
+
+VIDEO_EXTENSIONS = ( '.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v' )
+
+# Below this many sampled frames holding a censored box, the spatial
+# signals are noise: the file that started this had boxes in ONE frame.
+# A judgment call, not a tuned value: one 20s slice at 9 fps is 180
+# samples, and 30 is a sixth of that.
+SPLIT_MIN_FRAMES_WITH_BOXES = 30
+
+
+def _source_trees():
     """
-    Describe each source video's STRUCTURE, per video rather than pooled.
+    (label, root) for every tree a source video can sit in.
 
-    Every other subcommand pools all footage into one distribution,
-    which is the right thing when the question is "what does this model
-    do". It is the wrong thing when the question is "does this file need
-    different settings from that one", because a compilation and a long
-    single-scene clip average into a description of neither.
-
-    What this reports, per video:
-      cuts/min, median shot length   how fast the footage cuts
-      simultaneous boxes             how many subjects are on screen
-      spatial spread                 whether boxes cluster in separate
-                                     screen regions (split-screen) or
-                                     move through one
-      box area                       how large the subject is in frame
-
-    These are STRUCTURAL properties, readable from caches that already
-    exist. They are deliberately not content labels: "solo" and "couple"
-    cannot be recovered from detections, but "cuts four times a second"
-    and "boxes live in two fixed vertical halves" can, and those are
-    what actually want different tracking and timing settings.
-
-    Nothing here changes config. It is a classifier input: read it to
-    decide which files deserve a profile, and to check whether a profile
-    you already have matches the footage you are about to run.
+    The working tree betatv processes, then the staging tree
+    (video_path_source_backup). The same folder names mean the same
+    profiles in both, so a file can be sorted while it waits in staging
+    and keep its profile when it is moved across.
     """
+    trees = [ ( 'uncensored_vids', betaconst.video_path_uncensored ) ]
+    staging = getattr( betaconst, 'video_path_source_backup', None )
+    if staging and ( os.path.realpath( staging )
+                     != os.path.realpath( betaconst.video_path_uncensored ) ):
+        trees.append( ( 'source', staging ) )
+    return trees
+
+
+def _source_videos():
+    """Every video file in every source tree, with where it sits."""
+    found = []
+    for tree_label, root in _source_trees():
+        if not os.path.isdir( root ):
+            continue
+        for dirpath, dirnames, filenames in os.walk( root ):
+            dirnames.sort()
+            for name in sorted( filenames ):
+                if not name.lower().endswith( VIDEO_EXTENSIONS ):
+                    continue
+                path = os.path.join( dirpath, name )
+                relative = os.path.relpath( dirpath, root )
+                found.append( {
+                    'path': path,
+                    'name': name,
+                    'tree': tree_label,
+                    'tree_root': root,
+                    # Original case, for display and for building moves;
+                    # the folder RULE is matched case-insensitively.
+                    'current_folder': ( '(root)' if relative in ( '.', '' )
+                                        else relative.replace( os.sep, '/' ) ),
+                } )
+    return found
+
+
+def _censored_boxes_by_hash( file_hashes, labels, backend_name=None, variant_names=None ):
+    """
+    Censored-label boxes per file, from ONE detection configuration each.
+
+    Any configuration will do for geometry, at any sample rate, preview
+    slices included: where boxes sit does not depend on how often they
+    were sampled. Mixing configurations would not do: two picture sizes
+    or two backends see the same frame, and their boxes would count as
+    two simultaneous subjects. So per file this keeps the configuration
+    that saw the most distinct sampled frames, with every slice of it.
+
+    backend_name and variant_names narrow which configurations count,
+    for --backend and --variants. They used to be honoured through the
+    per-configuration loop this replaced, and a flag that parses and is
+    then ignored is worse than no flag.
+
+    Returns:
+        {file_hash: (boxes, configuration_label)}
+    """
+    groups = {}
+    for path in glob.glob( os.path.join( bu_cache.VID_HASH_DIR, '*.gz' ) ):
+        parsed = bu_cache.parse_any_cache_name( path )
+        if not parsed or parsed['file_hash'] not in file_hashes:
+            continue
+        if backend_name and parsed['backend'] != backend_name:
+            continue
+        if variant_names and bu_cache.configuration_variant_of_cache_filename(
+                path ) not in variant_names:
+            continue
+        key = ( parsed['file_hash'], parsed['backend'], parsed['size'],
+                parsed['fps'], parsed['min_prob'], parsed['detection_key'] )
+        groups.setdefault( key, [] ).append( path )
+
+    best = {}
+    for key, paths in groups.items():
+        boxes = []
+        for path in paths:
+            try:
+                boxes.extend( b for b in bu_hash.read_json( path )
+                              if b.get( 'class_id' ) in labels )
+            except Exception:                              # noqa: BLE001
+                continue
+        frames = len( { round( float( b.get( 't', 0 ) ), 3 ) for b in boxes } )
+        file_hash = key[0]
+        if file_hash not in best or frames > best[file_hash][0]:
+            label = '%s @%d %gfps'%( key[1], key[2], key[3] )
+            best[file_hash] = ( frames, boxes, label )
+    return { file_hash: ( boxes, label ) for file_hash, ( _f, boxes, label ) in best.items() }
+
+
+def _geometry_of( boxes, frame_width, frame_height ):
+    """Spatial structure of one file's censored boxes. See bench_structure."""
     import statistics
 
-    fps = args.sample_fps or betaconfig.video_censor_fps
+    per_frame = {}
+    for box in boxes:
+        key = round( float( box.get( 't', 0 ) ), 3 )
+        per_frame[key] = per_frame.get( key, 0 ) + 1
+    counts = sorted( per_frame.values() )
+    xs = [ float( b.get( 'x', 0 ) ) + float( b.get( 'w', 0 ) ) / 2 for b in boxes ]
+    left_half = None
+    if frame_width and xs:
+        left_half = sum( 1 for x in xs if x < frame_width / 2 ) / len( xs )
+    area_fraction = None
+    if frame_width and frame_height and boxes:
+        area_fraction = statistics.median(
+            float( b.get( 'w', 0 ) ) * float( b.get( 'h', 0 ) ) for b in boxes
+        ) / float( frame_width * frame_height )
+    return {
+        'detections': len( boxes ),
+        'frames_with_boxes': len( counts ),
+        'median_simultaneous': statistics.median( counts ) if counts else 0,
+        'p90_simultaneous': counts[int( 0.9 * ( len( counts ) - 1 ) )] if counts else 0,
+        'left_half_fraction': round( left_half, 3 ) if left_half is not None else None,
+        'median_area_fraction': round( area_fraction, 5 ) if area_fraction else None,
+    }
+
+
+def _measure_source( source, file_hash, boxes, geometry_label, fps, threshold ):
+    """One row: timing from the best cached cut scan, geometry from boxes."""
+    duration = bu_video.probe_duration_seconds( source['path'] )
+    cached = bu_video.cached_shot_cuts( file_hash, fps, threshold, duration )
+    if cached is None:
+        signals = bu_detector.structure_signals( None, None )
+        mid_fraction = None
+        evidence = None
+    else:
+        signals = bu_detector.structure_signals( cached.cuts, cached.scanned_seconds )
+        mid_fraction = ( bu_detector.short_shot_fraction_for(
+                             cached.cuts, cached.scanned_seconds, COMPILATION_SHOT_SECONDS )
+                         if signals.is_measured else None )
+        evidence = ( 'whole file' if cached.is_whole_file
+                     else 'slice' ) if signals.is_measured else None
+    width, height = bu_tuning.frame_size_for_video( source['path'] )
+    row = {
+        'file_hash': file_hash,
+        'source': source['name'],
+        'source_path': source['path'],
+        'tree': source['tree'],
+        'tree_root': source['tree_root'],
+        'current_folder': source['current_folder'],
+        'duration_seconds': round( duration, 1 ) if duration else None,
+        'scanned_seconds': ( round( signals.scanned_seconds, 1 )
+                             if signals.scanned_seconds is not None else None ),
+        'timing_evidence': evidence,
+        'cuts': signals.cut_count,
+        'cuts_per_min': ( round( signals.cuts_per_min, 1 )
+                          if signals.cuts_per_min is not None else None ),
+        'median_shot_seconds': ( round( signals.median_shot_seconds, 2 )
+                                 if signals.median_shot_seconds is not None else None ),
+        'short_shot_fraction': ( round( signals.short_shot_fraction, 4 )
+                                 if signals.short_shot_fraction is not None else None ),
+        'mid_shot_fraction': round( mid_fraction, 4 ) if mid_fraction is not None else None,
+        'geometry_configuration': geometry_label,
+    }
+    row.update( _geometry_of( boxes, width, height ) )
+    return row
+
+
+def bench_structure( args, logger ):
+    """
+    Describe each source video's STRUCTURE, per file, and say which
+    source folder it belongs in.
+
+    What this reports, per file:
+      scanned, evidence              how much footage the timing numbers
+                                     rest on, and whether it was the
+                                     whole file or a slice
+      cuts/min, <1s, <10s            how fast the footage cuts, as shares
+                                     of RUNTIME
+      frames, p90, L-half            how many sampled frames held a
+                                     censored box, how many boxes share a
+                                     frame, which half of the screen
+                                     they sit in
+      belongs in                     the recommended folder
+
+    Timing comes from shot-cut caches, preferring a whole-file scan
+    (betabench structure-scan writes them, and the next real run reuses
+    them). Geometry comes from whatever detection caches exist.
+
+    Nothing here changes config or moves a file. --write-move-script
+    writes a reviewable script of the moves that pass every safety rule
+    in _move_verdict; the rest are listed for review.
+    """
+    fps = betaconfig.video_censor_fps
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
     labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
 
-    by_hash = {}
-    for raw in raw_boxes:
-        file_hash = raw.get( '_file_hash' )
-        if file_hash:
-            by_hash.setdefault( file_hash, [] ).append( raw )
-    if not by_hash:
-        logger.warning( "cached detections carry no source video tag; structure needs one "
-                        "per video, so there is nothing to report" )
+    sources = _source_videos()
+    if not sources:
+        logger.warning( "no source videos under %s"%(
+            ' or '.join( root for _l, root in _source_trees() ), ) )
         return {}
+    logger.info( "found %d source video(s) across %s"%(
+        len( sources ), ', '.join( label for label, _r in _source_trees() ) ) )
 
-    hash_to_path = bu_cache.build_hash_to_video_path( set( by_hash ) )
+    started = time.perf_counter()
+    for source in sources:
+        try:
+            source['file_hash'] = bu_hash.md5_for_file( source['path'], 16 )
+        except OSError as err:
+            logger.warning( "cannot read %s: %s"%( source['path'], err ) )
+            source['file_hash'] = None
+    bu_hash.flush_file_hash_memo()
+    logger.debug( "hashed %d file(s) in %.1fs"%( len( sources ), time.perf_counter() - started ) )
+
+    hashes = { s['file_hash'] for s in sources if s['file_hash'] }
+    boxes_by_hash = _censored_boxes_by_hash(
+        hashes, labels, getattr( args, 'backend', None ), getattr( args, 'variants', None ) )
+
     rows = []
-    for file_hash in sorted( by_hash ):
-        boxes = [ b for b in by_hash[file_hash] if b.get( 'class_id' ) in labels ]
-        if not boxes:
+    for source in sources:
+        if not source['file_hash']:
             continue
-        times = sorted( float( b.get( 't', 0 ) ) for b in boxes )
-        span = max( times[-1] - times[0], 1e-6 )
+        boxes, geometry_label = boxes_by_hash.get( source['file_hash'], ( [], None ) )
+        rows.append( _measure_source( source, source['file_hash'], boxes,
+                                      geometry_label, fps, threshold ) )
 
-        # Shot cuts come from the cache a real run already wrote. A file
-        # scanned with shot_cut_detection_enabled off simply has none,
-        # and is reported as unknown rather than as zero - "no cuts
-        # detected" and "cuts never looked for" are different facts.
-        # shot_cut_path_for's key carries the preview suffix and bound,
-        # which this bench does not know: it is reading caches a run
-        # wrote, and that run may have been a --preview one. Asking for
-        # the bare (hash, fps, threshold) path therefore MISSED every
-        # preview cache and reported "no shot-cut caches found" while
-        # the run that produced these very detections had logged 50
-        # cuts. Fall back to a glob on the hash+fps+threshold prefix,
-        # newest first, so a preview cache is found too.
-        cut_path = bu_cache.shot_cut_path_for( file_hash, fps, threshold )
-        if not os.path.exists( cut_path ):
-            prefix = os.path.join( betaconst.shot_cut_dir,
-                                   '%s-%g-%.3f'%( file_hash, fps, threshold ) )
-            candidates = sorted( glob.glob( prefix + '*.gz' ),
-                                 key=os.path.getmtime, reverse=True )
-            cut_path = candidates[0] if candidates else cut_path
-        cuts = None
-        if os.path.exists( cut_path ):
-            try:
-                cuts = list( bu_hash.read_json( cut_path ) )
-            except Exception:
-                cuts = None
-
-        cuts_per_min, median_shot = None, None
-        short_fraction, mid_fraction = None, None
-        if cuts is not None:
-            cuts_per_min = 60.0 * len( cuts ) / span
-            # shot_spans_for counts the opening span (0 to the first cut)
-            # and the closing one (last cut to the end of the window) as
-            # shots, which the gaps-only version below did not. Leaving
-            # them out makes a long file with two adjacent cuts look
-            # entirely composed of one-second shots.
-            spans = bu_detector.shot_spans_for( cuts, span )
-            total = sum( spans )
-            if spans and total > 0:
-                ordered = sorted( spans )
-                middle = len( ordered ) // 2
-                median_shot = ( ordered[middle] if len( ordered ) % 2
-                                else 0.5 * ( ordered[middle - 1] + ordered[middle] ) )
-                short_fraction = sum(
-                    s for s in spans if s < bu_detector.SHORT_SHOT_SECONDS ) / total
-                mid_fraction = sum(
-                    s for s in spans if s < COMPILATION_SHOT_SECONDS ) / total
-
-        # Simultaneous boxes: how many of this label are live in one
-        # sampled frame. High values mean several subjects, which is
-        # what makes match_distance risky.
-        per_frame = {}
-        for b in boxes:
-            per_frame.setdefault( round( float( b.get( 't', 0 ) ), 3 ), 0 )
-            per_frame[round( float( b.get( 't', 0 ) ), 3 )] += 1
-        counts = sorted( per_frame.values() )
-        median_simul = statistics.median( counts ) if counts else 0
-        p90_simul = counts[int( 0.9 * ( len( counts ) - 1 ) )] if counts else 0
-
-        # Spatial spread: a split-screen has boxes in fixed, separated
-        # regions, so the horizontal centres are strongly bimodal. One
-        # subject moving through frame gives a broad unimodal spread.
-        # Reported as the fraction of boxes in each vertical third and
-        # each horizontal half, which is enough to see the pattern
-        # without committing to a clustering algorithm.
-        xs = [ float( b.get( 'x', 0 ) ) + float( b.get( 'w', 0 ) ) / 2 for b in boxes ]
-        ys = [ float( b.get( 'y', 0 ) ) + float( b.get( 'h', 0 ) ) / 2 for b in boxes ]
-        path = hash_to_path.get( file_hash )
-        vid_w, vid_h = ( 0, 0 )
-        if path:
-            vid_w, vid_h = bu_tuning.frame_size_for_video( path )
-        left_half = right_half = None
-        if vid_w:
-            left_half = sum( 1 for x in xs if x < vid_w / 2 ) / len( xs )
-            right_half = 1.0 - left_half
-
-        areas = [ float( b.get( 'w', 0 ) ) * float( b.get( 'h', 0 ) ) for b in boxes ]
-        area_fraction = None
-        if vid_w and vid_h:
-            area_fraction = statistics.median( areas ) / float( vid_w * vid_h )
-
-        rows.append( {
-            'file_hash': file_hash,
-            'source': os.path.basename( path ) if path else file_hash,
-            'span_seconds': round( span, 1 ),
-            'detections': len( boxes ),
-            'cuts': len( cuts ) if cuts is not None else None,
-            'cuts_per_min': round( cuts_per_min, 1 ) if cuts_per_min is not None else None,
-            'median_shot_seconds': round( median_shot, 2 ) if median_shot else None,
-            'short_shot_fraction': ( round( short_fraction, 4 )
-                                     if short_fraction is not None else None ),
-            'mid_shot_fraction': ( round( mid_fraction, 4 )
-                                   if mid_fraction is not None else None ),
-            'median_simultaneous': median_simul,
-            'p90_simultaneous': p90_simul,
-            'left_half_fraction': round( left_half, 3 ) if left_half is not None else None,
-            'median_area_fraction': round( area_fraction, 5 ) if area_fraction else None,
-            'source_path': path,
-        } )
-
-    if not rows:
-        return {}
-
-    quick_threshold, quick_profile = _quick_cut_threshold(
-        getattr( args, 'backend', None ) )
+    quick_threshold, quick_profile = _quick_cut_threshold( getattr( args, 'backend', None ) )
     for row in rows:
         profile, why = _recommend_profile( row, quick_threshold, quick_profile )
         row['recommended_profile'] = profile
         row['recommended_reason'] = why
-        row['recommended_folder'] = _folder_for_profile( profile )
-        parts = bu_detector.source_dir_parts( row.get( 'source_path' ) )
-        row['current_folder'] = ( '/'.join( parts ) if parts
-                                  else ( '(root)' if parts == () else None ) )
+        row['recommended_folder'] = _folder_for_profile( profile ) if profile else None
 
-    logger.info( "" )
-    logger.info( "Per-video structure (censored labels only):" )
-    logger.info( "  %-32s %6s %7s %6s %6s %5s %6s  %s"%(
-        'source', 'mins', 'cuts/m', '<1s', '<10s', 'p90', 'L-half', 'belongs in' ) )
-    for row in rows:
-        logger.info( "  %-32s %6.1f %7s %6s %6s %5s %6s  %s"%(
-            row['source'][:32],
-            row['span_seconds'] / 60.0,
-            '%.1f'%row['cuts_per_min'] if row['cuts_per_min'] is not None else 'n/a',
-            ( '%.0f%%'%(100 * row['short_shot_fraction'])
-              if row['short_shot_fraction'] is not None else 'n/a' ),
-            ( '%.0f%%'%(100 * row['mid_shot_fraction'])
-              if row['mid_shot_fraction'] is not None else 'n/a' ),
-            row['p90_simultaneous'],
-            '%.2f'%row['left_half_fraction'] if row['left_half_fraction'] is not None else 'n/a',
-            row['recommended_profile'] ) )
-
-    known = [ r for r in rows if r['cuts_per_min'] is not None ]
-    if known:
-        rates = sorted( r['cuts_per_min'] for r in known )
-        spread = ( rates[-1] / rates[0] ) if rates[0] > 0 else float( 'inf' )
-        logger.info( "" )
-        logger.info( "cut rate across these files: %.1f to %.1f per minute (%.1fx spread)"%(
-            rates[0], rates[-1], spread ) )
-        if spread >= 3.0:
-            logger.info( "  That is a wide spread, which is the case FOR per-profile settings: "
-                         "time_safety and track_max_gap that suit the slowest-cutting file here "
-                         "are too loose for the fastest, and vice versa." )
-        else:
-            logger.info( "  These files cut at similar rates, so one set of timing values "
-                         "probably suits all of them. A profile split would be answering a "
-                         "question this footage is not asking - add faster-cutting footage "
-                         "before deciding." )
-    else:
-        logger.info( "" )
-        logger.info( "no shot-cut caches found for these files. Set "
-                     "shot_cut_detection_enabled = True and re-run betatv.py; the cut rate is "
-                     "the single most useful structural number here." )
-
-    logger.info( "" )
-    logger.info( "reading this: '<1s' and '<10s' are the share of RUNTIME in shots shorter "
-                 "than that, not the share of shots - a scene with one flurry of false cuts "
-                 "has a tiny median shot and a tiny duration share, and only the second one "
-                 "is right about the footage. 'p90' is how many boxes of a censored label are "
-                 "live in one sampled frame at the 90th percentile; 'L-half' near 0.50 with a "
-                 "high p90 is the split-screen signature, boxes split evenly between screen "
-                 "halves and staying there. Near 0 or 1 means the action sits on one side." )
-
+    _log_structure_table( rows, logger )
     _report_folder_moves( args, rows, logger, quick_threshold, quick_profile )
     return { 'structure': rows }
 
 
+def _log_structure_table( rows, logger ):
+    def pct( value ):
+        return '%.0f%%'%( 100 * value ) if value is not None else 'n/a'
+
+    logger.info( "" )
+    logger.info( "Per-file structure (censored labels only):" )
+    logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %6s %5s %6s  %s"%(
+        'source', 'folder', 'scanned', 'from', 'cuts/m', '<1s', '<10s',
+        'frames', 'p90', 'L-half', 'belongs in' ) )
+    for row in rows:
+        logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %6d %5s %6s  %s"%(
+            row['source'][:32],
+            ( row['current_folder'] if row['tree'] == 'uncensored_vids'
+              else 'src:' + row['current_folder'] )[:15],
+            ( '%.0fs'%row['scanned_seconds'] if row['scanned_seconds'] is not None else 'n/a' ),
+            { 'whole file': 'whole', 'slice': 'slice', None: '-' }[row['timing_evidence']],
+            '%.1f'%row['cuts_per_min'] if row['cuts_per_min'] is not None else 'n/a',
+            pct( row['short_shot_fraction'] ), pct( row['mid_shot_fraction'] ),
+            row['frames_with_boxes'], row['p90_simultaneous'],
+            '%.2f'%row['left_half_fraction'] if row['left_half_fraction'] is not None else 'n/a',
+            row['recommended_profile'] or '?' ) )
+
+    unscanned = [ r for r in rows if r['timing_evidence'] is None ]
+    sliced = [ r for r in rows if r['timing_evidence'] == 'slice' ]
+    logger.info( "" )
+    if unscanned:
+        logger.info( "%d file(s) have no shot-cut scan at all, so nothing can be said about "
+                     "their timing: run 'betabench structure-scan'"%( len( unscanned ), ) )
+    if sliced:
+        logger.info( "%d file(s) are measured from a preview slice only. A slice from the "
+                     "start of a file mostly measures its intro; 'betabench structure-scan' "
+                     "measures the whole file, and the next real run reuses that scan"%(
+                         len( sliced ), ) )
+    logger.info( "reading this: 'scanned' is the footage the timing numbers rest on. '<1s' "
+                 "and '<10s' are shares of RUNTIME in shots shorter than that, never shares "
+                 "of shots. 'frames' is how many sampled frames held a censored box; 'p90' "
+                 "is how many boxes share a frame at the 90th percentile; 'L-half' near 0.50 "
+                 "with a high p90 is the split-screen signature." )
+
+
+def _recommend_profile( row, quick_threshold, quick_profile ):
+    """
+    Which profile a measured file's structure puts it in, and why.
+
+    Order matters. Split-screen is tested first because its failure mode
+    is spatial, not temporal: a generous match radius merges two panes'
+    subjects into one track and drags a censor across the divider, and
+    that happens whatever the cut rate. A split-screen compilation is
+    still a split-screen problem first.
+
+    Returns (profile_name, reason). profile_name is None when nothing
+    was measured: "never scanned" is not "no cuts", and recommending
+    'scene' for it used to send unmeasured files out of their folders.
+    """
+    p90 = row.get( 'p90_simultaneous' ) or 0
+    left = row.get( 'left_half_fraction' )
+    frames = row.get( 'frames_with_boxes' )
+    low, high = SPLIT_LEFT_HALF_RANGE
+    if ( p90 >= SPLIT_MIN_P90_SIMULTANEOUS
+         and left is not None and low <= left <= high
+         and ( frames is None or frames >= SPLIT_MIN_FRAMES_WITH_BOXES ) ):
+        return ( 'split_screen',
+                 '%d boxes live at once, %.0f%% of them in the left half, across %s '
+                 'sampled frames: subjects sit on both sides and stay there'%(
+                     p90, 100 * left, frames if frames is not None else 'an unknown number of' ) )
+
+    short = row.get( 'short_shot_fraction' )
+    mid = row.get( 'mid_shot_fraction' )
+    scanned = row.get( 'scanned_seconds' )
+    over = ' over %.0fs scanned'%( scanned, ) if scanned else ''
+
+    if short is None:
+        return ( None, 'shot cuts never scanned' )
+
+    if ( quick_threshold is not None and quick_profile
+         and short >= quick_threshold ):
+        return ( quick_profile,
+                 '%.0f%% of runtime in sub-%gs shots%s, at or over the '
+                 'configured %.0f%%'%( 100 * short, bu_detector.SHORT_SHOT_SECONDS, over,
+                                       100 * quick_threshold ) )
+
+    if mid is not None and mid >= COMPILATION_MIN_RUNTIME_FRACTION:
+        return ( 'compilation',
+                 '%.0f%% of runtime in sub-%gs shots%s, at or over this '
+                 'bench\'s %.0f%%'%( 100 * mid, COMPILATION_SHOT_SECONDS, over,
+                                     100 * COMPILATION_MIN_RUNTIME_FRACTION ) )
+
+    return ( 'scene', 'only %.0f%% of runtime in sub-%gs shots%s'%(
+        100 * ( mid or 0.0 ), COMPILATION_SHOT_SECONDS, over ) )
+
+
+def _profile_of_folder( row ):
+    """The profile the file's CURRENT folder declares, or None."""
+    return bu_detector.source_dir_rule( row['source_path'],
+                                        uncensored_root=row['tree_root'] )[0]
+
+
+def _move_verdict( row ):
+    """
+    Whether a recommended move goes in the script, or is listed for review.
+
+    Returns ('script' | 'review', why). Every rule protects either the
+    user's own judgment or the detections:
+
+      1. Timing evidence from a slice is review-only. The survey that
+         prompted this ran on 20-second slices from the start of each
+         file and moved files on what their intros looked like.
+      2. Never script a move that lowers the sample rate. Fewer samples
+         means fewer detections on the shortest shots, which is the one
+         direction this tool must never push automatically.
+      3. A file in a manual_only profile's folder (compilation,
+         split-screen) is there because someone judged it. Timing cannot
+         see either distinction, so timing alone does not override it,
+         unless the move raises the sample rate (rule 2's mirror).
+      4. Only the tree root and mapped folders are scripted. An unmapped
+         folder (titty_drops/, completed/) is the user's own
+         organisation; the move is listed, not performed.
+    """
+    destination = row['recommended_profile']
+    current = _profile_of_folder( row )
+    destination_fps = bu_detector.get_profile_sample_fps( destination )
+    current_fps = bu_detector.get_profile_sample_fps( current )
+    variants = bu_detector.get_profiles().get( 'variants' ) or {}
+    spatial = destination == 'split_screen'
+
+    if not spatial and row.get( 'timing_evidence' ) != 'whole file':
+        return ( 'review', 'timing from a preview slice; run structure-scan for the whole file' )
+    if current and destination_fps < current_fps:
+        return ( 'review', 'would lower sampling from %g to %g fps'%( current_fps, destination_fps ) )
+    if ( current and ( variants.get( current ) or {} ).get( 'manual_only' )
+         and not spatial and destination_fps <= current_fps ):
+        return ( 'review', '%s/ is a judgment timing cannot see; not overridden'%(
+            row['current_folder'], ) )
+    if current is None and row['current_folder'] != '(root)':
+        return ( 'review', '%s/ is not a mapped folder; move by hand or map it'%(
+            row['current_folder'], ) )
+    return ( 'script', '' )
+
+
 def _report_folder_moves( args, rows, logger, quick_threshold, quick_profile ):
     """
-    What sorting the source tree would change, and optionally a script.
+    What sorting the source trees would change, and optionally a script.
 
-    Only reports a move when the file's current folder differs from the
-    one its measured structure points at. A file already in the right
-    place, or one whose recommended profile has no folder configured,
-    produces nothing.
+    A move stays inside the tree the file is in: a file waiting in the
+    staging tree is sorted there, not pulled into the working tree. Only
+    moves that pass _move_verdict are scripted.
     """
-    root = betaconst.video_path_uncensored
-    moves = []
-    for row in rows:
-        folder = row.get( 'recommended_folder' )
-        current = row.get( 'current_folder' )
-        if not folder or current is None or row.get( 'source_path' ) is None:
-            continue
-        if current == folder:
-            continue
-        moves.append( {
-            'source': row['source'],
-            'source_path': row['source_path'],
-            'dest_dir': os.path.join( root, folder ),
-            'from': current,
-            'to': folder,
-            'why': '%s: %s'%( row['source'], row['recommended_reason'] ),
-        } )
-
     logger.info( "" )
     if not getattr( betaconfig, 'profile_by_source_dir', None ):
         logger.info( "profile_by_source_dir is empty, so no folder maps to a profile and "
                      "sorting these files would change nothing. See CONFIG_REFERENCE.md -> "
                      "'The source folder convention'." )
         return
-    logger.info( "=== source folder: %d file(s) sit elsewhere than their structure says ==="%(
-        len( moves ), ) )
-    if not moves:
-        logger.info( "none: every measured file already sits in the folder its structure "
-                     "points at" )
-    for move in moves:
-        logger.info( "  %s/ -> %s/   %s"%( move['from'], move['to'], move['source'] ) )
+
+    scripted, review = [], []
+    for row in rows:
+        folder = row.get( 'recommended_folder' )
+        if not folder or row['current_folder'].lower() == folder.lower():
+            continue
+        # Already in a folder that declares the recommended profile, even
+        # if it is not the folder that would be suggested for a new file
+        # (a nested 'compilation/split-screen' key, say).
+        if _profile_of_folder( row ) == row['recommended_profile']:
+            continue
+        verdict, why_not = _move_verdict( row )
+        move = {
+            'source': row['source'],
+            'source_path': row['source_path'],
+            'dest_dir': os.path.join( row['tree_root'], folder ),
+            'from': row['current_folder'],
+            'to': folder,
+            'tree': row['tree'],
+            'why': '%s: %s'%( row['source'], row['recommended_reason'] ),
+            'held_back': why_not,
+        }
+        ( scripted if verdict == 'script' else review ).append( move )
+
+    def where( move ):
+        prefix = '' if move['tree'] == 'uncensored_vids' else 'source:'
+        return '%s%s/ -> %s%s/'%( prefix, move['from'], prefix, move['to'] )
+
+    logger.info( "=== source folder: %d move(s) to script, %d to review ==="%(
+        len( scripted ), len( review ) ) )
+    for move in scripted:
+        logger.info( "  %-40s %s"%( where( move ), move['source'] ) )
         logger.debug( "      %s"%( move['why'], ) )
+    if review:
+        logger.info( "" )
+        logger.info( "for review, not scripted:" )
+        for move in review:
+            logger.info( "  %-40s %s"%( where( move ), move['source'] ) )
+            logger.info( "      %s; held back: %s"%( move['why'], move['held_back'] ) )
 
     if quick_threshold is not None:
         logger.info( "" )
@@ -1638,29 +1782,165 @@ def _report_folder_moves( args, rows, logger, quick_threshold, quick_profile ):
                                       bu_detector.SHORT_SHOT_SECONDS, quick_profile ) )
     logger.info( "compilation boundary: %.0f%% of runtime in sub-%gs shots. THIS BENCH'S "
                  "heuristic, not a tuned app setting, because 'compilation' is manual_only "
-                 "and has no configured threshold: treat compilation-vs-scene as advisory "
-                 "and check the numbers above"%(
+                 "and has no configured threshold"%(
                      100 * COMPILATION_MIN_RUNTIME_FRACTION, COMPILATION_SHOT_SECONDS ) )
-    logger.info( "split-screen: p90 simultaneous >= %d with left-half share in %.2f-%.2f. "
-                 "Read off a 9-file sample, so verify a file before trusting it"%(
-                     SPLIT_MIN_P90_SIMULTANEOUS, *SPLIT_LEFT_HALF_RANGE ) )
+    logger.info( "split-screen: p90 simultaneous >= %d with left-half share in %.2f-%.2f "
+                 "over at least %d sampled frames. Read off a 9-file sample, so verify a "
+                 "file before trusting it"%(
+                     SPLIT_MIN_P90_SIMULTANEOUS, SPLIT_LEFT_HALF_RANGE[0],
+                     SPLIT_LEFT_HALF_RANGE[1], SPLIT_MIN_FRAMES_WITH_BOXES ) )
 
     target = getattr( args, 'write_move_script', None )
-    if target and moves:
-        _write_move_script( target, moves, logger )
+    if target and scripted:
+        _write_move_script( target, scripted, logger )
     elif target:
-        logger.info( "no moves to write, so no script was created" )
-    elif moves:
+        logger.info( "no moves passed the safety rules, so no script was written" )
+    elif scripted:
         logger.info( "" )
         logger.info( "re-run with --write-move-script moves.sh to get a reviewable script "
                      "that performs these moves with mv -n" )
+
+
+# --- structure-scan --------------------------------------------------------
+
+def _default_scan_workers():
+    """
+    Parallel whole-file scans to run: one per core, at most 4.
+
+    Measured on a 2-core box with 1080p H.264: 2 workers finished four
+    40-second clips 1.36x faster than 1, so OpenCV's own decode threading
+    leaves cores idle and parallel files win. The cap of 4 is a judgment
+    call, not a measurement: it keeps a spinning disk from seeking itself
+    to death on several multi-GB files at once. --workers overrides it.
+    """
+    return max( 1, min( 4, os.cpu_count() or 1 ) )
+
+
+def bench_structure_scan( args, logger ):
+    """
+    Whole-file shot-cut scans for every source video not yet scanned.
+
+    CPU only, files in parallel, no detection. Writes the cache betatv's
+    full run reads, so nothing here is wasted: the real run finds its scan
+    already done. Then, with --geometry-slices N, runs detection (no
+    render) on N short slices spread through each file, which is what
+    gives split-screen something to be recognised from.
+    """
+    import concurrent.futures
+
+    fps = betaconfig.video_censor_fps
+    threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+    sources = _source_videos()
+    pending = []
+    for source in sources:
+        try:
+            file_hash = bu_hash.md5_for_file( source['path'], 16 )
+        except OSError as err:
+            logger.warning( "cannot read %s: %s"%( source['path'], err ) )
+            continue
+        source['file_hash'] = file_hash
+        if os.path.exists( bu_cache.shot_cut_path_for( file_hash, fps, threshold ) ):
+            logger.debug( "already scanned: %s"%( source['name'], ) )
+            continue
+        pending.append( source )
+    bu_hash.flush_file_hash_memo()
+
+    workers = getattr( args, 'workers', None ) or _default_scan_workers()
+    logger.info( "%d of %d source video(s) need a whole-file shot-cut scan; %d worker(s)"%(
+        len( pending ), len( sources ), workers ) )
+    results = []
+    if pending:
+        started = time.perf_counter()
+        with concurrent.futures.ProcessPoolExecutor( max_workers=workers ) as pool:
+            const_paths = { name: getattr( betaconst, name )
+                            for name in bu_video.SCAN_WORKER_PATHS }
+            futures = { pool.submit( bu_video.scan_whole_file_in_worker, s['path'],
+                                     s['file_hash'], fps, threshold, const_paths ): s
+                        for s in pending }
+            for done_count, future in enumerate( concurrent.futures.as_completed( futures ), 1 ):
+                path, cut_count, seconds, error = future.result()
+                name = os.path.basename( path )
+                if error:
+                    logger.warning( "[%d/%d] scan failed for %s: %s"%(
+                        done_count, len( pending ), name, error ) )
+                else:
+                    logger.info( "[%d/%d] %s: %d cut(s) in %.0fs"%(
+                        done_count, len( pending ), name, cut_count, seconds ) )
+                results.append( { 'path': path, 'cuts': cut_count,
+                                  'seconds': round( seconds, 1 ), 'error': error } )
+        logger.info( "whole-file scans finished in %.0fs"%( time.perf_counter() - started, ) )
+
+    slices = getattr( args, 'geometry_slices', 0 ) or 0
+    if slices > 0:
+        _detect_geometry_slices( args, logger, [ s for s in sources if s.get( 'file_hash' ) ],
+                                 slices )
+    return { 'structure_scan': results }
+
+
+def geometry_slice_offsets( duration_seconds, slice_seconds, count ):
+    """
+    Where N geometry slices start: evenly spread, never at the very start.
+
+    Fractions (i + 1) / (N + 1) of the room left for a slice, so 3 slices
+    sit at 25%, 50% and 75%. The start is avoided on purpose: intros and
+    title cards are the least representative footage in a file, and a
+    survey made only of first-20-second slices was what this replaced.
+
+    Returns:
+        A sorted list of distinct offsets in seconds, one decimal place
+        (the precision the preview cache suffix records), or [0.0] for a
+        file too short to slice.
+    """
+    if not duration_seconds or duration_seconds <= slice_seconds or count <= 0:
+        return [ 0.0 ]
+    room = duration_seconds - slice_seconds
+    return sorted( { round( room * ( i + 1 ) / ( count + 1 ), 1 ) for i in range( count ) } )
+
+
+def _detect_geometry_slices( args, logger, sources, count ):
+    """
+    Detection, no render, on short slices spread through each file.
+
+    Writes the same detection caches a --preview run at that offset
+    would, through betatv's own detection function, so a later preview
+    of the same slice reuses them. Rendering is skipped entirely: it is
+    most of a preview run's cost and contributes nothing to geometry.
+    """
+    import betatv
+
+    slice_seconds = getattr( args, 'slice_seconds', None ) or 20.0
+    detector = bu_detector.get_detector()
+    session = detector.get_session()
+    picture_sizes = bu_detector.get_picture_sizes()
+    fps = betaconfig.video_censor_fps
+    started = time.perf_counter()
+    logger.info( "geometry: %d slice(s) of %gs per file, detection only"%( count, slice_seconds ) )
+    for index, source in enumerate( sources, 1 ):
+        try:
+            video = bu_video.open_video_source( source['path'], source['file_hash'], logger )
+        except bu_video.VideoOpenError as err:
+            logger.warning( "cannot open %s: %s"%( source['name'], err ) )
+            continue
+        try:
+            duration = ( video.num_frames / video.vid_fps ) if video.vid_fps else None
+            offsets = geometry_slice_offsets( duration, slice_seconds, count )
+            for offset in offsets:
+                bounded = slice_seconds if duration and duration > slice_seconds else None
+                betatv.detect_boxes_for_video(
+                    video, source['name'], session, source['file_hash'], picture_sizes,
+                    bu_cache.preview_cache_suffix( True, offset ), offset, bounded,
+                    logger, fps )
+            logger.info( "[%d/%d] %s: slices at %s"%( index, len( sources ), source['name'],
+                                                     ', '.join( '%.0fs'%o for o in offsets ) ) )
+        finally:
+            video.cap.release()
+    logger.info( "geometry slices finished in %.0fs"%( time.perf_counter() - started, ) )
 
 
 bench_geometry    = _per_configuration( 'geometry',    _bench_geometry_one )
 bench_suppression = _per_configuration( 'suppression', _bench_suppression_one )
 bench_dedup       = _per_configuration( 'dedup',       _bench_dedup_one )
 bench_hysteresis  = _per_configuration( 'hysteresis',  _bench_hysteresis_one )
-bench_structure   = _per_configuration( 'structure',   _bench_structure_one )
 
 
 # ---------------------------------------------------------------------------
@@ -1676,6 +1956,7 @@ SUBCOMMANDS = {
     'dedup': bench_dedup,
     'hysteresis': bench_hysteresis,
     'structure': bench_structure,
+    'structure-scan': bench_structure_scan,
 }
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
@@ -1693,8 +1974,8 @@ def build_parser():
 
     parser.add_argument( '--yes', action='store_true',
         help="accept every default and never prompt - what an unattended run wants" )
-    parser.add_argument( '--log-level', choices=sorted( LEVEL_NAMES ), default='debug',
-        help="level for the LOG FILE (default: debug)" )
+    parser.add_argument( '--log-level', choices=sorted( LEVEL_NAMES ), default='trace',
+        help="level for the LOG FILE (default: trace, so the file keeps everything)" )
     parser.add_argument( '--console-level', choices=sorted( LEVEL_NAMES ), default='info',
         help="level for the TERMINAL (default: info)" )
     parser.add_argument( '--out-dir', default=None,
@@ -1726,6 +2007,15 @@ def build_parser():
              "videos into the folders profile_by_source_dir maps to profiles. Every "
              "move is 'mv -n', which never overwrites, and the script is safe to "
              "re-run. Nothing is moved by betabench itself" )
+    parser.add_argument( '--workers', type=int, default=None,
+        help="structure-scan only: whole-file scans to run in parallel (default: one per "
+             "CPU core, at most 4)" )
+    parser.add_argument( '--geometry-slices', type=int, default=0,
+        help="structure-scan only: after the timing scans, run detection (no render) on this "
+             "many short slices spread through each file, for split-screen geometry. Needs "
+             "the model; 3 puts slices at 25%%, 50%% and 75%% (default: 0, off)" )
+    parser.add_argument( '--slice-seconds', type=float, default=20.0,
+        help="structure-scan only: length of each geometry slice (default: 20)" )
     parser.add_argument( '--sample-fps', type=float, default=None,
         help="sampling rate to measure at (default: betaconfig.video_censor_fps)" )
 
@@ -1776,6 +2066,7 @@ def main():
 
     commands = ALL_ORDER if args.command == 'all' else [ args.command ]
     results = { 'run': { 'command': args.command, 'started': time.time() } }
+    failed = []
 
     for index, name in enumerate( commands ):
         if args.command == 'all' and name in ( 'detect', ) and index > 0:
@@ -1791,17 +2082,26 @@ def main():
             results.update( SUBCOMMANDS[name]( args, logger ) or {} )
         except KeyboardInterrupt:
             logger.warning( "interrupted during '%s'"%(name) )
+            failed.append( name )
             break
         except Exception as err:
             logger.error( "'%s' failed: %r"%(name, err) )
             logger.debug( "failure detail", exc_info=True )
+            failed.append( name )
 
     results['run']['finished'] = time.time()
+    results['run']['failed'] = failed
     results_path = os.path.join( run_dir, 'results.json' )
     bu_hash.write_json_plain( results, results_path )
     logger.info( "" )
     logger.info( "results written to %s"%(os.path.abspath( results_path )) )
     logger.info( "full log at       %s"%(os.path.abspath( os.path.join( run_dir, 'betabench.log' ) )) )
+    # Non-zero when anything failed. It always returned 0, so a harness
+    # wrapping it reported a failed subcommand as finished: the survey's
+    # geometry phase "succeeded" in 0 seconds with no model on disk.
+    if failed:
+        logger.error( "failed: %s"%( ', '.join( failed ), ) )
+        return 1
     return 0
 
 

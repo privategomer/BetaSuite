@@ -13,11 +13,11 @@ Three entry points, one configuration file, one engine:
 | `betastare.py` | censors still images |
 | `betavision-*.py` | live screen-capture censoring (needs `gpu_enabled`) |
 
-- **`betaconfig.py`** — every setting. Values and one-line headers only.
-- **[`CONFIG_REFERENCE.md`](CONFIG_REFERENCE.md)** — what each setting
+- **`betaconfig.py`**: every setting. Values and one-line headers only.
+- **[`CONFIG_REFERENCE.md`](CONFIG_REFERENCE.md)**: what each setting
   does, with analogies and worked examples, and why the shipped values
   are what they are.
-- **this file** — how to run it, what the architecture is, the complete
+- **this file**: how to run it, what the architecture is, the complete
   settings catalogue, and how to test and measure.
 
 This assumes BetaSuite is already installed and runnable. For
@@ -114,7 +114,7 @@ Steps 4, 5 and the hysteresis/confirmation parts of 7 are all **off by
 default** and cannot remove a detection until you deliberately configure
 them.
 
-Photos (`betastare.py`) work the same way minus steps 1, 3, 7 and 9 — a
+Photos (`betastare.py`) work the same way minus steps 1, 3, 7 and 9, a
 photo has one instant, not a timeline.
 
 ---
@@ -224,8 +224,8 @@ Reference: [Detection sampling](CONFIG_REFERENCE.md#detection-sampling),
 |---|---|---|
 | `default_min_prob` | `0.55` | confidence needed to start a censor track |
 | `default_min_prob_continue` | `None` | the lower "keep going" gate. `None` disables score hysteresis |
-| `min_prob` *(per-label, per-backend)* | — | that label's entry gate |
-| `min_prob_continue` *(per-label, per-backend)* | — | that label's continue gate |
+| `min_prob` *(per-label, per-backend)* | none | that label's entry gate |
+| `min_prob_continue` *(per-label, per-backend)* | none | that label's continue gate |
 
 Reference: [Confidence and the three gates](CONFIG_REFERENCE.md#confidence-and-the-three-gates)
 
@@ -308,24 +308,28 @@ folder is selected by measurement instead, so the convention is additive
 and you are never forced to classify a file to process it. Adding a
 folder is adding a line.
 
-`betabench structure` measures every source file and reports which
-folder it belongs in, including split-screen, which the timing measures
-cannot see. `--write-move-script moves.sh` writes a reviewable script
-that performs the moves with `mv -n`; betabench never moves a file
-itself. It reads caches a run already wrote, so run a `--preview` pass
-over the tree first.
+To sort a tree, run `./tools/bench/structure_survey.sh`. It scans every
+source file in `resources/uncensored_vids/` and the staging tree
+`resources/source/` end to end on the CPU (scans the next real run
+reuses), runs detection without rendering on three slices spread through
+each file for split-screen geometry, then prints which folder each file
+belongs in and writes a reviewable `mv -n` script. It moves nothing
+itself, and it holds back any move that rests on a slice, would lower the
+sample rate, or would override `compilation/` or `split-screen/` on timing
+alone. The same folder names work in the staging tree, so a file keeps
+its profile when you move it across.
 
 | Setting | Default | What it does |
 |---|---|---|
 | `profile_by_source_dir` | none | `{folder: profile}` under the uncensored root. Deepest match wins; unmapped folders and the root are measured |
 | `profile_by_path_pattern` | none | `{glob: profile}`, matched on full path and bare filename. Outranks the folder convention |
 | `default_profile_enabled` | `True` | master switch. `False` ignores every profile and uses the un-profiled settings. A folder rule and `--profile` still win |
-| `detector_backend[<backend>]['profiles']['default']` | — | profile used when a video has no shot-cut data |
+| `detector_backend[<backend>]['profiles']['default']` | none | profile used when a video has no shot-cut data |
 | `detector_backend[<backend>]['profiles']['match_on']` | `'cuts_per_min'` | the measurement profiles are selected by: `'short_shot_fraction'` (recommended) or `'cuts_per_min'` |
-| `detector_backend[<backend>]['profiles']['variants'][<name>]['min_short_shot_fraction']` | — | least share of runtime in sub-1s shots this profile claims, 0 to 1. Read when `match_on` is `'short_shot_fraction'` |
-| `detector_backend[<backend>]['profiles']['variants'][<name>]['min_cuts_per_min']` | — | lowest cut rate this profile claims. Read when `match_on` is `'cuts_per_min'`. Highest threshold cleared wins |
+| `detector_backend[<backend>]['profiles']['variants'][<name>]['min_short_shot_fraction']` | none | least share of runtime in sub-1s shots this profile claims, 0 to 1. Read when `match_on` is `'short_shot_fraction'` |
+| `detector_backend[<backend>]['profiles']['variants'][<name>]['min_cuts_per_min']` | none | lowest cut rate this profile claims. Read when `match_on` is `'cuts_per_min'`. Highest threshold cleared wins |
 | `detector_backend[<backend>]['profiles']['variants'][<name>]['manual_only']` | `False` | `True` hides this profile from automatic selection entirely, including the `default` fallback |
-| `detector_backend[<backend>]['profiles']['variants'][<name>]['item_overrides']` | — | per-label settings this profile changes. Partial: unnamed keys keep their resolved values |
+| `detector_backend[<backend>]['profiles']['variants'][<name>]['item_overrides']` | none | per-label settings this profile changes. Partial: unnamed keys keep their resolved values |
 | `detector_backend[<backend>]['profiles']['variants'][<name>]['video_censor_fps']` | global rate | detection sample rate for footage this profile matches. The shot-cut scan always uses the global rate |
 
 Profiles are configured at the **model** level, not per variant: two
@@ -372,11 +376,11 @@ as suppression signals and are not meant to be censored directly.
 | `blur_fast_approximation` | `True` | compute heavy blurs at reduced resolution. 30–60x faster, visually equivalent |
 | `blur_edge_margin` | `True` | blur reads real neighbouring pixels around the box, so the result does not change when the box resizes. Read-only; cannot change what is censored |
 | `blur_approximation_min_kernel` | `21` | kernels below this are always exact |
-| `item_overrides[<label>]['censor_style']` | — | one style dict, or a weighted list to pick from per track |
-| `item_overrides[<label>]['censor_shape']` | — | that label's shape |
+| `item_overrides[<label>]['censor_style']` | none | one style dict, or a weighted list to pick from per track |
+| `item_overrides[<label>]['censor_shape']` | none | that label's shape |
 
 A style dict's keys: `type`, `feather`, `weight`, `shape`, `merge`,
-`width_area_safety`, `height_area_safety`, plus per-type keys —
+`width_area_safety`, `height_area_safety`, plus per-type keys,
 `method`/`strength` (blur), `pattern`/`strength` (pixel),
 `color`/`thickness`/`span_extend` (bar), `dir`/`images`/`scale`
 (sticker).
@@ -388,7 +392,7 @@ Reference: [Censor styles](CONFIG_REFERENCE.md#censor-styles)
 | Setting | Default | What it does |
 |---|---|---|
 | `default_area_safety` | `0` | fractional padding around every box |
-| `width_area_safety`, `height_area_safety` | — | settable per style variant, per label, or as the default |
+| `width_area_safety`, `height_area_safety` | none | settable per style variant, per label, or as the default |
 | `default_time_safety`, `time_safety` *(per-label)* | `0.30` s | how long a detection's censor persists, centred on the detection |
 
 Reference: [Area safety and time safety](CONFIG_REFERENCE.md#area-safety-and-time-safety)
@@ -515,7 +519,7 @@ BETASUITE_DETECTOR_VARIANT_OVERRIDE=640m
 `betastare.py` exposes the same flags minus the preview group.
 
 Every override is logged at startup, and a bad value fails immediately
-with a specific message — overrides are applied before validation and
+with a specific message, overrides are applied before validation and
 are validated the same way as the file.
 
 ---
@@ -544,7 +548,7 @@ setting, so re-running with a changed `track_max_gap` silently
 overwrote the previous output.
 
 A file whose output already exists at the resolved name, and decodes, is
-**skipped before any scanning or detection work** — so a repeated run
+**skipped before any scanning or detection work**: so a repeated run
 with unchanged settings costs seconds rather than minutes. That skip
 leans entirely on the keys being complete, which is why
 `tests/test_censor_key_coverage.py` exists. See
@@ -576,7 +580,7 @@ renamed atomically only after the write succeeds.** A `.tmp` or
 `.checkpoint` file lying around always means "incomplete", never "done".
 
 **Detection.** Progress is saved every `detection_checkpoint_frames`
-samples to a separate `<cache>.checkpoint` file — never the trusted
+samples to a separate `<cache>.checkpoint` file, never the trusted
 cache path. On restart, a checkpoint with no completed cache resumes
 from that sample rather than from zero.
 
@@ -588,7 +592,7 @@ and resumes from the first missing one.
 > The frame-count check is not redundant with the container check. A
 > chunk whose decode died mid-file is a perfectly valid video that is
 > simply too short: previously it passed the container check, got
-> promoted, and a later resume skipped it — silently truncating the
+> promoted, and a later resume skipped it, silently truncating the
 > output.
 
 **Failures and retries.** Every ffmpeg invocation has its exit code
@@ -596,14 +600,14 @@ checked and is retried up to `ffmpeg_max_retries` times with
 `ffmpeg_retry_backoff_seconds` between attempts. A file that exhausts
 its attempts is skipped; the batch continues.
 
-**Interrupts.** Ctrl-C sets a flag; the run stops at the next safe point
-— after checkpointing whatever detection is in flight, and without
+**Interrupts.** Ctrl-C sets a flag; the run stops at the next safe point,
+after checkpointing whatever detection is in flight, and without
 promoting a partial chunk. A second Ctrl-C exits immediately. The
 process exits 130.
 
 > Previously the per-file handler caught `BaseException`, so Ctrl-C
 > was reported as a failed file, logged, slept a second, and moved to
-> the next one — you had to press it once per remaining file. The render
+> the next one, you had to press it once per remaining file. The render
 > loop caught it too and fed it into the retry-with-backoff path. Now
 > the interrupt subclasses `KeyboardInterrupt` specifically so it passes
 > through the `except Exception` handlers that give the pipeline its
@@ -611,8 +615,8 @@ process exits 130.
 
 **Decode fallbacks.** A file OpenCV cannot decode is retried with
 hardware acceleration disabled two different ways, then transcoded to
-H.264 with the system ffmpeg and cached. Everything downstream —
-including the shot-cut scan and the render — then reads the transcoded
+H.264 with the system ffmpeg and cached. Everything downstream,
+including the shot-cut scan and the render, then reads the transcoded
 copy, and the frame count is re-read from it.
 
 > Previously the transcode repointed only the main capture. The
@@ -651,7 +655,8 @@ python3 tools/bench/betabench.py --help
 | `suppression` | what do cross-label overlaps look like? | `class_suppression` |
 | `dedup` | how much do picture sizes overlap? | `cross_size_dedup` |
 | `hysteresis` | what are the score distributions? | `min_prob`, `min_prob_continue` |
-| `structure` | per video: cut rate, subjects on screen, spatial layout | whether footage needs per-profile settings |
+| `structure` | per source file: cut rate, subjects on screen, spatial layout | which source folder each file belongs in |
+| `structure-scan` | whole-file shot-cut scans, in parallel; `--geometry-slices N` adds detection-only slices | the inputs `structure` reads, reused by the next real run |
 
 `structure` is the one to read per file rather than pooled: it reports
 cut rate, how many subjects are live at once, and where they sit in
@@ -660,9 +665,11 @@ tracking values from the rest. See CONFIG_REFERENCE.md ->
 "Reading `structure`, and what profiles would need".
 
 Everything goes to `../output/benchmarks/<timestamp>/` with a log at
-`--log-level` (default `debug`), a terminal view at `--console-level`
-(default `info`), and machine-readable `results.json`. Any step needing
-a decision prompts; `--yes` accepts defaults and never blocks.
+`--log-level` (default `trace`, so the file keeps everything), a terminal
+view at `--console-level` (default `info`), and machine-readable
+`results.json`. Any step needing a decision prompts; `--yes` accepts
+defaults and never blocks. A failed subcommand makes the process exit
+non-zero, so a harness wrapping it cannot report it as done.
 
 `geometry`, `suppression`, `dedup` and `hysteresis` read caches a real
 run already produced, so they are fast and describe exactly what that
@@ -703,7 +710,7 @@ python3 tools/tuning/auto_tune.py         # same, for the tuner
 ```
 
 A *configuration* is one backend at one detection size under one
-detection key — so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
+detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
 two, never one. The size comes from the cache filename; the variant name
 is recovered from that key's run-key manifest, which is what those
 manifests are for.
@@ -717,7 +724,7 @@ academic:
 > `betaconfig.picture_sizes`. A full overnight run of nudenet at both
 > 320n and 640m left three complete cache sets on disk, and every
 > analysis tool reported on one of them, because config had been left at
-> 320n. The output read "no detection caches found" — indistinguishable
+> 320n. The output read "no detection caches found", indistinguishable
 > from having run nothing at all.
 
 `--picture-sizes` (`--sizes` on betabench) still overrides discovery,
@@ -755,14 +762,14 @@ Same headline improvement, seventeen times the cost, and only the price
 tells them apart.
 
 **One rule no stage can break.** A candidate that reduces censor
-coverage — total censored area-seconds, per label, over the same footage
-— by more than `--max-coverage-loss` (default 0.5%) is rejected whatever
+coverage, total censored area-seconds, per label, over the same footage,
+by more than `--max-coverage-loss` (default 0.5%) is rejected whatever
 else it improves. Performance is never bought with censoring.
 
 Every write takes a timestamped backup, and the value is read back
 through the real resolver afterwards; a mismatch restores the backup and
-stops. It will not touch anything that changes raw detections — picture
-size, model variant, `global_min_prob` — because those cannot be
+stops. It will not touch anything that changes raw detections, picture
+size, model variant, `global_min_prob`, because those cannot be
 replayed from a cache of detections and would need a real run.
 
 ### The loop that works
@@ -775,7 +782,7 @@ replayed from a cache of detections and would need a real run.
    `python3 tools/bench/betabench.py suppression hysteresis geometry`
 3. **Change one thing.** The output filename changes with it, so both
    versions survive to compare.
-4. **Re-run the same slice and compare** — visually, and via
+4. **Re-run the same slice and compare**: visually, and via
    `../output/stats/betasuite_stats.jsonl`.
 5. **Widen to a real run** once a setting looks right on the slice.
 
@@ -794,12 +801,13 @@ from the difference.
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |
 | `tools/tuning/auto_tune.py` | the staged tuner: measures candidates, prices them, writes the winners |
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |
+| `tools/bench/structure_survey.sh` | measures every source file and writes a reviewable script sorting them into profile folders |
 
 Every tool that replays the pipeline imports the real
 `betautils_track` functions and observes their decisions through
 `betautils_track.tracking_observer`, a supported extension point.
 Previously several of them read `betatv.py`'s source text and
-`exec`'d the extracted function bodies instead — which broke the
+`exec`'d the extracted function bodies instead, which broke the
 morning after an overnight run, when those functions moved to a module
 of their own. `tests/test_analysis_tools_contract.py` now fails if any
 tool goes back to reading source text.
@@ -894,8 +902,8 @@ from the machine they were taken on; re-measure yours with
 | Memoised file hashes, 4 MiB reads instead of 8 KiB | re-runs no longer re-read every byte of every source |
 | Pruned dead tracks, cached `parts_to_blur`, throttled progress output | removes quadratic and per-detection overheads |
 
-None of these change which detections come out. The two that could have
-— the sampler and the anchor decode — are both covered by equivalence
+None of these change which detections come out. The two that could have,
+the sampler and the anchor decode, are both covered by equivalence
 tests against reference implementations.
 
 ---
@@ -920,23 +928,23 @@ tests against reference implementations.
 
 ## Troubleshooting
 
-**"betaconfig.py failed validation"** — validation caught a problem
+**"betaconfig.py failed validation"**: validation caught a problem
 before any real work: a misspelled label, an unknown key, a
 backend-tunable setting in the shared block, bounds that cannot both be
 satisfied. Each line names the specific problem and, where relevant, the
 valid options.
 
-**A run is far slower than expected** — check the `execution_providers`
+**A run is far slower than expected**: check the `execution_providers`
 field in `../output/stats/betasuite_stats.jsonl`, or the startup line in
 the log. If `gpu_enabled` is set but CUDA is not in the provider list,
 the run silently fell back to CPU; the log carries a warning saying so.
 
-**A censor flickers on and off** — the detection is crossing `min_prob`
+**A censor flickers on and off**: the detection is crossing `min_prob`
 back and forth. Set that label's `min_prob_continue` below its
 `min_prob` to give it hysteresis. See
 [Confidence and the three gates](CONFIG_REFERENCE.md#confidence-and-the-three-gates).
 
-**A tracked object's censor style keeps changing** — style is resolved
+**A tracked object's censor style keeps changing**: style is resolved
 once per track, so this means the *tracking* is losing and re-acquiring
 the object, each time starting a new track with its own style.
 `track_max_gap` is usually the culprit; `interpolation_max_gap` alone
@@ -944,40 +952,40 @@ cannot fix it, because it only applies once a match has already
 succeeded. See
 [Tracking and smoothing](CONFIG_REFERENCE.md#tracking-and-smoothing).
 
-**Single-frame censor blobs on nothing** — raise that label's
+**Single-frame censor blobs on nothing**: raise that label's
 `min_track_hits` to 2. See
 [Track confirmation](CONFIG_REFERENCE.md#track-confirmation).
 
-**A large spurious censor covering much of the frame** — the model found
+**A large spurious censor covering much of the frame**: the model found
 a torso. Set that label's `max_area_fraction`; derive the value with
 `betabench geometry`. See
 [Geometry sanity filter](CONFIG_REFERENCE.md#geometry-sanity-filter).
 
-**A `min_iou` never seems to fire** — check the achievable IoU for that
+**A `min_iou` never seems to fire**: check the achievable IoU for that
 pair with `betabench suppression` before assuming the rule is wrong. A
 size mismatch between the two labels' typical boxes can make a given
 `min_iou` mathematically unreachable however well centred they are.
 
-**A sticker style shows a plain black bar** — no usable PNGs were found
+**A sticker style shows a plain black bar**: no usable PNGs were found
 via `dir`/`images`. It falls back to a bar rather than failing the run,
 and logs once. Check the path and that the folder has `.png` files.
 
-**Skin briefly visible above or below a bar** — a box's rendered
+**Skin briefly visible above or below a bar**: a box's rendered
 position is static for its whole `time_safety` window, and a thin bar
 covers only part of the box height. Raise `thickness` for that variant.
 See [`type: 'bar'`](CONFIG_REFERENCE.md#type-bar).
 
-**Preview output where a real run was expected** — check
+**Preview output where a real run was expected**: check
 `preview_mode_enabled`. Preview output has its own filename suffix and
 its own cache, so it can never corrupt a real run either way, but it is
 easy to leave on.
 
-**The run seems stuck** — check the log at `debug`. Every long stage
+**The run seems stuck**: check the log at `debug`. Every long stage
 emits a progress record on a bounded interval. If the terminal is quiet,
 `console_level` is probably filtering it; run with
 `--console-level debug`.
 
-**Two output files for what looks like the same settings** — something
+**Two output files for what looks like the same settings**: something
 that changes the output changed. Compare the `d`/`c`/`e` keys in the two
 names against `../output/cache/run_keys/` to see exactly which stage
 differs.

@@ -843,11 +843,23 @@ def shot_spans_for( shot_cut_times, scanned_seconds=None ):
 
     Returns:
         A list of positive span lengths, empty when there is nothing to
-        measure.
+        measure: cuts never scanned (None), or no cuts and no known
+        window.
     """
-    if not shot_cut_times:
+    if shot_cut_times is None:
         return []
     times = sorted( float( t ) for t in shot_cut_times )
+    if not times:
+        # Scanned, and no cuts found: the whole window is one shot.
+        # This used to return [] exactly as the unscanned case did, so a
+        # scan that found zero cuts reported "no shot-cut data", fell
+        # through to the configured default, and showed as n/a in
+        # betabench. 13 of 56 files in one preview run took that path.
+        # Today's default happens to be the profile zero cuts measure
+        # as, which is the only reason it never changed an output.
+        if scanned_seconds and scanned_seconds > 0:
+            return [ float( scanned_seconds ) ]
+        return []
     spans = [ times[0] ] if times[0] > 0 else []
     spans.extend( later - earlier
                   for earlier, later in zip( times, times[1:] ) )
@@ -912,6 +924,88 @@ def median_shot_seconds_for( shot_cut_times, scanned_seconds=None ):
     return 0.5 * ( spans[middle - 1] + spans[middle] )
 
 
+def scanned_window_seconds( duration_seconds, offset_seconds=0.0, max_seconds=None ):
+    """
+    Length of footage a shot-cut scan actually covered, in seconds.
+
+    The one definition of a structure measurement's denominator, shared
+    by betatv, the tuning replay and betabench. Each used to derive it
+    differently, and two of them derived it from the spread between the
+    first and last DETECTION, which is the length of the nudity, not of
+    the footage. betabench scored a file whose censored boxes fell in a
+    single sampled frame at a 1-microsecond window, 600,000,000 cuts a
+    minute and "100% of runtime in sub-1s shots", and recommended moving
+    it to quick-cut.
+
+    Args:
+        duration_seconds: The whole video's length, or None if unknown.
+        offset_seconds: Where the scan started (a preview slice offset).
+        max_seconds: The scan's bound (a preview window), or None for
+            "to the end of the file".
+
+    Returns:
+        Seconds scanned, or None when the duration is unknown. A bound
+        past the end of the file is clamped to what was there to scan.
+    """
+    if not duration_seconds or duration_seconds <= 0:
+        return None
+    remaining = max( 0.0, float( duration_seconds ) - float( offset_seconds or 0.0 ) )
+    if max_seconds:
+        remaining = min( remaining, float( max_seconds ) )
+    return remaining if remaining > 0 else None
+
+
+class StructureSignals( object ):
+    """
+    What a shot-cut scan says about a video's structure.
+
+    Every field is None when not measured, never 0: "cuts never scanned"
+    and "scanned and found none" are different facts, and only the
+    second is evidence of anything.
+    """
+    __slots__ = ( 'cut_count', 'scanned_seconds', 'cuts_per_min',
+                  'short_shot_fraction', 'median_shot_seconds' )
+
+    def __init__( self, cut_count=None, scanned_seconds=None, cuts_per_min=None,
+                  short_shot_fraction=None, median_shot_seconds=None ):
+        self.cut_count = cut_count
+        self.scanned_seconds = scanned_seconds
+        self.cuts_per_min = cuts_per_min
+        self.short_shot_fraction = short_shot_fraction
+        self.median_shot_seconds = median_shot_seconds
+
+    @property
+    def is_measured( self ):
+        return self.short_shot_fraction is not None
+
+
+def structure_signals( shot_cut_times, scanned_seconds ):
+    """
+    Every structure measure for one video, from its cuts and its window.
+
+    One function for betatv's profile selection, the tuning replay and
+    betabench, so the three cannot drift. They had: the replay passed a
+    cut rate while profiles match on short_shot_fraction, and betabench
+    divided by the spread of detections rather than the window scanned.
+
+    Args:
+        shot_cut_times: Cut timestamps in seconds, [] when scanned with
+            none found, None when never scanned.
+        scanned_seconds: From scanned_window_seconds, or None.
+
+    Returns:
+        A StructureSignals. Unmeasured unless both inputs are known.
+    """
+    if shot_cut_times is None or not scanned_seconds or scanned_seconds <= 0:
+        return StructureSignals()
+    return StructureSignals(
+        cut_count=len( shot_cut_times ),
+        scanned_seconds=float( scanned_seconds ),
+        cuts_per_min=60.0 * len( shot_cut_times ) / float( scanned_seconds ),
+        short_shot_fraction=short_shot_fraction_for( shot_cut_times, scanned_seconds ),
+        median_shot_seconds=median_shot_seconds_for( shot_cut_times, scanned_seconds ) )
+
+
 def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
                          short_shot_fraction=None ):
     """
@@ -922,6 +1016,50 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
     """
     return profile_selection( cuts_per_min, backend_name, source_path,
                               short_shot_fraction )[0]
+
+
+def declared_profile_selection( source_path=None, backend_name=None ):
+    """
+    The profile someone DECLARED for this video, before anything is measured.
+
+    Precedence steps 1 to 3 of profile_selection: --profile, a path
+    pattern, the folder convention. Split out so a caller can know the
+    profile, and therefore the sample rate and the output name, before
+    the shot-cut scan runs. betatv uses that to start detection while
+    the scan is still going, and to skip a finished file without
+    scanning it at all. profile_selection calls this first, so the
+    precedence ladder is still defined in exactly one place.
+
+    Returns:
+        (profile_name, reason) when a declaration decides, including the
+        (None, reason) of a forced name that is not a variant; None when
+        nothing was declared and the choice depends on measurement.
+    """
+    variants = get_profiles( backend_name ).get( 'variants' ) or {}
+
+    # An explicit choice wins over everything, including the off switch:
+    # asking for a profile by name and silently getting none because
+    # profiles were disabled in config would be the same class of
+    # confusing failure the off-switch comment in profile_selection
+    # describes.
+    forced = getattr( betaconfig, 'force_structure_profile', None )
+    if forced:
+        return ( ( forced, 'forced by --profile' ) if forced in variants
+                 else ( None, 'forced profile %r is not a variant'%(forced,) ) )
+
+    # A path rule is a standing explicit choice, so it outranks the cut
+    # rate and the off switch for the same reason --profile does. It loses
+    # to --profile, which is the one-off override.
+    by_path = profile_for_path( source_path, backend_name )
+    if by_path:
+        return ( by_path, 'matched profile_by_path_pattern' )
+
+    # The folder convention. Below path patterns, above measurement.
+    by_dir, matched_key = source_dir_rule( source_path, backend_name )
+    if by_dir:
+        return ( by_dir, 'source folder %s/'%( matched_key, ) )
+
+    return None
 
 
 def profile_selection( cuts_per_min, backend_name=None, source_path=None,
@@ -978,29 +1116,27 @@ def profile_selection( cuts_per_min, backend_name=None, source_path=None,
         short_shot_fraction: Share of runtime in short shots, 0 to 1, or
             None when unavailable. Same None semantics.
     """
+    declared = declared_profile_selection( source_path, backend_name )
+    if declared is not None:
+        return declared
+    return measured_profile_selection( cuts_per_min, backend_name, short_shot_fraction )
+
+
+def measured_profile_selection( cuts_per_min, backend_name=None, short_shot_fraction=None ):
+    """
+    The profile measurement alone would choose: steps 4 and 5 of
+    profile_selection, ignoring every declaration.
+
+    Exposed so betatv can say when a declared profile samples LESS
+    densely than the footage measures for. A file sorted into a folder
+    whose profile runs at 9 fps while its cutting measures as quick_cut
+    (18 fps) loses detections on exactly the shots that most need them,
+    and nothing else would ever point that out.
+
+    Args and Returns: as profile_selection.
+    """
     profiles = get_profiles( backend_name )
     variants = profiles.get( 'variants' ) or {}
-
-    # An explicit choice wins over everything, including the off switch:
-    # asking for a profile by name and silently getting none because
-    # profiles were disabled in config would be the same class of
-    # confusing failure the off-switch comment below describes.
-    forced = getattr( betaconfig, 'force_structure_profile', None )
-    if forced:
-        return ( ( forced, 'forced by --profile' ) if forced in variants
-                 else ( None, 'forced profile %r is not a variant'%(forced,) ) )
-
-    # A path rule is a standing explicit choice, so it outranks the cut
-    # rate and the off switch for the same reason --profile does. It loses
-    # to --profile, which is the one-off override.
-    by_path = profile_for_path( source_path, backend_name )
-    if by_path:
-        return ( by_path, 'matched profile_by_path_pattern' )
-
-    # The folder convention. Below path patterns, above measurement.
-    by_dir, matched_key = source_dir_rule( source_path, backend_name )
-    if by_dir:
-        return ( by_dir, 'source folder %s/'%( matched_key, ) )
 
     # The off switch. Without this check the setting existed in config
     # and in the censor key but was read by nothing, so turning profiles

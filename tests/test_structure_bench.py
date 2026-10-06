@@ -32,6 +32,7 @@ are what actually want different tracking and timing values.
 import importlib.util
 import logging
 import os
+import shutil
 import sys
 import tempfile
 import types
@@ -59,6 +60,11 @@ def _load_betabench():
 betabench = _load_betabench()
 
 
+def _write_text( path, text ):
+    with open( path, 'w' ) as handle:
+        handle.write( text )
+
+
 def _quiet_logger():
     logger = logging.getLogger( 'structure_test' )
     logger.handlers = [ logging.NullHandler() ]
@@ -71,146 +77,306 @@ def _box( file_hash, t, x, y, w=200, h=200, label='exposed_breast' ):
              'class_id': label, 'score': 0.8 }
 
 
-class TestStructureBench( unittest.TestCase ):
+def _build_clip( path, seconds ):
+    """A tiny still clip: structure reads its duration, nothing else."""
+    import subprocess
+    os.makedirs( os.path.dirname( path ), exist_ok=True )
+    subprocess.run( [ 'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i',
+                      'color=c=gray:size=64x48:rate=10:duration=%d'%( seconds, ),
+                      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', path ],
+                    check=True )
+
+
+@unittest.skipUnless( shutil.which( 'ffmpeg' ), "ffmpeg is needed to build the test clips" )
+class StructureHarness( unittest.TestCase ):
+    """
+    Real files in a real pair of source trees, real cache files on disk,
+    and bench_structure run end to end. The previous tests handed
+    _bench_structure_one a list of boxes and a fake path, which is how
+    the window bug shipped: the window was derived from those same boxes,
+    so a test that spread its boxes across the clip could never see it.
+    """
 
     def setUp( self ):
-        self.logger = _quiet_logger()
-        self.args = types.SimpleNamespace( sample_fps=None, frame_width=1920, frame_height=1080 )
-        self.config = types.SimpleNamespace( label='test' )
-        self._orig_hash_to_path = betabench.bu_cache.build_hash_to_video_path
-        self._orig_frame_size = betabench.bu_tuning.frame_size_for_video
-        betabench.bu_cache.build_hash_to_video_path = (
-            lambda hashes: { h: '/fake/%s.mp4'%(h) for h in hashes } )
+        self.tmp = tempfile.mkdtemp( prefix='betasuite-structure-' )
+        self.vids = os.path.join( self.tmp, 'uncensored_vids' )
+        self.staging = os.path.join( self.tmp, 'source' )
+        os.makedirs( self.vids )
+        os.makedirs( self.staging )
+        self._saved_const = { name: getattr( betaconst, name ) for name in (
+            'video_path_uncensored', 'video_path_source_backup', 'shot_cut_dir',
+            'vid_hash_dir', 'file_hash_cache_path' ) }
+        betaconst.video_path_uncensored = self.vids + os.sep
+        betaconst.video_path_source_backup = self.staging + os.sep
+        betaconst.shot_cut_dir = os.path.join( self.tmp, 'shot_cuts' )
+        betaconst.vid_hash_dir = os.path.join( self.tmp, 'vid_hashes' )
+        betaconst.file_hash_cache_path = os.path.join( self.tmp, 'file_hashes.json' )
+        self._saved_vid_dir = bu_cache.VID_HASH_DIR
+        bu_cache.VID_HASH_DIR = betaconst.vid_hash_dir
+        self._saved_memo = bu_hash._file_hash_memo
+        bu_hash._file_hash_memo = None
+        self._saved_map = getattr( betaconfig, 'profile_by_source_dir', None )
+        betaconfig.profile_by_source_dir = {
+            'scene': 'scene', 'compilation': 'compilation',
+            'quick-cut': 'quick_cut', 'split-screen': 'split_screen' }
+        self._saved_frame_size = betabench.bu_tuning.frame_size_for_video
         betabench.bu_tuning.frame_size_for_video = lambda path: ( 1920, 1080 )
+        betabench.bu_video._DURATION_CACHE.clear()
+        self.fps = betaconfig.video_censor_fps
+        self.threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+        self.backend = betaconfig.detector_backend['selected']
+        self.logger = _quiet_logger()
+        self.args = types.SimpleNamespace( backend=None, write_move_script=None )
 
     def tearDown( self ):
-        betabench.bu_cache.build_hash_to_video_path = self._orig_hash_to_path
-        betabench.bu_tuning.frame_size_for_video = self._orig_frame_size
+        for name, value in self._saved_const.items():
+            setattr( betaconst, name, value )
+        bu_cache.VID_HASH_DIR = self._saved_vid_dir
+        bu_hash._file_hash_memo = self._saved_memo
+        betaconfig.profile_by_source_dir = self._saved_map
+        betabench.bu_tuning.frame_size_for_video = self._saved_frame_size
+        shutil.rmtree( self.tmp, ignore_errors=True )
 
-    def _rows( self, raw_boxes ):
-        produced = betabench._bench_structure_one(
-            self.args, self.logger, self.config, raw_boxes )
-        return { row['file_hash']: row for row in produced.get( 'structure', [] ) }
+    def clip( self, relative, seconds=60, tree=None ):
+        path = os.path.join( tree or self.vids, relative )
+        _build_clip( path, seconds )
+        return bu_hash.md5_for_file( path, 16 )
+
+    def cuts( self, file_hash, cuts, preview_suffix='', max_seconds=None ):
+        bu_hash.write_json( cuts, bu_cache.shot_cut_path_for(
+            file_hash, self.fps, self.threshold, preview_suffix, max_seconds ) )
+
+    def boxes( self, file_hash, boxes, size=640, fps=None, preview_suffix='' ):
+        bu_hash.write_json( boxes, bu_cache.box_hash_path_for(
+            file_hash, size, fps or self.fps, 0.12, self.backend,
+            preview_suffix, det_key='abc123' ) )
+
+    def rows( self ):
+        produced = betabench.bench_structure( self.args, self.logger )
+        return { row['source']: row for row in produced.get( 'structure', [] ) }
+
+
+class TestStructureWindow( StructureHarness ):
+    """The denominator is the footage scanned, never the detections' spread."""
+
+    def test_boxes_in_one_frame_do_not_shrink_the_window( self ):
+        # The exact failure: censored boxes in ONE sampled frame gave a
+        # 1-microsecond window, 600,000,000 cuts/min, "100% of runtime in
+        # sub-1s shots", and a recommended move to quick-cut.
+        file_hash = self.clip( 'scene/petite.mp4', 60 )
+        self.cuts( file_hash, [ 30.0 ] )
+        self.boxes( file_hash, [ _box( file_hash, 10.0, 700, 400 ) ] )
+        row = self.rows()['petite.mp4']
+        self.assertEqual( row['scanned_seconds'], 60.0 )
+        self.assertAlmostEqual( row['cuts_per_min'], 1.0 )
+        self.assertEqual( row['short_shot_fraction'], 0.0 )
+        self.assertEqual( row['recommended_profile'], 'scene' )
+
+    def test_a_slice_is_measured_over_the_slice_and_says_so( self ):
+        file_hash = self.clip( 'clip.mp4', 60 )
+        self.cuts( file_hash, [ 5.0, 15.0 ], '-preview', 20 )
+        row = self.rows()['clip.mp4']
+        self.assertEqual( row['scanned_seconds'], 20.0 )
+        self.assertEqual( row['timing_evidence'], 'slice' )
+        self.assertAlmostEqual( row['cuts_per_min'], 6.0 )
+
+    def test_a_whole_file_scan_wins_over_a_slice( self ):
+        file_hash = self.clip( 'clip.mp4', 60 )
+        self.cuts( file_hash, [ 1.0, 1.5, 2.0 ], '-preview', 20 )
+        self.cuts( file_hash, [ 30.0 ] )
+        row = self.rows()['clip.mp4']
+        self.assertEqual( row['timing_evidence'], 'whole file' )
+        self.assertEqual( row['cuts'], 1 )
+
+    def test_zero_cuts_in_a_whole_file_scan_is_measured_as_scene( self ):
+        file_hash = self.clip( 'clip.mp4', 60 )
+        self.cuts( file_hash, [] )
+        row = self.rows()['clip.mp4']
+        self.assertEqual( row['cuts'], 0 )
+        self.assertEqual( row['short_shot_fraction'], 0.0 )
+        self.assertEqual( row['recommended_profile'], 'scene' )
+
+    def test_no_scan_at_all_recommends_nothing( self ):
+        self.clip( 'scene/clip.mp4', 60 )
+        row = self.rows()['clip.mp4']
+        self.assertIsNone( row['cuts'] )
+        self.assertIsNone( row['timing_evidence'] )
+        self.assertIsNone( row['recommended_profile'] )
+
+
+class TestEveryFileIsSurveyed( StructureHarness ):
+    """Files come from disk, not from one detection configuration's caches."""
+
+    def test_a_file_detected_at_another_rate_still_appears_with_geometry( self ):
+        # The 8 files the app measured as quick_cut were detected at 18
+        # fps and were invisible to a survey reading only the 9 fps caches.
+        file_hash = self.clip( 'fast.mp4', 60 )
+        self.boxes( file_hash, [ _box( file_hash, i / 18.0, 700, 400 ) for i in range( 60 ) ],
+                    fps=18 )
+        row = self.rows()['fast.mp4']
+        self.assertEqual( row['frames_with_boxes'], 60 )
+
+    def test_a_file_with_no_caches_at_all_still_has_a_row( self ):
+        self.clip( 'unseen.mp4', 60 )
+        self.assertIn( 'unseen.mp4', self.rows() )
+
+    def test_staging_tree_files_are_surveyed( self ):
+        self.clip( 'scene/waiting.mp4', 60, tree=self.staging )
+        row = self.rows()['waiting.mp4']
+        self.assertEqual( row['tree'], 'source' )
+        self.assertEqual( row['current_folder'], 'scene' )
+
+    def test_two_configurations_are_not_counted_as_two_subjects( self ):
+        # 320 and 640 see the same frame; mixing them would double p90.
+        file_hash = self.clip( 'solo.mp4', 60 )
+        self.boxes( file_hash, [ _box( file_hash, i / 9.0, 700, 400 ) for i in range( 50 ) ], size=640 )
+        self.boxes( file_hash, [ _box( file_hash, i / 9.0, 710, 400 ) for i in range( 50 ) ], size=320 )
+        self.assertEqual( self.rows()['solo.mp4']['median_simultaneous'], 1 )
+
+    def test_the_configuration_that_saw_most_is_chosen_whatever_the_order( self ):
+        # Two sizes, one sparse, one dense. Directory order is not
+        # sorted, so both assignments are tried.
+        for dense_size, sparse_size in ( ( 640, 320 ), ( 320, 640 ) ):
+            with self.subTest( dense=dense_size ):
+                shutil.rmtree( betaconst.vid_hash_dir, ignore_errors=True )
+                file_hash = self.clip( 'pick%d.mp4'%( dense_size, ), 60 )
+                self.boxes( file_hash, [ _box( file_hash, i / 9.0, 700, 400 ) for i in range( 50 ) ],
+                            size=dense_size )
+                self.boxes( file_hash, [ _box( file_hash, i / 9.0, 700, 400 ) for i in range( 5 ) ],
+                            size=sparse_size )
+                self.assertEqual( self.rows()['pick%d.mp4'%( dense_size, )]['frames_with_boxes'], 50 )
+
+    def test_slices_of_one_configuration_are_combined( self ):
+        file_hash = self.clip( 'sliced.mp4', 120 )
+        for offset in ( 25.0, 50.0, 75.0 ):
+            self.boxes( file_hash, [ _box( file_hash, offset + i / 9.0, 700, 400 ) for i in range( 20 ) ],
+                        preview_suffix=bu_cache.preview_cache_suffix( True, offset ) )
+        self.assertEqual( self.rows()['sliced.mp4']['frames_with_boxes'], 60 )
+
+
+class TestStructureGeometry( StructureHarness ):
 
     def test_split_screen_shows_two_simultaneous_boxes_split_evenly( self ):
+        file_hash = self.clip( 'split.mp4', 60 )
         raw = []
         for i in range( 200 ):
-            raw.append( _box( 'split', i / 9.0, 300, 400 ) )
-            raw.append( _box( 'split', i / 9.0, 1300, 400 ) )
-        row = self._rows( raw )['split']
+            raw.append( _box( file_hash, i / 9.0, 300, 400 ) )
+            raw.append( _box( file_hash, i / 9.0, 1300, 400 ) )
+        self.boxes( file_hash, raw )
+        row = self.rows()['split.mp4']
         self.assertEqual( row['median_simultaneous'], 2 )
         self.assertAlmostEqual( row['left_half_fraction'], 0.5, places=2 )
 
     def test_one_subject_on_one_side_is_not_mistaken_for_split_screen( self ):
-        raw = [ _box( 'solo', i / 9.0, 200 + i, 400 ) for i in range( 200 ) ]
-        row = self._rows( raw )['solo']
+        file_hash = self.clip( 'solo.mp4', 60 )
+        self.boxes( file_hash, [ _box( file_hash, i / 9.0, 200 + i, 400 ) for i in range( 200 ) ] )
+        row = self.rows()['solo.mp4']
         self.assertEqual( row['median_simultaneous'], 1 )
         self.assertGreater( row['left_half_fraction'], 0.9 )
 
-    def test_cut_rate_separates_a_compilation_from_a_single_scene( self ):
-        tmp = tempfile.mkdtemp()
-        saved_dir = betaconst.shot_cut_dir
-        bu_cache.betaconst.shot_cut_dir = tmp
-        try:
-            fps = betaconfig.video_censor_fps
-            threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-            bu_hash.write_json( [ 5.0, 15.0 ],
-                                bu_cache.shot_cut_path_for( 'slow', fps, threshold ) )
-            bu_hash.write_json( [ round( i * 0.3, 2 ) for i in range( 1, 70 ) ],
-                                bu_cache.shot_cut_path_for( 'fast', fps, threshold ) )
-            raw = []
-            for i in range( 200 ):
-                raw.append( _box( 'slow', i / 9.0, 700, 400 ) )
-                raw.append( _box( 'fast', i / 9.0, ( i * 211 ) % 1600, 400 ) )
-            rows = self._rows( raw )
-            self.assertGreater( rows['fast']['cuts_per_min'], rows['slow']['cuts_per_min'] * 5,
-                "the compilation's cut rate did not separate from the single-scene file's" )
-            self.assertLess( rows['fast']['median_shot_seconds'],
-                             rows['slow']['median_shot_seconds'] )
-        finally:
-            bu_cache.betaconst.shot_cut_dir = saved_dir
-
-    def test_the_shot_shares_are_weighted_by_duration_not_by_count( self ):
-        # The arithmetic, driven through the real function rather than
-        # handed in. A mutation changing these sums to counts passed
-        # every recommendation test, because those pass the fractions in
-        # as row values and never reach this code.
-        #
-        # 'flurry' is nineteen 0.1s cuts in the first two seconds of a
-        # ~22s span, then nothing: 19 of its 21 SHOTS are short, but only
-        # about 9% of its RUNTIME is. Counting shots would report ~90%.
-        tmp = tempfile.mkdtemp()
-        saved_dir = betaconst.shot_cut_dir
-        bu_cache.betaconst.shot_cut_dir = tmp
-        try:
-            fps = betaconfig.video_censor_fps
-            threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-            bu_hash.write_json( [ round( 0.1 * n, 2 ) for n in range( 1, 20 ) ],
-                                bu_cache.shot_cut_path_for( 'flurry', fps, threshold ) )
-            raw = [ _box( 'flurry', i / 9.0, 700, 400 ) for i in range( 200 ) ]
-            row = self._rows( raw )['flurry']
-
-            self.assertLess( row['short_shot_fraction'], 0.25,
-                "short-shot share must be a share of RUNTIME; counting shots "
-                "would put this near 0.9" )
-            self.assertLess( row['mid_shot_fraction'], 0.5,
-                "so this file must not be recommended as a compilation" )
-            self.assertEqual( row['recommended_profile'], 'scene' )
-            # The median DOES read as rapid-fire here, which is exactly
-            # why it is not what decides.
-            self.assertLess( row['median_shot_seconds'], 0.2 )
-        finally:
-            bu_cache.betaconst.shot_cut_dir = saved_dir
-
-    def test_sustained_short_shots_do_reach_the_compilation_share( self ):
-        # The other side of the same coin: a file genuinely made of short
-        # shots must report a high duration share, or the measure would
-        # just always say "scene".
-        tmp = tempfile.mkdtemp()
-        saved_dir = betaconst.shot_cut_dir
-        bu_cache.betaconst.shot_cut_dir = tmp
-        try:
-            fps = betaconfig.video_censor_fps
-            threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-            bu_hash.write_json( [ round( 3.0 * n, 2 ) for n in range( 1, 8 ) ],
-                                bu_cache.shot_cut_path_for( 'comp', fps, threshold ) )
-            raw = [ _box( 'comp', i / 9.0, 700, 400 ) for i in range( 200 ) ]
-            row = self._rows( raw )['comp']
-            self.assertGreaterEqual( row['mid_shot_fraction'], 0.5 )
-            self.assertEqual( row['recommended_profile'], 'compilation' )
-        finally:
-            bu_cache.betaconst.shot_cut_dir = saved_dir
-
-    def test_a_file_with_no_shot_cut_cache_reports_unknown_not_zero( self ):
-        # "no cuts detected" and "cuts never looked for" are different
-        # facts, and reporting the second as the first would make a file
-        # scanned without shot-cut detection look like a single long take.
-        tmp = tempfile.mkdtemp()
-        saved_dir = betaconst.shot_cut_dir
-        bu_cache.betaconst.shot_cut_dir = tmp
-        try:
-            raw = [ _box( 'nocuts', i / 9.0, 700, 400 ) for i in range( 50 ) ]
-            row = self._rows( raw )['nocuts']
-            self.assertIsNone( row['cuts_per_min'] )
-            self.assertIsNone( row['cuts'] )
-        finally:
-            bu_cache.betaconst.shot_cut_dir = saved_dir
-
     def test_only_censored_labels_are_counted( self ):
-        # Structure describes what gets CENSORED. Counting face_femme
-        # into 'simultaneous' would report every talking-head shot as
-        # multi-subject.
-        raw = [ _box( 'mixed', i / 9.0, 700, 400 ) for i in range( 50 ) ]
-        raw += [ _box( 'mixed', i / 9.0, 100, 100, label='face_femme' ) for i in range( 50 ) ]
-        row = self._rows( raw )['mixed']
+        file_hash = self.clip( 'mixed.mp4', 60 )
+        raw = [ _box( file_hash, i / 9.0, 700, 400 ) for i in range( 50 ) ]
+        raw += [ _box( file_hash, i / 9.0, 100, 100, label='face_femme' ) for i in range( 50 ) ]
+        self.boxes( file_hash, raw )
+        row = self.rows()['mixed.mp4']
         self.assertEqual( row['detections'], 50 )
         self.assertEqual( row['median_simultaneous'], 1 )
 
-    def test_untagged_detections_produce_no_rows_rather_than_a_crash( self ):
-        raw = [ { 't': 0.0, 'x': 1, 'y': 1, 'w': 10, 'h': 10, 'class_id': 'exposed_breast' } ]
-        produced = betabench._bench_structure_one(
-            self.args, self.logger, self.config, raw )
-        self.assertEqual( produced, {} )
+
+class TestStructureShares( StructureHarness ):
+    """The duration-weighted shares, driven through the real arithmetic."""
+
+    def test_the_shot_shares_are_weighted_by_duration_not_by_count( self ):
+        # Nineteen 0.1s cuts in the first two seconds of a 22s clip: 19 of
+        # 21 SHOTS are short, about 9% of RUNTIME is. Counting shots would
+        # report ~90%.
+        file_hash = self.clip( 'flurry.mp4', 22 )
+        self.cuts( file_hash, [ round( 0.1 * n, 2 ) for n in range( 1, 20 ) ] )
+        row = self.rows()['flurry.mp4']
+        self.assertLess( row['short_shot_fraction'], 0.25 )
+        self.assertLess( row['mid_shot_fraction'], 0.5 )
+        self.assertEqual( row['recommended_profile'], 'scene' )
+        # The median DOES read as rapid-fire, which is why it does not decide.
+        self.assertLess( row['median_shot_seconds'], 0.2 )
+
+    def test_sustained_short_shots_do_reach_the_compilation_share( self ):
+        file_hash = self.clip( 'comp.mp4', 24 )
+        self.cuts( file_hash, [ round( 3.0 * n, 2 ) for n in range( 1, 8 ) ] )
+        row = self.rows()['comp.mp4']
+        self.assertGreaterEqual( row['mid_shot_fraction'], 0.5 )
+        self.assertEqual( row['recommended_profile'], 'compilation' )
+
+
+class TestMovesStayInTheirTree( StructureHarness ):
+
+    def test_a_staged_file_is_sorted_inside_the_staging_tree( self ):
+        file_hash = self.clip( 'fast.mp4', 60, tree=self.staging )
+        self.cuts( file_hash, [ 10.0 + 0.5 * n for n in range( 40 ) ] )
+        script = os.path.join( self.tmp, 'moves.sh' )
+        self.args.write_move_script = script
+        self.rows()
+        with open( script ) as handle:
+            text = handle.read()
+        self.assertIn( os.path.join( self.staging, 'quick-cut' ), text )
+        self.assertNotIn( os.path.join( self.vids, 'quick-cut' ), text )
+
+
+class TestMoveVerdict( StructureHarness ):
+    """Which recommended moves go in the script. See _move_verdict."""
+
+    def row( self, folder, recommended, evidence='whole file', tree=None ):
+        tree = tree or self.vids
+        path = os.path.join( tree, folder, 'x.mp4' ) if folder != '(root)' else os.path.join( tree, 'x.mp4' )
+        return { 'source_path': path, 'tree_root': tree, 'current_folder': folder,
+                 'recommended_profile': recommended, 'timing_evidence': evidence }
+
+    def verdict( self, *args, **kwargs ):
+        return betabench._move_verdict( self.row( *args, **kwargs ) )[0]
+
+    def test_a_root_file_with_whole_file_evidence_is_scripted( self ):
+        self.assertEqual( self.verdict( '(root)', 'quick_cut' ), 'script' )
+
+    def test_slice_evidence_is_review_only( self ):
+        self.assertEqual( self.verdict( '(root)', 'quick_cut', evidence='slice' ), 'review' )
+
+    def test_split_screen_geometry_does_not_need_whole_file_timing( self ):
+        self.assertEqual( self.verdict( 'scene', 'split_screen', evidence='slice' ), 'script' )
+
+    def test_a_move_that_lowers_the_sample_rate_is_never_scripted( self ):
+        # quick-cut/ samples at 18 fps; scene at the global rate.
+        self.assertEqual( self.verdict( 'quick-cut', 'scene' ), 'review' )
+
+    def test_a_manual_folder_is_not_overridden_by_timing( self ):
+        self.assertEqual( self.verdict( 'compilation', 'scene' ), 'review' )
+        self.assertEqual( self.verdict( 'split-screen', 'scene' ), 'review' )
+
+    def test_a_manual_folder_is_overridden_when_sampling_goes_up( self ):
+        # The direction that only ever adds detections.
+        self.assertEqual( self.verdict( 'compilation', 'quick_cut' ), 'script' )
+
+    def test_an_unmapped_folder_is_review_only( self ):
+        self.assertEqual( self.verdict( 'completed', 'quick_cut' ), 'review' )
+        self.assertEqual( self.verdict( 'titty_drops', 'scene' ), 'review' )
+
+    def test_an_auto_folder_moves_on_whole_file_evidence( self ):
+        self.assertEqual( self.verdict( 'scene', 'compilation' ), 'script' )
+
+
+class TestGeometrySliceOffsets( unittest.TestCase ):
+
+    def test_three_slices_sit_at_quarters_of_the_room( self ):
+        self.assertEqual( betabench.geometry_slice_offsets( 120.0, 20.0, 3 ), [ 25.0, 50.0, 75.0 ] )
+
+    def test_no_slice_starts_at_zero_on_a_long_file( self ):
+        self.assertGreater( min( betabench.geometry_slice_offsets( 3600.0, 20.0, 5 ) ), 0.0 )
+
+    def test_a_file_shorter_than_a_slice_is_processed_whole( self ):
+        self.assertEqual( betabench.geometry_slice_offsets( 15.0, 20.0, 3 ), [ 0.0 ] )
+
+    def test_every_slice_fits_inside_the_file( self ):
+        for offset in betabench.geometry_slice_offsets( 100.0, 20.0, 7 ):
+            self.assertLessEqual( offset + 20.0, 100.0 )
 
 
 class TestRenderBenchStyleDedup( unittest.TestCase ):
@@ -386,12 +552,28 @@ class TestFolderRecommendation( unittest.TestCase ):
         self.assertEqual( self.pick( mid_shot_fraction=exact ), 'compilation' )
         self.assertEqual( self.pick( mid_shot_fraction=exact - 0.001 ), 'scene' )
 
-    def test_no_cuts_found_is_a_scene_and_says_so( self ):
+    def test_never_scanned_recommends_nothing( self ):
+        # It used to recommend 'scene' with "no shot cuts found", which
+        # read an unscanned file as a single long take and could move it
+        # out of its folder.
         profile, why = betabench._recommend_profile(
             self.row( short_shot_fraction=None, mid_shot_fraction=None ),
             0.15, 'quick_cut' )
-        self.assertEqual( profile, 'scene' )
-        self.assertIn( 'no shot cuts', why )
+        self.assertIsNone( profile )
+        self.assertIn( 'never scanned', why )
+
+    def test_zero_measured_cuts_is_a_scene( self ):
+        self.assertEqual( self.pick( short_shot_fraction=0.0, mid_shot_fraction=0.0 ), 'scene' )
+
+    def test_split_screen_needs_enough_frames( self ):
+        # One sampled frame with boxes on both sides is not a layout.
+        self.assertNotEqual(
+            self.pick( p90_simultaneous=8, left_half_fraction=0.50, frames_with_boxes=1 ),
+            'split_screen' )
+        self.assertEqual(
+            self.pick( p90_simultaneous=8, left_half_fraction=0.50,
+                       frames_with_boxes=betabench.SPLIT_MIN_FRAMES_WITH_BOXES ),
+            'split_screen' )
 
     def test_no_configured_quick_boundary_means_no_quick_recommendation( self ):
         # Rather than inventing one, fall through to the boundaries this
@@ -565,7 +747,7 @@ class TestMoveScript( unittest.TestCase ):
         import subprocess, tempfile
         with tempfile.TemporaryDirectory() as root:
             src = os.path.join( root, 'clip.mp4' )
-            open( src, 'w' ).write( 'x' )
+            _write_text( src, 'x' )
             dest = os.path.join( root, 'compilation' )
             script = os.path.join( root, 'moves.sh' )
             betabench._write_move_script( script, [ {
@@ -580,7 +762,7 @@ class TestMoveScript( unittest.TestCase ):
         import subprocess, tempfile
         with tempfile.TemporaryDirectory() as root:
             src = os.path.join( root, 'clip.mp4' )
-            open( src, 'w' ).write( 'original' )
+            _write_text( src, 'original' )
             dest = os.path.join( root, 'scene' )
             script = os.path.join( root, 'moves.sh' )
             betabench._write_move_script( script, [ {
@@ -590,7 +772,7 @@ class TestMoveScript( unittest.TestCase ):
             subprocess.run( [ 'bash', script ], capture_output=True, text=True )
             # Put a DIFFERENT file back at the old name, then re-run: the
             # already-moved copy must not be clobbered.
-            open( src, 'w' ).write( 'different' )
+            _write_text( src, 'different' )
             result = subprocess.run( [ 'bash', script ], capture_output=True, text=True )
             with open( os.path.join( dest, 'clip.mp4' ) ) as f:
                 self.assertEqual( f.read(), 'original',

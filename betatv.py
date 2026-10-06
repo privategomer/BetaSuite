@@ -393,6 +393,50 @@ def detect_boxes_for_video( source, fname, session, file_hash, picture_sizes,
     return all_raw_boxes
 
 
+def _describe_structure( signals ):
+    """
+    The measured structure as a short log phrase, naming the signal the
+    profiles match on rather than whichever one is handy: printing a cut
+    rate beside a profile chosen by short-shot share reads as the reason
+    for the choice when it had nothing to do with it.
+    """
+    if signals is None or not signals.is_measured:
+        return "no shot-cut scan"
+    match_on = bu_detector.get_profiles().get( 'match_on', 'cuts_per_min' )
+    if match_on == 'short_shot_fraction':
+        measured = "%.1f%% of runtime in short shots"%( 100.0 * signals.short_shot_fraction, )
+    else:
+        measured = "%.1f cuts/min"%( signals.cuts_per_min, )
+    return "%s, %d cut(s) over %.0fs scanned"%(
+        measured, signals.cut_count, signals.scanned_seconds )
+
+
+def _report_declared_against_measured( fname, profile_name, profile_reason, sample_fps,
+                                       signals, logger ):
+    """
+    After a declared profile's background scan: what measurement says.
+
+    A WARNING only in the direction that costs detections: the footage
+    measures as a profile that samples more densely than the declared
+    one. Everything else is information. A split_screen folder measuring
+    as scene is expected (split_screen is manual_only because no timing
+    signal can see it); a compilation folder whose file measures as
+    quick_cut is running at half the sample rate its cutting asks for.
+    """
+    measured_name, measured_reason = bu_detector.measured_profile_selection(
+        signals.cuts_per_min, short_shot_fraction=signals.short_shot_fraction )
+    measured_fps = bu_detector.get_profile_sample_fps( measured_name )
+    if measured_name and measured_name != profile_name and measured_fps > sample_fps:
+        logger.warning( "%s: %s chose %s at %s fps, but the footage measures as %s (%s) "
+                        "at %s fps. Fewer samples means fewer detections on the shortest "
+                        "shots; check the folder this file sits in."%(
+            fname, profile_reason, profile_name, sample_fps, measured_name,
+            _describe_structure( signals ), measured_fps ) )
+        return
+    logger.info( "shot structure for %s: %s; measurement alone would choose %s via %s"%(
+        fname, _describe_structure( signals ), measured_name, measured_reason ) )
+
+
 # ---------------------------------------------------------------------------
 # Per-file orchestration
 # ---------------------------------------------------------------------------
@@ -478,15 +522,34 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                      and os.path.exists( candidate_paths['final'] )
                      and bu_video.probe_video_ok( candidate_paths['final'] ) )
 
-        # When no profile changes the sample rate, the output name is
-        # known before anything is scanned, so a repeat run skips at zero
-        # cost. When one does, the name depends on which profile the
-        # footage selects, and that needs the shot-cut scan first - which
-        # is cached, so a repeat run still skips without detecting.
+        source_path = os.path.join( root, fname )
+        shot_cut_args = (
+            source, file_hash, betaconfig.video_censor_fps,
+            getattr( betaconfig, 'shot_cut_threshold', 0.5 ),
+            preview_offset_seconds, effective_preview_seconds,
+            bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ) )
+        shot_cut_kwargs = {
+            'enabled': getattr( betaconfig, 'shot_cut_detection_enabled', True ),
+            'logger': logger,
+        }
+        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
+        scanned_seconds = bu_detector.scanned_window_seconds(
+            duration_seconds, preview_offset_seconds, effective_preview_seconds )
+
+        # A declared profile (--profile, a path pattern, a source folder)
+        # fixes the sample rate before anything is scanned, so the output
+        # name is known now and a finished file skips at zero cost. When
+        # no profile changes the sample rate the same holds for every
+        # file. Otherwise the name depends on the measured profile, which
+        # needs the scan first; it is cached, so a repeat run still skips
+        # without detecting.
+        declared = bu_detector.declared_profile_selection( source_path )
         paths = None
-        if len( bu_detector.profile_sample_rates() ) == 1:
+        if declared is not None or len( bu_detector.profile_sample_rates() ) == 1:
+            early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
+                          if declared is not None else None )
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                                  preview_mode_enabled, preview_offset_seconds,
+                                  preview_mode_enabled, preview_offset_seconds, early_fps,
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -501,56 +564,30 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         # scan rate would be circular. Cut timestamps are times, not
         # sample indices, so they stay valid at whatever rate detection
         # then runs.
-        preview_suffix = bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds )
-        shot_cut_times = bu_video.shot_cuts_for_source(
-            source, file_hash, betaconfig.video_censor_fps,
-            getattr( betaconfig, 'shot_cut_threshold', 0.5 ),
-            preview_offset_seconds, effective_preview_seconds, preview_suffix,
-            enabled=getattr( betaconfig, 'shot_cut_detection_enabled', True ),
-            logger=logger )
-
-        # Which structure profile this video's settings come from, chosen
-        # by its measured shot-cut rate. The rate is cuts divided by the
-        # length of the window SCANNED, not by the spread between the
-        # first and last cut, which reads a quiet clip with one brief
-        # flurry as a compilation. A file with no scan reports None and
-        # takes the configured default rather than a guessed one.
-        cuts_per_min = None
-        scanned_seconds = None
-        if shot_cut_times:
-            scanned_seconds = effective_preview_seconds
-            if scanned_seconds is None and source.vid_fps:
-                scanned_seconds = source.num_frames / source.vid_fps
-            if scanned_seconds and scanned_seconds > 0:
-                cuts_per_min = 60.0 * len( shot_cut_times ) / scanned_seconds
-        median_shot_seconds = bu_detector.median_shot_seconds_for(
-            shot_cut_times, scanned_seconds )
-        short_shot_fraction = bu_detector.short_shot_fraction_for(
-            shot_cut_times, scanned_seconds )
-        profile_name, profile_reason = bu_detector.profile_selection(
-            cuts_per_min, source_path=os.path.join( root, fname ),
-            short_shot_fraction=short_shot_fraction )
+        background_scan = None
+        if declared is not None:
+            profile_name, profile_reason = declared
+            background_scan = bu_video.BackgroundShotCutScan( *shot_cut_args, **shot_cut_kwargs )
+            shot_cut_times = None
+            signals = None
+        else:
+            shot_cut_times = bu_video.shot_cuts_for_source( *shot_cut_args, **shot_cut_kwargs )
+            # Rate and shares are over the window SCANNED, never the
+            # spread of cuts or detections; see scanned_window_seconds.
+            signals = bu_detector.structure_signals( shot_cut_times, scanned_seconds )
+            profile_name, profile_reason = bu_detector.profile_selection(
+                signals.cuts_per_min, source_path=source_path,
+                short_shot_fraction=signals.short_shot_fraction )
         sample_fps = bu_detector.get_profile_sample_fps( profile_name )
         if profile_name:
-            # Report the signal the profiles actually match on, not
-            # whichever one is handy: printing a cut rate beside a
-            # profile chosen by median shot length reads as the reason
-            # for the choice when it had nothing to do with it.
-            match_on = bu_detector.get_profiles().get( 'match_on', 'cuts_per_min' )
-            if match_on == 'short_shot_fraction':
-                measured = ( "%.1f%% of runtime in short shots"%(
-                                 100.0 * short_shot_fraction, )
-                             if short_shot_fraction is not None else None )
-            else:
-                measured = ( "%.1f cuts/min"%(cuts_per_min,)
-                             if cuts_per_min is not None else None )
             # Name the rule that decided, not only the measurement. A
             # folder key that matches no folder on disk looks configured
             # while quietly falling through to measurement, and without
             # this the log gives no way to tell the two apart.
             logger.info( "structure profile: %s via %s (%s), sampling at %s fps"%(
                 profile_name, profile_reason,
-                measured or "no shot-cut data",
+                ( _describe_structure( signals ) if signals is not None
+                  else "shot-cut scan running alongside detection" ),
                 sample_fps ) )
 
         if paths is None or paths['sample_fps'] != sample_fps:
@@ -565,16 +602,23 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             source, fname, session, file_hash, picture_sizes, paths['preview_suffix'],
             preview_offset_seconds, effective_preview_seconds, logger, sample_fps )
 
+        if background_scan is not None:
+            shot_cut_times = background_scan.result()
+            signals = bu_detector.structure_signals( shot_cut_times, scanned_seconds )
+            _report_declared_against_measured(
+                fname, profile_name, profile_reason, sample_fps, signals, logger )
+
         boxes, track_stats = bu_track.prepare_boxes_for_render(
-            raw_boxes, source.width, source.height, shot_cut_times,
+            raw_boxes, source.width, source.height,
+            bu_video.absolute_cut_times( shot_cut_times, preview_offset_seconds ),
             logger=logger, profile_name=profile_name, sample_fps=sample_fps )
         track_stats['structure_profile'] = profile_name
-        track_stats['cuts_per_min'] = ( round( cuts_per_min, 2 )
-                                        if cuts_per_min is not None else None )
-        track_stats['median_shot_seconds'] = ( round( median_shot_seconds, 3 )
-                                               if median_shot_seconds is not None else None )
-        track_stats['short_shot_fraction'] = ( round( short_shot_fraction, 4 )
-                                              if short_shot_fraction is not None else None )
+        track_stats['cuts_per_min'] = ( round( signals.cuts_per_min, 2 )
+                                        if signals.cuts_per_min is not None else None )
+        track_stats['median_shot_seconds'] = ( round( signals.median_shot_seconds, 3 )
+                                               if signals.median_shot_seconds is not None else None )
+        track_stats['short_shot_fraction'] = ( round( signals.short_shot_fraction, 4 )
+                                              if signals.short_shot_fraction is not None else None )
 
         detection_finished_at = time.perf_counter()
 

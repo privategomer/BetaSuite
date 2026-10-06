@@ -121,21 +121,36 @@ def md5_for_file( filename, length, use_memo=True ):
     Returns:
         A `length`-character hex string.
     """
+    global _file_hash_memo_dirty
     assert length <= 32, "md5_for_file length must be <= 32"
 
     memo_key = None
+    identity_key = None
     if use_memo:
         try:
             stat = os.stat( filename )
             memo_key = "%s|%d|%d|%d"%(
                 os.path.realpath( filename ), stat.st_size, stat.st_mtime_ns, length )
+            # The same file after a move. mv within one filesystem keeps
+            # the inode and the mtime, so this survives sorting a source
+            # tree, staging files into uncensored_vids/ and archiving them
+            # to completed/, each of which used to cost a full re-read:
+            # 4m39s of one betabench run after ~70 files were sorted. A
+            # copy gets a new inode and so is re-hashed, as it should be.
+            # Kept alongside the path key, not instead of it, so memo
+            # entries written before this existed still hit.
+            identity_key = "inode:%d|%d|%d|%d|%d"%(
+                stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, length )
         except OSError:
             memo_key = None
 
     if memo_key is not None:
         with _file_hash_lock:
             memo = _load_file_hash_memo()
-            cached = memo.get( memo_key )
+            cached = memo.get( memo_key ) or memo.get( identity_key )
+            if cached and memo_key not in memo:
+                memo[ memo_key ] = cached
+                _file_hash_memo_dirty = True
         if cached:
             return cached
 
@@ -149,9 +164,11 @@ def md5_for_file( filename, length, use_memo=True ):
     digest = file_hash.hexdigest()[32 - length:]
 
     if memo_key is not None:
-        global _file_hash_memo_dirty
         with _file_hash_lock:
-            _load_file_hash_memo()[ memo_key ] = digest
+            memo = _load_file_hash_memo()
+            memo[ memo_key ] = digest
+            if identity_key is not None:
+                memo[ identity_key ] = digest
             _file_hash_memo_dirty = True
 
     return digest

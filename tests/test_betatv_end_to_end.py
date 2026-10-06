@@ -506,6 +506,12 @@ class TestInterruptHandling( BetaTvHarness ):
         state = { 'calls': 0 }
 
         def check_then_interrupt():
+            # Count only detection's checks. The shot-cut scan polls
+            # check() too now, and counting its calls would stop the run
+            # before detection began, testing nothing about checkpoints.
+            import sys
+            if sys._getframe( 1 ).f_code.co_name == 'detect_shot_cuts':
+                return
             state['calls'] += 1
             if state['calls'] > 3:
                 raise bu_signals.Interrupted( 'stopped by user request' )
@@ -520,6 +526,21 @@ class TestInterruptHandling( BetaTvHarness ):
         self.assertTrue( checkpoints,
             "an interrupted detection pass must leave a checkpoint behind" )
         self.assertIs( bu_signals.check, original_check )
+
+
+    def test_an_interrupt_during_the_shot_cut_scan_stops_the_run( self ):
+        # The scan of a long file takes minutes and used to ignore Ctrl-C
+        # entirely; on a background thread nothing else would stop it.
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ), seconds=4 )
+
+        def interrupt_inside_the_scan():
+            import sys
+            if sys._getframe( 1 ).f_code.co_name == 'detect_shot_cuts':
+                raise bu_signals.Interrupted( 'stopped by user request' )
+
+        with mock.patch.object( betatv.bu_signals, 'check', interrupt_inside_the_scan ):
+            with self.assertRaises( bu_signals.Interrupted ):
+                self.run_one()
 
 
 class TestSignalPlumbing( unittest.TestCase ):

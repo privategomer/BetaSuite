@@ -1,19 +1,6 @@
-# BetaSuite configuration.
-#
-# Every setting here is explained in CONFIG_REFERENCE.md, with what it
-# does, what happens when you change it, and why the tuned values are
-# what they are. README.md covers how a run works end to end.
-#
-# House rule: this file holds VALUES and one-line headers only. Rationale,
-# tuning history and trade-offs live in CONFIG_REFERENCE.md.
-#
-# validate_config() (betautils_config.py) checks this file on every run
-# and fails fast with a specific message before doing any real work.
+# BetaSuite configuration. Values and one-line headers only; every setting is explained in CONFIG_REFERENCE.md.
 
 # --- Detector backend ---------------------------------------------------
-# Which model runs, and its per-model settings. Only 'selected' and the
-# matching block are read; 'defaults' fills gaps for every backend.
-# See CONFIG_REFERENCE.md -> "Detector backend".
 
 detector_backend = {
     'selected': 'nudenet_v3',
@@ -24,26 +11,20 @@ detector_backend = {
     },
 
     'nudenet_v3': {
-        # '320n' (12MB nano net, native 320) or '640m' (103MB medium
-        # net, native 640). Letter = capacity, number = input size.
+        # '320n' | '640m'
         'model_variant': '640m',
         'nn_batch_size': 4,
         'candidate_floor': 0.2,
         'nms_iou': 0.45,
-        # 'per_class' keeps cross-label overlaps alive for
-        # class_suppression to arbitrate. 'agnostic' is NudeNet's own
-        # upstream behaviour.
+        # 'per_class' | 'agnostic'
         'nms_mode': 'per_class',
 
-        # Timing values selected per video by measured shot-cut rate.
-        # See CONFIG_REFERENCE.md -> "Structure profiles".
+        # Structure profiles: per-video timing, by source folder or measured cutting.
         'profiles': {
             'default': 'scene',
             'match_on': 'short_shot_fraction',
             'variants': {
-                # Rapid cutting. Denser sampling, tight gaps so censoring
-                # cannot bleed across a cut, longer style dwell so the
-                # style does not re-roll on every shot.
+                # Rapid cutting.
                 'quick_cut': {
                     'min_short_shot_fraction': 0.15,
                     'video_censor_fps': 18,
@@ -66,11 +47,7 @@ detector_backend = {
                                             'style_min_dwell_seconds': 2.5 },
                     },
                 },
-                # Sequential compilation: the subject changes every few
-                # seconds, shots measured in seconds rather than fractions
-                # of one. Between scene and quick_cut on every axis.
-                # manual_only: short_shot_fraction only fires on sub-second
-                # shots, so it cannot separate this from scene.
+                # Sequential compilation, shots a few seconds long.
                 'compilation': {
                     'manual_only': True,
                     'item_overrides': {
@@ -86,11 +63,7 @@ detector_backend = {
                                             'style_min_dwell_seconds': 4.0 },
                     },
                 },
-                # Split-screen layouts (double, triple, quadrant). Not
-                # auto-selected: no signal available before detection
-                # separates it from 'scene'. Reach it with
-                # --profile split_screen, profile_by_source_dir or
-                # profile_by_path_pattern.
+                # Split-screen layouts.
                 'split_screen': {
                     'manual_only': True,
                     'item_overrides': {
@@ -112,17 +85,13 @@ detector_backend = {
                                             'style_min_dwell_seconds': 6.0 },
                     },
                 },
-                # Single continuous scene. The default, and the catch-all
-                # for anything the quick-cut ceiling does not claim, so it
-                # carries no threshold of its own.
+                # Single continuous scene; the default.
                 'scene': {
                     'item_overrides': {
                         'exposed_breast': { 'track_max_gap': 3.0,
                                             'interpolation_max_gap': 1.0,
                                             'style_min_dwell_seconds': 3.0 },
-                        # Vulva labels bridge much longer gaps than breast:
-                        # see CONFIG_REFERENCE.md -> "Interpolating vulva
-                        # dropouts within a scene".
+                        # Vulva bridges longer gaps than breast.
                         'exposed_vulva':  { 'track_max_gap': 8.0,
                                             'interpolation_max_gap': 8.0,
                                             'style_min_dwell_seconds': 3.0 },
@@ -134,8 +103,7 @@ detector_backend = {
             },
         },
 
-        # Relabel a detection when corroborating evidence overlaps it.
-        # See CONFIG_REFERENCE.md -> "Class promotion".
+        # Class promotion: relabel a detection when corroborating evidence overlaps it.
         'class_promotion': {
             'exposed_vulva': [
                 { 'from': 'covered_vulva', 'min_prob': 0.30,
@@ -256,21 +224,14 @@ detector_backend = {
     },
 }
 
-# --- Per-item overrides -------------------------------------------------
-# Shared across every backend. ONLY censor_shape and censor_style belong
-# here; every detection- or tracking-sensitive key lives in that
-# backend's own detector_backend[<name>]['item_overrides'] block.
+# --- Per-item overrides: censor_shape and censor_style only -------------
 
 item_overrides = {
-    # covered_vulva is censored for penetrative content (see
-    # CONFIG_REFERENCE.md). Blur only, no stickers: a sticker reads as a
-    # deliberate playful cover-up, and this label also fires on ordinary
-    # clothed crotches, where that would look like a mistake rather than
-    # a censor.
+    # Blur only, no stickers.
     'covered_vulva': {
         'censor_shape': 'ellipse',
         'censor_style': [
-            # Weights sum to 100, so each weight IS its percent of resolves.
+            # Weights sum to 100.
             { 'type': 'blur', 'method': 'box', 'strength': 70, 'feather': 0.10, 'weight': 33.34, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
             { 'type': 'blur', 'method': 'box', 'strength': 85, 'feather': 0.15, 'weight': 33.33, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
             { 'type': 'blur', 'method': 'box', 'strength': 100, 'feather': 0.20, 'weight': 33.33, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
@@ -280,8 +241,7 @@ item_overrides = {
     'exposed_vulva': {
         'censor_shape': 'ellipse',
         'censor_style': [
-            # Weights sum to 100, so each weight IS its percent of resolves.
-            # Family shares: blur 78, sticker 22.
+            # Weights sum to 100. Families: blur 78, sticker 22.
 
             # Blur
             { 'type': 'blur', 'method': 'box', 'strength': 70, 'feather': 0.10, 'weight': 21.98, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
@@ -299,8 +259,7 @@ item_overrides = {
     'exposed_breast': {
         'censor_shape': 'circle',
         'censor_style': [
-            # Weights sum to 100, so each weight IS its percent of resolves.
-            # Family shares: blur 20, mosaic 25, hex 25, bar 12, sticker 18.
+            # Weights sum to 100. Families: blur 20, mosaic 25, hex 25, bar 12, sticker 18.
 
             # Blur, triple_box. Last two are the tight-crop variants.
             { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 40, 'feather': 0.25, 'weight': 2.12, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
@@ -348,13 +307,10 @@ cuda_device_id = 0
 # Frames per second of video that get detection and tracking.
 video_censor_fps = 9
 
-# Hard floor applied to every raw detection before any per-label min_prob
-# sees it. Part of the detection cache key.
+# Floor applied to every raw detection before any per-label min_prob.
 global_min_prob = 0.12
 
 # --- Cross-size dedup ---------------------------------------------------
-# Only ever compares detections from DIFFERENT picture_sizes, so it is a
-# no-op with a single size configured.
 
 cross_size_dedup = {
     'enabled': True,
@@ -382,10 +338,7 @@ encode_video_codec = 'libx264'
 encode_crf = 17
 encode_preset = 'fast'
 
-# --- Source folder convention -------------------------------------------
-# Folder under resources/uncensored_vids/ -> structure profile. Deepest
-# match wins; anything not listed is selected by measurement.
-# See CONFIG_REFERENCE.md -> "The source folder convention".
+# --- Source folder convention: folder -> structure profile --------------
 
 profile_by_source_dir = {
     'scene':        'scene',
@@ -401,9 +354,7 @@ items_to_censor = [
     'exposed_vulva',
     'exposed_breast',
     # 'exposed_buttocks',
-    # covered_vulva is NOT censored directly - it is promoted to
-    # exposed_vulva in a penetration context instead. See
-    # CONFIG_REFERENCE.md -> "covered_vulva and penetrative content".
+    # covered_vulva is promoted to exposed_vulva, not censored directly.
     # 'covered_vulva',
     # 'covered_breast',
     # 'covered_buttocks',
@@ -426,14 +377,10 @@ default_area_safety = 0
 default_time_safety = 0.30
 
 # --- Track confirmation -------------------------------------------------
-# Real detections a track needs before any of its boxes render. 1 renders
-# every track.
 
 default_min_track_hits = 1
 
-# --- Geometry sanity filter ---------------------------------------------
-# All None = disabled. Derive values from your own footage with:
-#   python3 tools/bench/betabench.py geometry
+# --- Geometry sanity filter (all None = off) ----------------------------
 
 default_min_area_fraction = None
 default_max_area_fraction = None
@@ -470,8 +417,7 @@ censor_overlap_strategy = {
 
 censor_scale_strategy = 'feature'   # 'feature' | 'image' | 'none'
 
-# Compute heavy Gaussian blurs at reduced resolution. Visually equivalent
-# at obscuring strengths, 30-60x faster.
+# Heavy Gaussian blurs computed at reduced resolution.
 blur_fast_approximation = True
 blur_approximation_min_kernel = 21
 
@@ -487,8 +433,7 @@ preview_encode_preset = 'ultrafast'
 preview_start_seconds = None
 preview_random_slice = False
 
-# --- Logging and stats --------------------------------------------------
-# Levels: 'trace' | 'debug' | 'info' | 'warn' | 'error'
+# --- Logging and stats: 'trace' | 'debug' | 'info' | 'warn' | 'error' ---
 
 logging_enabled = True
 log_path = '../output/logs/betasuite.log'

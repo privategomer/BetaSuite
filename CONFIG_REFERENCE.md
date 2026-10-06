@@ -33,12 +33,12 @@ where the reasoning lives.
 
 Each setting gets four things:
 
-**What it is** — the mechanical definition.
-**The analogy** — a way to hold the idea, when the mechanics alone are
+**What it is**: the mechanical definition.
+**The analogy**: a way to hold the idea, when the mechanics alone are
 hard to reason about.
-**What you see** — what actually changes in the output, described
+**What you see**: what actually changes in the output, described
 concretely.
-**How to pick a value** — and, where one exists, which `betabench`
+**How to pick a value**: and, where one exists, which `betabench`
 command derives it from your own footage.
 
 A setting marked **per-backend** lives inside
@@ -95,7 +95,7 @@ than assumed.
 **The censor key is load-bearing, and it has been wrong before.** A run
 whose output file already exists at the resolved name is skipped
 outright, before any scanning or detection work. That skip is only
-correct while the key covers *everything* that changes rendered bytes —
+correct while the key covers *everything* that changes rendered bytes,
 a setting that changes output but not the key means a tuning run quietly
 reuses the previous render and reports it as the new result, which is
 indistinguishable from the setting having no effect.
@@ -103,7 +103,7 @@ indistinguishable from the setting having no effect.
 Shot-cut settings were missing for exactly this reason, and hid well:
 they have their own separate scan cache, so lowering `shot_cut_threshold`
 *did* correctly rescan and find more cuts, then reused a video rendered
-from the old ones. Structure profiles hid differently — they override
+from the old ones. Structure profiles hid differently, they override
 per-label values *after* those values resolve, so the key's `labels`
 entry looked complete while describing settings the render never used.
 
@@ -114,8 +114,8 @@ changes rendered output, add it to `censor_identity()` and to that file.
 > **Changed:** structure profiles, `default_style_min_dwell_seconds`,
 > `default_profile_enabled`, `shot_cut_threshold` and
 > `shot_cut_detection_enabled` joined the censor key. Existing rendered
-> outputs get new filenames on the next run. Nothing is lost — the old
-> files remain, under their old names — but a full re-render is a real
+> outputs get new filenames on the next run. Nothing is lost, the old
+> files remain, under their old names, but a full re-render is a real
 > cost, so expect it rather than being surprised by it.
 
 ---
@@ -156,7 +156,7 @@ BETASUITE_DETECTOR_BACKEND_OVERRIDE=retinanet_v2 python3 betatv.py
 
 The environment variable wins over the flag, which wins over the file.
 That ordering exists so an orchestrator can flip backends across
-subprocesses without ever writing `betaconfig.py` — a crash mid-run can
+subprocesses without ever writing `betaconfig.py`, a crash mid-run can
 then never leave the file flipped.
 
 ### `model_variant` (nudenet_v3, per-backend)
@@ -171,11 +171,11 @@ Which export of the model to load.
 **The analogy.** A model is trained to recognise things at a particular
 apparent size, the way you learn to read a page at arm's length. Hand it
 a page at four times that size and you are looking at individual letter
-strokes — each one perfectly sharp, none of them a word.
+strokes, each one perfectly sharp, none of them a word.
 
 **What you see.** Running `320n` at a 1280 blob does not fail. It runs
 16x the arithmetic, produces 16x the anchors, and reports boxes that are
-systematically smaller and tighter than the same model at 320 — because
+systematically smaller and tighter than the same model at 320, because
 it is finding sub-features rather than whole objects. Every IoU-based
 threshold derived from that output inherits the distortion.
 
@@ -203,7 +203,7 @@ detector_backend['defaults']['nn_batch_size']     ← shared default
 
 > **Changed.** The module-level `betaconfig.nn_batch_size`
 > fallback was removed, but the `'defaults'` tier was deliberately
-> kept — unlike `picture_sizes` and `class_suppression`, this is a
+> kept, unlike `picture_sizes` and `class_suppression`, this is a
 > VRAM/throughput knob rather than a statement about what the model
 > means, so one sensible value can legitimately cover a backend that has
 > not expressed a preference. A stale top-level value is now reported by
@@ -225,7 +225,7 @@ python3 tools/bench/betabench.py detect --batch-sizes 1 2 4 8
 > `betaconfig.nn_batch_size` rather than the per-backend value. Setting
 > it in the backend block did nothing: the frame buffer collected two
 > frames, handed them over, and the adapter split them straight back
-> into two single-image calls — while the output filename said
+> into two single-image calls, while the output filename said
 > `-batch2`. Fixed, with a test that asserts both the invariance and
 > that the batching actually happens.
 
@@ -250,15 +250,15 @@ lower-scoring one. 0.45 is NudeNet's own default.
 
 ### `nms_mode` (nudenet_v3, per-backend)
 
-**`'per_class'` (default)** — a detection only suppresses others of the
+**`'per_class'` (default)**: a detection only suppresses others of the
 **same** label.
 
-**`'agnostic'`** — the highest-scoring detection suppresses any
+**`'agnostic'`**: the highest-scoring detection suppresses any
 overlapping box regardless of label. NudeNet's own upstream behaviour.
 
 **The analogy.** Two witnesses describing the same corner of a room.
 Class-agnostic NMS says only one of them may speak. Per-class NMS lets
-both speak and leaves it to a later, better-informed judge — which is
+both speak and leaves it to a later, better-informed judge, which is
 what `class_suppression` is, with per-pair thresholds and a confidence
 margin.
 
@@ -271,7 +271,7 @@ high-IoU cross-label pairs that `class_suppression` exists to arbitrate,
 using one global threshold and no margin logic. It is also the most
 likely mechanical explanation for `nudenet_v3`'s measured cross-label
 IoU distributions sitting an order of magnitude below `retinanet_v2`'s
-on identical footage — the overlapping pairs were removed before
+on identical footage, the overlapping pairs were removed before
 anything could measure them. See
 [Why the shipped values are what they are](#why-the-shipped-values-are-what-they-are).
 
@@ -303,7 +303,7 @@ the variant's native size                         ← convention
 **What you see.** Larger sizes find smaller objects and cost more. For
 `retinanet_v2` (trained on variable-size input), 1280 is a reasonable
 working value. For `nudenet_v3`, leave it at the variant's native size
-unless you are deliberately experimenting — see `model_variant` above.
+unless you are deliberately experimenting, see `model_variant` above.
 
 Running multiple sizes makes [cross-size dedup](#cross-size-dedup)
 meaningful; with one size it is a no-op by construction.
@@ -336,7 +336,7 @@ sample:  ●         ●         ●         ●         ●         ●
 ```
 
 Frames between samples are skipped with `grab()`, which does not decode
-their contents — so raising `video_censor_fps` costs inference time, not
+their contents, so raising `video_censor_fps` costs inference time, not
 decode time.
 
 ### `global_min_prob`
@@ -349,13 +349,13 @@ label's own `min_prob` says. A per-label `min_prob` at or below this
 value can never reject anything, which validation treats as an error
 rather than letting it sit there as a silent no-op.
 
-Lowering it lets more marginal detections reach the per-label gates —
+Lowering it lets more marginal detections reach the per-label gates,
 more work, and more for those gates to filter. Raising it is a blunt
 instrument; prefer per-label `min_prob`.
 
 **This is a real floor, and it is easy to mistake for a per-label one.**
 If a label's `min_prob` already sits near `global_min_prob`, lowering
-that label's value further changes nothing — everything between the two
+that label's value further changes nothing, everything between the two
 was already discarded upstream. At `nudenet_v3/640m`, `exposed_breast`
 had a `min_prob` of 0.37 against a score distribution whose 1st
 percentile was 0.228: the label gate was doing essentially no work, and
@@ -400,7 +400,7 @@ nothing".
 
 The confidence a detection needs before it can start a censor track.
 
-**What you see.** Raising it removes marginal detections — fewer false
+**What you see.** Raising it removes marginal detections, fewer false
 positives, more missed frames. Lowering it does the reverse. This is the
 main efficacy dial.
 
@@ -413,9 +413,9 @@ python3 tools/bench/betabench.py hysteresis
 reports each label's real score distribution from your cached
 detections, and proposes a `min_prob` at the 25th percentile. Whether
 that is right depends on whether the bottom quarter was noise or was
-real — look at output at two or three values before committing.
+real, look at output at two or three values before committing.
 
-### `min_prob_continue` (per-label, per-backend) — score hysteresis
+### `min_prob_continue` (per-label, per-backend): score hysteresis
 
 The **lower** threshold a detection needs to **continue** an
 already-established track. `None` disables hysteresis entirely, which is
@@ -440,7 +440,7 @@ two gates ON   ON   ON   ON   ON   ON   ON   ON        ← steady
 ```
 
 A detection below `min_prob` but at or above `min_prob_continue` may
-extend a track that already exists. It can never **start** one — so a
+extend a track that already exists. It can never **start** one, so a
 low-confidence false positive still cannot appear out of nowhere.
 
 **How to pick.** Somewhere between `global_min_prob` and the label's
@@ -465,7 +465,7 @@ filter is **off** and cannot remove anything.
 | `max_aspect_ratio` | box width / box height, upper bound |
 
 **The analogy.** A coin sorter. Confidence asks "does this look like a
-coin?" The geometry filter asks "is it coin-sized?" — a different
+coin?" The geometry filter asks "is it coin-sized?", a different
 question, a cheap one, and it catches things the first question waves
 through.
 
@@ -499,7 +499,7 @@ these from real detections. Shape can:
 symmetric: a bound that rejects something you wanted is worse than no
 bound at all, because it fails silently.
 
-**How to pick.** There is no defensible universal default — the right
+**How to pick.** There is no defensible universal default, the right
 numbers depend on your footage's framing. Derive them:
 
 ```bash
@@ -515,14 +515,14 @@ Validation rejects bounds that cannot both be satisfied, since that
 would make every detection of the label violate a bound without looking
 broken.
 
-### `geometry_action` — what a violation DOES
+### `geometry_action`: what a violation DOES
 
 **This is the setting that makes the filter safe to turn on**, and it
 exists because of a specific failure that took geometry out of service.
 
 A `max_area_fraction` bound **cannot distinguish a correct close-up from
 a torso misfire.** Both are simply large. When a violation meant "drop
-the detection", the close-up got **no censor at all** — a worse outcome
+the detection", the close-up got **no censor at all**: a worse outcome
 than the misfire it was trying to prevent.
 
 Measured with `exposed_breast`'s own suggested cap (0.123238, betabench's
@@ -541,7 +541,7 @@ suggested cap.
 
 | action | what happens |
 |---|---|
-| `drop` | remove the detection. Default for **min** bounds — a 6px box carries no coverage worth keeping. |
+| `drop` | remove the detection. Default for **min** bounds, a 6px box carries no coverage worth keeping. |
 | `clamp` | **default for max bounds.** Shrink the box to the limit, keeping its centre and aspect ratio, and censor that. |
 | `flag` | keep the box unchanged and count it. For measuring a candidate bound before trusting it. |
 
@@ -564,7 +564,7 @@ the fault it detects. Clamping is the alarm that just makes noise.
 Under clamp a misfire becomes a roughly correctly-sized censor near the
 right place, and a close-up is censored slightly small. Both beat
 nothing. `too_small` and `too_tall` cannot be fixed by shrinking, so
-under `clamp` they keep the box unchanged and let the count record it —
+under `clamp` they keep the box unchanged and let the count record it,
 `clamp` means "never delete coverage", and deleting anyway would be
 dishonest.
 
@@ -609,8 +609,8 @@ Reads as: **`exposed_breast` is suppressed by `covered_breast` when a
 `covered_breast` detection at the same instant overlaps it by at least
 0.55 IoU AND outscores it by at least 0.10.**
 
-Both thresholds are required. A missing `margin` would fall back to 0.0
-— the loosest possible gate, not a neutral "off" — so validation rejects
+Both thresholds are required. A missing `margin` would fall back to 0.0,
+the loosest possible gate, not a neutral "off", so validation rejects
 a rule without one.
 
 Rules are **per-backend**, resolved as
@@ -627,14 +627,14 @@ Rules are **per-backend**, resolved as
 
 **The analogy.** Two witnesses describing one object. If they are
 looking at clearly different places, both can be right. If they are
-looking at the same place, the one who is markedly more certain wins —
+looking at the same place, the one who is markedly more certain wins,
 and *markedly* is what `margin` sets. IoU decides "same place"; margin
 decides "clearly more certain".
 
 **What you see.**
 
 ```
-IoU 0.03 — two real adjacent things          IoU 0.85 — one thing, two labels
+IoU 0.03, two real adjacent things          IoU 0.85, one thing, two labels
 ┌────┐                                       ┌──────┐
 │    │┌────┐                                 │┌─────┴┐
 └────┘│    │                                 └┤      │
@@ -665,9 +665,9 @@ suppression rule removes real detections when it is wrong.
 
 `margin` semantics validation enforces:
 
-- `margin < 0` — **error**. It would let the suppressing label be *less*
+- `margin < 0`: **error**. It would let the suppressing label be *less*
   confident and still win, which inverts the entire premise.
-- `margin == 0.0` — **warning**, not an error. It is sometimes the
+- `margin == 0.0`: **warning**, not an error. It is sometimes the
   honest data-driven answer (when the suppressing label rarely
   outscores the suppressed one, a positive margin guts the rule rather
   than refining it), so a reviewed 0.0 can ship, but a copied-in one
@@ -738,7 +738,7 @@ right question for suppression and the wrong one here.
 lands on. Give either or both; give neither and any overlap at all
 counts.
 
-**`'overlap': 'anywhere'` — co-presence in the frame IS the evidence.**
+**`'overlap': 'anywhere'`, co-presence in the frame IS the evidence.**
 
 Both spatial measures answer *"are these the same object?"* Sometimes the
 question is *"what kind of scene is this?"*, and then any spatial test is
@@ -746,7 +746,7 @@ the wrong instrument.
 
 Measured on 9 real caches (488k detections, 9,302 `covered_vulva` above
 0.3): only **18.9%** had any of `exposed_penis` / `exposed_vulva` /
-`exposed_anus` live at the same instant — and of those, **91% had zero
+`exposed_anus` live at the same instant, and of those, **91% had zero
 pixel overlap with it.** An overlap-based rule promoted **1** detection
 across the entire corpus. Requiring only co-presence promotes **1,452**.
 
@@ -760,12 +760,12 @@ across the entire corpus. Requiring only co-presence promotes **1,452**.
 
 **The analogy.** Asking whether it is raining by checking whether a
 raindrop has landed on *your own shoe*. The drop on the shoe proves it;
-its absence proves nothing. Looking out the window — is there rain
-anywhere in view — is the question you meant.
+its absence proves nothing. Looking out the window, is there rain
+anywhere in view, is the question you meant.
 
 `'anywhere'` is anywhere in **space**, not in time: evidence is still
 same-instant only, and the evidence `min_prob` and `duplicate_iou` still
-apply. It cannot be combined with `min_iou` or `min_source_overlap` —
+apply. It cannot be combined with `min_iou` or `min_source_overlap`,
 validation rejects that rather than silently ignoring one of two
 contradictory settings.
 
@@ -823,7 +823,7 @@ The concrete case the whole promotion mechanism was built for, and a
 worked example of picking the right lever.
 
 **The problem.** Penetration often reads to the model as
-`covered_vulva` — the penis *is* covering it. So censoring
+`covered_vulva`, the penis *is* covering it. So censoring
 `covered_vulva` catches penetration. It also catches every ordinary
 clothed crotch in the corpus, which is over-censoring.
 
@@ -837,6 +837,11 @@ context does.
 > Turning up `min_prob` here is deciding whether to bring an umbrella
 > from how confidently you can see the sky. The confidence is not the
 > question; whether there are clouds is.
+
+**Why its style list is blur only.** A sticker reads as a deliberate,
+playful cover-up. `covered_vulva` also fires on ordinary clothed crotches,
+and a sticker there looks like a mistake rather than a censor; a blur
+reads as a censor either way.
 
 **The shipped answer.** `covered_vulva` is **not** in
 `items_to_censor`. Instead it is promoted to `exposed_vulva` when a
@@ -867,8 +872,8 @@ The previous overlap-based rule promoted **1** of those 9,302. See
 `'overlap': 'anywhere'` above for why.
 
 **The tradeoff, stated plainly.** 7,704 detections that used to be
-censored no longer are. That is the point — they are the clothed crotches
-— but it is also the risk: a penetration moment where none of the three
+censored no longer are. That is the point: they are the clothed crotches.
+But it is also the risk: a penetration moment where none of the three
 evidence labels fires anywhere in frame is now uncensored where it
 previously was covered. Widen the evidence set, or put `covered_vulva`
 back in `items_to_censor`, if that trade goes the wrong way on your
@@ -885,7 +890,7 @@ cross_size_dedup = { 'enabled': True, 'iou_threshold': 0.60 }
 Collapses one real object detected at two different `picture_sizes`.
 
 **Only ever compares detections from DIFFERENT sizes**, which makes it
-provably a no-op when `picture_sizes` has one entry — the common case.
+provably a no-op when `picture_sizes` has one entry, the common case.
 
 **Why the scoping matters.** Two same-label detections from the *same*
 size are what a detector legitimately produces for two real instances
@@ -894,7 +899,7 @@ size are what a detector legitimately produces for two real instances
 **What you see.** With multiple sizes and no dedup, the same object
 produces one detection per size, both become censorable boxes, tracking
 builds two separate tracks for one instance, and each independently
-rolls its own randomised style — so you get two overlapping censors in
+rolls its own randomised style, so you get two overlapping censors in
 different styles on one thing.
 
 **How to pick.**
@@ -918,8 +923,8 @@ land on two different tracks.
 
 > The original implementation sorted every same-label box in the video
 > by time and blended each toward whichever came immediately before it,
-> with no notion of instance identity. On a frame with two boxes — both
-> breasts on one person — one would routinely blend toward the other and
+> with no notion of instance identity. On a frame with two boxes, both
+> breasts on one person, one would routinely blend toward the other and
 > drift to a point between the two real positions, tracking neither.
 
 ### `default_position_smoothing` (per-label: `position_smoothing`)
@@ -927,8 +932,8 @@ land on two different tracks.
 How much of each new detection's raw position is used. **0.65**. Range
 0–1.
 
-**The analogy.** Steering. 1.0 is a direct linkage — every twitch of the
-detector reaches the wheels. 0.1 is heavy power steering — smooth, and
+**The analogy.** Steering. 1.0 is a direct linkage, every twitch of the
+detector reaches the wheels. 0.1 is heavy power steering: smooth, and
 slow to respond.
 
 **What you see.**
@@ -953,7 +958,7 @@ If censor blocks feel like they lag behind the body they are covering,
 
 Measured on the 640m caches (`analyze_jitter --sweep-alpha`), for
 `exposed_breast`: alpha 0.15 gives a smoothed median frame-to-frame jump
-of 1.1px, alpha 0.70 gives 2.7px. The jump size is the responsiveness —
+of 1.1px, alpha 0.70 gives 2.7px. The jump size is the responsiveness:
 a box that moves 1.1px per frame while the subject moves more than that
 is being left behind.
 
@@ -975,9 +980,9 @@ How much of each new detection's raw width and height is used. **Defaults
 to `position_smoothing / 3`.** Range 0–1.
 
 **The analogy.** A camera with image stabilisation. Panning to follow a
-person is what the stabiliser is *supposed* to pass through — that is
+person is what the stabiliser is *supposed* to pass through, that is
 position. The lens breathing in and out while you hold still is what it
-is supposed to absorb — that is size. A stabiliser that treated both the
+is supposed to absorb, that is size. A stabiliser that treated both the
 same would either fight your panning or let the breathing through, and
 the second one is what BetaSuite did.
 
@@ -1000,7 +1005,7 @@ censor's edge is a hard boundary between processed and untouched pixels.
 Move that boundary two pixels every frame and the eye reads it as
 pulsing, whatever fills the box. Blur shows it worst because a blurred
 edge against a sharp background is the highest-contrast boundary of the
-lot, but stickers and bars flicker identically — which is the observation
+lot, but stickers and bars flicker identically, which is the observation
 that finally located the real cause after three wrong ones.
 
 **Jitter vs flicker.** Worth separating, because the words get used
@@ -1060,7 +1065,7 @@ is the reason the default is not lower already.
 
 > Splitting these two alphas had one non-obvious consequence. Position
 > and size now move at different rates, so they can disagree about where
-> the box *ends* even when every raw detection was inside the frame — on
+> the box *ends* even when every raw detection was inside the frame, on
 > an edge-pinned box the overshoot measured up to 17px. That surfaced as
 > a render crash rather than a visual glitch, because the feather mask is
 > built from the box's own w/h while the region is sliced out of the
@@ -1073,7 +1078,7 @@ is the reason the default is not lower already.
 ### `default_style_min_dwell_seconds` (per-label: `style_min_dwell_seconds`)
 
 How long a censor style must have been on screen before a shot cut is
-allowed to re-roll it. **0.0** — no minimum.
+allowed to re-roll it. **0.0**: no minimum.
 
 **The analogy.** A minimum-stay rule at a hotel. Guests may check out
 whenever they like, but not before one night. Without it, a burst of
@@ -1083,7 +1088,7 @@ staying anywhere.
 **The problem it solves.** Shot cuts re-roll the censor style, which is
 what gives a compilation visual variety instead of one style for sixteen
 different women. But cut-dense footage can cut several times a second,
-and re-rolling that fast is its own flicker — the censor changes from
+and re-rolling that fast is its own flicker, the censor changes from
 blur to mosaic to sticker faster than the eye can settle on any of them.
 
 ```
@@ -1146,7 +1151,7 @@ another.
 How far, in multiples of the larger box dimension, a detection can be
 from a track and still be matched to it. **1.0**.
 
-**What you see.** Raising it lets tracks survive fast motion — and lets
+**What you see.** Raising it lets tracks survive fast motion, and lets
 two nearby instances get mis-merged. Real data showed almost no resets
 were distance-blocked (8 of 659 for `exposed_vulva`), so there is little
 to gain here and a real cross-instance risk, which is why it is left at
@@ -1159,15 +1164,15 @@ live track of the same label **shares that track's resolved style**
 rather than rolling its own.
 
 **What you see.** Without it, on a randomised multi-style label, one
-breast gets a span-bar and the other gets a pixel mosaic — and the "span
+breast gets a span-bar and the other gets a pixel mosaic, and the "span
 both" style never gets anything to span.
 
 `paired_style_max_distance` (**2.0**) is in multiples of the larger box
 dimension. `paired_style_tiebreak_margin` (**0.25**) is how much closer
 the nearest candidate must be than the second-nearest, as a fraction of
 the second's distance, before the pairing is trusted. Two similarly
-distant candidates are genuinely ambiguous — probably two different
-people — and resolve independently.
+distant candidates are genuinely ambiguous, probably two different
+people, and resolve independently.
 
 > Proximity, not frame-exactness, is the test. Requiring both to be
 > detected in the *same frame* used to be the gate, and against real
@@ -1193,7 +1198,7 @@ behaviour.
 confident-sounding report might be wrong; two in a row rarely are.
 
 **What you see.** A single-frame false positive currently paints a
-censor blob for the whole `time_safety` window — at `time_safety: 0.35`
+censor blob for the whole `time_safety` window, at `time_safety: 0.35`
 that is a blob appearing on nothing for a third of a second. At
 `min_track_hits: 2` it never appears at all.
 
@@ -1214,12 +1219,12 @@ the real cost in seconds spelled out.
 
 **How to pick.** 2 is a cheap, low-risk improvement on most footage. 3+
 only if single-frame noise is a visible problem. Drop the boxes of an
-unconfirmed track and its interpolated boxes go with it — a track that
+unconfirmed track and its interpolated boxes go with it, a track that
 never confirmed contributes nothing at all.
 
 > **Changed.** Both `nudenet_v3` labels moved from 3 back to 2.
 > At 3, a track needs a third of a second of continuous detection at
-> `video_censor_fps = 9` before rendering anything — which looks exactly
+> `video_censor_fps = 9` before rendering anything, which looks exactly
 > like a missed detection on brief or partially-occluded content, and is
 > easy to misdiagnose as a threshold problem. This is a recall-side
 > change: expect slightly more short-lived false positives in exchange.
@@ -1248,8 +1253,8 @@ position:
   with cut detection:    ────────┤ ╳          the track resets
 ```
 
-A cut blocks both kinds of cross-time matching — continuing a track, and
-`paired_style`'s nearby-live-track test — regardless of every distance
+A cut blocks both kinds of cross-time matching (continuing a track, and
+`paired_style`'s nearby-live-track test) regardless of every distance
 and gap setting, because all of those assume continuous single-scene
 footage.
 
@@ -1261,6 +1266,44 @@ spanning the cluster is correctly reset either way.
 Turn it off entirely if your material never has cuts: the scan is then
 skipped completely, cache read included.
 
+**Zero cuts is a measurement.** A scan that finds no cuts reports one
+shot spanning the whole window: 0 cuts per minute, 0% of runtime in short
+shots, and the profile those select. Only a scan that never ran (scanning
+off) reports nothing. Until 1.3 both came back as "nothing", so a scanned
+file with no cuts logged `configured default (no shot-cut data)` and fell
+through to the default. 13 of 56 files took that path in one preview run.
+The outcome only matched because the default was `scene`, the profile zero
+cuts measure as.
+
+**When the scan runs.** The scan decodes the whole file, which on a
+35-minute file took 4m38s. Detection never reads cuts; tracking does,
+after detection. So:
+
+- with a **declared** profile (`--profile`, a path pattern, a source
+  folder) the sample rate is known up front, and the scan runs on a
+  background thread **alongside** detection. Same function, same cache,
+  same cuts: only the timing changes. A finished file with a declared
+  profile also skips without scanning at all
+- with a **measured** profile the scan must finish first, because the
+  profile it selects decides the sample rate detection runs at
+- `betabench structure-scan` runs the scans ahead of time, in parallel,
+  into the same cache, so the real run finds them done
+
+After a background scan the run log reports what measurement alone would
+have chosen. When that profile samples **more densely** than the declared
+one (a file in `compilation/` whose cutting measures as `quick_cut`, 18
+fps against 9), it is a **warning**: fewer samples means fewer detections
+on the shortest shots. Every other disagreement is information, since
+`split_screen` and `compilation` exist precisely for footage timing cannot
+identify.
+
+**Preview slices at an offset.** The scan counts time from where it
+starts, so a slice at 30s reports a cut 3s in as 3.0. Detections are
+stamped on the file's own timeline (30 + 3). Before 1.3 tracking received
+the scan's times unchanged, every cut of an offset slice landed before the
+slice's first detection, and tracking matched across every cut as if there
+were none. Offset-0 runs, every full run among them, were unaffected.
+
 ---
 
 ## Structure profiles
@@ -1270,7 +1313,7 @@ long time BetaSuite pretended it could.
 
 **The analogy.** Shutter speed. A photographer shooting a still portrait
 and one shooting a sprint do not argue about which shutter speed is
-"correct" — they are photographing different things. Asking for one
+"correct", they are photographing different things. Asking for one
 `track_max_gap` that suits both a two-hour single-scene video and a
 compilation that changes women every four seconds is the same category
 error.
@@ -1539,7 +1582,7 @@ full detection pass on every file guessed wrong. Not implemented, on the
 grounds that wall-clock time takes precedence.
 
 **`default_profile_enabled`.** The master switch. `False` ignores every
-profile and uses the un-profiled resolved settings — the behaviour before
+profile and uses the un-profiled resolved settings, the behaviour before
 profiles existed. Useful for isolating whether a result came from a
 profile or from the settings underneath it.
 
@@ -1552,7 +1595,7 @@ apply a measured profile to an unmeasured video.
 
 > **One measurement subtlety worth stating, because the first
 > implementation got it backwards.** The cut *rate* is cuts divided by
-> the length of the window that was **scanned** — not by the spread
+> the length of the window that was **scanned**: not by the spread
 > between the first and last cut. Dividing by the spread reads structure
 > inside out: two cuts 0.1s apart in an otherwise still 30-second slice
 > scored 1237 cuts/min and selected the fast-cut profile, while the same
@@ -1714,8 +1757,8 @@ looks-like-it-worked failure.
 **The run log names the rule that decided**, not just the profile:
 
 ```
-structure profile: split_screen via source folder split-screen/ (no shot-cut data), sampling at 9 fps
-structure profile: quick_cut via measured short_shot_fraction (23.6% of runtime in short shots), sampling at 18 fps
+structure profile: split_screen via source folder split-screen/ (shot-cut scan running alongside detection), sampling at 9 fps
+structure profile: quick_cut via measured short_shot_fraction (23.6% of runtime in short shots, 214 cut(s) over 1830s scanned), sampling at 18 fps
 ```
 
 Without that, a folder key matching nothing on disk looks configured
@@ -1731,36 +1774,80 @@ same folder are all hard errors with the specific message.
 **It is in the censor key**, so retuning the map does not serve back a
 render made under the old one.
 
+**The staging tree uses the same names.** betatv only processes
+`resources/uncensored_vids/`, but `betabench structure` also surveys
+`resources/source/` (`video_path_source_backup`), and reads the same folder
+names there. A file can be sorted into `source/quick-cut/` while it waits,
+and keeps its profile when it is moved into `uncensored_vids/quick-cut/`.
+Moving it into the root of `uncensored_vids/` instead hands it to
+measurement.
+
 ### Sorting the files: `betabench structure`
 
 The convention puts the burden on sorting correctly, and the measures
-that decide it are not ones anyone eyeballs accurately. `betabench
-structure` measures them per file and says which folder each belongs in:
+that decide it are not ones anyone eyeballs accurately. One command does
+the whole survey:
 
 ```bash
-python3 tools/bench/betabench.py structure
+./tools/bench/structure_survey.sh
+```
+
+It runs three phases, logs everything to
+`../output/benchmarks/structure_survey_<timestamp>/`, and moves nothing:
+
+1. **`betabench structure-scan`**: a whole-file shot-cut scan of every
+   source file in `uncensored_vids/` and `source/` that lacks one, on the
+   CPU, files in parallel (one worker per core, at most 4; 2 workers ran
+   1.36x faster than 1 on a 2-core box). The scans land in the cache
+   betatv's full run reads, so the real run reuses them
+2. **geometry slices**: detection, no render, on 3 slices of 20s spread
+   through each file at 25%, 50% and 75%, never at the start. Needs the
+   GPU. This is the only thing split-screen is recognised from. It asks
+   first; unattended, it runs
+3. **`betabench structure --write-move-script`**: the table and the script
+
+The parts on their own:
+
+```bash
+python3 tools/bench/betabench.py structure-scan
+python3 tools/bench/betabench.py structure-scan --geometry-slices 3
 python3 tools/bench/betabench.py structure --write-move-script moves.sh
 ```
 
-It reads caches a run already wrote, so it needs a run over the tree
-first. A `--preview` run is enough and is cheap. Nothing here changes
-config, and betabench never moves a file itself.
+```
+  source         folder        scanned from   cuts/m  <1s  <10s frames  p90 L-half  belongs in
+  comp.mp4       scene           1830s whole    19.0   0%  100%    540    1   1.00  compilation
+  take.mp4       (root)          2096s whole     0.3   0%    0%    610    1   0.97  scene
+  panes.mp4      src:scene         20s slice     0.0   0%    0%    180    6   0.50  split_screen
+  new.mp4        (root)            n/a -          n/a  n/a   n/a      0    0    n/a  ?
+```
 
-```
-  source                        mins  cuts/m    <1s   <10s   p90 L-half  belongs in
-  three_sec_comp.mp4             0.4    19.0     0%   100%     1   1.00  compilation
-  long_take.mp4                  0.4     2.7     0%     0%     1   1.00  scene
-  panes.mp4                      0.4     0.0    n/a    n/a     6   0.50  split_screen
-```
+**What each column rests on.** `scanned` is the footage the timing numbers
+come from, and `from` says whether that was the whole file or a slice.
+The survey that prompted this rewrite ran on 20-second slices from the
+start of each file, so it mostly measured intros. Worse, it divided by the
+time between the first and last censored DETECTION rather than the footage
+scanned: a file whose boxes fell in one sampled frame got a 1-microsecond
+window, 600,000,000 cuts a minute, "100% sub-1s", and a recommended move
+to quick-cut. The window is now `scanned_window_seconds`, the same
+definition betatv selects with. `frames` is how many sampled frames held a
+censored box, which is the sample size behind `p90` and `L-half`.
+
+**Every source file gets a row**, enumerated from disk. The old survey
+read the caches of one detection configuration at the global sample rate,
+so every file a profile had sampled at another rate was invisible: 8 of 56
+files, exactly the 8 the app had measured as quick_cut. A file with no
+scan shows `?` and is never moved.
+
+**Geometry uses one configuration per file**, the one that saw the most
+frames, with every slice of it combined. Two picture sizes or two backends
+see the same frame, and mixing them would count one subject twice.
 
 **It can call split-screen, and this is the reason it lives here.** The
 spatial signals need boxes, so they only exist after detection has run.
 That is a real constraint on *profile selection*, which happens before
 detection and therefore cannot use them. It is not a constraint on
 *sorting*, which is a one-time offline decision you can afford a run for.
-An earlier standalone scan-only classifier was built around the
-pre-detection limit by mistake and so could never recommend
-`split-screen` at all, which is most of what the sorting is for.
 
 **The boundaries, and which are trustworthy:**
 
@@ -1768,18 +1855,30 @@ pre-detection limit by mistake and so could never recommend
 |---|---|---|
 | quick-cut | share of runtime in sub-1s shots | **betaconfig**, so it cannot contradict what the app selects |
 | compilation | 50% of runtime in sub-10s shots | this bench, because `compilation` is `manual_only` and has no configured threshold |
-| split-screen | p90 simultaneous >= 5 with left-half share 0.40-0.60 | this bench, read off a 9-file sample |
+| split-screen | p90 simultaneous >= 5, left-half share 0.40-0.60, at least 30 frames with boxes | this bench, read off a 9-file sample |
 
-Treat the bottom two as advisory and read the numbers. The split-screen
-signature in particular came off nine files, where split ones ran p90
-5-9 at left-half near 0.50 and the one non-split file with high
-simultaneity sat at left-half 0.13.
+Treat the bottom two as advisory and read the numbers. The 30-frame floor
+is a judgment call, a sixth of one 20s slice at 9 fps.
 
-**Order of tests.** Split-screen is checked first, before either timing
-boundary. Its failure mode is spatial rather than temporal: a generous
-match radius merges two panes' subjects into one track and drags a censor
-across the divider, and that happens whatever the cut rate. A
-split-screen compilation is a split-screen problem first.
+**Order of tests.** Split-screen is checked first. Its failure mode is
+spatial: a generous match radius merges two panes' subjects into one track
+and drags a censor across the divider, whatever the cut rate.
+
+**What gets scripted, and what is only listed.** A recommendation goes in
+the script only if it passes every rule; otherwise it is listed for review
+with the rule that held it back:
+
+| rule | why |
+|---|---|
+| timing evidence must come from a whole-file scan | a slice from the start measures the intro |
+| never lower the sample rate | fewer samples means fewer detections on the shortest shots |
+| timing alone never overrides a `manual_only` folder, unless the move raises the sample rate | `compilation/` and `split-screen/` hold judgments timing cannot see |
+| only the tree root and mapped folders are scripted | an unmapped folder (`completed/`, `titty_drops/`) is your own organisation |
+
+Split-screen recommendations rest on geometry, not timing, so the
+whole-file rule does not apply to them; the frame floor does. A move stays
+in the tree its file is in: a file in `source/scene/` is sorted into
+`source/quick-cut/`, never pulled into `uncensored_vids/`.
 
 **`--write-move-script`** writes a reviewable shell script rather than
 moving anything:
@@ -1791,7 +1890,7 @@ moving anything:
 - paths are shell-quoted, so a filename with an apostrophe or a space
   cannot turn into a command
 
-Read the reasons before running it. Seventy files is a lot to put back.
+Read the reasons before running it.
 
 ### Forcing a profile: `--profile NAME`
 
@@ -1800,7 +1899,7 @@ specific file. A compilation shot as long takes reads as a scene; a
 single scene with fast intercutting reads as a compilation. And some
 distinctions no pre-detection signal captures at all, split-screen being
 the worked example above. When the measurement is the thing misleading
-you, no threshold fixes it — you have to say which profile you meant.
+you, no threshold fixes it, you have to say which profile you meant.
 
 ```
 betatv.py --profile quick_cut
@@ -1839,7 +1938,7 @@ can correctly trigger. The shipped `split_screen` is exactly that case:
 },
 ```
 
-`manual_only` removes the variant from **both** automatic roles — the
+`manual_only` removes the variant from **both** automatic roles, the
 threshold match and the `default` fallback. Marking the default
 `manual_only` means a file that matches no threshold gets no profile at
 all, which is deliberate: a profile you have declared unreachable
@@ -1850,8 +1949,8 @@ automatically should not become the silent catch-all.
 ## Censor styles
 
 A `censor_style` is either one style dict, or a **list** of them, from
-which one is chosen at random — weighted by each entry's `weight`,
-default 1 — the first time a track is seen, and then held for that
+which one is chosen at random, weighted by each entry's `weight`,
+default 1, the first time a track is seen, and then held for that
 track's whole life.
 
 ```python
@@ -1899,7 +1998,7 @@ scaled by `censor_scale_strategy`.
 `'box'` is a flat average over a square window and tends to look smeary
 at the edges; `'gaussian'` weights the window's centre more and reads
 smoother at the same radius. `'box'` is an option for the look, not the
-speed — see `blur_fast_approximation` for the speed.
+speed, see `blur_fast_approximation` for the speed.
 
 **Strength does not increase forever, and this is not a bug.** Two
 separate ceilings meet here.
@@ -1921,7 +2020,7 @@ strength → kernel 400   ▒▒▒▒▒▒▒▒▒▒    identical to the abo
 default `BORDER_DEFAULT` fills the overhang by mirroring the region's
 own edge pixels back inward. The result is dominated by reflected edge
 content rather than the region's interior, which reads as a flat wash
-that can *shift* frame to frame as the box moves — the opposite of what
+that can *shift* frame to frame as the box moves, the opposite of what
 a stronger blur is supposed to buy.
 
 BetaSuite therefore clamps the kernel to a fraction of the region:
@@ -1938,7 +2037,7 @@ which is what you want if small detections look under-blurred), a
 looks weak on a *small* region is usually a scaling question, not a
 strength question.
 
-#### `method: 'triple_box'` — a cheaper near-Gaussian
+#### `method: 'triple_box'`: a cheaper near-Gaussian
 
 Three passes of a box blur. Repeated box convolution converges to a
 Gaussian (central limit theorem), and by the third pass the shape is
@@ -1951,7 +2050,7 @@ detail:
 
 | method | kernel | time | mean abs. difference from exact |
 |---|---|---|---|
-| `gaussian` (exact) | 101 | 12.53 ms | — |
+| `gaussian` (exact) | 101 | 12.53 ms | none |
 | `gaussian` (approximated) | 101 | 1.35 ms | 0.65 / 255 |
 | `triple_box` | 101 | 1.02 ms | 0.19 / 255 |
 
@@ -1961,10 +2060,10 @@ resamples, which is why it is the fast path that works with
 `blur_edge_margin` below.
 
 **"Slightly faster" understated it.** That table times the blur call on
-one synthetic region. Measured through `blur_image` instead — the real
+one synthetic region. Measured through `blur_image` instead, the real
 path, with the edge margin and the feather mask, at the box sizes and
 strengths a tuned config actually uses (breast boxes: median 74x79, p90
-177x176, max 187x210) — `triple_box` is **5.9x faster overall**, and the
+177x176, max 187x210), `triple_box` is **5.9x faster overall**, and the
 gap widens with strength because the margin work scales with the kernel:
 
 | box | strength | `gaussian` | `triple_box` | speedup |
@@ -1991,7 +2090,7 @@ makes `gaussian` cheap. Three findings, measured rather than assumed:
   Removing `triple_box` would not change how output looks; it would just
   make it ~6x more expensive to produce.
 - **Against `box`, no.** Plain `box` differs from Gaussian by 0.6–2.2
-  levels mean at the same kernel — a visibly flatter, boxier blur. It is
+  levels mean at the same kernel, a visibly flatter, boxier blur. It is
   the cheapest of the three and the right pick for small regions
   (the vulva labels, boxes around 23–40px), which is what it is used for.
 - **`triple_box` is the only strictly monotonic one.** Averaged over
@@ -2007,7 +2106,7 @@ the working default for large ones, `gaussian` as the reference.
 **Rejected alternative: `cv2.stackBlur`.** Fast, and available in
 OpenCV 4.7+, but its blur strength is **not monotonic** in kernel size at
 these sizes. Residual detail on the same fixture: 11.3 at k=31, 15.0 at
-k=101, 72.8 at k=401 — past roughly k=31 a *larger* kernel obscures
+k=101, 72.8 at k=401, past roughly k=31 a *larger* kernel obscures
 *less*. A censor style whose strength silently reverses above a
 threshold is the wrong shape of risk whatever it costs.
 `tests/test_blur_methods_and_margin.py` re-measures that claim so it can
@@ -2189,7 +2288,7 @@ Default `1.15`. When two samples of one object are live on the same frame,
 collapse them to one box if their union is no more than this multiple of
 the larger box's area. `1.0` disables the collapse.
 
-The collapse is what actually removes the pulsing — sliding alone does
+The collapse is what actually removes the pulsing, sliding alone does
 not, because both boxes stay live and the union still oscillates. But it
 is **not free**, and an earlier version of this document claimed it was on
 the strength of a single-track measurement. Measured properly with pixel
@@ -2200,7 +2299,7 @@ detection** rather than union margin, up to 4,055px on one frame.
 The gate exists because the cost is not uniform. When two live samples
 nearly coincide their union is a couple of pixels wider than either, and
 collapsing loses nothing. When the object is moving fast they straddle the
-motion and the union covers the whole swept path — a real safety margin.
+motion and the union covers the whole swept path, a real safety margin.
 So the collapse applies only where it is nearly free, which is also
 exactly the near-still case where the eye notices pulsing; during fast
 motion the motion itself masks it.
@@ -2232,7 +2331,7 @@ and the only setting that takes the residual size pulse to **zero**, but
 number, so it is opt-in rather than the default.
 
 The window matters for a second reason: a subject who genuinely changes
-size — one approaching the camera — would have a whole-track maximum hold
+size, one approaching the camera, would have a whole-track maximum hold
 the largest size for the entire track.
 
 ### Why these are in the censor key
@@ -2326,7 +2425,7 @@ What happens when two same-label, same-style boxes overlap. Per style
 `'span'` is restricted to exactly two boxes. Three or more same-label
 boxes in one frame is far more likely two people than one person with an
 unusual body-part count, and spanning a bar between two people reads as
-one region — worse than doing nothing.
+one region, worse than doing nothing.
 
 All three only apply when the shape is `'box'`.
 
@@ -2351,7 +2450,7 @@ and a close one under-censored.
 resolution: downsample, blur with the proportionally smaller sigma,
 upsample.
 
-**What you see.** Nothing, at obscuring strengths — the detail the
+**What you see.** Nothing, at obscuring strengths, the detail the
 approximation loses is exactly the detail the blur exists to destroy.
 Measured against the exact kernel:
 
@@ -2432,7 +2531,7 @@ floor is buying motion tolerance and paying for it in bleed:
 | 0.30 | 150 ms | +189 ms |
 | 0.22 | 110 ms | +109 ms |
 | 0.18 |  90 ms |  +69 ms |
-| 0.11 |  56 ms |    0 ms — no margin for a dropped frame |
+| 0.11 |  56 ms |    0 ms, no margin for a dropped frame |
 
 > **Changed:** `exposed_breast` 0.35 → 0.22 and `exposed_vulva`
 > 0.27 → 0.20, reported as censoring that appears before an exposure and
@@ -2443,7 +2542,7 @@ floor is buying motion tolerance and paying for it in bleed:
 > going too far and the values want to come back up, not down.
 
 The window is symmetric, so it cannot be tuned for "appears too early"
-and "persists too late" independently — one number moves both edges. If
+and "persists too late" independently, one number moves both edges. If
 only one side is wrong, the cause is more likely a track coasting past a
 shot cut (see `shot_cut_detection_enabled`) than this setting.
 
@@ -2467,7 +2566,7 @@ wall-clock of three, rather than of twenty.
 
 The histogram `summarize_run.py` prints is how you check this is really
 happening. "1 worker x5 file(s), 2 worker(s) x2 file(s)" means the
-parallel renderer is idle, and no `render_workers` value fixes that —
+parallel renderer is idle, and no `render_workers` value fixes that,
 the chunk size is what decides how many chunks exist to hand out.
 
 ### `render_chunk_seconds`
@@ -2476,7 +2575,7 @@ Seconds of video per render chunk. **180**. `0` disables chunking.
 
 **Why 180 and not 600.** A file is split into
 `ceil(duration / render_chunk_seconds)` chunks, and one worker renders
-one chunk — so a file shorter than `2 x render_chunk_seconds` can never
+one chunk, so a file shorter than `2 x render_chunk_seconds` can never
 use more than two workers, whatever `render_workers` says. At 600, a
 library averaging six and a half minutes per file produced nine chunks
 across seven files: five files ran on one worker, two on two, and the
@@ -2490,7 +2589,7 @@ constant: `summarize_run.py` prints the worker histogram a run actually
 achieved, which is the number to tune against.
 
 **Why chunks exist.** A single continuous ffmpeg pipe cannot be resumed
-if it is killed — you cannot append more encoded frames onto a truncated
+if it is killed, you cannot append more encoded frames onto a truncated
 file and get something valid. Each chunk is rendered to its own file and
 only promoted to its trusted name once ffmpeg exits 0, the container is
 readable, **and** the frame count matches. A restart picks up from the
@@ -2505,7 +2604,7 @@ cost of more concat work. Preview runs always use one chunk.
 
 > Previously a chunk whose decode died mid-file was a perfectly valid
 > video file that was simply too short. It passed the container check,
-> got promoted, and a later resume skipped it — silently truncating the
+> got promoted, and a later resume skipped it, silently truncating the
 > output. The container check cannot see this; only the count can.
 
 The final chunk is allowed to come up short, because container metadata
@@ -2523,7 +2622,7 @@ bigger files at faster presets.
 
 > One change removed an entire encode. The pipeline used to write
 > `mpeg4 -qscale 1` chunks, concatenate them, and then re-encode the
-> whole video to H.264 — a full extra encode of every output and two
+> whole video to H.264, a full extra encode of every output and two
 > generations of lossy compression. Chunks are now encoded directly as
 > H.264 at these settings, concatenated by stream copy, and the audio is
 > muxed by stream copy. One encode, one generation of loss.
@@ -2568,7 +2667,7 @@ preview_random_slice = False
 
 Processes a slice of each video instead of the whole thing. Preview
 output gets its own filename suffix, its own detection cache key, and is
-never skipped for an existing output — you are expected to re-run it
+never skipped for an existing output, you are expected to re-run it
 every time you change a setting.
 
 **`preview_start_seconds`** pins where the slice starts. Use the **same
@@ -2648,52 +2747,52 @@ censor cache key, so debug output never overwrites a real render.
 This section is the evidence trail. Where the evidence no longer
 describes the current configuration, it says so.
 
-### `retinanet_v2` — `class_suppression['exposed_breast']`
+### `retinanet_v2`: `class_suppression['exposed_breast']`
 
-- **`covered_breast` (`min_iou: 0.55`, `margin: 0.10`)** — median IoU
+- **`covered_breast` (`min_iou: 0.55`, `margin: 0.10`)**: median IoU
   0.62 among overlapping pairs, 47% clear 0.70.
-- **`face_femme` / `face_masc` (`min_iou: 0.30` / `0.75`)** — ears, eyes
+- **`face_femme` / `face_masc` (`min_iou: 0.30` / `0.75`)**: ears, eyes
   and mouths getting detected as `exposed_breast`. 256 measured
   overlapping instances for `face_femme` (46% clear IoU 0.20, 37% clear
   0.30); `face_masc` has almost no data (3 instances). Tuned stricter
   than the raw data alone suggests: protecting real detections takes
   priority over catching every face false positive.
-- **`exposed_belly` (`min_iou: 0.12`)** — 465 same-instant overlapping
+- **`exposed_belly` (`min_iou: 0.12`)**: 465 same-instant overlapping
   pairs, median IoU only 0.028. Co-occurrence is usually a small edge
   overlap, not two boxes on one spot. Breast is typically the *more*
   confident label when they overlap (score delta median −0.079), so this
   fires rarely by design. It can only catch a breast misfire when belly
-  is also detected in the same instant — if belly never fires, this rule
+  is also detected in the same instant, if belly never fires, this rule
   cannot help, and that is a `min_prob` problem, not a suppression one.
-- **`exposed_buttocks` (`min_iou: 0.30`)** — 116 overlapping pairs,
+- **`exposed_buttocks` (`min_iou: 0.30`)**: 116 overlapping pairs,
   median IoU 0.175. Tighter than the belly case, consistent with "same
   spot, model confused between two round body-part shapes". Scores are
   roughly equal when they overlap (+0.022), so IoU is the primary gate.
-- **`exposed_chest` (`min_iou: 0.85`)** — the male-breast-equivalent
+- **`exposed_chest` (`min_iou: 0.85`)**: the male-breast-equivalent
   label, detected alongside `exposed_breast` on androgynous bodies. 137
   overlapping pairs, cleanly bimodal (28 near-zero vs 60 in the 0.9–1.0
   bin); `min_iou` sits at the start of the high cluster. `exposed_chest`
-  is not censored, so firing this leaves the spot fully uncensored — an
+  is not censored, so firing this leaves the spot fully uncensored, an
   accepted trade.
-- **`covered_belly` has no rule** — only 2–4 same-instant pairs exist,
+- **`covered_belly` has no rule**: only 2–4 same-instant pairs exist,
   median IoU ~0.022. Not enough signal.
-- **No `exposed_anus` entry** — it is not in `items_to_censor` and exists
+- **No `exposed_anus` entry**: it is not in `items_to_censor` and exists
   purely as a suppression signal for the vulva rules, so a rule here
   would be a no-op.
 
-### `retinanet_v2` — `class_suppression['exposed_vulva']`
+### `retinanet_v2`: `class_suppression['exposed_vulva']`
 
-- **`exposed_anus` (`min_iou: 0.125`)** — median IoU only 0.06; a
+- **`exposed_anus` (`min_iou: 0.125`)**: median IoU only 0.06; a
   stricter threshold would catch too few real overlaps to matter.
-- **`covered_vulva` (`min_iou: 0.35`)** — `covered_vulva` was getting
+- **`covered_vulva` (`min_iou: 0.35`)**: `covered_vulva` was getting
   censored too often (misread as exposed, not suppressed). Loosened
   deliberately past what the raw overlap data alone suggests.
-- **`face_femme` / `face_masc` (`min_iou: 0.30`)** — the more common of
+- **`face_femme` / `face_masc` (`min_iou: 0.30`)**: the more common of
   the two face false positives: 909 same-instant pairs and a higher
   overlap rate than breast's. Tightened so a real vulva detection near a
   real face is very unlikely to be suppressed, at the cost of missing
   more of the actual face false positives.
-- **`exposed_penis` (`min_iou: 0.70`)** — the "genuinely adjacent real
+- **`exposed_penis` (`min_iou: 0.70`)**: the "genuinely adjacent real
   objects" case, not same-spot misclassification. Measured IoU across
   400+ overlapping instances is not a single blob: a large low cluster
   (0.0–0.2, ~46%, two real adjacent things) and a smaller high cluster
@@ -2701,19 +2800,19 @@ describes the current configuration, it says so.
   0.70 sits at the start of the high cluster, deliberately sacrificing
   the ambiguous middle in exchange for very rarely suppressing real
   penetrative content.
-- **`exposed_armpits` (`min_iou: 0.60`)** — n=15,533 same-instant
+- **`exposed_armpits` (`min_iou: 0.60`)**: n=15,533 same-instant
   overlapping pairs, median IoU 0.769, 71% clearing 0.20. A strong
-  same-spot signal. Not censored, so firing leaves the spot uncensored —
+  same-spot signal. Not censored, so firing leaves the spot uncensored,
   same accepted trade as `exposed_chest`. 0.60 sits solidly past the
   median, so it only fires on the closer-to-total-overlap half.
 
-### `retinanet_v2` — `item_overrides`
+### `retinanet_v2`: `item_overrides`
 
 **`exposed_vulva`: `track_max_gap: 3.6`, `interpolation_max_gap: 1.2`.**
 3x the auto-derived baseline. `analyze_track_breaks.py` against real
 cached footage showed this cuts track resets ~22% (659 → 513), with
 contention barely moving (21% → 23%, already high on this label by
-nature — vulva has no paired instance to confuse with, but the model
+nature, vulva has no paired instance to confuse with, but the model
 flickers between exposed and covered nearby).
 `match_distance_multiplier` deliberately left at 1.0: only 8 of 659
 resets were distance-blocked.
@@ -2728,13 +2827,13 @@ labels, so the wider track-survival window actually gets synthetic
 coverage instead of surviving as a longer blank gap.
 
 **`min_prob: 0.21` for `exposed_vulva`** sits just above
-`global_min_prob` — as permissive as it can usefully be set. Confirmed
+`global_min_prob`, as permissive as it can usefully be set. Confirmed
 working well for `retinanet_v2` specifically.
 
 ### Style weights and how often a style actually appears
 
 A style's share of resolves is its `weight` divided by the sum of every
-weight in that label's `censor_style` list — so weights are relative
+weight in that label's `censor_style` list, so weights are relative
 within a label, and adding entries to one group dilutes every other
 group. `analyze_style_flicker.py` prints the resulting expected share
 per label, which is the number to check a change against rather than
@@ -2752,7 +2851,7 @@ was a change worth making rather than purely a taste one. From
 400px: bar 1.7-3.7ms, mosaic 2.6-3.4ms, gaussian blur 5.9-8.1ms, hex
 6.9-15.1ms, **sticker 17.3-31.2ms**. Sticker is an order of magnitude
 above the cheapest styles, so its weight is the single largest
-style-side lever on render time — and render was 84% of that run's wall
+style-side lever on render time, and render was 84% of that run's wall
 clock.
 
 > Read those render numbers with the spread in mind. Previously the
@@ -2762,8 +2861,8 @@ clock.
 > difference smaller than the printed spread as noise.
 
 **`exposed_breast` gained eight tight-crop variants.** Each of
-the four non-bar, non-sticker groups — gaussian blur, box blur, mosaic
-pixel, hex pixel — got two extra entries replicating that group's two
+the four non-bar, non-sticker groups, gaussian blur, box blur, mosaic
+pixel, hex pixel, got two extra entries replicating that group's two
 median-strength configurations (strength 30 and 40) at
 `width_area_safety: -0.50`, `height_area_safety: -0.25`.
 
@@ -2789,12 +2888,12 @@ group keeps its slice; the slice is just cut into more pieces.
 box width and a quarter of its height is removed. Within each group the
 tight-crop pair now takes a third of that group's probability mass, so
 the *average* censored area for `exposed_breast` drops even though the
-group shares held constant. That is the intended trade — more variety
-in how tightly the censor hugs the detection — but it is a coverage
+group shares held constant. That is the intended trade, more variety
+in how tightly the censor hugs the detection, but it is a coverage
 reduction, and worth re-checking visually rather than assuming the
 unchanged share table means nothing changed.
 
-### `retinanet_v2` — styles
+### `retinanet_v2`: styles
 
 **`exposed_vulva`** uses blur and sticker at equal weight, with light
 feathering: a wider feather ring would let real detail show at the edge,
@@ -2828,7 +2927,7 @@ genuinely differs on and inherits the rest.
 of weights that detect differently, so their tracking wants different
 settings. The first real `auto_tune` run showed it directly: at
 `match_distance_multiplier` 2.0, nudenet_v3's 640m avoided 39 track
-resets *and* had 51 fewer risky assignments — better on both axes —
+resets *and* had 51 fewer risky assignments, better on both axes,
 while 320n rejected every candidate. With only a backend tier that value
 could not be written at all; the two had to share a compromise that
 suited neither.
@@ -2849,7 +2948,7 @@ symptoms are worth recognising if they ever recur.
 
 **Coverage was measured through a lottery.** `censor_style` is a
 weighted list drawn from at random per tracked instance, and each style
-carries its own `width_area_safety` / `height_area_safety` — for
+carries its own `width_area_safety` / `height_area_safety`, for
 `exposed_breast` those span -0.60 to +0.50. `smooth_boxes` recomputes
 box geometry from whichever style was drawn, and coverage is an area
 measure, so the draw dominated the signal. Seeding the RNG made each
@@ -2857,7 +2956,7 @@ replay reproducible but did NOT make two replays comparable: the knobs
 under test change how many draws happen and in what order, so one extra
 draw early shifts every style after it. Coverage swung 5-20% in both
 directions on changes that moved the rendered box count by a fraction of
-a percent, and those were false REJECTIONS — real candidates thrown out
+a percent, and those were false REJECTIONS, real candidates thrown out
 for the style lottery. The replay now holds style selection fixed, which
 is ordinary experimental control: style is orthogonal to every knob the
 tuner touches. With it held, a `track_max_gap` sweep that drops resets
@@ -2866,7 +2965,7 @@ looks like.
 
 **The replay was not deterministic.** A label's `censor_style` is a
 weighted list, drawn from at random per box, and each style carries its
-own `width_area_safety` / `height_area_safety` — for `exposed_breast`
+own `width_area_safety` / `height_area_safety`, for `exposed_breast`
 those span -0.60 to +0.50. `smooth_boxes` recomputes each box's geometry
 from the style it drew, so replaying the same detections twice produced
 boxes of substantially different areas. Coverage is an area measure, so
@@ -2882,7 +2981,7 @@ and cancels out of the comparison.
 backend reads the same `item_overrides` block, so `track_max_gap` is one
 setting, not two. The 320n stage raised `exposed_vulva` from 21.6 to
 64.8; the 640m stage then read 64.8 as *its* baseline and doubled it
-again to 129.6 — a value no measurement ever proposed. A shared key now
+again to 129.6, a value no measurement ever proposed. A shared key now
 gets one decision, measured against every configuration it governs, and
 a candidate has to be eligible under all of them. "Good for 320n,
 harmful for 640m" is not a value you want written to a setting both
@@ -2890,7 +2989,7 @@ read.
 
 `exposed_vulva`'s `track_max_gap` was reverted to 21.6 as a result.
 
-### `nudenet_v3` — `track_max_gap`, doubled
+### `nudenet_v3`: `track_max_gap`, doubled
 
 **`exposed_vulva`: 10.8 → 21.6. `exposed_breast`: 13.5 → 27.0.**
 
@@ -2908,7 +3007,7 @@ number is risky contention added per track reset avoided, and for
 2x is the best-priced point and the rest is diminishing returns, so 2x
 is what was applied. The same sweep on `match_distance_multiplier` cost
 68 risky assignments per reset avoided at 3x, which is why that knob was
-left at 1.0 — the headline "fewer resets" was identical and the price
+left at 1.0, the headline "fewer resets" was identical and the price
 was seventeen times higher.
 
 > Two caveats worth carrying. These baselines were themselves derived at
@@ -2916,18 +3015,18 @@ was seventeen times higher.
 > compounds a number that has not been re-derived at 320. And for
 > `exposed_vulva` the sweep showed essentially no contention at all (14
 > events across 4919 decisions), which means the safety signal for that
-> label has very little statistical power — "no measured downside" there
+> label has very little statistical power, "no measured downside" there
 > is closer to "not enough events to measure" than to "safe". Both are
 > reasons to re-run `auto_tune.py` once more footage exists rather than
 > treating these as settled.
 
-### `nudenet_v3` — fully data-derived at 640m (2026-09-19)
+### `nudenet_v3`: fully data-derived at 640m (2026-09-19)
 
 Every `margin` and `min_iou` in the shipped `nudenet_v3`
 `class_suppression` block is now the value
 `tools/bench/betabench.py suppression` proposed from the `640m` caches
 (7 videos, 182,616 detections), used unmodified. Before this pass the
-rules were **hand-set numbers that had never been derived from data** —
+rules were **hand-set numbers that had never been derived from data**,
 including the 2026-09-18 pass described below, which changed two rules
 from the suggestions and left five at their 2026-09-16 hand-picked
 values. That is worth stating plainly, because the file's comment said
@@ -2935,7 +3034,7 @@ values. That is worth stating plainly, because the file's comment said
 
 **`min_iou` was 5-30x tighter than the data supports.** This was the
 systematic error. 640m's boxes are tight, so cross-label IoU medians sit
-at 0.02-0.08 — but the shipped gates were 0.05 and 0.30. A rule with
+at 0.02-0.08, but the shipped gates were 0.05 and 0.30. A rule with
 `min_iou: 0.30` against a median IoU of 0.018
 (`exposed_breast<-exposed_buttocks`) essentially never fired. Several
 "rules" in the config were decorative.
@@ -2951,7 +3050,7 @@ that change. It is now `margin: 0.113, min_iou: 0.029`.
 **Pairs the tool flags "the suppressor rarely outscores this label" are
 now absent rather than present with a hand-set margin.** A rule whose
 suppressor wins 8-20% of the time needs a margin near zero to fire at
-all, and a margin near zero is the loosest possible gate — the rule
+all, and a margin near zero is the loosest possible gate, the rule
 either does nothing or fires indiscriminately. Removed on that basis:
 `exposed_breast<-exposed_penis` (18%), `<-exposed_vulva` (20%),
 `<-covered_belly` (8%), and `exposed_vulva<-exposed_anus` (17%).
@@ -2959,22 +3058,22 @@ either does nothing or fires indiscriminately. Removed on that basis:
 **`exposed_vulva` gained three rules and deliberately refused three
 more.** The label had two rules where the data supports eleven. Added:
 `exposed_breast` (n=2388, suppressor wins 80%), `exposed_belly`
-(n=1689, 72%), `covered_breast` (n=776, 65%) — all cases where the
+(n=1689, 72%), `covered_breast` (n=776, 65%), all cases where the
 suppressing label is usually the more confident one.
 
 Not added, and the reasoning matters more than the list:
 
-- **`exposed_penis`** — the penetrative case. Removing this rule is what
+- **`exposed_penis`**: the penetrative case. Removing this rule is what
   fixed penetrative content being missed; adding it back under a
   different margin would undo that.
-- **`exposed_buttocks`** — n=7721 against 8541 total `exposed_vulva`
+- **`exposed_buttocks`**: n=7721 against 8541 total `exposed_vulva`
   detections. Nearly every vulva detection co-occurs with a buttocks box
   at the same instant, which is anatomy, not a competing claim about the
   same object. A rule on that pair puts ~90% of the label's detections
   behind a suppression gate, and the tool's suggestion cannot see the
   difference between "these two labels describe one object" and "these
   two things are adjacent in every frame".
-- **`exposed_feet`** — same shape at smaller scale: same-frame, not
+- **`exposed_feet`**: same shape at smaller scale: same-frame, not
   same-object.
 
 That distinction is the standing limit on this tool. It measures
@@ -2986,7 +3085,7 @@ is anatomical get excluded by hand, and the exclusions are listed in
 **`time_safety` was lowered** to 0.22 (`exposed_breast`, from 0.35) and
 0.20 (`exposed_vulva`, from 0.27), for censoring that appears before or
 persists after the exposure. See `default_time_safety` below for the
-arithmetic — the short version is that at `video_censor_fps = 9` the
+arithmetic, the short version is that at `video_censor_fps = 9` the
 sampling interval is 111ms, and 0.22 still leaves a full interval of
 overlap between consecutive boxes while halving the bleed past a true
 edge.
@@ -2999,13 +3098,13 @@ avoided across both nudenet configurations at ~0 risky assignments each.
 **Not applied.** It was lowered to 2 in the previous pass specifically to
 fix missed detections on brief content, and the tool re-proposes 3 every
 run because it scores only "boxes dropped from unconfirmed tracks
-against coverage lost" — it has no way to see that those dropped boxes
+against coverage lost", it has no way to see that those dropped boxes
 were the reported symptom. This is a case where the operator's
 observation outranks the metric.
 
 ---
 
-### `nudenet_v3` — the 2026-09-18 pass (superseded above)
+### `nudenet_v3`: the 2026-09-18 pass (superseded above)
 
 The shipped `nudenet_v3` values were re-derived on 2026-09-18 from the
 `640m` caches: 7 videos, 182,616 detections, at the variant's native
@@ -3028,7 +3127,7 @@ rule was removed rather than retuned.
 **`exposed_breast <- covered_breast` was tightened to
 `margin: 0.05, min_iou: 0.30`** (from `0.10 / 0.05`). This targets
 covered breasts being reported as exposed. At 640m the pair has 3,278
-overlapping detections with median IoU 0.815 — the two labels really are
+overlapping detections with median IoU 0.815, the two labels really are
 describing the same object, so the geometry gate can afford to be much
 stricter than 0.05 without losing the cases that matter. Dropping the
 margin from 0.10 to 0.05 takes the rule from firing on 21% of
@@ -3037,7 +3136,7 @@ overlapping pairs to 30%.
 **`exposed_breast <- face_masc` was considered and deliberately not
 added,** for male chests being reported as `exposed_breast`. The data
 does not support it: only 30 overlapping pairs exist at 640m, and the
-median score delta is **−0.070** — `face_masc` scores *below* the
+median score delta is **−0.070**: `face_masc` scores *below* the
 `exposed_breast` box it overlaps, so a margin-based rule loses by
 default and only 3 of 30 pairs clear a 0.20 margin. A face box near a
 chest box is also a weak signal on its own, and actively wrong in a
@@ -3049,7 +3148,7 @@ explicit decision rather than oversight.
 **`min_track_hits` was lowered from 3 to 2** for both labels. At
 `video_censor_fps = 9`, requiring three real detections means roughly a
 third of a second of continuous detection before anything renders at
-all — a plausible cause of "obvious content gets nothing", independent
+all, a plausible cause of "obvious content gets nothing", independent
 of any threshold. See `default_min_track_hits` above for the trade.
 
 **`min_prob` was lowered** to 0.28 (`exposed_breast`) and 0.26
@@ -3068,7 +3167,7 @@ complaint, that suggestion is where to start.
 The original 2026-09-16 findings, and why they were not simply trusted:
 
 - Cross-label IoU distributions sat far below `retinanet_v2`'s for the
-  same label pairs on the same footage — `exposed_breast<-covered_breast`
+  same label pairs on the same footage, `exposed_breast<-covered_breast`
   median IoU 0.036 versus 0.475.
 - `nudenet_v3`'s boxes ran structurally smaller and tighter across
   nearly every label (median `exposed_breast` box area 5994 versus 7052
@@ -3138,7 +3237,7 @@ python3 tools/bench/betabench.py --help       # what each one answers
 | `structure` | per video: how fast does it cut, how many subjects, where in frame? | whether footage needs per-profile settings |
 
 `structure`, `geometry`, `suppression`, `dedup` and `hysteresis` read
-the detection caches a real run already produced — fast, and they
+the detection caches a real run already produced, fast, and they
 describe exactly what that run saw. Run `betatv.py` first if the cache
 is empty; a `--preview` pass is enough to start.
 
@@ -3158,7 +3257,7 @@ deliberately **structural rather than content-based**:
 | `simul`, `p90` | one subject vs. several on screen at once |
 | `L-half` | where the action sits; 0.50 with high `simul` is split-screen |
 
-On synthetic footage those three shapes separate cleanly — a compilation
+On synthetic footage those three shapes separate cleanly, a compilation
 at 213 cuts/min with 0.28s shots, a single-scene file at 5.4 cuts/min
 with 10s shots and `L-half` 1.00, a split-screen at `simul` 2.0 and
 `L-half` exactly 0.50.
@@ -3167,7 +3266,7 @@ with 10s shots and `L-half` 1.00, a split-screen at `simul` 2.0 and
 content categories, and nothing in a detection cache can recover them. A
 box does not say whose body it is on. What a cache *can* say is how
 often the scene cuts, how many boxes are live at once, and where they
-sit — and those are exactly the properties that want different settings:
+sit, and those are exactly the properties that want different settings:
 
 - fast cuts want a **smaller `time_safety`** (less bleed across a cut)
   and a **smaller `track_max_gap`** (a track should not survive a scene
@@ -3185,14 +3284,14 @@ is no profile mechanism in the config, nothing selects a profile, and
 nothing applies one. Building that means three separate pieces, and they
 are worth keeping separate because each can be wrong on its own:
 
-1. **Profile definitions** — named override blocks in `betaconfig.py`,
+1. **Profile definitions**: named override blocks in `betaconfig.py`,
    resolved as a tier between a backend's `item_overrides` and the
    per-label values.
-2. **A classifier** — the thresholds that turn `structure`'s numbers
+2. **A classifier**: the thresholds that turn `structure`'s numbers
    into a profile name. These have to be derived from footage that
    actually spans the range; on a set that all cuts at similar rates,
    any threshold is arbitrary.
-3. **Selection** — how a run picks one. Two options with different
+3. **Selection**: how a run picks one. Two options with different
    risks: chosen per file at run time from a cheap pre-scan (shot-cut
    detection already runs, so the cut rate is nearly free), or set by
    hand per run. Automatic selection is the more useful and the more
