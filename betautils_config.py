@@ -830,6 +830,55 @@ def _validate_profiles( errors ):
                         "backend %r (have: %s)"%( pattern, name, selected,
                                                   sorted( variants ) or 'none' ) )
 
+    # The folder convention. Same reasoning as the path patterns above: a
+    # key naming no variant would quietly fall through to measurement
+    # while looking configured.
+    folders = getattr( betaconfig, 'profile_by_source_dir', None )
+    if folders is not None:
+        if not isinstance( folders, dict ):
+            errors.append( "profile_by_source_dir must be a dict of "
+                           "{folder: profile_name}, got %r"%(
+                               type( folders ).__name__, ) )
+        else:
+            selected = detector.selected_backend_name()
+            variants = detector.get_profiles( selected ).get( 'variants' ) or {}
+            seen = {}
+            for folder, name in folders.items():
+                where = "profile_by_source_dir[%r]"%( folder, )
+                if not isinstance( folder, str ) or not folder.strip():
+                    errors.append( "profile_by_source_dir has an empty or "
+                                   "non-string folder key %r"%( folder, ) )
+                    continue
+                parts = detector._dir_key_parts( folder )
+                if not parts:
+                    # '/' or '.' normalise away to nothing, which would
+                    # match every file and silently override the
+                    # root-falls-through-to-measurement rule.
+                    errors.append( "%s normalises to an empty folder, which would "
+                                   "match every source file. Remove it, or name a "
+                                   "real folder"%( where, ) )
+                    continue
+                if '..' in parts:
+                    errors.append( "%s climbs above the uncensored root with '..', "
+                                   "which can never match"%( where, ) )
+                    continue
+                if os.path.isabs( str( folder ).replace( '\\', '/' ) ):
+                    errors.append( "%s is an absolute path. Keys are named relative "
+                                   "to betaconst.video_path_uncensored"%( where, ) )
+                    continue
+                # Two spellings of one folder ('comps', '/comps/') would
+                # both match, and which won would depend on dict order.
+                if parts in seen:
+                    errors.append( "%s and profile_by_source_dir[%r] are the same "
+                                   "folder spelled differently"%( where, seen[parts] ) )
+                else:
+                    seen[parts] = folder
+                if name not in variants:
+                    errors.append(
+                        "%s is %r, which names no variant for backend %r "
+                        "(have: %s)"%( where, name, selected,
+                                       sorted( variants ) or 'none' ) )
+
     # A forced profile that names nothing is an error, not a fallback.
     # Silently rendering unprofiled after --profile comp was typed is the
     # failure where the run looks like it worked and the output is wrong.

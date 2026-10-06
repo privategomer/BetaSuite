@@ -66,10 +66,31 @@ detector_backend = {
                                             'style_min_dwell_seconds': 2.5 },
                     },
                 },
+                # Sequential compilation: the subject changes every few
+                # seconds, shots measured in seconds rather than fractions
+                # of one. Between scene and quick_cut on every axis.
+                # manual_only: short_shot_fraction only fires on sub-second
+                # shots, so it cannot separate this from scene.
+                'compilation': {
+                    'manual_only': True,
+                    'item_overrides': {
+                        'exposed_breast': { 'track_max_gap': 1.5,
+                                            'interpolation_max_gap': 0.5,
+                                            'paired_style_max_age': 0.6,
+                                            'style_min_dwell_seconds': 4.0 },
+                        'exposed_vulva':  { 'track_max_gap': 4.0,
+                                            'interpolation_max_gap': 4.0,
+                                            'style_min_dwell_seconds': 4.0 },
+                        'covered_vulva':  { 'track_max_gap': 4.0,
+                                            'interpolation_max_gap': 4.0,
+                                            'style_min_dwell_seconds': 4.0 },
+                    },
+                },
                 # Split-screen layouts (double, triple, quadrant). Not
                 # auto-selected: no signal available before detection
                 # separates it from 'scene'. Reach it with
-                # --profile split_screen or profile_by_path_pattern.
+                # --profile split_screen, profile_by_source_dir or
+                # profile_by_path_pattern.
                 'split_screen': {
                     'manual_only': True,
                     'item_overrides': {
@@ -360,6 +381,18 @@ ffmpeg_retry_backoff_seconds = 5
 encode_video_codec = 'libx264'
 encode_crf = 17
 encode_preset = 'fast'
+
+# --- Source folder convention -------------------------------------------
+# Folder under resources/uncensored_vids/ -> structure profile. Deepest
+# match wins; anything not listed is selected by measurement.
+# See CONFIG_REFERENCE.md -> "The source folder convention".
+
+profile_by_source_dir = {
+    'scene':        'scene',
+    'compilation':  'compilation',
+    'quick-cut':    'quick_cut',
+    'split-screen': 'split_screen',
+}
 
 # --- What gets censored -------------------------------------------------
 

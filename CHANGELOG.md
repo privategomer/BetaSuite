@@ -2,6 +2,21 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- Source folder convention: `profile_by_source_dir` maps a folder under `resources/uncensored_vids/` to a structure profile, so the folder a video sits in decides how it is censored. Ships with `scene/`, `compilation/`, `quick-cut/` and `split-screen/`. Deepest match wins, so a child folder overrides its parent; files in the root or in an unmapped folder are selected by measurement as before, which keeps the convention additive. Adding a folder is adding a line. Validated strictly, since every mistake here is a silent one: a key naming no variant, an empty key, one that normalises away to nothing, a `..`, a pasted absolute path, or two spellings of the same folder are all hard errors
+- `compilation` profile, a fourth variant for sequential compilations where the subject changes every few seconds. Between `scene` and `quick_cut` on every axis. `manual_only`, because `short_shot_fraction` only counts sub-second shots and so cannot tell a compilation from a single scene
+- `tools/analysis/classify_sources.sh` and `classify_source_structure.py`: measure every source video's shot structure and report which folder it belongs in. Scan only, no detection or rendering, reuses the app's shot-cut cache, and moves nothing. Never recommends split-screen, which no pre-detection signal can identify; flags files whose names hint at one instead. Reads the quick-cut boundary from `betaconfig` so it cannot contradict the app
+- The run log now names the rule that chose a profile, not just the profile: `structure profile: split_screen via source folder split-screen/ (...)`. Without it a folder key matching nothing on disk looks configured while quietly falling through to measurement
+
+### Changed
+
+- `profile_by_source_dir` is part of the censor key, so retuning the map does not serve back a render made under the old one
+- `classify_sources.sh` resolves `.venv/bin/python` itself instead of calling bare `python3` and relying on an activated venv, so it works activated, unactivated, or under `sudo`. It also checks that `cv2` imports before starting a scan, and says what to do about it, rather than failing partway in with a bare `ModuleNotFoundError`
+- `classify_sources.sh` uses `#!/bin/bash` rather than `#!/usr/bin/env bash`, which fails on a system where `/usr/bin/env` is a uutils-coreutils multicall binary. The repo's other nine shell scripts still use the `env` form
+
 ## 1.1.0 (2026-10-03)
 
 ### Added
