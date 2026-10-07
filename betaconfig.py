@@ -109,8 +109,6 @@ detector_backend = {
                 { 'from': 'covered_vulva', 'min_prob': 0.30,
                   'requires': [
                       { 'label': 'exposed_penis', 'min_prob': 0.30, 'overlap': 'anywhere' },
-                      { 'label': 'exposed_vulva', 'min_prob': 0.30, 'overlap': 'anywhere' },
-                      { 'label': 'exposed_anus',  'min_prob': 0.30, 'overlap': 'anywhere' },
                   ] },
             ],
         },

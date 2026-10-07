@@ -32,6 +32,9 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  Recommends a source folder per file, in uncensored_vids/
                  and in the staging tree (resources/source/), and with
                  --write-move-script writes the safe moves as a script.
+    concurrency  How much running the shot-cut scan alongside detection
+                 saves on this machine, and how many structure-scan
+                 workers to use. Throwaway caches; nothing real touched.
     structure-scan
                  Whole-file shot-cut scans for every source file not yet
                  scanned, in parallel on the CPU, written to the cache the
@@ -1937,6 +1940,210 @@ def _detect_geometry_slices( args, logger, sources, count ):
     logger.info( "geometry slices finished in %.0fs"%( time.perf_counter() - started, ) )
 
 
+# --- concurrency -----------------------------------------------------------
+
+class _ThrowawayCaches( object ):
+    """
+    Point every cache this bench writes at a temp directory, and back.
+
+    A timing that hits a warm cache measures a file read. Each
+    measurement here therefore starts from an empty cache of its own,
+    and the real caches are never read or written.
+    """
+
+    _NAMES = ( 'shot_cut_dir', 'vid_hash_dir', 'transcode_cache_dir' )
+
+    def __enter__( self ):
+        import tempfile
+        self.root = tempfile.mkdtemp( prefix='betabench-concurrency-' )
+        self._saved = { name: getattr( betaconst, name ) for name in self._NAMES }
+        self._saved_vid = bu_cache.VID_HASH_DIR
+        self.reset()
+        return self
+
+    def reset( self ):
+        """Empty caches for the next measurement."""
+        import shutil
+        for name in self._NAMES:
+            path = os.path.join( self.root, name )
+            shutil.rmtree( path, ignore_errors=True )
+            os.makedirs( path, exist_ok=True )
+            setattr( betaconst, name, path )
+        bu_cache.VID_HASH_DIR = betaconst.vid_hash_dir
+
+    def __exit__( self, *exc ):
+        import shutil
+        for name, value in self._saved.items():
+            setattr( betaconst, name, value )
+        bu_cache.VID_HASH_DIR = self._saved_vid
+        shutil.rmtree( self.root, ignore_errors=True )
+        return False
+
+
+def _time_overlap_once( source, name, file_hash, session, sizes, fps, threshold,
+                        seconds, caches, logger ):
+    """(scan, detect, both) wall seconds over the first `seconds` of one file."""
+    import betatv
+
+    def scan():
+        bu_video.shot_cuts_for_source( source, file_hash, fps, threshold, 0.0, seconds,
+                                       logger=logger )
+
+    def detect():
+        betatv.detect_boxes_for_video( source, name, session, file_hash, sizes,
+                                       '', 0.0, seconds, logger, fps )
+
+    caches.reset()
+    started = time.perf_counter()
+    scan()
+    scan_seconds = time.perf_counter() - started
+
+    caches.reset()
+    started = time.perf_counter()
+    detect()
+    detect_seconds = time.perf_counter() - started
+
+    caches.reset()
+    started = time.perf_counter()
+    background = bu_video.BackgroundShotCutScan( source, file_hash, fps, threshold, 0.0,
+                                                 seconds, logger=logger )
+    detect()
+    background.result()
+    both_seconds = time.perf_counter() - started
+    return scan_seconds, detect_seconds, both_seconds
+
+
+def _measure_overlap( args, logger, video_path, caches ):
+    """Scan alone, detection alone, and both at once, on one file."""
+    import statistics
+
+    seconds = args.seconds
+    fps = betaconfig.video_censor_fps
+    threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+    file_hash = bu_hash.md5_for_file( video_path, 16 )
+    source = bu_video.open_video_source( video_path, file_hash, logger )
+    detector = bu_detector.get_detector()
+    session = detector.get_session()
+    sizes = bu_detector.get_picture_sizes()
+    name = os.path.basename( video_path )
+    try:
+        logger.info( "overlap: %s, first %gs, %d trial(s) after a warm-up"%(
+            name, seconds, args.trials ) )
+        # Warm-up: the first pass reads the file from disk, every later
+        # one from the page cache. Discard it so the trials compare like
+        # with like.
+        _time_overlap_once( source, name, file_hash, session, sizes, fps, threshold,
+                            seconds, caches, logger )
+        trials = [ _time_overlap_once( source, name, file_hash, session, sizes, fps,
+                                       threshold, seconds, caches, logger )
+                   for _ in range( max( 1, args.trials ) ) ]
+    finally:
+        source.cap.release()
+
+    scan_s = statistics.median( t[0] for t in trials )
+    detect_s = statistics.median( t[1] for t in trials )
+    both_s = statistics.median( t[2] for t in trials )
+    serial_s = scan_s + detect_s
+    saved_s = serial_s - both_s
+    logger.info( "  scan alone        %7.2fs"%( scan_s, ) )
+    logger.info( "  detection alone   %7.2fs"%( detect_s, ) )
+    logger.info( "  one after other   %7.2fs   (what a measured-profile file pays)"%( serial_s, ) )
+    logger.info( "  at the same time  %7.2fs   (what a declared-profile file pays)"%( both_s, ) )
+    logger.info( "  saved             %7.2fs   %.0f%% of the serial time; detection ran %.0f%% "
+                 "slower while the scan competed for the CPU"%(
+                     saved_s, 100.0 * saved_s / serial_s if serial_s else 0.0,
+                     100.0 * ( both_s - detect_s ) / detect_s if detect_s else 0.0 ) )
+    if both_s > serial_s:
+        logger.warning( "  overlapping was SLOWER than running them in turn on this machine; "
+                        "the CPU is the bottleneck, not the GPU" )
+    return { 'video': name, 'seconds': seconds, 'trials': len( trials ),
+             'scan_seconds': round( scan_s, 3 ), 'detect_seconds': round( detect_s, 3 ),
+             'serial_seconds': round( serial_s, 3 ), 'overlapped_seconds': round( both_s, 3 ),
+             'saved_seconds': round( saved_s, 3 ) }
+
+
+def _measure_scan_workers( args, logger, video_paths, caches ):
+    """structure-scan throughput at several worker counts, on the same files."""
+    import concurrent.futures
+
+    seconds = args.seconds
+    fps = betaconfig.video_censor_fps
+    threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
+    hashes = [ bu_hash.md5_for_file( path, 16 ) for path in video_paths ]
+    cores = os.cpu_count() or 1
+    counts = sorted( { 1, 2, 4, min( cores, 8 ), _default_scan_workers() } )
+    counts = [ n for n in counts if n <= max( cores, 1 ) ] or [ 1 ]
+    logger.info( "" )
+    logger.info( "scan workers: %d file(s), first %gs of each, %d core(s), worker counts %s"%(
+        len( video_paths ), seconds, cores, counts ) )
+
+    # Warm the page cache so the first worker count does not pay the disk.
+    for path in video_paths:
+        with open( path, 'rb' ) as handle:
+            while handle.read( 64 * 1024 * 1024 ):
+                pass
+
+    rows = []
+    for workers in counts:
+        caches.reset()
+        const_paths = { name: getattr( betaconst, name ) for name in bu_video.SCAN_WORKER_PATHS }
+        started = time.perf_counter()
+        with concurrent.futures.ProcessPoolExecutor( max_workers=workers ) as pool:
+            results = list( pool.map( bu_video.scan_whole_file_in_worker, video_paths, hashes,
+                                      [ fps ] * len( video_paths ),
+                                      [ threshold ] * len( video_paths ),
+                                      [ const_paths ] * len( video_paths ),
+                                      [ seconds ] * len( video_paths ) ) )
+        wall = time.perf_counter() - started
+        errors = [ r[3] for r in results if r[3] ]
+        rows.append( { 'workers': workers, 'wall_seconds': round( wall, 3 ), 'errors': errors } )
+    base = rows[0]['wall_seconds'] or 1e-9
+    best = min( rows, key=lambda r: r['wall_seconds'] )
+    # Fewest workers within 5% of the fastest: a near-tie is noise, and
+    # fewer workers leave more for whatever else is running.
+    choice = min( ( r for r in rows if r['wall_seconds'] <= best['wall_seconds'] * 1.05 ),
+                  key=lambda r: r['workers'] )
+    for row in rows:
+        logger.info( "  %2d worker(s)  %7.2fs   %.2fx vs 1%s"%(
+            row['workers'], row['wall_seconds'], base / row['wall_seconds'],
+            '   <- use this' if row is choice else '' ) )
+        for error in row['errors']:
+            logger.warning( "    scan failed: %s"%( error, ) )
+    logger.info( "  default is %d; pass --workers %d to structure-scan to use the measured "
+                 "best"%( _default_scan_workers(), choice['workers'] ) )
+    return { 'files': len( video_paths ), 'seconds': seconds, 'rows': rows,
+             'recommended_workers': choice['workers'] }
+
+
+def bench_concurrency( args, logger ):
+    """
+    How much the two concurrency changes save on THIS machine.
+
+      overlap       the shot-cut scan alone, detection alone, and both at
+                    once, on the first --seconds of one file (--video, or
+                    the first source video). Needs the model and the GPU.
+      scan workers  structure-scan's throughput at 1, 2, 4 and more
+                    worker processes, on up to --max-videos files.
+
+    Every measurement starts from an empty throwaway cache, after a
+    warm-up pass, so no timing is a cache hit and nothing real is read
+    or written. --trials repeats the overlap measurement (median kept).
+    """
+    sources = [ s['path'] for s in _source_videos() ]
+    if not sources and not args.video:
+        logger.warning( "no source videos found" )
+        return {}
+    results = {}
+    with _ThrowawayCaches() as caches:
+        try:
+            results['overlap'] = _measure_overlap( args, logger, args.video or sources[0], caches )
+        except FileNotFoundError as err:
+            logger.warning( "overlap skipped: %s"%( err, ) )
+        paths = sources[ : max( 1, args.max_videos ) ] if sources else [ args.video ]
+        results['scan_workers'] = _measure_scan_workers( args, logger, paths, caches )
+    return { 'concurrency': results }
+
+
 bench_geometry    = _per_configuration( 'geometry',    _bench_geometry_one )
 bench_suppression = _per_configuration( 'suppression', _bench_suppression_one )
 bench_dedup       = _per_configuration( 'dedup',       _bench_dedup_one )
@@ -1957,6 +2164,7 @@ SUBCOMMANDS = {
     'hysteresis': bench_hysteresis,
     'structure': bench_structure,
     'structure-scan': bench_structure_scan,
+    'concurrency': bench_concurrency,
 }
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
@@ -1997,9 +2205,10 @@ def build_parser():
     parser.add_argument( '--video', default=None,
         help="a specific video to measure against (default: the first found)" )
     parser.add_argument( '--max-videos', type=int, default=3,
-        help="how many videos 'decode' measures (default: 3)" )
+        help="how many videos 'decode' and 'concurrency' (scan workers) measure (default: 3)" )
     parser.add_argument( '--seconds', type=float, default=30.0,
-        help="seconds of video to measure (default: 30)" )
+        help="seconds of video to measure, for 'decode' and 'concurrency' (default: 30; "
+             "try 120 for a steadier concurrency number)" )
     parser.add_argument( '--max-frames', type=int, default=120,
         help="cap on sampled frames per measurement, for 'detect' (default: 120)" )
     parser.add_argument( '--write-move-script', default=None, metavar='PATH',
@@ -2028,8 +2237,8 @@ def build_parser():
              "and the spread across them is printed, because a single burst on a busy machine "
              "varies by several times. 3 is enough to reject a one-off outlier, which is all "
              "this needs for the usual 'which styles are expensive' question; raise it to 7+ "
-             "when two styles are close enough that the printed spread hides the difference "
-             "(default: 3)" )
+             "when two styles are close enough that the printed spread hides the difference. "
+             "Also the overlap trials for 'concurrency' (default: 3)" )
     parser.add_argument( '--no-blur-approximation', action='store_true',
         help="force blur_fast_approximation off for this measurement" )
 
