@@ -294,7 +294,7 @@ def bench_decode( args, logger ):
     """
     import cv2
 
-    videos = ( [ args.video ] if args.video else find_sample_videos( args.max_videos ) )
+    videos = ( [ args.video ] if args.video else find_sample_videos( args.max_videos or 3 ) )
     if not videos:
         logger.error( "no videos found under %s - pass --video PATH"%(betaconst.video_path_uncensored) )
         return {}
@@ -2062,40 +2062,77 @@ def _measure_overlap( args, logger, video_path, caches ):
              'saved_seconds': round( saved_s, 3 ) }
 
 
-def _measure_scan_workers( args, logger, video_paths, caches ):
-    """structure-scan throughput at several worker counts, on the same files."""
+def _scan_worker_counts( cores, files ):
+    """
+    (tested, untested): the worker counts worth timing, split by whether
+    these files can show them.
+
+    A pool of N workers handed fewer than N files only ever runs as many
+    processes as there are files, so timing 8 workers on 3 files times 3
+    workers again and any difference is noise. Those counts are reported
+    as untested rather than measured.
+    """
+    wanted = sorted( { 1, 2, 4, min( cores, 8 ), _default_scan_workers() } )
+    wanted = [ n for n in wanted if n <= max( cores, 1 ) ] or [ 1 ]
+    tested = [ n for n in wanted if n <= max( files, 1 ) ]
+    untested = [ n for n in wanted if n > max( files, 1 ) ]
+    return tested, untested
+
+
+def _scan_bench_file_count( args, cores ):
+    """
+    Files the worker measurement uses: --max-videos, else two per worker
+    at the largest count. Two each keeps one slow file from setting the
+    wall time on its own while the other workers sit idle.
+    """
+    if args.max_videos:
+        return max( 1, args.max_videos )
+    wanted, _ = _scan_worker_counts( cores, files=1 << 30 )
+    return 2 * max( wanted )
+
+
+def _run_scan_pool( workers, video_paths, hashes, fps, threshold, seconds, caches ):
+    """Wall seconds and errors for one pass of every file at `workers`."""
     import concurrent.futures
 
+    caches.reset()
+    const_paths = { name: getattr( betaconst, name ) for name in bu_video.SCAN_WORKER_PATHS }
+    count = len( video_paths )
+    started = time.perf_counter()
+    with concurrent.futures.ProcessPoolExecutor( max_workers=workers ) as pool:
+        results = list( pool.map( bu_video.scan_whole_file_in_worker, video_paths, hashes,
+                                  [ fps ] * count, [ threshold ] * count,
+                                  [ const_paths ] * count, [ seconds ] * count ) )
+    wall = time.perf_counter() - started
+    return wall, [ r[3] for r in results if r[3] ]
+
+
+def _measure_scan_workers( args, logger, video_paths, caches ):
+    """structure-scan throughput at several worker counts, on the same files."""
     seconds = args.seconds
     fps = betaconfig.video_censor_fps
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
     hashes = [ bu_hash.md5_for_file( path, 16 ) for path in video_paths ]
     cores = os.cpu_count() or 1
-    counts = sorted( { 1, 2, 4, min( cores, 8 ), _default_scan_workers() } )
-    counts = [ n for n in counts if n <= max( cores, 1 ) ] or [ 1 ]
+    counts, untested = _scan_worker_counts( cores, len( video_paths ) )
     logger.info( "" )
     logger.info( "scan workers: %d file(s), first %gs of each, %d core(s), worker counts %s"%(
         len( video_paths ), seconds, cores, counts ) )
+    if untested:
+        logger.warning( "  %d file(s) cannot show more than %d worker(s), so %s went unmeasured; "
+                        "pass --max-videos %d to measure them"%(
+                            len( video_paths ), len( video_paths ), untested, 2 * max( untested ) ) )
 
-    # Warm the page cache so the first worker count does not pay the disk.
-    for path in video_paths:
-        with open( path, 'rb' ) as handle:
-            while handle.read( 64 * 1024 * 1024 ):
-                pass
+    # Warm-up pass, discarded: it pulls exactly the bytes the timed
+    # passes read into the page cache, so the first count does not pay
+    # the disk for the rest. Reading whole files instead would read
+    # gigabytes the --seconds window never touches.
+    _run_scan_pool( max( counts ), video_paths, hashes, fps, threshold, seconds, caches )
 
     rows = []
     for workers in counts:
-        caches.reset()
-        const_paths = { name: getattr( betaconst, name ) for name in bu_video.SCAN_WORKER_PATHS }
-        started = time.perf_counter()
-        with concurrent.futures.ProcessPoolExecutor( max_workers=workers ) as pool:
-            results = list( pool.map( bu_video.scan_whole_file_in_worker, video_paths, hashes,
-                                      [ fps ] * len( video_paths ),
-                                      [ threshold ] * len( video_paths ),
-                                      [ const_paths ] * len( video_paths ),
-                                      [ seconds ] * len( video_paths ) ) )
-        wall = time.perf_counter() - started
-        errors = [ r[3] for r in results if r[3] ]
+        wall, errors = _run_scan_pool( workers, video_paths, hashes, fps, threshold, seconds,
+                                       caches )
         rows.append( { 'workers': workers, 'wall_seconds': round( wall, 3 ), 'errors': errors } )
     base = rows[0]['wall_seconds'] or 1e-9
     best = min( rows, key=lambda r: r['wall_seconds'] )
@@ -2111,8 +2148,11 @@ def _measure_scan_workers( args, logger, video_paths, caches ):
             logger.warning( "    scan failed: %s"%( error, ) )
     logger.info( "  default is %d; pass --workers %d to structure-scan to use the measured "
                  "best"%( _default_scan_workers(), choice['workers'] ) )
+    if untested and choice['workers'] == max( counts ):
+        logger.info( "  the fastest count was the largest one measured, so more workers may be "
+                     "faster still" )
     return { 'files': len( video_paths ), 'seconds': seconds, 'rows': rows,
-             'recommended_workers': choice['workers'] }
+             'recommended_workers': choice['workers'], 'untested_workers': untested }
 
 
 def bench_concurrency( args, logger ):
@@ -2123,7 +2163,9 @@ def bench_concurrency( args, logger ):
                     once, on the first --seconds of one file (--video, or
                     the first source video). Needs the model and the GPU.
       scan workers  structure-scan's throughput at 1, 2, 4 and more
-                    worker processes, on up to --max-videos files.
+                    worker processes, on --max-videos files (default:
+                    two per worker at the largest count). A count above
+                    the number of files is reported as unmeasured.
 
     Every measurement starts from an empty throwaway cache, after a
     warm-up pass, so no timing is a cache hit and nothing real is read
@@ -2139,7 +2181,8 @@ def bench_concurrency( args, logger ):
             results['overlap'] = _measure_overlap( args, logger, args.video or sources[0], caches )
         except FileNotFoundError as err:
             logger.warning( "overlap skipped: %s"%( err, ) )
-        paths = sources[ : max( 1, args.max_videos ) ] if sources else [ args.video ]
+        wanted = _scan_bench_file_count( args, os.cpu_count() or 1 )
+        paths = sources[ : wanted ] if sources else [ args.video ]
         results['scan_workers'] = _measure_scan_workers( args, logger, paths, caches )
     return { 'concurrency': results }
 
@@ -2204,8 +2247,9 @@ def build_parser():
 
     parser.add_argument( '--video', default=None,
         help="a specific video to measure against (default: the first found)" )
-    parser.add_argument( '--max-videos', type=int, default=3,
-        help="how many videos 'decode' and 'concurrency' (scan workers) measure (default: 3)" )
+    parser.add_argument( '--max-videos', type=int, default=None,
+        help="how many videos 'decode' and 'concurrency' (scan workers) measure (default: 3 "
+             "for decode; for concurrency, two per worker at the largest worker count)" )
     parser.add_argument( '--seconds', type=float, default=30.0,
         help="seconds of video to measure, for 'decode' and 'concurrency' (default: 30; "
              "try 120 for a steadier concurrency number)" )

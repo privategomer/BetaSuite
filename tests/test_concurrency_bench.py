@@ -55,6 +55,41 @@ class TestConcurrencyBench( BetaTvHarness ):
         self.assertIn( 1, [ row['workers'] for row in workers['rows'] ] )
         self.assertTrue( all( not row['errors'] for row in workers['rows'] ) )
         self.assertIn( workers['recommended_workers'], [ row['workers'] for row in workers['rows'] ] )
+        self.assertTrue( all( row['workers'] <= workers['files'] for row in workers['rows'] ),
+                         "a worker count above the file count times the file count again" )
+
+    def test_on_a_big_machine_only_counts_the_files_can_show_are_timed( self ):
+        from unittest import mock
+        with mock.patch( 'os.cpu_count', return_value=12 ):
+            result = betabench.bench_concurrency( self.args, _quiet_logger() )['concurrency']
+        workers = result['scan_workers']
+        self.assertEqual( [ row['workers'] for row in workers['rows'] ], [ 1, 2 ] )
+        self.assertEqual( workers['untested_workers'], [ 4, 8 ] )
+
+    def test_max_videos_limits_the_files_scanned( self ):
+        self.args.max_videos = 1
+        result = betabench.bench_concurrency( self.args, _quiet_logger() )['concurrency']
+        self.assertEqual( result['scan_workers']['files'], 1 )
+
+    def test_a_discarded_warm_up_pass_runs_first_at_the_largest_count( self ):
+        calls = []
+        real = betabench._run_scan_pool
+
+        def recording( workers, *args, **kwargs ):
+            calls.append( workers )
+            return real( workers, *args, **kwargs )
+
+        betabench._run_scan_pool = recording
+        try:
+            with betabench._ThrowawayCaches() as caches:
+                result = betabench._measure_scan_workers(
+                    self.args, _quiet_logger(),
+                    [ os.path.join( self.uncensored, 'a.mp4' ),
+                      os.path.join( self.uncensored, 'b.mp4' ) ], caches )
+        finally:
+            betabench._run_scan_pool = real
+        timed = [ row['workers'] for row in result['rows'] ]
+        self.assertEqual( calls, [ max( timed ) ] + timed )
 
     def test_nothing_real_is_read_or_written( self ):
         saved = ( betaconst.shot_cut_dir, betaconst.vid_hash_dir, bu_cache.VID_HASH_DIR )
@@ -153,6 +188,40 @@ class TestScanWorkerWindow( unittest.TestCase ):
         finally:
             for name, value in saved.items():
                 setattr( betaconst, name, value )
+
+class TestScanWorkerCounts( unittest.TestCase ):
+    """Which worker counts the bench can honestly measure on a given set of files."""
+
+    def test_counts_above_the_file_count_are_untested_not_timed( self ):
+        # The 2026-10-06 run: 12 cores, 3 files. 4 and 8 workers each ran
+        # 3 processes, and the bench recommended 8 on noise.
+        tested, untested = betabench._scan_worker_counts( cores=12, files=3 )
+        self.assertEqual( tested, [ 1, 2 ] )
+        self.assertEqual( untested, [ 4, 8 ] )
+
+    def test_enough_files_measures_every_count( self ):
+        tested, untested = betabench._scan_worker_counts( cores=12, files=16 )
+        self.assertEqual( tested, [ 1, 2, 4, 8 ] )
+        self.assertEqual( untested, [] )
+
+    def test_a_count_equal_to_the_file_count_is_timed( self ):
+        tested, untested = betabench._scan_worker_counts( cores=12, files=4 )
+        self.assertEqual( tested, [ 1, 2, 4 ] )
+        self.assertEqual( untested, [ 8 ] )
+
+    def test_counts_never_exceed_the_cores( self ):
+        tested, untested = betabench._scan_worker_counts( cores=2, files=16 )
+        self.assertEqual( tested + untested, [ 1, 2 ] )
+
+    def test_default_file_count_is_two_per_worker_at_the_largest_count( self ):
+        args = types.SimpleNamespace( max_videos=None )
+        self.assertEqual( betabench._scan_bench_file_count( args, cores=12 ), 16 )
+        self.assertEqual( betabench._scan_bench_file_count( args, cores=2 ), 4 )
+
+    def test_max_videos_overrides_the_default( self ):
+        args = types.SimpleNamespace( max_videos=5 )
+        self.assertEqual( betabench._scan_bench_file_count( args, cores=12 ), 5 )
+
 
 if __name__ == '__main__':
     unittest.main()

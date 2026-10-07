@@ -1176,10 +1176,13 @@ How far, in multiples of the larger box dimension, a detection can be
 from a track and still be matched to it. **1.0**.
 
 **What you see.** Raising it lets tracks survive fast motion, and lets
-two nearby instances get mis-merged. Real data showed almost no resets
-were distance-blocked (8 of 659 for `exposed_vulva`), so there is little
-to gain here and a real cross-instance risk, which is why it is left at
-1.0 for every shipped label.
+two nearby instances get mis-merged. Early data showed almost no resets
+were distance-blocked (8 of 659 for `exposed_vulva`), which is why the
+default stays 1.0. `auto_tune` has since raised it per label where the
+measured price was low: `nudenet_v3` `exposed_breast` 2.0 and
+`exposed_vulva` 3 in the shipped config. The `split_screen` profile
+pulls it back to 0.8 / 1.0, because there two subjects at similar
+positions in neighbouring panes are different people.
 
 ### `paired_style`, `default_paired_style_max_distance`, `default_paired_style_tiebreak_margin`
 
