@@ -933,7 +933,8 @@ def shot_cuts_for_source( source, file_hash, sample_fps, threshold,
 SCAN_WORKER_PATHS = ( 'shot_cut_dir', 'transcode_cache_dir', 'file_hash_cache_path' )
 
 
-def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None ):
+def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None,
+                               max_seconds=None ):
     """
     A whole-file shot-cut scan for a worker process, written to betatv's
     own cache. Lives here rather than in betabench so a process pool can
@@ -949,6 +950,9 @@ def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None
     and would otherwise write wherever the defaults point, which is not
     where a parent with overridden paths will look.
 
+    max_seconds bounds the scan for measurement (betabench concurrency);
+    None, the default, scans the whole file.
+
     Returns (path, cut_count or None, seconds, error or None).
     """
     for name, value in ( const_paths or {} ).items():
@@ -962,6 +966,7 @@ def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None
         source = open_video_source( path, file_hash, worker_logger )
         try:
             cuts = shot_cuts_for_source( source, file_hash, fps, threshold,
+                                         preview_max_seconds=max_seconds,
                                          logger=worker_logger )
         finally:
             source.cap.release()

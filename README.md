@@ -657,6 +657,7 @@ python3 tools/bench/betabench.py --help
 | `hysteresis` | what are the score distributions? | `min_prob`, `min_prob_continue` |
 | `structure` | per source file: cut rate, subjects on screen, spatial layout | which source folder each file belongs in |
 | `structure-scan` | whole-file shot-cut scans, in parallel; `--geometry-slices N` adds detection-only slices | the inputs `structure` reads, reused by the next real run |
+| `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers | whether the overlap pays on this machine, and `structure-scan --workers` |
 
 `structure` is the one to read per file rather than pooled: it reports
 cut rate, how many subjects are live at once, and where they sit in

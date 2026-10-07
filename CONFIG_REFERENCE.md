@@ -853,14 +853,38 @@ penetration-context label is present anywhere in frame:
         { 'from': 'covered_vulva', 'min_prob': 0.30,
           'requires': [
               { 'label': 'exposed_penis', 'min_prob': 0.30, 'overlap': 'anywhere' },
-              { 'label': 'exposed_vulva', 'min_prob': 0.30, 'overlap': 'anywhere' },
-              { 'label': 'exposed_anus',  'min_prob': 0.30, 'overlap': 'anywhere' },
           ] },
     ],
 },
 ```
 
-Measured across 9 real caches, 9,302 `covered_vulva` above 0.30:
+**Why penis only (since 1.3).** The rule first shipped with
+`exposed_vulva` and `exposed_anus` as evidence too, as stand-ins for
+"this is a sex scene". On a 35-minute full run of a multi-subject file
+that made covered_vulva visibly over-censored, and the numbers say why:
+
+| evidence | promotions it drove | where it sat |
+|---|---|---|
+| `exposed_vulva` present | 6,303 of 6,534 (96%); 4,574 on its own | median 6.9 box-sizes away, 0% within 1.5 |
+| `exposed_anus` present | 1,910 | median 7.0 box-sizes away |
+| `exposed_penis` present | 69 | median 4.8 box-sizes away |
+
+98.5% of the promoted boxes touched no evidence box at all. An exposed
+vulva elsewhere in frame is usually a **different subject**: another
+pane of a split-screen, or another person. Across 55 preview slices the
+same pattern concentrated in exactly the split-screen files (105, 83,
+41 and 22 promotions, falling to 11, 2, 0 and 6 without vulva evidence).
+And promotions mostly added a second censor where one already was: on
+that file the moments carrying a vulva censor barely moved (15,893 to
+15,392 sampled moments) while vulva censor boxes fell 30% (38,454 to
+26,837) and their area 37%.
+
+Penetration is what the rule exists for, and the penis is its evidence.
+`'anywhere'` can still misfire on split-screen, where the penis can be
+in another pane; a proximity requirement would close that, and is not
+built.
+
+Measured across 9 real caches, with the original three-label evidence, 9,302 `covered_vulva` above 0.30:
 
 | outcome | count | what the viewer sees |
 |---|---|---|
@@ -873,9 +897,9 @@ The previous overlap-based rule promoted **1** of those 9,302. See
 
 **The tradeoff, stated plainly.** 7,704 detections that used to be
 censored no longer are. That is the point: they are the clothed crotches.
-But it is also the risk: a penetration moment where none of the three
-evidence labels fires anywhere in frame is now uncensored where it
-previously was covered. Widen the evidence set, or put `covered_vulva`
+But it is also the risk: a penetration moment where no `exposed_penis`
+fires anywhere in frame is now uncensored where it previously was
+covered. Widen the evidence set, or put `covered_vulva`
 back in `items_to_censor`, if that trade goes the wrong way on your
 footage.
 
