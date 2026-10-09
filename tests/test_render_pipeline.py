@@ -273,10 +273,115 @@ class TestChunkCompletionChecks( unittest.TestCase ):
         bu_render._write_chunk_metadata( self.plan, frames_written=self.plan.expected_frames )
         self.assertTrue( bu_render.chunk_is_complete( self.plan ) )
 
+    def _last_chunk( self, expected=100 ):
+        return bu_render.ChunkPlan(
+            3, 300, 300 + expected, os.path.join( self.tmpdir, 'v.part0003.mkv' ), is_last=True )
+
+    @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
+    def test_a_last_chunk_accepted_short_at_eof_is_trusted_on_resume( self ):
+        # Every MKV with a start offset ends a few frames before OpenCV's
+        # estimate. The render accepts that; a resume must not re-render
+        # the chunk just to accept it again.
+        plan = self._last_chunk()
+        _build_tiny_video( plan.path, frames=10 )
+        bu_render._write_chunk_metadata( plan, frames_written=98, ended_at_eof=True )
+        self.assertTrue( bu_render.chunk_is_complete( plan ) )
+
+    @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
+    def test_a_short_last_chunk_without_the_eof_verdict_is_not_trusted( self ):
+        plan = self._last_chunk()
+        _build_tiny_video( plan.path, frames=10 )
+        bu_render._write_chunk_metadata( plan, frames_written=98 )
+        self.assertFalse( bu_render.chunk_is_complete( plan ) )
+
+    @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
+    def test_the_eof_verdict_never_excuses_a_middle_chunk( self ):
+        _build_tiny_video( self.plan.path, frames=10 )
+        bu_render._write_chunk_metadata( self.plan, frames_written=98, ended_at_eof=True )
+        self.assertFalse( bu_render.chunk_is_complete( self.plan ),
+            "a short chunk mid-file is a decode failure whatever its metadata says" )
+
+    @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
+    def test_the_eof_verdict_only_holds_for_the_plan_it_was_made_against( self ):
+        plan = self._last_chunk( expected=100 )
+        _build_tiny_video( plan.path, frames=10 )
+        bu_render._write_chunk_metadata( plan, frames_written=98, ended_at_eof=True )
+        self.assertFalse( bu_render.chunk_is_complete( self._last_chunk( expected=120 ) ) )
+
+    @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
+    def test_an_empty_last_chunk_is_never_trusted( self ):
+        plan = self._last_chunk()
+        _build_tiny_video( plan.path, frames=10 )
+        bu_render._write_chunk_metadata( plan, frames_written=0, ended_at_eof=True )
+        self.assertFalse( bu_render.chunk_is_complete( plan ) )
+
     @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the chunk" )
     def test_frame_count_verification_can_be_disabled( self ):
         _build_tiny_video( self.plan.path, frames=10 )
         self.assertTrue( bu_render.chunk_is_complete( self.plan, verify_frame_counts=False ) )
+
+
+@unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed for a real render" )
+class TestLastChunkShortfall( unittest.TestCase ):
+    """
+    A last chunk planned past the real end of the file: accepted, recorded,
+    and logged at a level that matches how much is missing.
+    """
+
+    @classmethod
+    def setUpClass( cls ):
+        import betautils_video as bu_video
+        cls.tmpdir = tempfile.mkdtemp( prefix='betasuite-render-eof-' )
+        cls.source_path = os.path.join( cls.tmpdir, 'source.mp4' )
+        subprocess.run(
+            [ 'ffmpeg', '-y', '-loglevel', 'error',
+              '-f', 'lavfi', '-i', 'testsrc2=size=64x48:rate=10:duration=4',
+              '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+              cls.source_path ], check=True )
+        cls.source = bu_video.open_video_source( cls.source_path, 'eofhash' )
+
+    @classmethod
+    def tearDownClass( cls ):
+        cls.source.release()
+        shutil.rmtree( cls.tmpdir, ignore_errors=True )
+
+    def _render_last_chunk( self, planned_frames ):
+        import betautils_log as bu_log
+        name = 'v%d.part0000.mkv'%( planned_frames, )
+        plan = bu_render.ChunkPlan( 0, 0, planned_frames, os.path.join( self.tmpdir, name ),
+                                    is_last=True )
+        logger = bu_log.get_logger()
+        with self.assertLogs( logger, level='DEBUG' ) as captured:
+            written = bu_render.render_one_chunk( plan, self.source, [], 'ultrafast', 1, 0, 0,
+                                                  None, logger )
+        levels = [ record.levelname for record in captured.records
+                   if 'container\'s estimate' in record.getMessage() ]
+        return plan, written, levels
+
+    def test_a_rounding_sized_shortfall_is_accepted_quietly( self ):
+        # 40 real frames, planned 42: the MKV start-offset case.
+        plan, written, levels = self._render_last_chunk( 42 )
+        self.assertEqual( written, 40 )
+        self.assertEqual( levels, [ 'DEBUG' ] )
+        self.assertTrue( bu_render.chunk_is_complete( plan ),
+            "the accepted shortfall must survive a resume" )
+
+    def test_exactly_one_second_short_is_still_routine( self ):
+        _plan, written, levels = self._render_last_chunk( 50 )
+        self.assertEqual( written, 40 )
+        self.assertEqual( levels, [ 'DEBUG' ] )
+
+    def test_a_shortfall_rounding_cannot_explain_is_a_warning( self ):
+        # 40 real frames, planned 60: two seconds missing at 10fps.
+        plan, written, levels = self._render_last_chunk( 60 )
+        self.assertEqual( written, 40 )
+        self.assertEqual( levels, [ 'WARNING' ] )
+        self.assertTrue( bu_render.chunk_is_complete( plan ) )
+
+    def test_the_tolerance_is_one_second_of_frames( self ):
+        self.assertEqual( bu_render.eof_shortfall_tolerance( 29.97 ), 30 )
+        self.assertEqual( bu_render.eof_shortfall_tolerance( 10 ), 10 )
+        self.assertEqual( bu_render.eof_shortfall_tolerance( 0 ), 1 )
 
 
 def _build_tiny_video( path, frames=10, width=32, height=32 ):

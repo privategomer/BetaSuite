@@ -595,7 +595,51 @@ def _ffmpeg_base_command():
     return [ 'ffmpeg', '-y', '-loglevel', 'error' ]
 
 
-def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_threads ):
+NVENC_CODECS = ( 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc' )
+
+# x264 preset names mapped onto NVENC's p1 (fastest) to p7 (best), so a
+# preset written for x264, including preview's 'ultrafast', still means
+# something to NVENC instead of failing the encode.
+X264_TO_NVENC_PRESET = {
+    'ultrafast': 'p1', 'superfast': 'p1', 'veryfast': 'p1', 'faster': 'p2',
+    'fast': 'p3', 'medium': 'p4', 'slow': 'p5', 'slower': 'p6',
+    'veryslow': 'p7', 'placebo': 'p7',
+}
+
+
+def encoder_options( codec, quality, preset, threads ):
+    """
+    The codec arguments of one chunk encode.
+
+    x264 takes quality as CRF and its thread count as -threads. NVENC has
+    no CRF: handed -crf it ignores it without an error and encodes at its
+    default bitrate. Its quality therefore goes in as constant quality
+    (-cq) with the bitrate cap off (-b:v 0), the nearest NVENC
+    equivalent. The two scales do not line up number for number;
+    `betabench encode` measures which cq matches a given crf. NVENC
+    encodes on the GPU, so -threads does not apply to it.
+
+    Args:
+        codec: ffmpeg encoder name, e.g. 'libx264' or 'h264_nvenc'.
+        quality: CRF for x264, cq for NVENC. Lower is better.
+        preset: The encoder's preset; x264 names are translated for NVENC.
+        threads: Encoder threads, for CPU encoders.
+
+    Returns:
+        A list of ffmpeg arguments.
+    """
+    if codec in NVENC_CODECS:
+        return [ '-c:v', codec,
+                 '-preset', X264_TO_NVENC_PRESET.get( str( preset ), str( preset ) ),
+                 '-rc', 'vbr', '-cq', str( quality ), '-b:v', '0' ]
+    return [ '-c:v', codec,
+             '-crf', str( quality ),
+             '-preset', str( preset ),
+             '-threads', str( threads ) ]
+
+
+def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_threads,
+                           codec=None, quality=None ):
     """
     ffmpeg command that reads raw BGR frames on stdin and writes H.264.
 
@@ -603,7 +647,15 @@ def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_thre
     than at a later re-encode: every chunk pads identically, so the
     concatenated stream has consistent parameters and can be copied
     rather than re-encoded.
+
+    codec and quality default to encode_video_codec and encode_crf;
+    `betabench encode` passes its own to time other encoders through
+    this exact command.
     """
+    if codec is None:
+        codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
+    if quality is None:
+        quality = getattr( betaconfig, 'encode_crf', 17 )
     return _ffmpeg_base_command() + [
         '-f', 'rawvideo',
         '-vcodec', 'rawvideo',
@@ -612,25 +664,41 @@ def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_thre
         '-r', '%.6f'%(vid_fps),
         '-i', '-',
         '-an',
-        '-c:v', getattr( betaconfig, 'encode_video_codec', 'libx264' ),
-        '-crf', str( getattr( betaconfig, 'encode_crf', 17 ) ),
-        '-preset', preset,
-        '-threads', str( encoder_threads ),
+    ] + encoder_options( codec, quality, preset, encoder_threads ) + [
         '-pix_fmt', 'yuv420p',
         '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
         tmp_path,
     ]
 
 
-def _write_chunk_metadata( plan, frames_written ):
-    """Record a completed chunk's real frame count beside it."""
+def _write_chunk_metadata( plan, frames_written, ended_at_eof=False ):
+    """
+    Record a completed chunk's real frame count beside it.
+
+    ended_at_eof marks a last chunk that was accepted short because the
+    file really ended there, so a resume can honour that verdict instead
+    of re-rendering the chunk to reach it again.
+    """
     bu_hash.write_json_plain( {
         'index': plan.index,
         'start_frame': plan.start_frame,
         'end_frame': plan.end_frame,
         'expected_frames': plan.expected_frames,
         'frames_written': frames_written,
+        'ended_at_eof': bool( ended_at_eof ),
     }, plan.meta_path )
+
+
+def eof_shortfall_tolerance( vid_fps ):
+    """
+    Frames a last chunk may come up short and still be routine.
+
+    OpenCV derives an MKV's frame count from its duration, and the
+    duration includes the stream's start offset, so a file that starts at
+    0.067s over-reports by about two frames. One second's worth covers
+    that rounding with room to spare; a bigger gap is not explained by it.
+    """
+    return max( 1, int( math.ceil( vid_fps or 0 ) ) )
 
 
 def chunk_is_complete( plan, verify_frame_counts=True ):
@@ -665,7 +733,17 @@ def chunk_is_complete( plan, verify_frame_counts=True ):
         metadata = bu_hash.read_json_plain( plan.meta_path )
     except Exception:
         return False
-    return metadata.get( 'frames_written' ) == metadata.get( 'expected_frames' )
+    written = metadata.get( 'frames_written' )
+    expected = metadata.get( 'expected_frames' )
+    if written == expected:
+        return True
+    # A last chunk accepted short at the real end of the file. Before this
+    # was recorded, every resume re-rendered that chunk only to accept the
+    # same shortfall again. Only the last chunk, only when the verdict was
+    # recorded, and only for the plan it was recorded against.
+    return bool( plan.is_last and metadata.get( 'ended_at_eof' )
+                 and expected == plan.expected_frames
+                 and isinstance( written, int ) and 0 < written < expected )
 
 
 def _motion_settings( source ):
@@ -828,18 +906,28 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             last_error = "chunk failed the container sanity check"
             continue
 
+        ended_at_eof = False
         if frames_written < plan.expected_frames:
             shortfall = plan.expected_frames - frames_written
             if plan.is_last:
                 # The very last chunk may legitimately come up short:
                 # container metadata over-reports the frame count on some
-                # files. Accept it, but say so, because the alternative -
-                # silently accepting a short chunk anywhere - is the
-                # truncation bug this check exists to catch.
-                logger.warning( "render chunk %d (last): decoder ran out %d frame(s) before the planned "
-                    "end (%d of %d). Container metadata over-reporting the frame count is the usual "
-                    "cause; the output is complete to the real end of the file."%(
-                        plan.index, shortfall, frames_written, plan.expected_frames ) )
+                # files (every MKV with a non-zero start time). Accept it,
+                # because the file really ends there, and record it. A
+                # small gap is routine and goes to the log file; a gap
+                # rounding cannot explain is a warning, because a decoder
+                # that died near the end looks the same from here.
+                ended_at_eof = True
+                if shortfall <= eof_shortfall_tolerance( source.vid_fps ):
+                    logger.debug( "render chunk %d (last): file ended %d frame(s) before the "
+                        "container's estimate (%d of %d), the usual MKV start-offset rounding"%(
+                            plan.index, shortfall, frames_written, plan.expected_frames ) )
+                else:
+                    logger.warning( "render chunk %d (last): decoder stopped %d frame(s) (%.1fs) "
+                        "before the container's estimate (%d of %d), more than metadata rounding "
+                        "explains. If the source plays past that point, check the end of the output."%(
+                            plan.index, shortfall, shortfall / ( source.vid_fps or 1.0 ),
+                            frames_written, plan.expected_frames ) )
             else:
                 last_error = ( "chunk is %d frame(s) short (%d of %d) and is not the last chunk, so the "
                                "decoder failed mid-file rather than reaching EOF"%(
@@ -847,7 +935,7 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 continue
 
         os.replace( tmp_path, plan.path )  # atomic promote: only now is it trusted
-        _write_chunk_metadata( plan, frames_written )
+        _write_chunk_metadata( plan, frames_written, ended_at_eof )
         logger.debug( "render chunk %d complete: %d frame(s)"%(plan.index, frames_written) )
         return frames_written
 

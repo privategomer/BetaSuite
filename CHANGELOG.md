@@ -2,6 +2,18 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `betabench encode`: render encode speed and quality per encoder on your own machine. Pipes the same stretch of the highest-resolution source through the real chunk encode command with the real worker count, once per encoder (current x264 settings, `faster` and `veryfast`, NVENC at cq 17/19/21/23 and `p7` when the GPU opens NVENC sessions), scores every output against the source (SSIM and PSNR on luma), times decoding alone as the ceiling, and names the fastest encoder within 0.25 dB of the current quality. Past full renders at the same resolution, from the stats log, turn the speedup into a real-render estimate. Probes how many NVENC sessions open at once and says if `render_workers` must come down. Not part of `all`
+
+### Fixed
+
+- `encode_video_codec = 'h264_nvenc'` ignored `encode_crf` without an error (NVENC has no `-crf`) and encoded at NVENC's default bitrate, and an x264 preset such as preview's `ultrafast` failed the encode. NVENC now gets `encode_crf` as constant quality (`-cq`, `-b:v 0`) and x264 preset names translated to `p1`..`p7`. The libx264 command is byte-identical to before, pinned by a test
+
+- A last render chunk accepted short at the real end of the file (every MKV with a start offset, 2 or 3 frames) was re-rendered on every resume, because its recorded count never matched the plan. The verdict is now recorded and honoured, only for the last chunk and only for the plan it was made against. The routine case logs at debug instead of warning; a shortfall over one second of frames still warns
+
 ## 1.3.0 (2026-10-06)
 
 ### Added
