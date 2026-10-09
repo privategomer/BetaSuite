@@ -2635,8 +2635,19 @@ cost of more concat work. Preview runs always use one chunk.
 > output. The container check cannot see this; only the count can.
 
 The final chunk is allowed to come up short, because container metadata
-over-reports the frame count on some files. That is logged rather than
-failed.
+over-reports the frame count on some files. OpenCV derives an MKV's
+frame count from its duration, and the duration includes the stream's
+start offset, so an MKV starting at 0.067s plans two frames that do not
+exist. Reproduced on a synthetic file: estimate 1201, real 1199, every
+seek frame-exact. On the 2026-10-06 run, all four MKVs came up 2 or 3
+frames short and both MP4s matched exactly.
+
+A shortfall of up to one second of frames is routine and goes to the
+log file at debug. A bigger one is a warning, because a decoder that
+died near the end of the file looks the same from inside the render.
+Either way the chunk is accepted and the verdict is recorded beside it,
+so a resume reuses the chunk instead of re-rendering it to reach the
+same verdict, which every resume did before.
 
 ### `encode_video_codec`, `encode_crf`, `encode_preset`, `render_chunk_container`
 
@@ -2657,6 +2668,30 @@ bigger files at faster presets.
 If the source's audio codec cannot live in an MP4 (Vorbis or Opus in a
 Matroska source), the copy fails and the mux retries with AAC. That is
 logged, because re-encoding audio is a real quality decision.
+
+**NVENC.** `encode_video_codec = 'h264_nvenc'` (or `hevc_nvenc`)
+encodes on the GPU's dedicated encoder instead of the CPU. NVENC has no
+CRF, and handed `-crf` it ignores it without an error and encodes at
+its default bitrate, which is what this setting used to do. It now
+passes `encode_crf` to NVENC as constant quality (`-cq`, with
+`-b:v 0`), and translates x264 preset names to NVENC's `p1` (fastest)
+to `p7` (best), so `preview_encode_preset = 'ultrafast'` becomes `p1`
+rather than an error. `p1` to `p7` can also be set directly.
+
+The cq and crf scales do not match number for number, so do not carry
+17 across and assume the same quality. `betabench encode` times the
+current encoder, two faster x264 presets and NVENC at cq 17, 19, 21 and
+23 through the real chunk command with the real worker count, scores
+each against the source (SSIM and PSNR on luma), and names the fastest
+one within 0.25 dB of the current quality on both, with the settings
+to paste. Consumer drivers cap how many NVENC encodes run at once; the
+bench opens as many as the render would and says if `render_workers`
+has to come down.
+
+Measured on 2026-10-06's real renders, render speed tracks pixel count
+(38 to 75 million pixels a second), so 1080p renders at about 18 frames
+a second and spends two thirds of its time rendering. That is the case
+an encoder change is for.
 
 ### `detection_checkpoint_frames`
 

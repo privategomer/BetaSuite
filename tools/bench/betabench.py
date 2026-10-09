@@ -41,6 +41,11 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  next real run reads. --geometry-slices N also runs
                  detection (no render) on N slices spread through each
                  file, which is what split-screen is recognised from.
+    encode       Render encode speed and quality per encoder: the current
+                 x264 settings, faster x264 presets, and NVENC when the GPU
+                 has it, through the real chunk encode command with the
+                 real worker count. Recommends the fastest encoder that
+                 matches the current quality. Not part of 'all'.
     all          Every read-only subcommand, in order.
 
 RUNNING IT
@@ -48,6 +53,7 @@ RUNNING IT
     python3 tools/bench/betabench.py decode --video ../resources/uncensored_vids/clip.mp4
     python3 tools/bench/betabench.py detect --backends nudenet_v3 --sizes 320 640
     python3 tools/bench/betabench.py suppression --backend nudenet_v3
+    python3 tools/bench/betabench.py encode --seconds 30
 
     Single command, no setup. Any step that needs a decision from you
     stops and asks (pass --yes to accept the defaults and never prompt,
@@ -88,6 +94,7 @@ import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_render as bu_render
 import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 import betautils_video as bu_video
@@ -2197,6 +2204,546 @@ bench_hysteresis  = _per_configuration( 'hysteresis',  _bench_hysteresis_one )
 # Entry point
 # ---------------------------------------------------------------------------
 
+# --- encode ----------------------------------------------------------------
+
+# How far below the current encoder a candidate's SSIM and PSNR may fall,
+# in dB, and still count as the same quality. A quarter of a dB is below
+# what a viewer can pick out; the encoders under test differ by more
+# than that when they differ at all.
+ENCODE_QUALITY_TOLERANCE_DB = 0.25
+
+# NVENC's quality scale does not line up with x264's CRF number for
+# number, so several cq values are tried and the measurement picks.
+DEFAULT_NVENC_CQ = ( 17, 19, 21, 23 )
+DEFAULT_NVENC_PRESET = 'p5'
+
+
+def parse_encoder_spec( spec ):
+    """'codec:preset:quality', e.g. 'h264_nvenc:p5:19', as a candidate dict."""
+    parts = spec.split( ':' )
+    if len( parts ) != 3 or not all( parts ):
+        raise ValueError( "encoder spec %r is not codec:preset:quality"%( spec, ) )
+    codec, preset, quality = parts
+    number = float( quality )
+    return { 'codec': codec, 'preset': preset,
+             'quality': int( number ) if number.is_integer() else number }
+
+
+def _baseline_encoder():
+    """The encoder the real render uses now, from betaconfig."""
+    return { 'codec': getattr( betaconfig, 'encode_video_codec', 'libx264' ),
+             'preset': getattr( betaconfig, 'encode_preset', 'fast' ),
+             'quality': getattr( betaconfig, 'encode_crf', 17 ) }
+
+
+def _same_encoder( a, b ):
+    return ( a['codec'], str( a['preset'] ), float( a['quality'] ) ) == \
+           ( b['codec'], str( b['preset'] ), float( b['quality'] ) )
+
+
+def encoder_candidates( specs, nvenc_usable ):
+    """
+    The encoders to time, current one first.
+
+    The current encoder always leads, because every other row is judged
+    against it. Without --encoders: two faster x264 presets at the same
+    CRF (the CPU-only option), then NVENC at several cq values when this
+    machine can open an NVENC session.
+    """
+    baseline = _baseline_encoder()
+    if specs:
+        chosen = [ parse_encoder_spec( spec ) for spec in specs ]
+    else:
+        chosen = []
+        if baseline['codec'] == 'libx264':
+            chosen += [ { 'codec': 'libx264', 'preset': preset, 'quality': baseline['quality'] }
+                        for preset in ( 'faster', 'veryfast' ) if preset != baseline['preset'] ]
+        if nvenc_usable:
+            chosen += [ { 'codec': 'h264_nvenc', 'preset': DEFAULT_NVENC_PRESET, 'quality': cq }
+                        for cq in DEFAULT_NVENC_CQ ]
+            chosen.append( { 'codec': 'h264_nvenc', 'preset': 'p7', 'quality': 19 } )
+    rest = [ c for c in chosen if not _same_encoder( c, baseline ) ]
+    if not nvenc_usable:
+        rest = [ c for c in rest if c['codec'] not in bu_render.NVENC_CODECS ]
+    return [ baseline ] + rest
+
+
+def _ffmpeg_lists_encoder( name ):
+    import subprocess
+    try:
+        listing = subprocess.run( [ 'ffmpeg', '-hide_banner', '-encoders' ],
+                                  capture_output=True, text=True, timeout=30 ).stdout
+    except ( OSError, subprocess.SubprocessError ):
+        return False
+    return any( line.split()[1:2] == [ name ] for line in listing.splitlines() if line.strip() )
+
+
+def ffmpeg_error_line( text, codec ):
+    """
+    The line of ffmpeg's stderr that says what went wrong: the first one
+    naming the encoder, else the first line. ffmpeg's LAST line is
+    usually a generic consequence ("Nothing was written into output
+    file") rather than the cause ("Cannot load libcuda.so.1").
+    """
+    lines = [ line.strip() for line in text.strip().splitlines() if line.strip() ]
+    for line in lines:
+        if codec.lower() in line.lower():
+            return line
+    return lines[0] if lines else None
+
+
+def probe_nvenc_sessions( wanted ):
+    """
+    (sessions, reason): how many NVENC encodes run at once here, up to
+    `wanted`, and why the rest did not.
+
+    ffmpeg can list h264_nvenc without a GPU or driver that supports it,
+    and consumer drivers cap concurrent sessions, so this opens `wanted`
+    real encodes at the same time. -re paces each at real time, so all
+    of them are open together rather than finishing one by one.
+    """
+    import subprocess
+    if not _ffmpeg_lists_encoder( 'h264_nvenc' ):
+        return 0, "this ffmpeg was built without h264_nvenc"
+    command = [ 'ffmpeg', '-hide_banner', '-loglevel', 'error', '-re',
+                '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30',
+                '-frames:v', '45', '-c:v', 'h264_nvenc', '-f', 'null', '-' ]
+    processes = [ subprocess.Popen( command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE )
+                  for _ in range( max( 1, wanted ) ) ]
+    reasons = []
+    opened = 0
+    for process in processes:
+        _out, err = process.communicate()
+        if process.returncode == 0:
+            opened += 1
+        else:
+            reasons.append( ffmpeg_error_line( err.decode( 'utf-8', 'replace' ), 'h264_nvenc' )
+                            or "exit %d"%( process.returncode, ) )
+    return opened, ( reasons[0] if reasons else None )
+
+
+def _pick_encode_video( args, logger ):
+    """--video, else the source video with the most pixels per frame."""
+    import cv2
+    if args.video:
+        return args.video
+    best = None
+    for source in _source_videos():
+        capture = cv2.VideoCapture( source['path'] )
+        try:
+            pixels = ( int( capture.get( cv2.CAP_PROP_FRAME_WIDTH ) )
+                       * int( capture.get( cv2.CAP_PROP_FRAME_HEIGHT ) ) )
+        finally:
+            capture.release()
+        if pixels and ( best is None or pixels > best[0] ):
+            best = ( pixels, source['path'] )
+    return best[1] if best else None
+
+
+def encode_segments( total_frames, fps, seconds, workers ):
+    """
+    (start_frame, frame_count) for each worker: one --seconds window
+    each, back to back from a quarter of the way in, the way the real
+    render hands each worker its own chunk. Pulled earlier, then
+    shortened, when the file is too short for all of them.
+    """
+    per_worker = max( 1, int( round( seconds * fps ) ) )
+    workers = max( 1, workers )
+    needed = per_worker * workers
+    if needed > total_frames:
+        per_worker = max( 1, total_frames // workers )
+        needed = per_worker * workers
+    start = min( int( total_frames * 0.25 ), max( 0, total_frames - needed ) )
+    return [ ( start + index * per_worker, per_worker ) for index in range( workers ) ]
+
+
+def _run_segments( video_path, segments, width, height, fps, candidate, threads, out_dir ):
+    """
+    Wall seconds and per-segment results for one pass: each segment on
+    its own thread, decoding with OpenCV and, when `candidate` is given,
+    piping raw frames into the real render's chunk encode command.
+    candidate None times decoding alone.
+    """
+    import subprocess
+    import cv2
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one( indexed ):
+        index, ( start, count ) = indexed
+        result = { 'index': index, 'start': start, 'frames': 0, 'path': None, 'error': None }
+        capture = cv2.VideoCapture( video_path )
+        process = None
+        stderr = None
+        try:
+            capture.set( cv2.CAP_PROP_POS_FRAMES, start )
+            if candidate is not None:
+                result['path'] = os.path.join( out_dir, 'segment%02d.mkv'%( index, ) )
+                command = bu_render._chunk_encode_command(
+                    result['path'], width, height, fps, candidate['preset'], threads,
+                    codec=candidate['codec'], quality=candidate['quality'] )
+                stderr = open( result['path'] + '.stderr', 'wb' )
+                process = subprocess.Popen( command, stdin=subprocess.PIPE, stderr=stderr )
+            while result['frames'] < count:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    break
+                if process is not None:
+                    process.stdin.write( memoryview( frame ) if frame.flags['C_CONTIGUOUS']
+                                         else frame.tobytes() )
+                result['frames'] += 1
+        except ( BrokenPipeError, OSError ) as err:
+            result['error'] = repr( err )
+        finally:
+            capture.release()
+            if process is not None:
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
+                process.wait()
+                stderr.close()
+                if process.returncode != 0:
+                    with open( result['path'] + '.stderr', 'rb' ) as handle:
+                        text = handle.read().decode( 'utf-8', 'replace' )
+                    result['error'] = ( ffmpeg_error_line( text, candidate['codec'] )
+                                        or "ffmpeg exited %d"%( process.returncode, ) )
+        if result['error'] is None and result['frames'] < count:
+            result['error'] = "decoded %d of %d frames"%( result['frames'], count )
+        return result
+
+    started = time.perf_counter()
+    with ThreadPoolExecutor( max_workers=len( segments ) ) as pool:
+        results = list( pool.map( one, enumerate( segments ) ) )
+    return time.perf_counter() - started, results
+
+
+def _luma( frame ):
+    import cv2
+    return cv2.cvtColor( frame, cv2.COLOR_BGR2YCrCb )[:, :, 0].astype( 'float32' )
+
+
+def frame_quality( reference, distorted ):
+    """
+    (mse, ssim) of two BGR frames, on luma, which is where encoders
+    spend their bits and where viewers see loss. SSIM is the standard
+    11x11 Gaussian form (Wang et al. 2004).
+    """
+    import cv2
+    a = _luma( reference )
+    b = _luma( distorted )
+    mse = float( ( ( a - b ) ** 2 ).mean() )
+    c1 = ( 0.01 * 255 ) ** 2
+    c2 = ( 0.03 * 255 ) ** 2
+    blur = lambda image: cv2.GaussianBlur( image, ( 11, 11 ), 1.5 )
+    mu_a, mu_b = blur( a ), blur( b )
+    var_a = blur( a * a ) - mu_a * mu_a
+    var_b = blur( b * b ) - mu_b * mu_b
+    cov = blur( a * b ) - mu_a * mu_b
+    ssim_map = ( ( 2 * mu_a * mu_b + c1 ) * ( 2 * cov + c2 ) ) / \
+               ( ( mu_a * mu_a + mu_b * mu_b + c1 ) * ( var_a + var_b + c2 ) )
+    return mse, float( ssim_map.mean() )
+
+
+def psnr_db( mse ):
+    """PSNR in dB for 8-bit video; identical frames report 100."""
+    return 100.0 if mse <= 1e-10 else 10.0 * math.log10( 255.0 ** 2 / mse )
+
+
+def ssim_db( ssim ):
+    """SSIM as dB, -10*log10(1 - SSIM), so 0.99 and 0.999 read as 20 and 30."""
+    return 100.0 if ssim >= 1.0 - 1e-10 else -10.0 * math.log10( 1.0 - ssim )
+
+
+def _measure_encode_quality( video_path, segment_results, stride ):
+    """
+    (psnr_db, ssim_db, frames_out) of a pass's encoded segments against
+    the source frames they were made from, every `stride`-th frame.
+    """
+    import cv2
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one( result ):
+        source = cv2.VideoCapture( video_path )
+        encoded = cv2.VideoCapture( result['path'] )
+        scores = []
+        frames_out = 0
+        try:
+            source.set( cv2.CAP_PROP_POS_FRAMES, result['start'] )
+            for index in range( result['frames'] ):
+                if not encoded.grab():
+                    break
+                frames_out += 1
+                if not source.grab():
+                    break
+                if index % stride == 0:
+                    _ok, reference = source.retrieve()
+                    _ok, distorted = encoded.retrieve()
+                    scores.append( frame_quality( reference, distorted ) )
+            while encoded.grab():
+                frames_out += 1
+        finally:
+            source.release()
+            encoded.release()
+        return scores, frames_out
+
+    with ThreadPoolExecutor( max_workers=len( segment_results ) ) as pool:
+        per_segment = list( pool.map( one, segment_results ) )
+    scores = [ score for segment, _count in per_segment for score in segment ]
+    frames_out = sum( count for _segment, count in per_segment )
+    if not scores:
+        return None, None, frames_out
+    mean_mse = statistics.fmean( mse for mse, _ssim in scores )
+    mean_ssim = statistics.fmean( ssim for _mse, ssim in scores )
+    return psnr_db( mean_mse ), ssim_db( mean_ssim ), frames_out
+
+
+def choose_encoder( rows, tolerance_db=ENCODE_QUALITY_TOLERANCE_DB ):
+    """
+    The fastest row whose SSIM and PSNR are both within tolerance_db of
+    the current encoder's (rows[0]), smaller output breaking ties. None
+    when the current encoder itself failed, since nothing can be judged.
+    """
+    baseline = rows[0]
+    if baseline.get( 'error' ) or baseline.get( 'ssim_db' ) is None:
+        return None
+    eligible = [ row for row in rows
+                 if not row.get( 'error' ) and row.get( 'ssim_db' ) is not None
+                 and row['ssim_db'] >= baseline['ssim_db'] - tolerance_db
+                 and row['psnr_db'] >= baseline['psnr_db'] - tolerance_db ]
+    return max( eligible, key=lambda row: ( row['fps'], -row['bytes'] ) )
+
+
+def real_render_fps( width, height ):
+    """
+    (median frames/s, runs) of past full renders at this resolution, from
+    the stats log. Only renders that built every chunk count; a resumed
+    render's time covers part of the file.
+    """
+    path = getattr( betaconfig, 'stats_path', None ) or _default_stats_path()
+    rates = []
+    try:
+        with open( path, encoding='UTF-8' ) as handle:
+            for line in handle:
+                try:
+                    record = json.loads( line )
+                except ValueError:
+                    continue
+                if ( record.get( 'video_width' ) == width and record.get( 'video_height' ) == height
+                     and not record.get( 'preview_mode' )
+                     and ( record.get( 'encode_seconds' ) or 0 ) > 0
+                     and ( record.get( 'render_frames_written' ) or 0 ) > 0
+                     and not record.get( 'render_chunks_reused' ) ):
+                    rates.append( record['render_frames_written'] / record['encode_seconds'] )
+    except OSError:
+        return None, 0
+    return ( statistics.median( rates ) if rates else None ), len( rates )
+
+
+def _default_stats_path():
+    import betautils_log
+    return betautils_log.DEFAULT_STATS_PATH
+
+
+def predicted_render_fps( real_fps, baseline_fps, candidate_fps ):
+    """
+    A real render's frames/s with the candidate encoder in place of the
+    current one.
+
+    A real render frame costs what this bench measures (decode and
+    encode) plus what it leaves out (compositing the censor, the Python
+    loop). The bench's own baseline row tells how much of the real cost
+    is decode and encode, so the rest is 1/real - 1/baseline per frame,
+    assumed the same whichever encoder runs. That assumption flatters a
+    CPU encoder swapped for another CPU encoder less than it flatters
+    NVENC, which also hands the compositing the cores x264 was using,
+    so for NVENC this is if anything conservative.
+    """
+    if not ( real_fps and baseline_fps and candidate_fps ):
+        return None
+    rest = max( 0.0, 1.0 / real_fps - 1.0 / baseline_fps )
+    return 1.0 / ( rest + 1.0 / candidate_fps )
+
+
+def _encoder_label( candidate ):
+    return "%s %s q%s"%( candidate['codec'], candidate['preset'], candidate['quality'] )
+
+
+def bench_encode( args, logger ):
+    """
+    How fast each encoder renders here, and at what quality.
+
+    Decodes the same stretch of one video (--video, else the source with
+    the most pixels per frame) and pipes it through the real render's
+    chunk encode command once per encoder: the current one from
+    betaconfig, faster x264 presets, and NVENC at several cq values when
+    this machine can open NVENC sessions. Runs the real render's worker
+    count, each worker on its own --seconds window. Every output is then
+    compared frame by frame with the source (SSIM and PSNR on luma).
+
+    The recommendation is the fastest encoder whose quality is within
+    a quarter of a dB of the current one on both measures. Decoding
+    alone is timed too, as the ceiling no encoder can beat, and past
+    real renders at this resolution, from the stats log, turn the
+    measured speedup into an estimate for a real render, which also
+    composites the censor.
+    """
+    import shutil
+    import tempfile
+    import cv2
+
+    video_path = _pick_encode_video( args, logger )
+    if not video_path:
+        logger.warning( "no source videos found; pass --video" )
+        return {}
+    capture = cv2.VideoCapture( video_path )
+    try:
+        width = int( capture.get( cv2.CAP_PROP_FRAME_WIDTH ) )
+        height = int( capture.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
+        fps = capture.get( cv2.CAP_PROP_FPS ) or 30.0
+        total_frames = int( capture.get( cv2.CAP_PROP_FRAME_COUNT ) )
+    finally:
+        capture.release()
+    if not ( width and height and total_frames ):
+        raise RuntimeError( "cannot read %s"%( video_path, ) )
+
+    workers = args.workers or bu_render.resolve_worker_count( 1 << 30 )
+    threads = bu_render._encoder_threads( workers )
+    segments = encode_segments( total_frames, fps, args.seconds, workers )
+    stride = max( 1, args.quality_stride )
+    logger.info( "encode: %s, %dx%d at %.3g fps"%( os.path.basename( video_path ), width, height, fps ) )
+    logger.info( "  %d worker(s) like the real render, %d encoder thread(s) each, %d frames per "
+                 "worker from %.0fs in; quality on every %s frame"%(
+                     len( segments ), threads, segments[0][1], segments[0][0] / fps,
+                     'single' if stride == 1 else '%dth'%( stride, ) ) )
+
+    nvenc_sessions, nvenc_reason = probe_nvenc_sessions( len( segments ) )
+    if nvenc_sessions == 0:
+        logger.info( "  NVENC unavailable: %s"%( nvenc_reason, ) )
+    elif nvenc_sessions < len( segments ):
+        logger.warning( "  NVENC opened only %d of %d sessions at once (%s); NVENC rows run %d "
+                        "worker(s), and a real NVENC render would need render_workers = %d"%(
+                            nvenc_sessions, len( segments ), nvenc_reason, nvenc_sessions,
+                            nvenc_sessions ) )
+    else:
+        logger.info( "  NVENC: %d concurrent sessions opened"%( nvenc_sessions, ) )
+
+    candidates = encoder_candidates( args.encoders, nvenc_sessions > 0 )
+    scratch = tempfile.mkdtemp( prefix='betabench-encode-',
+                                dir=betaconst.benchmark_dir if os.path.isdir( betaconst.benchmark_dir )
+                                else None )
+    rows = []
+    try:
+        decode_wall, decoded = _run_segments( video_path, segments, width, height, fps,
+                                              None, threads, scratch )
+        decode_frames = sum( r['frames'] for r in decoded )
+        decode_fps = decode_frames / decode_wall if decode_wall else 0.0
+
+        for candidate in candidates:
+            is_nvenc = candidate['codec'] in bu_render.NVENC_CODECS
+            run_segments = segments[ : nvenc_sessions ] if is_nvenc else segments
+            out_dir = os.path.join( scratch, 'run%02d'%( len( rows ), ) )
+            os.makedirs( out_dir )
+            logger.debug( "encode: timing %s on %d worker(s)"%(
+                _encoder_label( candidate ), len( run_segments ) ) )
+            wall, results = _run_segments( video_path, run_segments, width, height, fps,
+                                           candidate, threads, out_dir )
+            frames = sum( r['frames'] for r in results )
+            errors = [ r['error'] for r in results if r['error'] ]
+            row = dict( candidate, workers=len( run_segments ), frames=frames,
+                        seconds=round( wall, 3 ), fps=( frames / wall if wall else 0.0 ),
+                        video_seconds=frames / fps, error=( errors[0] if errors else None ),
+                        bytes=0, psnr_db=None, ssim_db=None )
+            if not errors:
+                row['bytes'] = sum( os.path.getsize( r['path'] ) for r in results )
+                row['psnr_db'], row['ssim_db'], frames_out = _measure_encode_quality(
+                    video_path, results, stride )
+                if frames_out != frames:
+                    row['error'] = "encoded %d frames from %d"%( frames_out, frames )
+            rows.append( row )
+            shutil.rmtree( out_dir, ignore_errors=True )
+    finally:
+        shutil.rmtree( scratch, ignore_errors=True )
+
+    choice = choose_encoder( rows )
+    baseline = rows[0]
+    real_fps, real_runs = real_render_fps( width, height )
+    _log_encode_table( logger, rows, choice, decode_fps )
+    result = { 'video': video_path, 'width': width, 'height': height, 'fps': fps,
+               'workers': len( segments ), 'encoder_threads': threads,
+               'frames_per_worker': segments[0][1], 'nvenc_sessions': nvenc_sessions,
+               'nvenc_unavailable_reason': nvenc_reason if nvenc_sessions == 0 else None,
+               'decode_fps': round( decode_fps, 2 ), 'rows': rows,
+               'recommended': choice, 'real_render_fps': real_fps, 'real_render_runs': real_runs,
+               'predicted_render_fps': None }
+
+    if choice is None:
+        logger.warning( "  the current encoder failed, so nothing could be judged against it" )
+        return { 'encode': result }
+    if real_fps:
+        predicted = predicted_render_fps( real_fps, baseline['fps'], choice['fps'] )
+        result['predicted_render_fps'] = predicted
+        logger.info( "" )
+        logger.info( "  your real %dx%d renders: %.1f fr/s (median of %d run(s), with censoring)"%(
+            width, height, real_fps, real_runs ) )
+        if choice is not baseline and predicted:
+            logger.info( "  with %s: about %.1f fr/s, %.0f%% less render time (estimate: the "
+                         "censor compositing the bench leaves out is assumed unchanged)"%(
+                             _encoder_label( choice ), predicted,
+                             100.0 * ( 1.0 - real_fps / predicted ) ) )
+    else:
+        logger.info( "  no past full render at %dx%d in the stats log, so no real-render estimate"%(
+            width, height ) )
+
+    logger.info( "" )
+    if choice is baseline:
+        logger.info( "  keep the current encoder: nothing faster matched its quality" )
+    else:
+        logger.info( "  to switch, set in betaconfig.py:" )
+        logger.info( "    encode_video_codec = '%s'"%( choice['codec'], ) )
+        logger.info( "    encode_preset = '%s'"%( choice['preset'], ) )
+        logger.info( "    encode_crf = %s%s"%( choice['quality'],
+                     "   (NVENC reads it as -cq)" if choice['codec'] in bu_render.NVENC_CODECS else '' ) )
+        if choice['codec'] in bu_render.NVENC_CODECS:
+            if nvenc_sessions < len( segments ):
+                logger.info( "    render_workers = %d"%( nvenc_sessions, ) )
+            logger.info( "  preview_encode_preset needs no change: x264 preset names are "
+                         "translated for NVENC" )
+    return { 'encode': result }
+
+
+def _log_encode_table( logger, rows, choice, decode_fps ):
+    baseline = rows[0]
+    baseline_ok = not baseline.get( 'error' ) and baseline.get( 'ssim_db' ) is not None
+    logger.info( "" )
+    logger.info( "  %-26s %4s %7s %7s %6s %8s %8s  %s"%(
+        'encoder', 'wkrs', 'fr/s', 'vs now', 'Mb/s', 'SSIM dB', 'PSNR dB', 'verdict' ) )
+    logger.info( "  %-26s %4d %7.1f %7s %6s %8s %8s  %s"%(
+        'decode only', baseline['workers'], decode_fps, '', '', '', '',
+        'the ceiling: no encoder renders faster than this' ) )
+    for row in rows:
+        label = _encoder_label( row )
+        if row.get( 'error' ):
+            logger.warning( "  %-26s %4d %7s %7s %6s %8s %8s  failed: %s"%(
+                label, row['workers'], '', '', '', '', '', row['error'] ) )
+            continue
+        speed = '%.2fx'%( row['fps'] / baseline['fps'], ) if baseline_ok else ''
+        megabits_per_second = ( 8.0 * row['bytes'] / 1e6 / row['video_seconds']
+                                if row.get( 'video_seconds' ) else 0.0 )
+        if row is baseline:
+            verdict = 'current config'
+        elif row is choice:
+            verdict = 'as good, fastest  <- use this'
+        elif baseline_ok and ( row['ssim_db'] < baseline['ssim_db'] - ENCODE_QUALITY_TOLERANCE_DB
+                               or row['psnr_db'] < baseline['psnr_db'] - ENCODE_QUALITY_TOLERANCE_DB ):
+            verdict = 'lower quality (%+.2f dB SSIM, %+.2f dB PSNR)'%(
+                row['ssim_db'] - baseline['ssim_db'], row['psnr_db'] - baseline['psnr_db'] )
+        else:
+            verdict = 'as good, not the fastest'
+        logger.info( "  %-26s %4d %7.1f %7s %6.1f %8.2f %8.2f  %s"%(
+            label, row['workers'], row['fps'], speed, megabits_per_second,
+            row['ssim_db'], row['psnr_db'], verdict ) )
+
+
 SUBCOMMANDS = {
     'decode': bench_decode,
     'detect': bench_detect,
@@ -2208,6 +2755,7 @@ SUBCOMMANDS = {
     'structure': bench_structure,
     'structure-scan': bench_structure_scan,
     'concurrency': bench_concurrency,
+    'encode': bench_encode,
 }
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
@@ -2251,8 +2799,8 @@ def build_parser():
         help="how many videos 'decode' and 'concurrency' (scan workers) measure (default: 3 "
              "for decode; for concurrency, two per worker at the largest worker count)" )
     parser.add_argument( '--seconds', type=float, default=30.0,
-        help="seconds of video to measure, for 'decode' and 'concurrency' (default: 30; "
-             "try 120 for a steadier concurrency number)" )
+        help="seconds of video to measure, for 'decode' and 'concurrency', and per worker for "
+             "'encode' (default: 30; try 120 for a steadier concurrency number)" )
     parser.add_argument( '--max-frames', type=int, default=120,
         help="cap on sampled frames per measurement, for 'detect' (default: 120)" )
     parser.add_argument( '--write-move-script', default=None, metavar='PATH',
@@ -2261,8 +2809,15 @@ def build_parser():
              "move is 'mv -n', which never overwrites, and the script is safe to "
              "re-run. Nothing is moved by betabench itself" )
     parser.add_argument( '--workers', type=int, default=None,
-        help="structure-scan only: whole-file scans to run in parallel (default: one per "
-             "CPU core, at most 4)" )
+        help="structure-scan: whole-file scans to run in parallel (default: one per CPU core, "
+             "at most 4). encode: render workers (default: the real render's count)" )
+    parser.add_argument( '--encoders', nargs='+', default=None, metavar='CODEC:PRESET:QUALITY',
+        help="encode only: encoders to compare against the current one, e.g. libx264:faster:17 "
+             "h264_nvenc:p5:19 (default: two faster x264 presets, and NVENC at cq 17-23 when "
+             "this machine can open NVENC sessions)" )
+    parser.add_argument( '--quality-stride', type=int, default=5,
+        help="encode only: compare every Nth frame with the source for SSIM and PSNR "
+             "(default: 5)" )
     parser.add_argument( '--geometry-slices', type=int, default=0,
         help="structure-scan only: after the timing scans, run detection (no render) on this "
              "many short slices spread through each file, for split-screen geometry. Needs "
