@@ -6,8 +6,13 @@
 #   ./tools/bench/structure_survey.sh
 #   LOG_LEVEL=debug ./tools/bench/structure_survey.sh      # chattier terminal
 #   SURVEY_GEOMETRY_SLICES=5 ./tools/bench/structure_survey.sh
+#   VIDEOS_FIRST=3 ./tools/bench/structure_survey.sh       # first 3 files by name
+#   VIDEOS_PER_FOLDER=1 ./tools/bench/structure_survey.sh  # first file by name in each folder
 #
-# Covers resources/uncensored_vids/ AND the staging tree resources/source/.
+# Covers resources/uncensored_vids/ AND the staging tree resources/source/,
+# or a predictable subset of them: VIDEOS_FIRST=N takes the first N by file
+# name across everything, VIDEOS_PER_FOLDER=N the first N by name in each
+# directory. Set one, not both. The chosen files are listed in the log.
 # Moves nothing. Writes a reviewable mv -n script you read, then run.
 #
 # PHASES
@@ -47,6 +52,12 @@ source "$REPO_ROOT/tools/tuning/harness_lib.sh"
 : "${SURVEY_GEOMETRY_SLICES:=3}"
 BENCH="$REPO_ROOT/tools/bench/betabench.py"
 
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/bench/video_subset.sh"
+if ! video_subset_args; then
+    exit 1
+fi
+
 log_info "structure survey: output in $SURVEY_DIR"
 log_info "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
 if ! python_env_require cv2 2>>"$HARNESS_LOG_FILE"; then
@@ -56,11 +67,12 @@ fi
 
 # --- phase 1 ----------------------------------------------------------------
 if ! run_logged "phase 1: whole-file shot-cut scans (CPU)" \
-        "$PYTHON_BIN" "$BENCH" structure-scan --yes \
+        "$PYTHON_BIN" "$BENCH" structure-scan --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --out-dir "$SURVEY_DIR/scan" --console-level info; then
     log_error "phase 1 failed; the structure table would rest on whatever scans already exist. Stopping."
     exit 1
 fi
+video_subset_replay "$SURVEY_DIR/scan/betabench.log"
 
 # --- phase 2 ----------------------------------------------------------------
 run_geometry=1
@@ -74,7 +86,7 @@ else
 fi
 if [ "$run_geometry" -eq 1 ] && [ "$SURVEY_GEOMETRY_SLICES" -gt 0 ]; then
     run_logged "phase 2: geometry slices (GPU, detection only)" \
-        "$PYTHON_BIN" "$BENCH" structure-scan --yes \
+        "$PYTHON_BIN" "$BENCH" structure-scan --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --geometry-slices "$SURVEY_GEOMETRY_SLICES" \
         --out-dir "$SURVEY_DIR/geometry" --console-level info \
         || log_warn "phase 2 failed; continuing with the geometry that exists"
@@ -82,7 +94,7 @@ fi
 
 # --- phase 3 ----------------------------------------------------------------
 if ! run_logged "phase 3: structure table and move script" \
-        "$PYTHON_BIN" "$BENCH" structure --yes \
+        "$PYTHON_BIN" "$BENCH" structure --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --write-move-script "$SURVEY_DIR/moves.sh" \
         --out-dir "$SURVEY_DIR/structure" --console-level info; then
     log_error "phase 3 failed; see $HARNESS_LOG_FILE"

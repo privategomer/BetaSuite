@@ -661,13 +661,27 @@ python3 tools/bench/betabench.py --help
 | `encode` | render encode speed and quality (SSIM, PSNR) per encoder: current x264 settings, faster x264 presets, NVENC at several cq values; real worker count, real chunk command; not part of `all` | `encode_video_codec`, `encode_preset`, `encode_crf`, and `render_workers` if NVENC caps sessions |
 | `reverse` | what reverse mode would cost to render here, before it is built: each frame style and window blend on real frames, the real pipeline with and without a triggered frame layer, and the share of each file's runtime a trigger would hold on | the reverse-mode frame-style default, and whether it is affordable |
 
+**Measuring a subset.** `--first-videos N` (the first N files by name,
+case-insensitive, across every folder and both source trees) or
+`--videos-per-folder N` (the first N by name in each directory) narrows
+`structure`, `structure-scan`, `concurrency`, `encode` and `reverse` to
+the same files every time, so two runs stay comparable. The chosen files
+are listed in the log. The harnesses take the same choice as
+`VIDEOS_FIRST=N` or `VIDEOS_PER_FOLDER=N`:
+
+```bash
+VIDEOS_PER_FOLDER=1 bash tools/bench/structure_survey.sh
+VIDEOS_FIRST=3 bash tools/bench/reverse_cost.sh
+```
+
 `structure` is the one to read per file rather than pooled: it reports
 cut rate, how many subjects are live at once, and where they sit in
 frame, which is what decides whether a file wants different timing and
 tracking values from the rest. See CONFIG_REFERENCE.md ->
 "Reading `structure`, and what profiles would need".
 
-Everything goes to `../output/benchmarks/<timestamp>/` with a log at
+Run on its own, everything goes to `../output/benchmarks/<timestamp>/`
+(under `run_all_analysis.sh`, to that run's own folder per step) with a log at
 `--log-level` (default `trace`, so the file keeps everything), a terminal
 view at `--console-level` (default `info`), and machine-readable
 `results.json`. Any step needing a decision prompts; `--yes` accepts
@@ -711,6 +725,11 @@ tools/analysis/run_all_analysis.sh        # the whole suite, every configuration
 python3 tools/bench/betabench.py all      # same, for the benchmarks
 python3 tools/tuning/auto_tune.py         # same, for the tuner
 ```
+
+`run_all_analysis.sh` also runs `betabench encode` and `betabench
+reverse`. They measure time, so they run one at a time after the
+parallel analysis steps have finished, never alongside them; `--quick`
+skips them.
 
 A *configuration* is one backend at one detection size under one
 detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are

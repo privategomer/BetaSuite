@@ -29,12 +29,21 @@ def _shell_scripts():
                 yield os.path.join( root, name )
 
 
+# source "$REPO_ROOT/tools/tuning/harness_lib.sh", the form the bench
+# harnesses use. Missed by the pattern above, so a harness sourcing a
+# file that was never shipped passed this test.
+_REPO_ROOT_SOURCE_LINE = re.compile(
+    r'^\s*(?:source|\.)\s+"\$(?:REPO_ROOT|\{REPO_ROOT\})/([^"]+)"', re.M )
+
+
 def _sourced_files():
     for script in _shell_scripts():
         with open( script, 'r', encoding='UTF-8' ) as handle:
             text = handle.read()
         for relative in _SOURCE_LINE.findall( text ):
             yield script, os.path.normpath( os.path.join( os.path.dirname( script ), relative ) )
+        for relative in _REPO_ROOT_SOURCE_LINE.findall( text ):
+            yield script, os.path.normpath( os.path.join( REPO_ROOT, relative ) )
 
 
 class TestShellSourcesAreShipped( unittest.TestCase ):
@@ -43,6 +52,8 @@ class TestShellSourcesAreShipped( unittest.TestCase ):
         # Precondition: a regex that matched nothing would pass vacuously.
         targets = { os.path.relpath( target, REPO_ROOT ) for _s, target in _sourced_files() }
         self.assertIn( os.path.join( 'tools', 'lib', 'python_env.sh' ), targets )
+        self.assertIn( os.path.join( 'tools', 'tuning', 'harness_lib.sh' ), targets,
+                       "the $REPO_ROOT form the bench harnesses use is scanned too" )
 
     def test_every_sourced_file_exists( self ):
         for script, target in _sourced_files():
