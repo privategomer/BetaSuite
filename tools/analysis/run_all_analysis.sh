@@ -69,6 +69,21 @@
 #   6. analyze_track_breaks.py $VARIANT_FLAG        match_distance / track_max_gap sweeps.
 #   7. analyze_style_flicker.py $VARIANT_FLAG       paired_style gate diagnostics.
 #
+#   T. betabench.py encode      Render encode speed and quality per
+#                               encoder on this machine, through the
+#                               real chunk command and worker count.
+#                               Informs encode_video_codec / preset / crf.
+#      betabench.py reverse     What reverse mode would cost to render,
+#                               and how much of each file's runtime its
+#                               trigger would hold on, from this run's
+#                               caches. Informs the frame-style default.
+#                               These two are TIMING steps: they run one
+#                               at a time, after the parallel batch, so
+#                               no other step's CPU use is measured with
+#                               them. --quick skips them. Each writes its
+#                               log and results.json under this run's
+#                               folder.
+#
 #   8. auto_tune.py             A dry run of the staged tuner: what it
 #                               would change and why, writing nothing.
 #                               Re-run it with --apply when you agree.
@@ -122,7 +137,8 @@ while [ "$#" -gt 0 ]; do
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              ALPHA_SWEEP="$ALPHA_SWEEP $1"; shift
                          done ;;
-        --help|-h)       sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h)       awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" \
+                             | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)               PASSTHROUGH+=("$1"); shift ;;
     esac
 done
@@ -167,14 +183,19 @@ declare -a STEPS=()
 
 STEPS+=("summarize_run|${PYTHON_BIN} $SCRIPT_DIR/summarize_run.py")
 
+# Every betabench step gets its own --out-dir under this run's folder.
+# Without one, betabench names its folder after the current second, and
+# two steps launched together in the parallel batch landed in the SAME
+# folder: one results.json overwrote the other and both wrote one
+# interleaved betabench.log.
 if [ "$QUICK" -eq 0 ]; then
-    STEPS+=("betabench_all|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_all|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --out-dir $LOG_DIR/betabench_all --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --out-dir $LOG_DIR/betabench_render_noapprox --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 else
     # structure is cache-only and the profile question depends on it,
     # so --quick keeps it alongside geometry.
-    STEPS+=("betabench_cache_only|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_structure|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_cache_only|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --out-dir $LOG_DIR/betabench_cache_only --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    STEPS+=("betabench_structure|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --out-dir $LOG_DIR/betabench_structure --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 fi
 
 STEPS+=("analyze_suppression_pairs|${PYTHON_BIN} $SCRIPT_DIR/analyze_suppression_pairs.py")
@@ -185,8 +206,17 @@ STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py 
 STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
+# Timing steps: run one at a time, after the parallel batch and before
+# auto_tune. They measure wall clock and throughput, so anything running
+# beside them would be measured with them.
+declare -a TIMING_STEPS=()
+if [ "$QUICK" -eq 0 ]; then
+    TIMING_STEPS+=("betabench_encode|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py encode --yes --out-dir $LOG_DIR/betabench_encode --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    TIMING_STEPS+=("betabench_reverse|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py reverse --yes --out-dir $LOG_DIR/betabench_reverse --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+
 declare -a RESULTS=()
-TOTAL=${#STEPS[@]}
+TOTAL=$(( ${#STEPS[@]} + ${#TIMING_STEPS[@]} ))
 
 # WHY SOME STEPS RUN IN PARALLEL AND SOME DO NOT
 #
@@ -238,8 +268,10 @@ replay_step_log() {
 }
 
 # Split the steps: first and last stay pinned, the middle can batch.
+# LAST_INDEX indexes STEPS, so it is counted from STEPS alone: TOTAL also
+# counts the timing steps, which are a separate list.
 FIRST_LABEL="${STEPS[0]%%|*}"
-LAST_INDEX=$(( TOTAL - 1 ))
+LAST_INDEX=$(( ${#STEPS[@]} - 1 ))
 LAST_LABEL="${STEPS[$LAST_INDEX]%%|*}"
 
 STEP=1
@@ -272,6 +304,13 @@ done
 wait
 
 for label in "${BATCH[@]}"; do
+    STEP=$(( STEP + 1 ))
+    replay_step_log "$label" "$STEP"
+done
+
+for entry in ${TIMING_STEPS[@]+"${TIMING_STEPS[@]}"}; do
+    label="${entry%%|*}"
+    run_one_step "$label" "${entry#*|}"
     STEP=$(( STEP + 1 ))
     replay_step_log "$label" "$STEP"
 done

@@ -7,6 +7,12 @@
 #   LOG_LEVEL=debug ./tools/bench/reverse_cost.sh         # chattier terminal
 #   REVERSE_SECONDS=30 ./tools/bench/reverse_cost.sh      # longer, steadier pipeline pass
 #   REVERSE_VIDEO=../resources/uncensored_vids/x.mp4 ./tools/bench/reverse_cost.sh
+#   VIDEOS_FIRST=3 ./tools/bench/reverse_cost.sh          # first 3 files by name
+#   VIDEOS_PER_FOLDER=1 ./tools/bench/reverse_cost.sh     # first file by name in each folder
+#
+# A subset narrows both the video timed (the one with the most pixels per
+# frame, from the subset) and the files the runtime share is taken over.
+# Set one of VIDEOS_FIRST / VIDEOS_PER_FOLDER, not both.
 #
 # Reads only. Encodes go to a scratch folder that is removed afterwards.
 # Needs no GPU and asks nothing, so it is safe to background with nohup.
@@ -44,6 +50,12 @@ source "$REPO_ROOT/tools/tuning/harness_lib.sh"
 : "${REVERSE_VIDEO:=}"
 BENCH="$REPO_ROOT/tools/bench/betabench.py"
 
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/bench/video_subset.sh"
+if ! video_subset_args; then
+    exit 1
+fi
+
 log_info "reverse mode cost: output in $RUN_DIR"
 log_info "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
 if ! python_env_require cv2 2>>"$HARNESS_LOG_FILE"; then
@@ -55,7 +67,8 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     exit 1
 fi
 
-BENCH_ARGS=( reverse --yes --seconds "$REVERSE_SECONDS" --out-dir "$RUN_DIR" --console-level info )
+BENCH_ARGS=( reverse --yes --seconds "$REVERSE_SECONDS" --out-dir "$RUN_DIR" --console-level info
+             ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} )
 if [ -n "$REVERSE_VIDEO" ]; then
     BENCH_ARGS+=( --video "$REVERSE_VIDEO" )
 fi
@@ -70,6 +83,7 @@ fi
 # Replay the summary to the terminal, at info. The markers are pinned by
 # tests/test_reverse_bench.py so renaming one cannot silently empty this.
 BENCH_LOG="$RUN_DIR/betabench.log"
+video_subset_replay "$BENCH_LOG"
 if [ -f "$BENCH_LOG" ]; then
     sed -n '/=== reverse mode cost: summary ===/,/=== end of reverse mode summary ===/p' "$BENCH_LOG" \
         | sed -E 's/^[0-9-]+ [0-9:,]+ \[[A-Z ]+\] //' \

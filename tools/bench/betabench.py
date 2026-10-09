@@ -61,6 +61,8 @@ RUNNING IT
     python3 tools/bench/betabench.py suppression --backend nudenet_v3
     python3 tools/bench/betabench.py encode --seconds 30
     python3 tools/bench/betabench.py reverse --seconds 10
+    python3 tools/bench/betabench.py structure --videos-per-folder 1
+    python3 tools/bench/betabench.py structure-scan --first-videos 3
 
     Single command, no setup. Any step that needs a decision from you
     stops and asks (pass --yes to accept the defaults and never prompt,
@@ -1408,6 +1410,65 @@ def _source_videos():
     return found
 
 
+def select_source_videos( sources, first=None, per_folder=None ):
+    """
+    A predictable subset of `sources`, or all of them.
+
+    first       the first N by file name, case-insensitive, across every
+                folder and tree; the full path breaks ties.
+    per_folder  the first N by file name from each directory. A directory
+                is a tree plus its folder, so uncensored_vids/scene and
+                source/scene are two directories, the same way moves keep
+                to their own tree.
+
+    Predictable on purpose: a random sample would make two runs, or a
+    run and its re-run after a fix, measure different files, and their
+    numbers could not be compared. Names, never mtimes, because moving a
+    file between folders changes its mtime on some filesystems.
+    """
+    if first and per_folder:
+        raise ValueError( "choose one of first or per_folder, not both" )
+    by_name = lambda source: ( source['name'].casefold(), source['path'] )
+    if first:
+        return sorted( sources, key=by_name )[ :first ]
+    if per_folder:
+        groups = {}
+        for source in sources:
+            groups.setdefault( ( source['tree'], source['current_folder'] ), [] ).append( source )
+        picked = []
+        for _directory, members in groups.items():
+            picked.extend( sorted( members, key=by_name )[ :per_folder ] )
+        return picked
+    return list( sources )
+
+
+_LAST_LOGGED_SUBSET = [ None ]
+
+
+def selected_source_videos( args, logger=None ):
+    """
+    The source videos this run measures: --first-videos or
+    --videos-per-folder applied to every source tree, else all of them.
+
+    Logged once per distinct subset at info, naming every file, so a run
+    on a subset says exactly which files it measured.
+    """
+    first = getattr( args, 'first_videos', None )
+    per_folder = getattr( args, 'videos_per_folder', None )
+    every = _source_videos()
+    chosen = select_source_videos( every, first, per_folder )
+    if logger is not None and ( first or per_folder ):
+        names = tuple( source['path'] for source in chosen )
+        if _LAST_LOGGED_SUBSET[0] != names:
+            _LAST_LOGGED_SUBSET[0] = names
+            rule = ( "the first %d by name"%( first, ) if first
+                     else "the first %d by name in each folder"%( per_folder, ) )
+            logger.info( "video subset: %s, %d of %d file(s):"%( rule, len( chosen ), len( every ) ) )
+            for source in chosen:
+                logger.info( "  %s/%s/%s"%( source['tree'], source['current_folder'], source['name'] ) )
+    return chosen
+
+
 def _censored_boxes_by_hash( file_hashes, labels, backend_name=None, variant_names=None ):
     """
     Censored-label boxes per file, from ONE detection configuration each.
@@ -1556,7 +1617,7 @@ def bench_structure( args, logger ):
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
     labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
 
-    sources = _source_videos()
+    sources = selected_source_videos( args, logger )
     if not sources:
         logger.warning( "no source videos under %s"%(
             ' or '.join( root for _l, root in _source_trees() ), ) )
@@ -1847,7 +1908,7 @@ def bench_structure_scan( args, logger ):
 
     fps = betaconfig.video_censor_fps
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-    sources = _source_videos()
+    sources = selected_source_videos( args, logger )
     pending = []
     for source in sources:
         try:
@@ -2185,7 +2246,7 @@ def bench_concurrency( args, logger ):
     warm-up pass, so no timing is a cache hit and nothing real is read
     or written. --trials repeats the overlap measurement (median kept).
     """
-    sources = [ s['path'] for s in _source_videos() ]
+    sources = [ s['path'] for s in selected_source_videos( args, logger ) ]
     if not sources and not args.video:
         logger.warning( "no source videos found" )
         return {}
@@ -2330,12 +2391,15 @@ def probe_nvenc_sessions( wanted ):
 
 
 def _pick_encode_video( args, logger ):
-    """--video, else the source video with the most pixels per frame."""
+    """
+    --video, else the source video with the most pixels per frame, from
+    the --first-videos / --videos-per-folder subset when one is given.
+    """
     import cv2
     if args.video:
         return args.video
     best = None
-    for source in _source_videos():
+    for source in selected_source_videos( args, logger ):
         capture = cv2.VideoCapture( source['path'] )
         try:
             pixels = ( int( capture.get( cv2.CAP_PROP_FRAME_WIDTH ) )
@@ -3038,7 +3102,7 @@ def _reverse_trigger_share( args, logger ):
                         "detections under %.2f were never cached, so the share is a floor"%(
                             args.trigger_min_prob, floor, floor ) )
 
-    sources = _source_videos()
+    sources = selected_source_videos( args, logger )
     path_by_hash = {}
     for source in sources:
         try:
@@ -3279,8 +3343,8 @@ def _log_reverse_summary( logger, result, width, height ):
 
     logger.info( "" )
     logger.info( REVERSE_SUMMARY_BEGIN )
-    logger.info( "source: %dx%d; %d render worker(s)"%(
-        width, height, result['pipeline']['workers'] ) )
+    logger.info( "timed on: %s, %dx%d; %d render worker(s)"%(
+        os.path.basename( result['video'] ), width, height, result['pipeline']['workers'] ) )
     frame_layers = [ row for row in result['ops'] if row['op'].startswith( 'frame layer' ) ]
     cheapest = min( frame_layers, key=lambda r: r['ms_per_frame'] )
     logger.info( "frame styles, ms per frame on one core:" )
@@ -3345,6 +3409,13 @@ ALL_ORDER = [ 'structure', 'geometry', 'hysteresis', 'suppression', 'dedup',
               'render', 'decode', 'detect' ]
 
 
+def _positive_int( text ):
+    value = int( text )
+    if value < 1:
+        raise argparse.ArgumentTypeError( "must be 1 or more, got %s"%( text, ) )
+    return value
+
+
 def build_parser():
     """The full CLI. One parser, flags shared across subcommands."""
     parser = argparse.ArgumentParser(
@@ -3376,6 +3447,15 @@ def build_parser():
 
     parser.add_argument( '--video', default=None,
         help="a specific video to measure against (default: the first found)" )
+    subset = parser.add_mutually_exclusive_group()
+    subset.add_argument( '--first-videos', type=_positive_int, default=None, metavar='N',
+        help="measure only the first N source videos by file name (case-insensitive), across "
+             "every folder and both source trees. For structure, structure-scan, concurrency, "
+             "encode and reverse. The chosen files are listed in the log" )
+    subset.add_argument( '--videos-per-folder', type=_positive_int, default=None, metavar='N',
+        help="measure only the first N source videos by file name in each directory "
+             "(uncensored_vids/scene and source/scene count as two). Same subcommands as "
+             "--first-videos" )
     parser.add_argument( '--max-videos', type=int, default=None,
         help="how many videos 'decode' and 'concurrency' (scan workers) measure (default: 3 "
              "for decode; for concurrency, two per worker at the largest worker count)" )
