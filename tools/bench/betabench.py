@@ -46,6 +46,12 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  has it, through the real chunk encode command with the
                  real worker count. Recommends the fastest encoder that
                  matches the current quality. Not part of 'all'.
+    reverse      What would reverse mode cost to render here, before it
+                 is built? Times each candidate frame style and the window
+                 blends on real frames, runs the real render pipeline with
+                 and without a triggered frame layer, and weights the
+                 difference by how much of each file's runtime a trigger
+                 would hold on. Not part of 'all'.
     all          Every read-only subcommand, in order.
 
 RUNNING IT
@@ -54,6 +60,7 @@ RUNNING IT
     python3 tools/bench/betabench.py detect --backends nudenet_v3 --sizes 320 640
     python3 tools/bench/betabench.py suppression --backend nudenet_v3
     python3 tools/bench/betabench.py encode --seconds 30
+    python3 tools/bench/betabench.py reverse --seconds 10
 
     Single command, no setup. Any step that needs a decision from you
     stops and asks (pass --yes to accept the defaults and never prompt,
@@ -2357,12 +2364,15 @@ def encode_segments( total_frames, fps, seconds, workers ):
     return [ ( start + index * per_worker, per_worker ) for index in range( workers ) ]
 
 
-def _run_segments( video_path, segments, width, height, fps, candidate, threads, out_dir ):
+def _run_segments( video_path, segments, width, height, fps, candidate, threads, out_dir,
+                   frame_transform=None ):
     """
     Wall seconds and per-segment results for one pass: each segment on
     its own thread, decoding with OpenCV and, when `candidate` is given,
     piping raw frames into the real render's chunk encode command.
-    candidate None times decoding alone.
+    candidate None times decoding alone. frame_transform, when given, is
+    applied to each decoded frame before it is encoded, on the worker's
+    own thread, the way the real render composites its censor.
     """
     import subprocess
     import cv2
@@ -2387,6 +2397,8 @@ def _run_segments( video_path, segments, width, height, fps, candidate, threads,
                 ok, frame = capture.read()
                 if not ok or frame is None:
                     break
+                if frame_transform is not None:
+                    frame = frame_transform( frame )
                 if process is not None:
                     process.stdin.write( memoryview( frame ) if frame.flags['C_CONTIGUOUS']
                                          else frame.tobytes() )
@@ -2744,6 +2756,574 @@ def _log_encode_table( logger, rows, choice, decode_fps ):
             row['ssim_db'], row['psnr_db'], verdict ) )
 
 
+# ---------------------------------------------------------------------------
+# reverse: what reverse mode would cost to render, before it is built
+# ---------------------------------------------------------------------------
+#
+# Phase 0 of the reverse-mode plan (claude/plan-reverse-mode-2026-10-08.md
+# in the project). Reverse mode obscures the whole frame with a frame style
+# while a trigger is live, then restores "windows" over the detections.
+# Today a frame with no censored box costs almost nothing to render; in
+# reverse mode every triggered frame pays for a full-frame censor. Whether
+# that is affordable, and which frame style to default to, are questions
+# about THIS machine and THIS footage, so they are measured here rather
+# than argued from a cloud box's numbers.
+#
+# The compositor below is a prototype of the plan's design, not app code.
+# It exists so the cost of the design can be known before it is written.
+
+# strength is a percent of the frame's shorter side under
+# censor_scale_strategy 'feature'. 20 is the plan's default frame blur,
+# about a 216 px kernel at 1080p. Pixel strength 20 would mean 216 px
+# blocks, a 9x5 grid at 1080p, which nobody would choose for a frame; 4 is
+# about 43 px blocks. Block cost barely depends on block size, so the
+# choice affects the look, not this measurement.
+REVERSE_FRAME_STYLES = (
+    { 'type': 'blur',  'method': 'triple_box', 'strength': 20 },
+    { 'type': 'blur',  'method': 'box',        'strength': 20 },
+    { 'type': 'blur',  'method': 'gaussian',   'strength': 20 },
+    { 'type': 'pixel', 'pattern': 'mosaic',    'strength': 4 },
+    { 'type': 'pixel', 'pattern': 'hex',       'strength': 4 },
+    { 'type': 'bar' },
+)
+REVERSE_PIPELINE_STYLE = REVERSE_FRAME_STYLES[0]
+
+# Window sizes as a fraction of frame area: exposed_breast p50 and p99
+# from the 2026-09-30 full run (claude/full-run-analysis-2026-09-30.md).
+REVERSE_WINDOW_AREA_FRACTIONS = ( ( 'p50', 0.0105 ), ( 'p99', 0.1031 ) )
+REVERSE_WINDOW_SHAPE = 'ellipse'
+REVERSE_WINDOW_FEATHER = 0.25
+REVERSE_CENSORED_WINDOW_STYLE = { 'type': 'pixel', 'pattern': 'mosaic', 'strength': 30 }
+
+# One call slower than this is timed once rather than in repeated trials.
+# An exact Gaussian over a whole frame can take seconds per call, and a
+# trials x repeats burst of it would hold the run for many minutes to
+# confirm a number that is already disqualifying.
+REVERSE_SLOW_CALL_MS = 250.0
+
+REVERSE_SUMMARY_BEGIN = "=== reverse mode cost: summary ==="
+REVERSE_SUMMARY_END = "=== end of reverse mode summary ==="
+
+
+def _full_frame_box( width, height, style ):
+    """A box covering the whole frame, for the frame layer."""
+    return { 'x': 0, 'y': 0, 'w': width, 'h': height, 'censor_style': style,
+             'censor_shape': 'box', 'censor_sticker_seed': 0.5,
+             'label': 'reverse_frame', 'score': 1.0, 'start': 0.0, 'end': 1.0 }
+
+
+def reverse_window_rects( width, height, area_fraction, count ):
+    """
+    `count` same-sized windows, side by side across the middle of the frame.
+
+    Each window keeps the frame's aspect ratio and covers area_fraction of
+    it. Positions are fixed: the cost of a blend depends on the window's
+    size, not on where it sits.
+    """
+    side = math.sqrt( area_fraction )
+    w = max( 2, int( width * side ) )
+    h = max( 2, int( height * side ) )
+    y = max( 0, ( height - h ) // 2 )
+    step = width // ( count + 1 )
+    return [ ( max( 0, min( width - w, step * ( index + 1 ) - w // 2 ) ), y, w, h )
+             for index in range( count ) ]
+
+
+def reverse_blend_window( out, shown, rect, shape, feather ):
+    """
+    Blend `shown` into `out` over one window, through the window's alpha.
+
+    `shown` is either the original frame (a show window) or a buffer the
+    same size holding the censored original (a censored window). The alpha
+    is applied ONCE here: rendering the style with its own shape mask and
+    then blending again would leave a ring of clear original at a feathered
+    edge, which in reverse mode is a reveal.
+    """
+    import numpy as np
+    import betautils_censor as bu_censor
+    x, y, w, h = rect
+    alpha = bu_censor._alpha_for( shape, w, h, feather )
+    under = out[ y:y+h, x:x+w ].astype( np.float32 )
+    over = shown[ y:y+h, x:x+w ].astype( np.float32 )
+    out[ y:y+h, x:x+w ] = ( alpha*over + ( 1.0 - alpha )*under ).astype( out.dtype )
+    return out
+
+
+def reverse_composite( frame, frame_style, show_rects ):
+    """
+    One triggered frame as the plan describes it: frame style over the
+    whole frame, then each show window restored from the original.
+    Returns a new array; `frame` is not modified.
+    """
+    import betautils_censor as bu_censor
+    height, width = frame.shape[:2]
+    out = frame.copy()
+    bu_censor.censor_image( out, _full_frame_box( width, height, frame_style ) )
+    for rect in show_rects:
+        reverse_blend_window( out, frame, rect, REVERSE_WINDOW_SHAPE, REVERSE_WINDOW_FEATHER )
+    return out
+
+
+def _style_label( style ):
+    variant = style.get( 'pattern' ) or style.get( 'method' ) or 'solid'
+    strength = style.get( 'strength' )
+    return "%s/%s%s"%( style['type'], variant, '' if strength is None else ' s%g'%( strength, ) )
+
+
+def _time_call_ms( call, trials, repeats ):
+    """
+    (median, min, max, trials actually run) in ms per call.
+
+    Times one call first. Past REVERSE_SLOW_CALL_MS that single call is
+    the answer, so a disqualifying number does not cost minutes to repeat.
+    """
+    started = time.perf_counter()
+    call()
+    first_ms = 1000.0 * ( time.perf_counter() - started )
+    if first_ms > REVERSE_SLOW_CALL_MS:
+        return first_ms, first_ms, first_ms, 1
+    samples = []
+    for _trial in range( max( 1, trials ) ):
+        started = time.perf_counter()
+        for _ in range( max( 1, repeats ) ):
+            call()
+        samples.append( 1000.0 * ( time.perf_counter() - started ) / max( 1, repeats ) )
+    samples.sort()
+    return statistics.median( samples ), samples[0], samples[-1], len( samples )
+
+
+def _sample_frames( video_path, count ):
+    """`count` decoded frames spread from 20% to 80% of the file."""
+    import cv2
+    capture = cv2.VideoCapture( video_path )
+    frames = []
+    try:
+        total = int( capture.get( cv2.CAP_PROP_FRAME_COUNT ) )
+        for index in range( count ):
+            position = int( total * ( 0.2 + 0.6 * index / max( 1, count - 1 ) ) )
+            capture.set( cv2.CAP_PROP_POS_FRAMES, position )
+            ok, frame = capture.read()
+            if ok and frame is not None:
+                frames.append( frame )
+    finally:
+        capture.release()
+    return frames
+
+
+def _reverse_op_costs( frames, args, logger ):
+    """
+    Part 1: per-frame cost of each piece of the compositor, on real frames.
+
+    Single-threaded OpenCV: render workers are threads in one process and
+    share OpenCV's pool, so with every worker busy an op gets about one
+    core. Timing it with every core free would understate it. Part 2 runs
+    the real concurrency and is the number to trust for wall clock.
+    """
+    import cv2
+    import numpy as np
+    import betautils_censor as bu_censor
+
+    height, width = frames[0].shape[:2]
+    rows = []
+    previous_threads = cv2.getNumThreads()
+    cv2.setNumThreads( 1 )
+    try:
+        def record( name, call ):
+            median_ms, low_ms, high_ms, trials = _time_call_ms( call, args.trials, args.repeats )
+            rows.append( { 'op': name, 'ms_per_frame': round( median_ms, 3 ),
+                           'ms_min': round( low_ms, 3 ), 'ms_max': round( high_ms, 3 ),
+                           'trials': trials } )
+            logger.debug( "reverse: %-34s %8.2f ms (%.2f-%.2f, %d trial(s))"%(
+                name, median_ms, low_ms, high_ms, trials ) )
+
+        frame = frames[0]
+        record( "copy original (needed by every window)", lambda: frame.copy() )
+
+        for style in REVERSE_FRAME_STYLES:
+            box = _full_frame_box( width, height, style )
+            working = frame.copy()
+            record( "frame layer: %s"%( _style_label( style ), ),
+                    lambda box=box, working=working: bu_censor.censor_image( working, box ) )
+
+        blurred = frame.copy()
+        bu_censor.censor_image( blurred, _full_frame_box( width, height, REVERSE_PIPELINE_STYLE ) )
+        for size_label, area_fraction in REVERSE_WINDOW_AREA_FRACTIONS:
+            rects = reverse_window_rects( width, height, area_fraction, 2 )
+            working = blurred.copy()
+            record( "2 show windows, %s size"%( size_label, ),
+                    lambda rects=rects, working=working: [
+                        reverse_blend_window( working, frame, rect, REVERSE_WINDOW_SHAPE,
+                                              REVERSE_WINDOW_FEATHER ) for rect in rects ] )
+
+            rect = rects[0]
+            x, y, w, h = rect
+            censored = frame.copy()
+            region_box = { 'x': x, 'y': y, 'w': w, 'h': h,
+                           'censor_style': REVERSE_CENSORED_WINDOW_STYLE, 'censor_shape': 'box',
+                           'censor_sticker_seed': 0.5, 'label': 'reverse_window',
+                           'score': 1.0, 'start': 0.0, 'end': 1.0 }
+
+            def censored_window( rect=rect, region_box=region_box, working=working,
+                                 censored=censored ):
+                bu_censor.censor_image( censored, region_box )
+                reverse_blend_window( working, censored, rect, REVERSE_WINDOW_SHAPE,
+                                      REVERSE_WINDOW_FEATHER )
+            record( "1 censored window, %s size"%( size_label, ), censored_window )
+
+        other = frames[-1]
+        output = np.empty_like( frame )
+        record( "fade: scalar blend of two frames",
+                lambda: cv2.addWeighted( frame, 0.5, other, 0.5, 0.0, dst=output ) )
+
+        show_rects = reverse_window_rects( width, height, REVERSE_WINDOW_AREA_FRACTIONS[0][1], 2 )
+        record( "whole triggered frame (pipeline pass)",
+                lambda: reverse_composite( frame, REVERSE_PIPELINE_STYLE, show_rects ) )
+    finally:
+        cv2.setNumThreads( previous_threads )
+    return rows
+
+
+def _merged_seconds( intervals, limit ):
+    """Total length of the union of (start, end) intervals, clipped to [0, limit]."""
+    total = 0.0
+    current_start = current_end = None
+    for start, end in sorted( intervals ):
+        start, end = max( 0.0, start ), min( limit, end )
+        if end <= start:
+            continue
+        if current_end is None or start > current_end:
+            if current_end is not None:
+                total += current_end - current_start
+            current_start, current_end = start, end
+        else:
+            current_end = max( current_end, end )
+    if current_end is not None:
+        total += current_end - current_start
+    return total
+
+
+def trigger_seconds( sample_times, sample_fps, hold_seconds, duration_seconds ):
+    """
+    Seconds a trigger would be live, given the times it fired.
+
+    Each firing covers its own sample period plus the hold. The union is
+    taken, so overlapping holds are not double counted.
+    """
+    period = 1.0 / sample_fps if sample_fps else 0.0
+    return _merged_seconds( [ ( t, t + period + hold_seconds ) for t in sample_times ],
+                            duration_seconds )
+
+
+def _reverse_trigger_share( args, logger ):
+    """
+    Part 3: how much of each file's RUNTIME a trigger would hold on.
+
+    The decision is denominated in render seconds per file, so this is
+    weighted by duration (seconds triggered / seconds of video), never by
+    counting detections. Untriggered frames under passthrough cost what
+    they cost today, so this share is the multiplier on Part 2's cost.
+
+    Uses whole-file detection caches of the selected backend only. A
+    preview slice cannot say what share of the FILE is triggered, and two
+    backends' boxes for one file would double count. Raw detections stand
+    in for the trigger's post-suppression ones; the labels are
+    items_to_censor, standing in for the window labels that do not exist
+    yet. Both are approximations and are logged as such.
+    """
+    labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
+    backend_name = getattr( args, 'backend', None ) or bu_detector.selected_backend_name()
+    floor = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    if args.trigger_min_prob < floor:
+        logger.warning( "trigger min_prob %.2f is below the cache floor global_min_prob %.2f; "
+                        "detections under %.2f were never cached, so the share is a floor"%(
+                            args.trigger_min_prob, floor, floor ) )
+
+    sources = _source_videos()
+    path_by_hash = {}
+    for source in sources:
+        try:
+            path_by_hash[ bu_hash.md5_for_file( source['path'], 16 ) ] = source['path']
+        except OSError as err:
+            logger.warning( "cannot read %s: %s"%( source['path'], err ) )
+    bu_hash.flush_file_hash_memo()
+
+    groups = {}
+    for path in glob.glob( os.path.join( bu_cache.VID_HASH_DIR, '*.gz' ) ):
+        parsed = bu_cache.parse_any_cache_name( path )
+        if ( not parsed or parsed['preview_suffix'] or parsed['backend'] != backend_name
+                or parsed['file_hash'] not in path_by_hash ):
+            continue
+        key = ( parsed['file_hash'], parsed['size'], parsed['fps'], parsed['detection_key'] )
+        groups.setdefault( key, [] ).append( path )
+
+    # One configuration per file: the finest sample rate, since a sparser
+    # one undercounts short triggers. Ties go to the larger picture size.
+    chosen = {}
+    for key in groups:
+        file_hash, size, fps, _detection_key = key
+        if file_hash not in chosen or ( fps, size ) > chosen[file_hash][1:3]:
+            chosen[file_hash] = ( key, fps, size )
+
+    rows = []
+    for file_hash, ( key, fps, size ) in sorted( chosen.items() ):
+        duration = bu_video.probe_duration_seconds( path_by_hash[file_hash] )
+        if not duration:
+            continue
+        times = set()
+        for path in groups[key]:
+            try:
+                for box in bu_hash.read_json( path ):
+                    if ( box.get( 'class_id' ) in labels
+                            and float( box.get( 'score', 0.0 ) ) >= args.trigger_min_prob ):
+                        times.add( round( float( box.get( 't', 0.0 ) ), 4 ) )
+            except Exception as err:                       # noqa: BLE001
+                logger.debug( "reverse: skipping unreadable cache %s: %r"%( path, err ) )
+        covered = trigger_seconds( times, fps, args.trigger_hold, duration )
+        rows.append( { 'file_hash': file_hash,
+                       'source': os.path.basename( path_by_hash[file_hash] ),
+                       'duration_seconds': round( duration, 1 ),
+                       'triggered_seconds': round( covered, 1 ),
+                       'share': round( covered / duration, 4 ),
+                       'cache_configuration': '%s @%d %gfps'%( backend_name, size, fps ) } )
+
+    total_duration = sum( row['duration_seconds'] for row in rows )
+    total_triggered = sum( row['triggered_seconds'] for row in rows )
+    return {
+        'backend': backend_name,
+        'labels': sorted( labels ),
+        'trigger_min_prob': args.trigger_min_prob,
+        'trigger_hold_seconds': args.trigger_hold,
+        'files_with_whole_file_cache': len( rows ),
+        'source_files': len( path_by_hash ),
+        'duration_seconds': round( total_duration, 1 ),
+        'triggered_seconds': round( total_triggered, 1 ),
+        'share_by_duration': ( total_triggered / total_duration ) if total_duration else None,
+        'share_per_file': describe( [ row['share'] for row in rows ] ),
+        'files': rows,
+    }
+
+
+def bench_reverse( args, logger ):
+    """
+    What reverse mode would cost to render on this machine, and how much
+    of the library it would apply to.
+
+      Part 1  per-frame cost of each compositor piece on real frames: each
+              candidate frame style through the real renderers, window
+              blends at typical and large sizes, a censored window, the
+              fade blend.
+      Part 2  the real render pipeline twice over the same footage (decode,
+              composite, the real chunk encode command, the real worker
+              count): as today with no censor, then with the frame layer and
+              two show windows on every frame. The difference is what a
+              triggered frame costs; the size difference is what blurring
+              does to the encode.
+      Part 3  the share of each file's runtime a trigger would hold on,
+              from whole-file detection caches, weighted by duration.
+
+    The three combine into the number the decision needs: how much longer
+    a whole render takes in reverse mode. Nothing real is touched; encodes
+    go to a scratch directory that is removed afterwards.
+    """
+    import shutil
+    import tempfile
+    import cv2
+
+    video_path = _pick_encode_video( args, logger )
+    if not video_path:
+        logger.warning( "no source videos found; pass --video" )
+        return {}
+    capture = cv2.VideoCapture( video_path )
+    try:
+        width = int( capture.get( cv2.CAP_PROP_FRAME_WIDTH ) )
+        height = int( capture.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
+        fps = capture.get( cv2.CAP_PROP_FPS ) or 30.0
+        total_frames = int( capture.get( cv2.CAP_PROP_FRAME_COUNT ) )
+    finally:
+        capture.release()
+    if not ( width and height and total_frames ):
+        raise RuntimeError( "cannot read %s"%( video_path, ) )
+
+    logger.info( "reverse: %s, %dx%d at %.3g fps (the source with the most pixels per frame, "
+                 "so the worst case; --video to pick another)"%(
+                     os.path.basename( video_path ), width, height, fps ) )
+    result = { 'video': video_path, 'width': width, 'height': height, 'fps': fps }
+
+    # --- Part 1 ---
+    frames = _sample_frames( video_path, 6 )
+    if not frames:
+        raise RuntimeError( "decoded no frames from %s"%( video_path, ) )
+    logger.info( "" )
+    logger.info( "part 1: compositor pieces, single-threaded, %d real frame(s), median of %d "
+                 "trial(s) x %d repeat(s)"%( len( frames ), args.trials, args.repeats ) )
+    op_rows = _reverse_op_costs( frames, args, logger )
+    for row in op_rows:
+        logger.info( "  %-40s %9.2f ms%s"%(
+            row['op'], row['ms_per_frame'],
+            '   (one call: too slow to repeat)' if row['trials'] == 1 else
+            '   (%.2f-%.2f)'%( row['ms_min'], row['ms_max'] ) ) )
+    result['ops'] = op_rows
+    del frames
+
+    # --- Part 2 ---
+    workers = args.workers or bu_render.resolve_worker_count( 1 << 30 )
+    threads = bu_render._encoder_threads( workers )
+    segments = encode_segments( total_frames, fps, args.seconds, workers )
+    encoder = _baseline_encoder()
+    show_rects = reverse_window_rects( width, height, REVERSE_WINDOW_AREA_FRACTIONS[0][1], 2 )
+    logger.info( "" )
+    logger.info( "part 2: real pipeline, %d worker(s), %d encoder thread(s) each, %d frames per "
+                 "worker from %.0fs in, %s"%(
+                     len( segments ), threads, segments[0][1], segments[0][0] / fps,
+                     _encoder_label( encoder ) ) )
+    scratch = tempfile.mkdtemp( prefix='betabench-reverse-',
+                                dir=betaconst.benchmark_dir if os.path.isdir( betaconst.benchmark_dir )
+                                else None )
+    passes = []
+    try:
+        for name, transform in (
+                ( 'today (no censor)', None ),
+                ( 'reverse, every frame triggered',
+                  lambda frame: reverse_composite( frame, REVERSE_PIPELINE_STYLE, show_rects ) ) ):
+            out_dir = os.path.join( scratch, 'pass%d'%( len( passes ), ) )
+            os.makedirs( out_dir )
+            wall, results = _run_segments( video_path, segments, width, height, fps,
+                                           encoder, threads, out_dir, frame_transform=transform )
+            frames_done = sum( r['frames'] for r in results )
+            errors = [ r['error'] for r in results if r['error'] ]
+            passes.append( { 'pass': name, 'frames': frames_done, 'seconds': round( wall, 3 ),
+                             'fps': ( frames_done / wall ) if wall else 0.0,
+                             'bytes': ( sum( os.path.getsize( r['path'] ) for r in results )
+                                        if not errors else None ),
+                             'error': errors[0] if errors else None } )
+            shutil.rmtree( out_dir, ignore_errors=True )
+    finally:
+        shutil.rmtree( scratch, ignore_errors=True )
+    for row in passes:
+        if row['error']:
+            logger.warning( "  %-32s failed: %s"%( row['pass'], row['error'] ) )
+        else:
+            logger.info( "  %-32s %7.1f fr/s  %8.1f MB  (%d frames in %.1fs)"%(
+                row['pass'], row['fps'], row['bytes'] / 1e6, row['frames'], row['seconds'] ) )
+    result['pipeline'] = { 'workers': len( segments ), 'encoder_threads': threads,
+                           'frames_per_worker': segments[0][1], 'encoder': encoder,
+                           'frame_style': REVERSE_PIPELINE_STYLE, 'passes': passes }
+
+    # --- Part 3 ---
+    logger.info( "" )
+    logger.info( "part 3: share of runtime a trigger would hold on (min_prob %.2f, hold %.2fs)"%(
+        args.trigger_min_prob, args.trigger_hold ) )
+    share = _reverse_trigger_share( args, logger )
+    result['trigger_share'] = share
+    if share['files_with_whole_file_cache']:
+        logger.info( "  %d of %d source file(s) have a whole-file %s cache; %.1f%% of their "
+                     "%s of runtime would be triggered"%(
+                         share['files_with_whole_file_cache'], share['source_files'],
+                         share['backend'], 100.0 * share['share_by_duration'],
+                         _hours_minutes( share['duration_seconds'] ) ) )
+        logger.info( "  per file: %s"%( format_describe( share['share_per_file'], fmt='%.2f' ), ) )
+        for row in sorted( share['files'], key=lambda r: -r['share'] ):
+            logger.debug( "  %5.1f%%  %7.1fs of %7.1fs  %s"%(
+                100.0 * row['share'], row['triggered_seconds'], row['duration_seconds'],
+                row['source'] ) )
+    else:
+        logger.info( "  no whole-file %s detection caches for these sources, so no share; "
+                     "run betatv.py on the library first"%( share['backend'], ) )
+
+    _log_reverse_summary( logger, result, width, height )
+    return { 'reverse': result }
+
+
+def _hours_minutes( seconds ):
+    """'2h 05m', '7m 30s' or '20s': runtime at a readable precision."""
+    seconds = int( round( seconds ) )
+    if seconds >= 3600:
+        return "%dh %02dm"%( seconds // 3600, ( seconds % 3600 ) // 60 )
+    if seconds >= 60:
+        return "%dm %02ds"%( seconds // 60, seconds % 60 )
+    return "%ds"%( seconds, )
+
+
+def predicted_reverse_slowdown( today_fps, triggered_fps, real_fps, share ):
+    """
+    Fraction by which a whole render gets longer in reverse mode.
+
+    A triggered frame costs 1/triggered_fps - 1/today_fps more than today
+    (both measured on the same footage and workers). Under passthrough an
+    untriggered frame costs what it does today. So the extra time is
+    share x that difference per frame, against a real render's 1/real_fps
+    per frame, or the bench's own baseline when no real render at this
+    resolution is on record.
+
+    Negative means reverse mode renders FASTER, and is reported as such
+    rather than floored at zero: a blurred frame can cost less to encode
+    than it cost to blur, and flooring would hide exactly that finding.
+
+    Slightly pessimistic: a reverse render no longer draws today's per-box
+    censors, and that saving is not credited.
+    """
+    if not ( today_fps and triggered_fps and share is not None ):
+        return None
+    extra_per_frame = 1.0 / triggered_fps - 1.0 / today_fps
+    per_frame_now = 1.0 / ( real_fps or today_fps )
+    return share * extra_per_frame / per_frame_now
+
+
+def _log_reverse_summary( logger, result, width, height ):
+    """The handful of numbers the plan's open choices rest on."""
+    passes = result['pipeline']['passes']
+    today, triggered = passes[0], passes[1]
+    share = result['trigger_share'].get( 'share_by_duration' )
+    real_fps, real_runs = real_render_fps( width, height )
+    ops = { row['op']: row for row in result['ops'] }
+
+    logger.info( "" )
+    logger.info( REVERSE_SUMMARY_BEGIN )
+    logger.info( "source: %dx%d; %d render worker(s)"%(
+        width, height, result['pipeline']['workers'] ) )
+    frame_layers = [ row for row in result['ops'] if row['op'].startswith( 'frame layer' ) ]
+    cheapest = min( frame_layers, key=lambda r: r['ms_per_frame'] )
+    logger.info( "frame styles, ms per frame on one core:" )
+    for row in frame_layers:
+        note = ( '   cheapest' if row is cheapest
+                 else '   too slow for a frame style' if row['ms_per_frame'] > REVERSE_SLOW_CALL_MS
+                 else '' )
+        logger.info( "  %-28s %9.2f%s"%( row['op'][ len( 'frame layer: ' ): ], row['ms_per_frame'],
+                                         note ) )
+    whole = ops.get( 'whole triggered frame (pipeline pass)' )
+    if whole:
+        logger.info( "whole triggered frame (%s + 2 typical windows): %.2f ms on one core"%(
+            _style_label( REVERSE_PIPELINE_STYLE ), whole['ms_per_frame'] ) )
+
+    if today['error'] or triggered['error']:
+        logger.info( "pipeline failed, so no wall-clock estimate; see the log" )
+    else:
+        logger.info( "pipeline: today %.1f fr/s, every frame triggered %.1f fr/s (%+.0f%% render "
+                     "time on fully triggered footage)"%(
+                         today['fps'], triggered['fps'],
+                         100.0 * ( today['fps'] / triggered['fps'] - 1.0 ) ) )
+        logger.info( "encoded size, triggered vs today: %.2fx"%(
+            triggered['bytes'] / today['bytes'] if today['bytes'] else float( 'nan' ) ) )
+        slowdown = predicted_reverse_slowdown( today['fps'], triggered['fps'], real_fps, share )
+        if slowdown is None:
+            logger.info( "whole-render estimate: needs part 3's trigger share, which had no "
+                         "whole-file caches to read" )
+        else:
+            basis = ( "your real %dx%d renders (%.1f fr/s, %d run(s))"%(
+                          width, height, real_fps, real_runs ) if real_fps
+                      else "this bench's own baseline (no real render at this size on record)" )
+            logger.info( "whole-render estimate at %.1f%% triggered: about %+.1f%% render time, "
+                         "against %s"%( 100.0 * share, 100.0 * slowdown, basis ) )
+        if triggered['fps'] > today['fps']:
+            logger.info( "triggered frames rendered FASTER than untouched ones: the encoder saves "
+                         "more on a blurred frame than the blur costs. Footage-dependent; noisy, "
+                         "detailed sources show it most" )
+    logger.info( "approximations: trigger share uses raw detections of items_to_censor at the "
+                 "trigger's min_prob, standing in for post-suppression window labels; windows "
+                 "are fixed-size and fixed-position" )
+    logger.info( REVERSE_SUMMARY_END )
+
+
 SUBCOMMANDS = {
     'decode': bench_decode,
     'detect': bench_detect,
@@ -2756,6 +3336,7 @@ SUBCOMMANDS = {
     'structure-scan': bench_structure_scan,
     'concurrency': bench_concurrency,
     'encode': bench_encode,
+    'reverse': bench_reverse,
 }
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
@@ -2838,6 +3419,11 @@ def build_parser():
              "this needs for the usual 'which styles are expensive' question; raise it to 7+ "
              "when two styles are close enough that the printed spread hides the difference. "
              "Also the overlap trials for 'concurrency' (default: 3)" )
+    parser.add_argument( '--trigger-min-prob', type=float, default=0.30,
+        help="reverse only: the trigger's min_prob when measuring how much of each file a "
+             "trigger would hold on (default: 0.30, the plan's proposal)" )
+    parser.add_argument( '--trigger-hold', type=float, default=0.5,
+        help="reverse only: seconds the trigger holds after its last firing (default: 0.5)" )
     parser.add_argument( '--no-blur-approximation', action='store_true',
         help="force blur_fast_approximation off for this measurement" )
 
