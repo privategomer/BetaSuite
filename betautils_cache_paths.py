@@ -894,6 +894,54 @@ def cache_paths_for_configuration( configuration, fps, min_prob ):
              if len( paths ) == len( configuration.picture_sizes ) }
 
 
+def videos_across_sample_rates( configuration, min_prob=None, rates=None ):
+    """
+    {file_hash: cache_paths} for one configuration at every sample rate.
+
+    A profile can set its own video_censor_fps (quick_cut samples at 18),
+    and the rate is in the cache name and the detection key, so a
+    per-rate lookup sees only the videos detected at that rate: 48 of 56
+    in the 2026-10-06 library, with every quick-cut video missing. This
+    gathers the same backend, sizes and variant at each rate in `rates`
+    (default: every rate a profile can select). A video cached at two
+    rates keeps the newer set, which is what its last run used.
+
+    Args:
+        configuration: The CachedConfiguration found at the global rate.
+        min_prob: Confidence floor. Defaults to the configured one.
+        rates: Sample rates to look at.
+
+    Returns:
+        ({file_hash: [cache_path per size]}, sorted rates that had videos).
+    """
+    if min_prob is None:
+        min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    if rates is None:
+        rates = bu_detector.profile_sample_rates( configuration.backend_name )
+    chosen = {}
+    rates_used = set()
+    for rate in sorted( rates ):
+        candidates = [
+            config for config in discover_cached_configurations(
+                fps=rate, min_prob=min_prob, backend_names=[ configuration.backend_name ] )
+            if config.picture_sizes == configuration.picture_sizes
+            and config.preview_suffix == configuration.preview_suffix ]
+        if configuration.variant:
+            candidates = [ config for config in candidates if config.variant == configuration.variant ]
+        elif len( candidates ) > 1:
+            # No variant to tell them apart: guessing would blend two models.
+            candidates = [ config for config in candidates
+                           if config.detection_key == configuration.detection_key ]
+        for config in candidates:
+            for file_hash, paths in cache_paths_for_configuration( config, rate, min_prob ).items():
+                newest = max( os.path.getmtime( path ) for path in paths )
+                if file_hash not in chosen or newest > chosen[file_hash][0]:
+                    chosen[file_hash] = ( newest, paths )
+                rates_used.add( rate )
+    return ( { file_hash: paths for file_hash, ( _newest, paths ) in sorted( chosen.items() ) },
+             sorted( rates_used ) )
+
+
 def _size_in_cache_name( name, backend_name, fps, min_prob ):
     """
     Recover the detection size from a cache filename, or None.

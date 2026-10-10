@@ -265,6 +265,13 @@ def _read_raw_boxes( cache_paths ):
     return boxes
 
 
+def forget_raw_boxes( cache_paths ):
+    """Drop one video's parsed caches, for a caller that will not read them again."""
+    wanted = set( cache_paths )
+    for key in [ key for key in _RAW_BOX_CACHE if key[0] in wanted ]:
+        del _RAW_BOX_CACHE[key]
+
+
 def replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
                              shot_cuts_by_hash=None ):
     """
@@ -347,6 +354,92 @@ def replay_tracking_inputs( file_hash, video_path, cache_paths, raw_boxes, vid_w
     return boxes, tracking
 
 
+def replay_rendered( file_hash, video_path, cache_paths, raw_boxes, vid_w, vid_h, backend_name,
+                     logger=None, tracking=None ):
+    """
+    (rendered, stats, tracking) for one video, exactly as a run renders it.
+
+    The whole production pipeline (bu_track.prepare_boxes_for_render)
+    with the profile, shot cuts and sample rate a real run would use
+    (replay_tracking_context). For the per-video replay tools, which
+    used to rebuild suppression -> process_raw_box -> smooth_boxes by
+    hand and so replayed without promotion, the geometry filter, cuts
+    or the profile's overrides. raw_boxes is consumed; pass a copy.
+    tracking: replay_tracking_context's dict when the caller already has it.
+    """
+    if tracking is None:
+        tracking = replay_tracking_context( file_hash, video_path, cache_paths, backend_name )
+    rendered, stats = bu_track.prepare_boxes_for_render(
+        raw_boxes, vid_w, vid_h, shot_cut_times=tracking['shot_cut_times'],
+        backend_name=backend_name, logger=logger or _QUIET_LOGGER,
+        profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'] )
+    return rendered, stats, tracking
+
+
+@contextlib.contextmanager
+def class_suppression_in_effect( backend_name, rules ):
+    """The production pipeline reads `rules` as backend_name's class_suppression, then the old ones."""
+    block = betaconfig.detector_backend.setdefault( backend_name, {} )
+    had = 'class_suppression' in block
+    saved = copy.deepcopy( block.get( 'class_suppression' ) )
+    block['class_suppression'] = copy.deepcopy( rules )
+    bu_config.invalidate_config_caches()
+    try:
+        yield
+    finally:
+        if had:
+            block['class_suppression'] = saved
+        else:
+            block.pop( 'class_suppression', None )
+        bu_config.invalidate_config_caches()
+
+
+@contextlib.contextmanager
+def item_overrides_in_effect( backend_name, patch, profile_name=None ):
+    """
+    The pipeline reads patch ({label: {key: value}}) whichever tier would shadow it.
+
+    A key resolves shared tier < backend < active variant < profile, so
+    writing only the shared betaconfig.item_overrides (what replay_tune
+    used to do) is overridden by any backend, variant or profile that
+    sets the same key, and the variant silently replays the baseline.
+    Backend-tunable keys go to the backend tier, and also to the active
+    variant's and `profile_name`'s tier where those set the key; the
+    rest (censor_style, censor_shape) go to the shared tier, the only
+    one that reads them. Everything is restored on exit.
+    """
+    saved_shared = copy.deepcopy( getattr( betaconfig, 'item_overrides', {} ) )
+    had_backend = backend_name in betaconfig.detector_backend
+    saved_backend = copy.deepcopy( betaconfig.detector_backend.get( backend_name ) )
+    try:
+        block = betaconfig.detector_backend.setdefault( backend_name, {} )
+        variant_name = bu_detector.selected_variant_name( backend_name )
+        shadowing = [
+            ( block.get( 'variants' ) or {} ).get( variant_name ) if variant_name else None,
+            ( ( block.get( 'profiles' ) or {} ).get( 'variants' ) or {} ).get( profile_name )
+            if profile_name else None ]
+        shared = betaconfig.item_overrides = copy.deepcopy( saved_shared )
+        for label, keys in ( patch or {} ).items():
+            for key, value in keys.items():
+                if key not in bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS:
+                    shared.setdefault( label, {} )[key] = copy.deepcopy( value )
+                    continue
+                block.setdefault( 'item_overrides', {} ).setdefault( label, {} )[key] = value
+                for tier in shadowing:
+                    overrides = ( tier or {} ).get( 'item_overrides' ) or {}
+                    if key in overrides.get( label, {} ):
+                        overrides[label][key] = value
+        bu_config.invalidate_config_caches()
+        yield
+    finally:
+        betaconfig.item_overrides = saved_shared
+        if had_backend:
+            betaconfig.detector_backend[backend_name] = saved_backend
+        else:
+            betaconfig.detector_backend.pop( backend_name, None )
+        bu_config.invalidate_config_caches()
+
+
 def profile_masking( profiles, label, key, backend_name ):
     """
     {profile_name: value} for profiles among `profiles` that set label's key.
@@ -363,8 +456,64 @@ def profile_masking( profiles, label, key, backend_name ):
     return masking
 
 
+# A detection at or above this score is treated as probably real when a
+# replay asks how many of them a candidate leaves uncensored. Most
+# detections of the censored labels clear it (exposed_breast's median is
+# 0.76, exposed_vulva's 0.55); a short track of them being dropped is far
+# more likely a brief real exposure than noise.
+CONFIDENT_SCORE = 0.5
+
+
+def confident_detections( raw_boxes, labels, confident_score ):
+    """{label: [(t, centre_x, centre_y), ...]} for raw detections at or above confident_score."""
+    found = {}
+    for raw in raw_boxes:
+        label = raw.get( 'class_id' )
+        if label not in labels or raw.get( 'score', 0.0 ) < confident_score:
+            continue
+        found.setdefault( label, [] ).append(
+            ( raw['t'], raw['x'] + raw['w'] / 2.0, raw['y'] + raw['h'] / 2.0 ) )
+    return found
+
+
+def uncovered_detections( detections, rendered ):
+    """
+    {label: how many of detections no rendered box of that label covers}.
+
+    Covered means a rendered box of the same label is live at the
+    detection's time (start <= t <= end) and contains its centre. Centre
+    rather than overlap, because rendered boxes are padded or shrunk by
+    the style's area safety and a centre survives either.
+    """
+    import bisect
+
+    by_label = {}
+    for box in rendered:
+        by_label.setdefault( box.get( 'label' ), [] ).append( box )
+    uncovered = {}
+    for label, points in detections.items():
+        boxes = sorted( by_label.get( label, [] ), key=lambda box: box['start'] )
+        starts = [ box['start'] for box in boxes ]
+        longest = max( ( box['end'] - box['start'] for box in boxes ), default=0.0 )
+        missed = 0
+        for t, centre_x, centre_y in points:
+            index = bisect.bisect_right( starts, t ) - 1
+            covered = False
+            while index >= 0 and starts[index] >= t - longest:
+                box = boxes[index]
+                if ( box['end'] >= t and box['x'] <= centre_x <= box['x'] + box['w']
+                     and box['y'] <= centre_y <= box['y'] + box['h'] ):
+                    covered = True
+                    break
+                index -= 1
+            if not covered:
+                missed += 1
+        uncovered[label] = missed
+    return uncovered
+
+
 def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_hash=None,
-                    seed=REPLAY_SEED ):
+                    seed=REPLAY_SEED, confident_score=CONFIDENT_SCORE, cut_transform=None ):
     """
     Replay one configuration's caches and return everything a decision needs.
 
@@ -405,6 +554,13 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         seed: The RNG seed every replay starts from. Change it to check
             that a result is not an artefact of one particular draw;
             never vary it WITHIN a comparison.
+        confident_score: Detections at or above this score are counted
+            in confident_by_label, and those no rendered box covers in
+            confident_uncovered_by_label.
+        cut_transform: Optional f(cuts) -> cuts applied to the cuts
+            tracking stops at, after the profile is chosen from the raw
+            ones. analyze_cut_bursts uses it to try merging cut bursts
+            without changing which profile a file gets.
 
     Returns:
         A metrics dict: rendered/interpolated/track counts, the tracking
@@ -427,6 +583,8 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         'videos_measured': 0,
         'coverage_by_label': { label: 0.0 for label in labels },
         'rendered_by_label': { label: 0 for label in labels },
+        'confident_by_label': { label: 0 for label in labels },
+        'confident_uncovered_by_label': { label: 0 for label in labels },
         # {file_hash: structure profile the replay ran it under}, so a
         # caller can tell which configured values a file never reads.
         'profiles': {},
@@ -452,6 +610,9 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         tracking = replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
                                             shot_cuts_by_hash )
         tracking_cuts = tracking['shot_cut_times']
+        if cut_transform is not None and tracking_cuts:
+            tracking_cuts = cut_transform( tracking_cuts )
+        confident = confident_detections( raw_boxes, labels, confident_score )
         profile_name = tracking['profile_name']
         sample_fps = tracking['sample_fps']
         metrics['profiles'][file_hash] = profile_name
@@ -461,10 +622,13 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
                 # raw_boxes is already a fresh deep copy from
                 # _read_raw_boxes, so prepare_boxes_for_render may mutate
                 # it without touching the cached parse.
+                # Quiet: a replay is not a run, and its per-video lines
+                # (3,800 in one analysis pass) buried the production log.
                 rendered, stats = bu_track.prepare_boxes_for_render(
                     raw_boxes, vid_w, vid_h,
                     shot_cut_times=tracking_cuts, backend_name=backend_name,
-                    profile_name=profile_name, sample_fps=sample_fps )
+                    logger=_QUIET_LOGGER, profile_name=profile_name,
+                    sample_fps=sample_fps )
 
         metrics['rendered_boxes'] += len( rendered )
         metrics['interpolated'] += stats.get( 'interpolated', 0 )
@@ -475,6 +639,10 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
             entry['total'] if isinstance( entry, dict ) else entry
             for entry in ( stats.get( 'suppression_counts' ) or {} ).values() )
         metrics['geometry_filtered'] += stats.get( 'geometry_filtered', 0 )
+
+        for label, missed in uncovered_detections( confident, rendered ).items():
+            metrics['confident_by_label'][label] += len( confident[label] )
+            metrics['confident_uncovered_by_label'][label] += missed
 
         for box in rendered:
             label = box.get( 'label' )

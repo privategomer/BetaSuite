@@ -671,6 +671,28 @@ under 0.20) with the detection that removed them. Add one pair at a
 time and look at the output: a suppression rule removes real detections
 when it is wrong.
 
+**Looking at the output** is what `tools/tuning/suppression_ab.sh` is
+for. It replays every cached video under the current rules and under
+the bench's suggestions (each configured pair retuned where there is a
+same-spot cluster, dropped where the bench measured none, kept where
+there were too few overlaps to measure; never a new pair), ranks the
+videos by box-seconds censored under one set and not the other, and
+renders the top two (`AB_VIDEOS`) at the windows where they differ
+most:
+
+| file | what it shows |
+|---|---|
+| `*_diff.mp4` | outlines, no censoring: grey where both sets censor, orange where only the current rules do, magenta where only the proposed rules do |
+| `*_ab.mp4` | the real censor under each set, current on the LEFT, proposed on the RIGHT |
+
+Magenta is what the proposed rules restore: real detections the current
+rules removed, or misfires they were right to remove. Orange is what
+the proposed rules would stop censoring. `AB_PROPOSED=rules.json` tests
+any other set (the `class_suppression` shape); `AB_FULL=1` also renders
+the chosen videos whole under both sets. Every sample rate's caches are
+ranked, so quick-cut videos detected at 18 fps are included. Nothing
+touches `betaconfig.py`.
+
 > **Before 2026-10-10 the suggestions were wrong.** Pairs were formed by
 > timestamp alone, so every video's boxes at t=12.0s were compared with
 > every other video's, and `min_iou` was the 25th percentile of all
@@ -1270,15 +1292,25 @@ only if single-frame noise is a visible problem. Drop the boxes of an
 unconfirmed track and its interpolated boxes go with it, a track that
 never confirmed contributes nothing at all.
 
-> **Decided (2026-10-10): 2 is the ceiling.** Every label is at 2 or
-> below, and `auto_tune.py` never proposes more (`MinTrackHitsStage.
-> CEILING`). The 2026-09-30 auto_tune run raised all three `nudenet_v3`
-> labels and `retinanet_v2`'s `exposed_breast` to 3, undoing the hand
-> tuning described below; at 3 the 2026-10-09 run withheld 23,311
-> breast and 11,405 vulva boxes that 1 would have drawn (10,569 and
-> 7,140 against 2). The tool scores dropped boxes as noise removed and
-> cannot see that they were the reported symptom, so the ceiling is
-> fixed rather than measured.
+> **Decided (2026-10-10): 2, set by hand.** Every label is at 2. The
+> 2026-09-30 auto_tune run raised all three `nudenet_v3` labels and
+> `retinanet_v2`'s `exposed_breast` to 3, undoing the hand tuning
+> described below; at 3 the 2026-10-09 run withheld 23,311 breast and
+> 11,405 vulva boxes that 1 would have drawn (10,569 and 7,140 against
+> 2). That stage scored every dropped box as noise removed, and a
+> brief real exposure drops exactly like noise.
+>
+> `auto_tune.py`'s stage now asks a different question: how many
+> **confident** detections (score at least `--confident-score`, 0.5)
+> each value leaves uncensored. It tries 1 to 4 with no cap and
+> recommends the strictest value that leaves no more than
+> `--max-confident-loss` (0.1%) of the label's confident detections
+> uncensored beyond the fewest any value leaves: as strict as possible,
+> as long as what it drops is the low-confidence noise. It can come out
+> above or below 2. The share is of confident detections rather than of
+> censored area because area hides the loss: the 23,311 boxes were 1.2%
+> of rendered boxes and under 0.1% of area. A recommendation is a
+> report; nothing is written without `--apply` and a yes.
 
 > **Changed.** Both `nudenet_v3` labels moved from 3 back to 2.
 > At 3, a track needs a third of a second of continuous detection at
@@ -1317,9 +1349,23 @@ and gap setting, because all of those assume continuous single-scene
 footage.
 
 **Tuning.** Lower catches subtler transitions at higher false-positive
-risk. A slow dissolve legitimately produces a short cluster of
-consecutive cut timestamps rather than one; that is fine, a track
-spanning the cluster is correctly reset either way.
+risk. A slow dissolve or a white flash produces a short burst of
+consecutive cut timestamps rather than one (10.0, 10.1, 10.2, 10.3).
+Each cut ends every live track, and the slivers between them are too
+short for a new track to reach `min_track_hits`, so the censor can
+blink off for the length of the burst plus a confirmation.
+
+**Cut bursts are measured, not merged.**
+`tools/analysis/analyze_cut_bursts.py` (also a `run_all_analysis.sh`
+step) replays the caches with each burst collapsed to one cut (cuts
+under `--windows` 0.35s apart, spanning at most `--max-spans` 0.6s,
+keeping the last or the first) and reports, per profile, how many
+confident detections (score at least 0.5) the merge censors that the
+real cuts leave bare, against the risky track assignments it adds. A
+longer chain of close cuts is left alone because it is real rapid
+editing, where merging would carry a track onto someone else. No run
+merges bursts until those numbers say it helps; in the 2026-10-09 run
+four files had a per-file median shot of 0.1s, the shape a burst leaves.
 
 Turn it off entirely if your material never has cuts: the scan is then
 skipped completely, cache read included.

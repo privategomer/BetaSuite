@@ -68,6 +68,10 @@
 #                                     nothing about where to go.
 #   6. analyze_track_breaks.py $VARIANT_FLAG        match_distance / track_max_gap sweeps.
 #   7. analyze_style_flicker.py $VARIANT_FLAG       paired_style gate diagnostics.
+#   7b. analyze_cut_bursts.py $VARIANT_FLAG         Whether merging bursts of shot cuts
+#                                     (fades, flashes) would recover censoring,
+#                                     replayed per profile. Nothing is wired in
+#                                     until its numbers say so.
 #
 #   T. betabench.py encode      Render encode speed and quality per
 #                               encoder on this machine, through the
@@ -204,6 +208,7 @@ STEPS+=("analyze_score_distribution|${PYTHON_BIN} $SCRIPT_DIR/analyze_score_dist
 STEPS+=("analyze_jitter|${PYTHON_BIN} $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLAG --sweep-alpha $ALPHA_SWEEP ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_cut_bursts|${PYTHON_BIN} $SCRIPT_DIR/analyze_cut_bursts.py $VARIANT_FLAG")
 STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
 # Timing steps: run one at a time, after the parallel batch and before
