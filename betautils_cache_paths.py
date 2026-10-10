@@ -866,6 +866,34 @@ def discover_cached_configurations( fps=None, min_prob=None, include_preview=Fal
     return configurations
 
 
+def cache_paths_for_configuration( configuration, fps, min_prob ):
+    """
+    {file_hash: [cache_path per size]} for exactly one CachedConfiguration.
+
+    Only that configuration's videos, detection key and preview suffix,
+    and only videos with a cache at every one of its sizes.
+    discover_full_run_videos answers a different question (the best
+    cache per video for a backend), which is why a preview configuration
+    read through it got the real caches instead of its own.
+    """
+    wanted = set( configuration.file_hashes )
+    by_hash = {}
+    for size in configuration.picture_sizes:
+        for path in glob.glob( _cache_glob( configuration.backend_name, size, fps, min_prob ) ):
+            parsed = parse_cache_name( path, configuration.backend_name, size, fps, min_prob )
+            if not parsed:
+                continue
+            file_hash, detection_key, preview_suffix = parsed
+            if file_hash not in wanted or preview_suffix != configuration.preview_suffix:
+                continue
+            if configuration.detection_key and detection_key != configuration.detection_key:
+                continue
+            by_hash.setdefault( file_hash, {} )[size] = path
+    return { file_hash: [ paths[size] for size in configuration.picture_sizes ]
+             for file_hash, paths in sorted( by_hash.items() )
+             if len( paths ) == len( configuration.picture_sizes ) }
+
+
 def _size_in_cache_name( name, backend_name, fps, min_prob ):
     """
     Recover the detection size from a cache filename, or None.

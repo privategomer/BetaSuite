@@ -96,6 +96,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path, fmt_stats )
 
@@ -236,8 +237,6 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
     under another backend's smoothing config.
     """
     labels_to_sweep = labels_filter or set( betaconfig.items_to_censor )
-    suppression_rules = bu_detector.get_class_suppression( backend_name )
-    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     _reset_events()
     frame_deltas_by_label = {}
     dims_missing = []
@@ -263,19 +262,16 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn( raw_copy, suppression_rules, parts_to_blur )
-
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and ( not labels_filter or res['label'] in labels_filter ):
-                    boxes.append( res )
+            boxes, tracking = bu_tuning.replay_tracking_inputs(
+                file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h,
+                backend_name, labels_filter )
             if not boxes:
                 continue
 
             with bu_track.tracking_observer( _JitterObserver() ):
-                tracked_boxes, _smoothing_stats = smooth_boxes_fn( boxes, backend_name=backend_name )
+                tracked_boxes, _smoothing_stats = smooth_boxes_fn(
+                    boxes, shot_cut_times=tracking['shot_cut_times'], backend_name=backend_name,
+                    profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'] )
 
             # group the ORIGINAL (non-interpolated) boxes by the track id
             # the instrumentation hooks tagged them with, then measure

@@ -25,6 +25,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 
@@ -209,6 +210,145 @@ class TestMinTrackHitsDecisionRule( unittest.TestCase ):
         candidate = _row( 2, '2 hit(s)', _metrics( dropped_unconfirmed=0 ), self.baseline_metrics )
         decision = self._decide( [ self.baseline_row, candidate ] )
         self.assertFalse( decision.accepted )
+
+
+class TestMinTrackHitsCeiling( unittest.TestCase ):
+    """
+    min_track_hits is never proposed above 2. The 2026-09-30 run raised
+    it to 3 and undid a hand-tuned 2. The 2026-10-09 run, at 3, tried
+    only 1 and 2, called both "drops no unconfirmed tracks, so it
+    changes nothing" while they drew 23,311 more boxes, and concluded
+    "no value stayed inside the coverage tolerance" when nothing had
+    failed on coverage.
+    """
+
+    def stage_at( self, baseline ):
+        stage = auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' )
+        stage.baseline_value = lambda: baseline
+        return stage
+
+    def baseline_row( self, value ):
+        metrics = _metrics( dropped_unconfirmed=500, rendered=10000 )
+        row = _row( value, 'baseline (%d)'%( value, ), metrics, metrics )
+        row['verdict'] = 'baseline'
+        return row
+
+    def decide( self, stage, rows ):
+        options = _Options()
+        stage.score_rows( rows, options )
+        return stage.decide( { 'only @640': rows }, options, None )
+
+    def test_nothing_above_the_ceiling_is_ever_tried( self ):
+        for baseline in ( 1, 2, 3, 5 ):
+            values = [ value for value, _label in self.stage_at( baseline ).candidates() ]
+            self.assertTrue( all( value <= 2 for value in values ), ( baseline, values ) )
+        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1 ] )
+        self.assertEqual( [ v for v, _l in self.stage_at( 1 ).candidates() ], [ 2 ] )
+
+    def test_the_ceiling_holds_even_if_the_range_grows( self ):
+        stage = self.stage_at( 2 )
+        stage.VALUES = ( 1, 2, 3, 4, 5 )
+        self.assertEqual( [ v for v, _l in stage.candidates() ], [ 1 ] )
+
+    def test_a_lower_value_reports_what_it_would_restore( self ):
+        stage = self.stage_at( 2 )
+        baseline = self.baseline_row( 2 )
+        lower = _row( 1, '1 hit(s)', _metrics( dropped_unconfirmed=0, rendered=10400 ),
+                      baseline['metrics'] )
+        decision = self.decide( stage, [ baseline, lower ] )
+        self.assertFalse( decision.accepted )
+        self.assertEqual( lower['restored_boxes'], 400 )
+        self.assertIn( 'draws 400 more box(es)', lower['verdict'] )
+        self.assertNotIn( 'changes nothing', lower['verdict'] )
+        self.assertIn( 'nothing stricter than 2 was tried: 2 is the ceiling', decision.reasoning )
+        self.assertIn( 'withholds up to 400 box(es)', decision.reasoning )
+        self.assertNotIn( 'coverage tolerance', decision.reasoning )
+
+    def test_a_stricter_value_failing_coverage_says_so( self ):
+        stage = self.stage_at( 1 )
+        baseline = self.baseline_row( 1 )
+        stricter = _row( 2, '2 hit(s)',
+                         _metrics( dropped_unconfirmed=4000, coverage={ 'exposed_breast': 90.0 } ),
+                         baseline['metrics'] )
+        decision = self.decide( stage, [ baseline, stricter ] )
+        self.assertFalse( decision.accepted )
+        self.assertIn( 'no stricter value stayed inside', decision.reasoning )
+
+    def test_a_stricter_value_inside_tolerance_is_chosen( self ):
+        stage = self.stage_at( 1 )
+        baseline = self.baseline_row( 1 )
+        stricter = _row( 2, '2 hit(s)',
+                         _metrics( dropped_unconfirmed=600, coverage={ 'exposed_breast': 99.9 } ),
+                         baseline['metrics'] )
+        decision = self.decide( stage, [ baseline, stricter ] )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 2 )
+
+
+class TestMaskedStagesAreSkipped( unittest.TestCase ):
+    """auto_tune must not replay candidates no file will ever read."""
+
+    def run_main( self, profile_overrides ):
+        import shutil
+        import tempfile
+        import types as _types
+        out_dir = tempfile.mkdtemp( prefix='betasuite-autotune-' )
+        self.addCleanup( shutil.rmtree, out_dir, True )
+        config = _types.SimpleNamespace( backend_name='nudenet_v3', picture_sizes=[ 640 ],
+                                         label='nudenet_v3/640m @640', variant='640m' )
+        measured = []
+        argv = [ 'auto_tune.py', '--stages', 'track_max_gap', '--labels', 'exposed_breast',
+                 '--out-dir', out_dir, '--backends', 'nudenet_v3' ]
+        with mock.patch( 'sys.argv', argv ), \
+             mock.patch.object( auto_tune.bu_cache, 'configurations_to_analyse',
+                                return_value=[ config ] ), \
+             mock.patch.object( auto_tune.bu_cache, 'discover_full_run_videos',
+                                return_value=( { 'h1': [ 'x.gz' ], 'h2': [ 'y.gz' ] }, {} ) ), \
+             mock.patch.object( auto_tune.bu_cache, 'build_hash_to_video_path',
+                                return_value={ 'h1': '/a.mp4', 'h2': '/b.mp4' } ), \
+             mock.patch.object( auto_tune.bu_tuning, 'replay_tracking_context',
+                                side_effect=lambda h, *a, **k: { 'profile_name':
+                                                                 { 'h1': 'scene', 'h2': 'compilation' }[h] } ), \
+             mock.patch.object( auto_tune.bu_tuning.bu_detector, 'get_profile_item_overrides',
+                                side_effect=lambda profile, label, backend=None:
+                                    profile_overrides.get( profile, {} ) ), \
+             mock.patch.object( auto_tune, 'measure_stage',
+                                side_effect=lambda *a, **k: measured.append( 1 ) or [
+                                    dict( _row( 0.17, 'baseline', _metrics(), _metrics() ),
+                                          verdict='baseline' ) ] ), \
+             mock.patch.object( auto_tune, '_median_shot_seconds_for', return_value=None ):
+            auto_tune.main()
+        import json as _json
+        import os as _os
+        with open( _os.path.join( out_dir, 'decisions.json' ) ) as handle:
+            return measured, _json.load( handle )
+
+    def test_a_key_every_profile_sets_is_not_replayed( self ):
+        measured, decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 },
+                                               'compilation': { 'track_max_gap': 1.5 } } )
+        self.assertEqual( measured, [] )
+        self.assertEqual( len( decisions ), 1 )
+        self.assertFalse( decisions[0]['accepted'] )
+        self.assertIn( 'compilation 1.5, scene 3.0', decisions[0]['reasoning'] )
+
+    def test_a_key_only_some_profiles_set_is_still_measured( self ):
+        measured, _decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 } } )
+        self.assertEqual( len( measured ), 1 )
+
+
+class TestProfileMasking( unittest.TestCase ):
+    """A profile that sets a key hides the backend value from its files."""
+
+    def test_only_profiles_that_set_the_key_mask_it( self ):
+        overrides = { ( 'scene', 'exposed_breast' ): { 'track_max_gap': 3.0 },
+                      ( 'compilation', 'exposed_breast' ): { 'track_max_gap': 1.5 },
+                      ( 'split_screen', 'exposed_breast' ): { 'match_distance_multiplier': 0.8 } }
+        fake = lambda profile, label, backend=None: overrides.get( ( profile, label ), {} )
+        profiles = { 'a': 'scene', 'b': 'compilation', 'c': 'split_screen', 'd': None }
+        with mock.patch.object( bu_tuning.bu_detector, 'get_profile_item_overrides', fake ):
+            masking = bu_tuning.profile_masking( profiles, 'exposed_breast', 'track_max_gap',
+                                                 'nudenet_v3' )
+        self.assertEqual( masking, { 'scene': 3.0, 'compilation': 1.5 } )
 
 
 

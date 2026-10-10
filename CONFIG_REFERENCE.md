@@ -660,8 +660,29 @@ python3 tools/bench/betabench.py suppression
 ```
 
 reports the per-pair IoU and score-margin distributions and proposes
-both thresholds. Add one pair at a time and look at the output: a
-suppression rule removes real detections when it is wrong.
+both thresholds: `min_iou` at the valley between the side-by-side and
+same-spot clusters, and `margin` as the median lead the suppressor holds
+on the same spot. A pair with no same-spot cluster gets no suggestion,
+because a rule there would mostly remove real detections. It then runs
+every configured rule through the production suppression function, as
+configured and as suggested, and prints how many renderable detections
+each removes and what share of those removals sat side by side (IoU
+under 0.20) with the detection that removed them. Add one pair at a
+time and look at the output: a suppression rule removes real detections
+when it is wrong.
+
+> **Before 2026-10-10 the suggestions were wrong.** Pairs were formed by
+> timestamp alone, so every video's boxes at t=12.0s were compared with
+> every other video's, and `min_iou` was the 25th percentile of all
+> overlaps, which sits inside the side-by-side cluster by construction.
+> On the 2026-10-09 caches that was 6.3M "overlaps" for
+> `exposed_breast<-face_femme` against 49k real ones. The `nudenet_v3`
+> rules derived on 2026-09-19 ("used unmodified", below) came from that
+> output. Re-run the bench before trusting any of them; the 2026-10-09
+> run removed 16,780 renderable breast detections for overlapping a
+> face, 16,812 for overlapping a belly and 22,860 for overlapping a
+> covered breast, and `analyze_suppression_pairs.py` puts the bulk of
+> the face and belly overlaps at IoU 0.01 to 0.05.
 
 `margin` semantics validation enforces:
 
@@ -1248,6 +1269,16 @@ the real cost in seconds spelled out.
 only if single-frame noise is a visible problem. Drop the boxes of an
 unconfirmed track and its interpolated boxes go with it, a track that
 never confirmed contributes nothing at all.
+
+> **Decided (2026-10-10): 2 is the ceiling.** Every label is at 2 or
+> below, and `auto_tune.py` never proposes more (`MinTrackHitsStage.
+> CEILING`). The 2026-09-30 auto_tune run raised all three `nudenet_v3`
+> labels and `retinanet_v2`'s `exposed_breast` to 3, undoing the hand
+> tuning described below; at 3 the 2026-10-09 run withheld 23,311
+> breast and 11,405 vulva boxes that 1 would have drawn (10,569 and
+> 7,140 against 2). The tool scores dropped boxes as noise removed and
+> cannot see that they were the reported symptom, so the ceiling is
+> fixed rather than measured.
 
 > **Changed.** Both `nudenet_v3` labels moved from 3 back to 2.
 > At 3, a track needs a third of a second of continuous detection at
