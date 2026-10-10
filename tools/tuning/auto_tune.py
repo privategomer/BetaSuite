@@ -395,11 +395,20 @@ class MinTrackHitsStage( Stage ):
     key = 'min_track_hits'
     summary = "how many real detections a track needs before it is drawn"
 
-    VALUES = ( 1, 2, 3 )
+    # Lower values are measured too, and reported, but never chosen:
+    # they show what the current value withholds.
+    VALUES = ( 1, 2 )
+
+    # Never proposed above this. 2 is the standing decision (2026-10-10):
+    # it was set by hand so brief exposures stay censored, and an
+    # auto_tune raise to 3 on 2026-09-30 undid that until it was caught.
+    # See CONFIG_REFERENCE.md -> default_min_track_hits.
+    CEILING = 2
 
     def candidates( self ):
         baseline = self.baseline_value() or 1
-        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES if value != baseline ]
+        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES
+                 if value != baseline and value <= self.CEILING ]
 
     def score_rows( self, rows, options ):
         baseline = rows[0]
@@ -407,6 +416,14 @@ class MinTrackHitsStage( Stage ):
             dropped = row['metrics']['dropped_unconfirmed'] - baseline['metrics']['dropped_unconfirmed']
             row['dropped_unconfirmed'] = dropped
             row['resets_avoided'] = dropped
+            if row['value'] < baseline['value']:
+                restored = row['metrics']['rendered_boxes'] - baseline['metrics']['rendered_boxes']
+                row['restored_boxes'] = restored
+                row['eligible'] = False
+                row['verdict'] = ( 'not chosen (this stage only tightens): draws %d more box(es) '
+                                   'than %s, which %s withholds'%(
+                                       restored, baseline['value'], baseline['value'] ) )
+                continue
             if row['coverage_loss'] > options.max_coverage_loss:
                 row['eligible'] = False
                 row['verdict'] = 'rejected: censor coverage fell %.2f%% (limit %.2f%%)'%(
@@ -433,12 +450,26 @@ class MinTrackHitsStage( Stage ):
                                    for name, value in sorted( per_variant.items() ) ) ),
                     _flatten_rows( rows_by_configuration ),
                     per_configuration=per_variant )
+            stricter = [ row for rows in rows_by_configuration.values() for row in rows[1:]
+                         if row['value'] > baseline_value ]
+            withheld = max( [ row.get( 'restored_boxes', 0 )
+                              for rows in rows_by_configuration.values() for row in rows[1:] ]
+                            or [ 0 ] )
+            if stricter:
+                why = ( "no stricter value stayed inside the %.2f%% coverage tolerance under "
+                        "every configuration this key governs (%s)"%(
+                            100*options.max_coverage_loss,
+                            ", ".join( sorted( rows_by_configuration ) ) ) )
+            elif baseline_value is not None and baseline_value >= self.CEILING:
+                why = "nothing stricter than %s was tried: %d is the ceiling"%(
+                    baseline_value, self.CEILING )
+            else:
+                why = "nothing stricter than %s was tried"%( baseline_value, )
+            if withheld > 0:
+                why += ( "; for reference, %s withholds up to %d box(es) that a lower value "
+                         "would draw"%( baseline_value, withheld ) )
             return bu_tuning.Decision(
-                self.title, baseline_value, False,
-                "no value stayed inside the %.2f%% coverage tolerance under any "
-                "configuration this key governs (%s); keeping %s"%(
-                    100*options.max_coverage_loss, ", ".join( sorted( rows_by_configuration ) ),
-                    baseline_value ),
+                self.title, baseline_value, False, "%s; keeping %s"%( why, baseline_value ),
                 _flatten_rows( rows_by_configuration ) )
 
         # The STRICTEST eligible value, not the most aggressive: this
@@ -601,6 +632,27 @@ STAGE_ORDER = ( 'track_max_gap', 'match_distance', 'min_track_hits' )
 # ---------------------------------------------------------------------------
 # Running one stage
 # ---------------------------------------------------------------------------
+
+def _profiles_for( context, backend_name ):
+    """
+    {file_hash: structure profile} for one configuration's videos, cached.
+
+    Resolved exactly as a replay resolves it (bu_tuning.
+    replay_tracking_context), and stored on the shared context so every
+    stage reuses it.
+    """
+    profiles = context.get( '_profiles' )
+    if profiles is None:
+        profiles = {}
+        for file_hash, cache_paths in sorted( context.get( 'videos', {} ).items() ):
+            video_path = context.get( 'hash_to_path', {} ).get( file_hash )
+            if not video_path:
+                continue
+            profiles[file_hash] = bu_tuning.replay_tracking_context(
+                file_hash, video_path, cache_paths, backend_name )['profile_name']
+        context['_profiles'] = profiles
+    return profiles
+
 
 def measure_stage( stage, context, options, logger ):
     """
@@ -858,6 +910,37 @@ def main():
                 logger.info( "" )
                 logger.info( "-- %s / %s / %s  (%s)"%(
                     stage_name, backend_name, label, probe.summary ) )
+
+                # A structure profile that sets this key for this label
+                # overrides the backend value tuned here, for every file
+                # that runs it. When that is every file, no candidate can
+                # change anything: the 2026-10-09 run spent 12 minutes on
+                # six identical exposed_breast track_max_gap replays,
+                # because scene, compilation and split_screen each set
+                # their own.
+                profiles = {}
+                for _config, _context in entries:
+                    profiles.update( _profiles_for( _context, backend_name ) )
+                masking = bu_tuning.profile_masking( profiles, label, probe.key, backend_name )
+                masked_files = [ file_hash for file_hash, profile in profiles.items()
+                                 if profile in masking ]
+                masking_text = ", ".join( "%s %s"%( name, value )
+                                          for name, value in sorted( masking.items() ) )
+                if profiles and len( masked_files ) == len( profiles ):
+                    reasoning = (
+                        "skipped: every file here runs a structure profile that sets %s for %s "
+                        "itself (%s), so the backend value %s is never read and no candidate "
+                        "could change anything. Tune it in the profiles instead"%(
+                            probe.key, label, masking_text, probe.baseline_value() ) )
+                    logger.info( "  => %s"%( reasoning ) )
+                    decisions.append( bu_tuning.Decision(
+                        probe.title, probe.baseline_value(), False, reasoning, [] ) )
+                    continue
+                if masked_files:
+                    logger.info( "  note: %d of %d file(s) run a profile that sets %s itself (%s); "
+                                 "they ignore the values tried here, so they cannot move the "
+                                 "numbers below"%(
+                                     len( masked_files ), len( profiles ), probe.key, masking_text ) )
 
                 rows_by_configuration = {}
                 for ( config, _context ), ( _same_config, stage ) in zip( entries, stages ):

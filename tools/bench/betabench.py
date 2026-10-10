@@ -230,7 +230,8 @@ def find_sample_videos( limit ):
     return found[:limit]
 
 
-def load_cached_detections( backend_name, logger, preview_suffix=None, picture_sizes=None ):
+def load_cached_detections( backend_name, logger, preview_suffix=None, picture_sizes=None,
+                            configuration=None ):
     """
     Every cached raw detection for one backend, across every video.
 
@@ -249,12 +250,23 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
             nudenet_v3 640m run's caches while the config has been
             switched back to 320n.
 
+        configuration: A bu_cache.CachedConfiguration. When given, only
+            that configuration's caches are read: its videos, its
+            detection key and its preview suffix. Without it a preview
+            configuration re-read the real caches, so 'all' printed every
+            cache-reading section twice under two labels with identical
+            numbers.
+
     Returns:
         A (raw_boxes, file_count) pair.
     """
     picture_sizes = bu_cache.resolve_picture_sizes( picture_sizes, backend_name )
     fps = betaconfig.video_censor_fps
     min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    if configuration is not None:
+        return _read_cached_detections(
+            bu_cache.cache_paths_for_configuration( configuration, fps, min_prob ), logger,
+            backend_name )
 
     # discover_full_run_videos returns a (result, preview_used_for)
     # pair. Unpacking it is not optional: a bare tuple is always truthy
@@ -269,6 +281,11 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
                         "started)"%(backend_name, picture_sizes, fps, min_prob) )
         return [], 0
 
+    return _read_cached_detections( discovered, logger, backend_name )
+
+
+def _read_cached_detections( discovered, logger, backend_name ):
+    """Read {file_hash: [cache_path, ...]} into one box list tagged by video."""
     raw_boxes = []
     for file_hash, cache_paths in discovered.items():
         for cache_path in cache_paths:
@@ -280,7 +297,8 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
             # Tag each box with its source video. Box geometry is in
             # that video's native pixels, so anything expressed as a
             # fraction of the frame needs to know WHICH frame - see
-            # _frame_areas_for.
+            # _frame_areas_for - and anything grouped "at the same
+            # instant" needs to know which video the instant is in.
             for raw in loaded:
                 raw['_file_hash'] = file_hash
             raw_boxes.extend( loaded )
@@ -682,9 +700,12 @@ def bench_render( args, logger ):
                 'score': 0.9, 'start': 0.0, 'end': 1.0,
             }
             bu_censor.clear_mask_cache()
+            bu_censor.clear_processed_sticker_cache()
             # One untimed call so the shape-mask and sticker caches are
             # warm; a per-frame cost with a cold cache is not the cost a
-            # real render pays after the first frame.
+            # real render pays after the first frame. A sticker's cached
+            # planes hold while its track's size holds, which the render
+            # keeps steady over render_motion_size_window_seconds.
             bu_censor.censor_image( frame.copy(), box )
 
             # Several independent trials, reported as their MEDIAN.
@@ -905,10 +926,96 @@ def _bench_geometry_one( args, logger, config, raw_boxes ):
 # suppression: suggest class_suppression thresholds
 # ---------------------------------------------------------------------------
 
+IOU_BIN_WIDTH = 0.05
+
+# A same-spot cluster has to be this big to count, as a share of a
+# pair's overlapping detections, and in absolute terms.
+SAME_SPOT_MIN_SHARE = 0.03
+SAME_SPOT_MIN_COUNT = 30
+
+# The IoU below which a suppression is counted as firing on two things
+# side by side, for the impact table.
+ADJACENT_IOU = 0.20
+
+
+def iou_valley( ious ):
+    """
+    The IoU between a pair's two overlap populations, or None.
+
+    Cross-label overlaps are usually two populations: a large low-IoU
+    cluster of two different body parts side by side (a face next to a
+    breast, a belly under one) and, when the model confuses the labels,
+    a high-IoU cluster of one patch reported twice. A suppression rule
+    exists only for the second, so its min_iou belongs in the trough
+    between them. Returns the centre of the emptiest 0.05-wide bin
+    between the low peak (below 0.30) and the high peak (0.50 and up),
+    when the high cluster holds at least 3% of the overlaps (and 30 of
+    them) and the trough is at most half the smaller peak. None means
+    there is no same-spot cluster to separate: the overlaps are
+    adjacency, and a rule on this pair mostly removes real detections.
+    """
+    if not ious:
+        return None
+    bins = int( round( 1.0 / IOU_BIN_WIDTH ) )
+    counts = [ 0 ] * bins
+    for value in ious:
+        counts[ min( bins - 1, max( 0, int( value / IOU_BIN_WIDTH ) ) ) ] += 1
+    low_end = int( round( 0.30 / IOU_BIN_WIDTH ) )
+    high_start = int( round( 0.50 / IOU_BIN_WIDTH ) )
+    high_mass = sum( counts[ high_start: ] )
+    if high_mass < max( SAME_SPOT_MIN_COUNT, SAME_SPOT_MIN_SHARE * len( ious ) ):
+        return None
+    low_peak = max( range( low_end ), key=lambda i: counts[i] )
+    high_peak = max( range( high_start, bins ), key=lambda i: counts[i] )
+    between = range( low_peak + 1, high_peak )
+    if not between:
+        return None
+    trough = min( between, key=lambda i: ( counts[i], -i ) )
+    if counts[trough] > 0.5 * min( counts[low_peak], counts[high_peak] ):
+        return None
+    return round( ( trough + 0.5 ) * IOU_BIN_WIDTH, 3 )
+
+
+def suggest_suppression_rule( ious, margins ):
+    """
+    (min_iou, margin, same_spot_count, win_rate) for one pair, or None.
+
+    min_iou is the valley between the adjacency and same-spot clusters,
+    and margin the median score lead among same-spot pairs the
+    suppressor wins, so both describe the overlaps the rule is for.
+    None when there is no same-spot cluster.
+
+    This replaces min_iou = the 25th percentile of all overlaps, which
+    sits inside the adjacency cluster by construction: the rules derived
+    that way fired on a face beside a breast as readily as on a face
+    mistaken for one.
+    """
+    valley = iou_valley( ious )
+    if valley is None:
+        return None
+    same_spot = [ margin for iou, margin in zip( ious, margins ) if iou >= valley ]
+    wins = [ margin for margin in same_spot if margin > 0 ]
+    margin = round( statistics.median( wins ), 3 ) if wins else 0.0
+    return valley, margin, len( same_spot ), ( len( wins ) / len( same_spot ) if same_spot else 0.0 )
+
+
+def _suppression_renderable_counts( raw_boxes, rules, parts_to_blur ):
+    """{'L<-S': renderable detections removed} from the production function, per video."""
+    by_video = {}
+    for raw in raw_boxes:
+        by_video.setdefault( raw.get( '_file_hash' ), [] ).append( raw )
+    totals = {}
+    for boxes in by_video.values():
+        _surviving, counts = bu_track.apply_class_suppression( boxes, rules, parts_to_blur )
+        for key, entry in counts.items():
+            totals[key] = totals.get( key, 0 ) + entry['renderable']
+    return totals
+
+
 def _bench_suppression_one( args, logger, config, raw_boxes ):
     """
     Cross-label overlap statistics, with suggested class_suppression
-    min_iou and margin per pair.
+    min_iou and margin per pair, and what the configured rules do now.
 
     HOW A SUPPRESSION RULE WORKS
         "Label L is suppressed by label S when an S detection at the
@@ -920,33 +1027,38 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
         The analogy is two witnesses describing one object. If they are
         looking at clearly different places (low IoU) both can be right.
         If they are looking at the same place, the one who is markedly
-        more certain wins - and 'markedly' is what margin sets. A margin
-        of 0 means a bare tie is enough, which is usually too generous.
+        more certain wins - and 'markedly' is what margin sets.
 
     WHAT THIS MEASURES
-        For every ordered label pair seen overlapping at the same
-        instant, the IoU distribution and the score-difference
-        distribution. min_iou is proposed at the 25th percentile of
-        observed overlaps (so the rule fires on typical overlaps, not
-        only extreme ones) and margin at the median score difference
-        where the suppressor wins.
+        For every ordered label pair seen overlapping at the same instant
+        IN THE SAME VIDEO, the IoU and score-difference distributions.
+        min_iou is proposed at the valley between the adjacency and
+        same-spot clusters (see iou_valley); a pair with no same-spot
+        cluster gets no suggestion. Then each configured rule is run
+        through the production suppression function, as configured and
+        as suggested, counting the renderable detections it removes and
+        how many of those sat side by side (IoU < 0.20) with the
+        detection that suppressed them.
 
-    WHEN TO RE-RUN THIS
-        Any time something upstream of the numbers changes: a different
-        model variant, a different picture size, or a change to
-        nms_mode. All three change the box geometry the thresholds are
-        fitted to. The shipped nudenet_v3 rules were fitted at size 1280
-        with class-agnostic NMS and have NOT yet been re-derived for the
-        current 320/per-class configuration.
+        Pairs used to be formed across videos: grouping was by timestamp
+        alone, so every video's boxes at t=12.0s met every other video's.
+        On 56 videos that was 6.3M "overlaps" for exposed_breast<-face_femme
+        against 49k real ones, and every suggestion was fitted to them.
     """
     backend_name = config.backend_name
-
     censored_labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
+    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
+    configured = bu_detector.get_class_suppression( backend_name ) or {}
     pair_data = {}
+    current_hits = {}
 
     by_instant = {}
     for index, raw in enumerate( raw_boxes ):
-        by_instant.setdefault( raw['t'], [] ).append( index )
+        by_instant.setdefault( ( raw.get( '_file_hash' ), raw['t'] ), [] ).append( index )
+
+    def rules_for( label ):
+        rules = configured.get( label ) or []
+        return [ rules ] if isinstance( rules, dict ) else rules
 
     for indices in by_instant.values():
         if len( indices ) < 2:
@@ -955,6 +1067,13 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
             subject = raw_boxes[i]
             if subject['class_id'] not in censored_labels:
                 continue
+            settings = parts_to_blur.get( subject['class_id'] )
+            renderable = bool( settings ) and subject['score'] > settings['min_prob']
+            # Each removal is credited to the first suppressor that
+            # triggers it, in the same order apply_class_suppression
+            # checks them, so the side-by-side counts add up to the
+            # removals the production function reports.
+            attributed = False
             for j in indices:
                 if i == j:
                     continue
@@ -964,48 +1083,105 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
                 iou = bu_track.intersection_over_union( subject, other )
                 if iou <= 0:
                     continue
+                margin = other['score'] - subject['score']
                 key = '%s<-%s'%(subject['class_id'], other['class_id'])
                 entry = pair_data.setdefault( key, { 'iou': [], 'margin': [] } )
                 entry['iou'].append( iou )
-                entry['margin'].append( other['score'] - subject['score'] )
+                entry['margin'].append( margin )
+                if not renderable or attributed:
+                    continue
+                for rule in rules_for( subject['class_id'] ):
+                    if ( rule['suppressed_by'] == other['class_id']
+                         and iou >= rule.get( 'min_iou', 0.3 )
+                         and margin >= rule.get( 'margin', 0.0 ) ):
+                        current_hits.setdefault( key, {} )[i] = iou
+                        attributed = True
+                        break
 
     results = []
+    suggested_rules = {}
     logger.info( "" )
-    logger.info( "Cross-label overlaps at the same instant, for censored labels only:" )
+    logger.info( "Cross-label overlaps at the same instant in the same video, censored labels only:" )
     for key in sorted( pair_data, key=lambda k: -len( pair_data[k]['iou'] ) ):
-        iou_summary = describe( pair_data[key]['iou'] )
-        margin_summary = describe( pair_data[key]['margin'] )
+        ious, margins = pair_data[key]['iou'], pair_data[key]['margin']
+        iou_summary = describe( ious )
         if iou_summary['n'] < args.min_samples:
             continue
-        positive_margins = [ m for m in pair_data[key]['margin'] if m > 0 ]
-        win_rate = len( positive_margins ) / iou_summary['n']
-
-        suggested_min_iou = round( max( 0.01, iou_summary['p25'] ), 3 )
-        suggested_margin = ( round( statistics.median( positive_margins ), 3 )
-                             if positive_margins else 0.0 )
-
-        logger.info( "  %-40s n=%-6d iou p25=%.3f median=%.3f p75=%.3f   "
-                     "suppressor wins %.0f%% of the time"%(
+        label, suppressor = key.split( '<-' )
+        win_rate = sum( 1 for m in margins if m > 0 ) / iou_summary['n']
+        suggestion = suggest_suppression_rule( ious, margins )
+        logger.info( "  %-40s n=%-7d iou p25=%.3f median=%.3f p75=%.3f   suppressor wins %.0f%%"%(
             key, iou_summary['n'], iou_summary['p25'], iou_summary['median'],
             iou_summary['p75'], 100*win_rate ) )
-        logger.info( "      suggested: { 'suppressed_by': '%s', 'min_iou': %s, 'margin': %s }"%(
-            key.split( '<-' )[1], suggested_min_iou, suggested_margin ) )
-        if win_rate < 0.2:
-            logger.info( "      NOTE: the suppressor rarely outscores this label, so a positive "
-                         "margin would make the rule almost never fire. Consider leaving this pair "
-                         "out rather than setting margin to 0 to force it." )
+        row = { 'pair': key, 'iou': iou_summary, 'margin': describe( margins ),
+                'suppressor_win_rate': round( win_rate, 4 ),
+                'suggested_min_iou': None, 'suggested_margin': None }
+        if suggestion is None:
+            logger.info( "      no same-spot cluster: these overlaps are two things side by side, so a "
+                         "rule here would mostly remove real detections" )
+        else:
+            min_iou, margin, same_spot, same_spot_wins = suggestion
+            row.update( suggested_min_iou=min_iou, suggested_margin=margin,
+                        same_spot_pairs=same_spot, same_spot_win_rate=round( same_spot_wins, 4 ) )
+            logger.info( "      same-spot cluster above IoU %.3f: %d overlap(s), suppressor wins %.0f%%"%(
+                min_iou, same_spot, 100*same_spot_wins ) )
+            logger.info( "      suggested: { 'suppressed_by': '%s', 'min_iou': %s, 'margin': %s }"%(
+                suppressor, min_iou, margin ) )
+            if same_spot_wins < 0.2:
+                logger.info( "      NOTE: even on the same spot the suppressor rarely wins, so this "
+                             "rule would almost never fire. Consider leaving the pair out." )
+            suggested_rules.setdefault( label, [] ).append(
+                { 'suppressed_by': suppressor, 'min_iou': min_iou, 'margin': margin } )
+        results.append( row )
 
-        results.append( {
-            'pair': key, 'iou': iou_summary, 'margin': margin_summary,
-            'suppressor_win_rate': round( win_rate, 4 ),
-            'suggested_min_iou': suggested_min_iou,
-            'suggested_margin': suggested_margin,
-        } )
-
+    impact = _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, current_hits,
+                                      parts_to_blur )
     logger.info( "" )
     logger.info( "These are starting points, not answers. A suppression rule removes real "
-                 "detections when it is wrong, so add one pair at a time and look at the output." )
-    return { 'suppression': results }
+                 "detections when it is wrong, so change one pair at a time and look at the output." )
+    return { 'suppression': results, 'suppression_impact': impact }
+
+
+def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, current_hits,
+                             parts_to_blur ):
+    """What each configured rule removes now, and with the suggestion in its place."""
+    if not configured:
+        return []
+    proposed = {}
+    for label, rules in configured.items():
+        for rule in ( [ rules ] if isinstance( rules, dict ) else rules ):
+            match = [ r for r in suggested_rules.get( label, [] )
+                      if r['suppressed_by'] == rule['suppressed_by'] ]
+            if match:
+                proposed.setdefault( label, [] ).append( match[0] )
+    now = _suppression_renderable_counts( raw_boxes, configured, parts_to_blur )
+    after = _suppression_renderable_counts( raw_boxes, proposed, parts_to_blur ) if proposed else {}
+    logger.info( "" )
+    logger.info( "What the configured rules remove (renderable detections, production function):" )
+    logger.info( "  %-34s %-20s %9s %10s   %-20s %9s"%(
+        'rule', 'configured', 'removed', 'side-by-side', 'suggested', 'removed' ) )
+    rows = []
+    for label, rules in sorted( configured.items() ):
+        for rule in ( [ rules ] if isinstance( rules, dict ) else rules ):
+            key = '%s<-%s'%( label, rule['suppressed_by'] )
+            hits = current_hits.get( key, {} )
+            adjacent = sum( 1 for iou in hits.values() if iou < ADJACENT_IOU )
+            match = [ r for r in proposed.get( label, [] ) if r['suppressed_by'] == rule['suppressed_by'] ]
+            suggested_text = ( 'iou %.3f m %.3f'%( match[0]['min_iou'], match[0]['margin'] )
+                               if match else 'leave out' )
+            removed_after = after.get( key, 0 ) if match else 0
+            share = ( '%d%%'%( round( 100.0 * adjacent / len( hits ) ) ) if hits else '-' )
+            logger.info( "  %-34s %-20s %9d %10s   %-20s %9d"%(
+                key, 'iou %.3f m %.3f'%( rule.get( 'min_iou', 0.3 ), rule.get( 'margin', 0.0 ) ),
+                now.get( key, 0 ), share, suggested_text, removed_after ) )
+            rows.append( { 'rule': key, 'min_iou': rule.get( 'min_iou' ), 'margin': rule.get( 'margin' ),
+                           'removed': now.get( key, 0 ), 'side_by_side': adjacent,
+                           'suggested': match[0] if match else None, 'removed_suggested': removed_after } )
+    logger.info( "  side-by-side: share of a rule's removals where the suppressor overlapped by "
+                 "IoU < %.2f, i.e. two things next to each other rather than one thing named "
+                 "twice. A removal there leaves a real detection uncensored for that sample."%(
+                     ADJACENT_IOU, ) )
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -1036,7 +1212,7 @@ def _bench_dedup_one( args, logger, config, raw_boxes ):
 
     by_instant = {}
     for index, raw in enumerate( raw_boxes ):
-        by_instant.setdefault( raw['t'], [] ).append( index )
+        by_instant.setdefault( ( raw.get( '_file_hash' ), raw['t'] ), [] ).append( index )
 
     by_label = {}
     for indices in by_instant.values():
@@ -1179,31 +1355,36 @@ def _per_configuration( kind, body ):
             fps=args.sample_fps or betaconfig.video_censor_fps,
             include_preview=True,
             logger=logger )
-        merged = []
+        extra = {}
         for config in configurations:
             logger.info( "" )
             logger.info( "-" * 72 )
             logger.info( "  configuration: %s"%(config.label) )
             logger.info( "-" * 72 )
             raw_boxes, file_count = load_cached_detections(
-                config.backend_name, logger, picture_sizes=config.picture_sizes )
+                config.backend_name, logger, picture_sizes=config.picture_sizes,
+                configuration=config )
             if not raw_boxes:
                 continue
             logger.info( "loaded %d cached detection(s) across %d video(s) for %s"%(
                 len( raw_boxes ), file_count, config.label ) )
             produced = body( args, logger, config, raw_boxes ) or {}
-            for row in produced.get( kind, [] ):
-                if isinstance( row, dict ):
-                    row = dict( row )
-                    row['configuration'] = config.label
-                    row['backend'] = config.backend_name
-                    row['variant'] = config.variant
-                    row['size'] = config.size
-                merged.append( row )
+            for result_key, rows in produced.items():
+                if not isinstance( rows, list ):
+                    continue
+                for row in rows:
+                    if isinstance( row, dict ):
+                        row = dict( row )
+                        row['configuration'] = config.label
+                        row['backend'] = config.backend_name
+                        row['variant'] = config.variant
+                        row['size'] = config.size
+                    extra.setdefault( result_key, [] ).append( row )
+        merged = extra.pop( kind, [] )
         if not merged:
             logger.warning( "no cached detections found for any configuration - run betatv.py first "
                             "(a --preview run is enough to get started)" )
-        return { kind: merged }
+        return dict( extra, **{ kind: merged } )
     run.__name__ = 'bench_' + kind
     run.__doc__ = body.__doc__
     return run

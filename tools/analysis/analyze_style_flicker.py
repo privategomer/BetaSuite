@@ -90,6 +90,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path )
 
@@ -406,23 +407,17 @@ def main():
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn(
-                raw_copy,
-                bu_detector.get_class_suppression( backend_name ),
-                bu_config.get_parts_to_blur( backend_name ) )
-
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and res['label'] in labels:
-                    boxes.append( res )
+            boxes, tracking = bu_tuning.replay_tracking_inputs(
+                file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h,
+                backend_name, labels )
             if not boxes:
                 continue
 
             _current_video = os.path.basename( video_path )
             with bu_track.tracking_observer( ns['observer'] ):
-                smooth_boxes_fn( boxes, backend_name=backend_name )
+                smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
+                                 backend_name=backend_name, profile_name=tracking['profile_name'],
+                                 sample_fps=tracking['sample_fps'] )
 
         if dims_missing:
             print( "  (skipped %d video(s) - source file no longer found)"%(len(dims_missing)) )

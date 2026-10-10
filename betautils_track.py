@@ -1489,31 +1489,19 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
     return output_boxes, stats
 
 
-def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
-                             backend_name=None, logger=None, profile_name=None,
-                             sample_fps=None ):
+def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=None ):
     """
-    The whole detection -> renderable-boxes pipeline, in one call.
+    Everything prepare_boxes_for_render does before tracking.
 
-    One function so betatv.py, betastare.py and the replay tooling all
-    run the same stages in the same order with the same settings. Previously
-    this sequence was open-coded in betatv.py and re-derived by
-    exec-ing betatv.py's source in the replay tool.
-
-    Args:
-        raw_boxes: Raw detections across every configured picture size.
-        vid_w, vid_h: Frame size in pixels.
-        shot_cut_times: Sorted cut timestamps, or None.
-        backend_name: Backend whose settings apply.
-        logger: Optional logger.
-        profile_name: Structure profile whose overrides apply, or None.
-        sample_fps: Rate the detections were sampled at. None means the
-            global video_censor_fps.
+    Cross-size dedup, class promotion, the geometry filter, the relevance
+    filter, class suppression and conversion to censorable boxes, in
+    production order. Split out so the replay analysers feed tracking
+    exactly what a real run feeds it; they used to rebuild this sequence
+    by hand and had silently lost promotion and the geometry filter.
 
     Returns:
-        A (boxes, stats) pair. boxes is sorted by 'start' ascending,
-        ready for the renderer. stats carries per-stage counts for the
-        run's stats line.
+        A (boxes, stats) pair: censorable boxes ready for smooth_boxes,
+        and the per-stage counts prepare_boxes_for_render reports.
     """
     logger = logger or bu_log.get_logger()
     backend_name = backend_name or bu_detector.selected_backend_name()
@@ -1568,6 +1556,38 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         if censorable:
             boxes.append( censorable )
     stats['censorable_boxes'] = len( boxes )
+    return boxes, stats
+
+
+def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
+                             backend_name=None, logger=None, profile_name=None,
+                             sample_fps=None ):
+    """
+    The whole detection -> renderable-boxes pipeline, in one call.
+
+    One function so betatv.py, betastare.py and the replay tooling all
+    run the same stages in the same order with the same settings. Previously
+    this sequence was open-coded in betatv.py and re-derived by
+    exec-ing betatv.py's source in the replay tool.
+
+    Args:
+        raw_boxes: Raw detections across every configured picture size.
+        vid_w, vid_h: Frame size in pixels.
+        shot_cut_times: Sorted cut timestamps, or None.
+        backend_name: Backend whose settings apply.
+        logger: Optional logger.
+        profile_name: Structure profile whose overrides apply, or None.
+        sample_fps: Rate the detections were sampled at. None means the
+            global video_censor_fps.
+
+    Returns:
+        A (boxes, stats) pair. boxes is sorted by 'start' ascending,
+        ready for the renderer. stats carries per-stage counts for the
+        run's stats line.
+    """
+    logger = logger or bu_log.get_logger()
+    backend_name = backend_name or bu_detector.selected_backend_name()
+    boxes, stats = prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name, logger )
 
     logger.debug( "tracking %d censorable box(es) from %d raw detection(s), %d shot cut(s)"%(
         len( boxes ), stats['raw_detections'], len( shot_cut_times or [] ) ) )

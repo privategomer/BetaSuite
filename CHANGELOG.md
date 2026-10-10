@@ -3,7 +3,6 @@
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
 ## Unreleased
-
 ### Added
 
 - Measure a predictable subset of the library instead of all of it: `betabench --first-videos N` (first N files by name, case-insensitive, across every folder and both source trees) or `--videos-per-folder N` (first N by name in each directory; `uncensored_vids/scene` and `source/scene` are two). Applies to `structure`, `structure-scan`, `concurrency`, `encode` and `reverse`, and the chosen files are listed in the log. `structure_survey.sh` and `reverse_cost.sh` take it as `VIDEOS_FIRST=N` / `VIDEOS_PER_FOLDER=N`, passed to every phase, and print the list to the terminal. Neither set means every file, as before
@@ -12,9 +11,19 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Changed
 
+- `min_track_hits` is 2 for every label again (it was 3 for `nudenet_v3` `exposed_breast`, `exposed_vulva` and `covered_vulva`, and `retinanet_v2` `exposed_breast`, all raised by auto_tune), and `auto_tune.py` never proposes more than 2. At 3 the 2026-10-09 run withheld 23,311 breast and 11,405 vulva boxes that 1 would have drawn. Changes the censor key: re-rendering a file reuses its detections
+
+- Sticker censors cache their resized, cropped and feathered planes and blend premultiplied colour, which is the same float32 arithmetic in the same order, so output is byte-identical. On a 400px box with feather 0.25 a sticker went from 18.8 ms to 1.2 ms per frame while its size holds (the render holds each track's size steady), measured on one core in the cloud workspace. The cache is LRU, capped at 192 MB
+
 - `run_all_analysis.sh` runs `betabench encode` and `betabench reverse` too. Both measure wall clock and throughput, so they run one at a time after the parallel analysis batch has finished and before `auto_tune`, rather than in the batch, where up to two other CPU-bound steps would be measured with them. `--quick` skips them. Adds the time of one encode comparison and one reverse measurement to a full suite run
 
 ### Fixed
+
+- `betabench suppression` paired boxes across videos: grouping was by timestamp alone, so on 56 videos `exposed_breast<-face_femme` counted 6.3M "overlaps" against 49k real ones, and every suggestion was fitted to them. Pairs are now formed within a video. `min_iou` is suggested at the valley between the side-by-side and same-spot clusters instead of the 25th percentile (which sits inside the side-by-side cluster), `margin` from the same-spot pairs, and pairs with no same-spot cluster get no suggestion. A new table runs each configured rule through the production suppression function, as configured and as suggested, with the share of removals that sat side by side (each removal credited to the one rule that made it, as production does). The cross-size dedup section had the same grouping bug
+- `betabench all` measured every cache-reading section twice: a preview configuration re-read the real caches, so the `[PREVIEW]` sections repeated the real ones under another label. Each configuration now reads only its own caches
+- `analyze_track_breaks.py`, `analyze_jitter.py` and `analyze_style_flicker.py` replayed tracking with no structure profile, no shot cuts, no class promotion and no geometry filter, so their numbers described a configuration no real run uses (vulva tracks replayed with a 43.2 s gap that every profile overrides to 4 or 8 s). They now feed tracking exactly what a run does (`bu_track.prepare_tracking_inputs`) under each file's own profile and cuts (`bu_tuning.replay_tracking_context`), and the track-break sweeps scale a profile's own value along with the backend's
+- `auto_tune.py` replayed candidates for keys every file's profile overrides: on 2026-10-09 it spent 12 minutes on six identical `exposed_breast` `track_max_gap` replays. A stage whose key every file's profile sets is now skipped with the profile values listed, and a partly masked one says how many files ignore it
+- `auto_tune.py` `min_track_hits` at 3 could only try 1 and 2, called both "drops no unconfirmed tracks, so it changes nothing" while they drew 23,311 and 10,569 more breast boxes, and concluded "no value stayed inside the coverage tolerance" when nothing had failed on coverage. It now reports what each lower value would restore and says why nothing was chosen
 
 - `run_all_analysis.sh`: `betabench_all` and `betabench_render_noapprox` launch together in the parallel batch, and betabench names its output folder after the current second, so both wrote to the same folder: one `results.json` overwrote the other and both appended to one interleaved `betabench.log` (the console output in each step's own log was unaffected). Every betabench step now gets its own `--out-dir` under the analysis run's folder, so its results sit next to the rest of that run
 - `run_all_analysis.sh --help` printed only lines 2 to 52, stopping partway through the list of steps. It now prints the whole header, however long it gets

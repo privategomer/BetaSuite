@@ -141,7 +141,7 @@ detector_backend = {
                 'track_max_gap': 43.2,  # set by auto_tune 2026-09-19
                 'position_smoothing': 0.75,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
                 'match_distance_multiplier': 3,  # set by auto_tune 2026-09-18
             },
             'exposed_breast': {
@@ -153,7 +153,7 @@ detector_backend = {
                 'track_max_gap': 0.17,
                 'paired_style': True,
                 'paired_style_max_age': 0.8,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
                 'position_smoothing': 0.60,
                 'match_distance_multiplier': 2.0,  # set by auto_tune 2026-09-30
             },
@@ -165,7 +165,7 @@ detector_backend = {
                 'interpolation_max_gap': 3.6,
                 'track_max_gap': 43.2,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
                 'match_distance_multiplier': 3,
                 'position_smoothing': 0.75,
             },
@@ -216,7 +216,7 @@ detector_backend = {
                 'interpolation_max_gap': 0.5,
                 'track_max_gap': 13.5,
                 'paired_style': True,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-18
+                'min_track_hits': 2,
             },
         },
     },
