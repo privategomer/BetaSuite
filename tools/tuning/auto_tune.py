@@ -379,114 +379,97 @@ class MinTrackHitsStage( Stage ):
     """
     How many real detections a track needs before anything is drawn for it.
 
-    This one runs in the opposite direction to the loosening stages: it
-    REMOVES boxes, so the coverage guard is not a formality here, it is
-    the whole constraint. A one-frame track is often a false positive
-    flickering for a ninth of a second, and dropping those is a real
-    quality win - but a one-frame track is also what a genuine, brief
-    exposure looks like, and dropping THOSE is a censoring failure.
+    A short track is either noise (a misfire for a ninth of a second) or
+    a brief real exposure, and dropped boxes look the same in either
+    case. The old rule counted every dropped box as noise removed, so it
+    always favoured the strictest value that stayed inside the area
+    coverage tolerance: it raised the shipped 2 to 3 on 2026-09-30, and
+    at 3 the 2026-10-09 run withheld 23,311 breast boxes that 1 would
+    have drawn.
 
-    So the rule is strict: the highest value whose coverage loss stays
-    inside the tolerance, and no value is accepted on the strength of
-    its track-count reduction alone.
+    The evidence used now is confidence. A detection scoring at least
+    --confident-score (0.5) is probably real, so the question each value
+    is asked is how many of those it leaves uncensored. Value 1 leaves
+    the fewest. The recommendation is the strictest value that leaves no
+    more than --max-confident-loss (0.1%) of the label's confident
+    detections uncensored beyond that floor: as strict as possible, as
+    long as the boxes it drops are the low-confidence ones. It can come
+    out above or below the current value, and nothing is written without
+    --apply and a yes at the prompt.
+
+    The tolerance is a share of confident detections rather than of
+    censored area, because area hides it: 23,311 boxes was 1.2% of the
+    rendered boxes and under 0.1% of area in the run that dropped them.
     """
 
     name = 'min_track_hits'
     key = 'min_track_hits'
     summary = "how many real detections a track needs before it is drawn"
 
-    # Lower values are measured too, and reported, but never chosen:
-    # they show what the current value withholds.
-    VALUES = ( 1, 2 )
-
-    # Never proposed above this. 2 is the standing decision (2026-10-10):
-    # it was set by hand so brief exposures stay censored, and an
-    # auto_tune raise to 3 on 2026-09-30 undid that until it was caught.
-    # See CONFIG_REFERENCE.md -> default_min_track_hits.
-    CEILING = 2
+    VALUES = ( 1, 2, 3, 4 )
 
     def candidates( self ):
         baseline = self.baseline_value() or 1
-        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES
-                 if value != baseline and value <= self.CEILING ]
+        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES if value != baseline ]
+
+    def _confident( self, row ):
+        """(confident detections, of them uncensored) for this stage's label."""
+        metrics = row['metrics']
+        return ( metrics.get( 'confident_by_label', {} ).get( self.label, 0 ),
+                 metrics.get( 'confident_uncovered_by_label', {} ).get( self.label, 0 ) )
 
     def score_rows( self, rows, options ):
         baseline = rows[0]
+        _total, baseline_missed = self._confident( baseline )
+        for row in rows:
+            total, missed = self._confident( row )
+            row['confident_detections'] = total
+            row['confident_uncensored'] = missed
         for row in rows[1:]:
             dropped = row['metrics']['dropped_unconfirmed'] - baseline['metrics']['dropped_unconfirmed']
             row['dropped_unconfirmed'] = dropped
             row['resets_avoided'] = dropped
-            if row['value'] < baseline['value']:
-                restored = row['metrics']['rendered_boxes'] - baseline['metrics']['rendered_boxes']
-                row['restored_boxes'] = restored
-                row['eligible'] = False
-                row['verdict'] = ( 'not chosen (this stage only tightens): draws %d more box(es) '
-                                   'than %s, which %s withholds'%(
-                                       restored, baseline['value'], baseline['value'] ) )
-                continue
-            if row['coverage_loss'] > options.max_coverage_loss:
-                row['eligible'] = False
-                row['verdict'] = 'rejected: censor coverage fell %.2f%% (limit %.2f%%)'%(
-                    100*row['coverage_loss'], 100*options.max_coverage_loss )
-            elif dropped <= 0:
-                row['eligible'] = False
-                row['verdict'] = 'rejected: drops no unconfirmed tracks, so it changes nothing'
-            else:
-                row['eligible'] = True
-                row['verdict'] = 'eligible: drops %d box(es) from unconfirmed tracks for %.3f%% coverage'%(
-                    dropped, 100*row['coverage_loss'] )
+            row['boxes_changed'] = row['metrics']['rendered_boxes'] - baseline['metrics']['rendered_boxes']
+            row['confident_change'] = row['confident_uncensored'] - baseline_missed
+            row['eligible'] = None          # decided across every configuration in decide()
+            row['verdict'] = ( '%+d box(es); confident detections left uncensored %d (%+d)'%(
+                row['boxes_changed'], row['confident_uncensored'], row['confident_change'] ) )
 
     def decide( self, rows_by_configuration, options, logger ):
-        eligible = _values_eligible_everywhere( rows_by_configuration )
         baseline_value = _baseline_value_of( rows_by_configuration )
-        if not eligible:
-            per_variant = _per_configuration_winners(
-                rows_by_configuration, key=lambda row: -row['value'] )
-            if per_variant:
-                return bu_tuning.Decision(
-                    self.title, None, True,
-                    "the configurations want different values, so each gets its own: %s"%(
-                        ", ".join( "%s -> %s"%( name, value )
-                                   for name, value in sorted( per_variant.items() ) ) ),
-                    _flatten_rows( rows_by_configuration ),
-                    per_configuration=per_variant )
-            stricter = [ row for rows in rows_by_configuration.values() for row in rows[1:]
-                         if row['value'] > baseline_value ]
-            withheld = max( [ row.get( 'restored_boxes', 0 )
-                              for rows in rows_by_configuration.values() for row in rows[1:] ]
-                            or [ 0 ] )
-            if stricter:
-                why = ( "no stricter value stayed inside the %.2f%% coverage tolerance under "
-                        "every configuration this key governs (%s)"%(
-                            100*options.max_coverage_loss,
-                            ", ".join( sorted( rows_by_configuration ) ) ) )
-            elif baseline_value is not None and baseline_value >= self.CEILING:
-                why = "nothing stricter than %s was tried: %d is the ceiling"%(
-                    baseline_value, self.CEILING )
-            else:
-                why = "nothing stricter than %s was tried"%( baseline_value, )
-            if withheld > 0:
-                why += ( "; for reference, %s withholds up to %d box(es) that a lower value "
-                         "would draw"%( baseline_value, withheld ) )
-            return bu_tuning.Decision(
-                self.title, baseline_value, False, "%s; keeping %s"%( why, baseline_value ),
-                _flatten_rows( rows_by_configuration ) )
-
-        # The STRICTEST eligible value, not the most aggressive: this
-        # stage removes boxes, so among values that all passed the
-        # coverage guard the conservative choice is the smallest one
-        # that still does something.
-        chosen = min( eligible )
-        dropped_total = sum( _row_for_value( rows, chosen )['dropped_unconfirmed']
-                             for rows in rows_by_configuration.values() )
-        return bu_tuning.Decision(
-            self.title, chosen, True,
-            "%s removes %d box(es) in total from tracks that never reached that many real "
-            "detections, inside the %.2f%% coverage tolerance under every configuration "
-            "this key governs (%s)"%(
-                chosen, dropped_total, 100*options.max_coverage_loss,
-                ", ".join( sorted( rows_by_configuration ) ) ),
-            _flatten_rows( rows_by_configuration ) )
+        by_value = {}
+        for rows in rows_by_configuration.values():
+            for row in rows:
+                entry = by_value.setdefault( row['value'], { 'missed': 0, 'total': 0, 'boxes': 0 } )
+                entry['missed'] += row.get( 'confident_uncensored', 0 )
+                entry['total'] += row.get( 'confident_detections', 0 )
+                entry['boxes'] += row['metrics']['rendered_boxes']
+        if len( by_value ) < 2:
+            return bu_tuning.Decision( self.title, baseline_value, False,
+                                       "nothing to compare against; keeping %s"%( baseline_value, ),
+                                       _flatten_rows( rows_by_configuration ) )
+        total = max( entry['total'] for entry in by_value.values() )
+        floor = min( entry['missed'] for entry in by_value.values() )
+        allowed = floor + options.max_confident_loss * total
+        within = [ value for value, entry in by_value.items() if entry['missed'] <= allowed ]
+        chosen = max( within )
+        summary = ", ".join( "%s: %d uncensored"%( value, by_value[value]['missed'] )
+                             for value in sorted( by_value ) )
+        reasoning = (
+            "confident detections (score >= %.2f) left uncensored: %s, of %d. %s is the strictest "
+            "value within %.2f%% (%d) of the fewest"%(
+                options.confident_score, summary, total, chosen,
+                100*options.max_confident_loss, round( allowed - floor ) ) )
+        if chosen == baseline_value:
+            return bu_tuning.Decision( self.title, baseline_value, False,
+                                       reasoning + "; keeping %s"%( baseline_value, ),
+                                       _flatten_rows( rows_by_configuration ) )
+        boxes = by_value[chosen]['boxes'] - by_value[baseline_value]['boxes']
+        missed = by_value[chosen]['missed'] - by_value[baseline_value]['missed']
+        reasoning += "; against %s it draws %+d box(es) and leaves %+d confident detection(s) uncensored"%(
+            baseline_value, boxes, missed )
+        return bu_tuning.Decision( self.title, chosen, True, reasoning,
+                                   _flatten_rows( rows_by_configuration ) )
 
 
 # ---------------------------------------------------------------------------
@@ -654,6 +637,10 @@ def _profiles_for( context, backend_name ):
     return profiles
 
 
+def _confident_score( options ):
+    return getattr( options, 'confident_score', bu_tuning.CONFIDENT_SCORE )
+
+
 def measure_stage( stage, context, options, logger ):
     """
     Measure the baseline and every candidate for one stage.
@@ -690,6 +677,7 @@ def measure_stage( stage, context, options, logger ):
             stage.backend_name,
             context.get( 'configuration_label' ),
             options.replay_seed,
+            _confident_score( options ),
             json.dumps(
                 betaconfig.detector_backend.get( stage.backend_name, {} ).get(
                     'item_overrides', {} ),
@@ -703,7 +691,8 @@ def measure_stage( stage, context, options, logger ):
         else:
             baseline_metrics = bu_tuning.measure_replay(
                 context['videos'], context['hash_to_path'], stage.backend_name,
-                context['labels'], seed=options.replay_seed )
+                context['labels'], seed=options.replay_seed,
+                confident_score=_confident_score( options ) )
             baseline_cache[baseline_key] = baseline_metrics
         rows.append( {
             'value': baseline_value,
@@ -718,7 +707,8 @@ def measure_stage( stage, context, options, logger ):
             stage.apply( value )
             metrics = bu_tuning.measure_replay(
                 context['videos'], context['hash_to_path'], stage.backend_name,
-                context['labels'], seed=options.replay_seed )
+                context['labels'], seed=options.replay_seed,
+                confident_score=_confident_score( options ) )
             row = {
                 'value': value,
                 'label': label,
@@ -787,6 +777,13 @@ def build_parser():
         help="the hard limit on how much censored area-seconds any candidate may cost, as a "
              "fraction. A candidate over this is rejected whatever else it improves "
              "(default: 0.005, i.e. half a percent)" )
+    parser.add_argument( '--confident-score', type=float, default=bu_tuning.CONFIDENT_SCORE,
+        help="min_track_hits: a detection at or above this score counts as probably real "
+             "(default: %(default)s)" )
+    parser.add_argument( '--max-confident-loss', type=float, default=0.001,
+        help="min_track_hits: the strictest value is recommended that leaves at most this share "
+             "of a label's confident detections uncensored beyond the fewest any value leaves "
+             "(default: 0.001, i.e. 0.1%%)" )
     parser.add_argument( '--max-risky-per-reset', type=float, default=5.0,
         help="how many risky track assignments a loosening change may add per track reset it "
              "avoids, before it stops being worth it (default: 5)" )

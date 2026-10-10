@@ -854,7 +854,7 @@ def _apply_style_area_safety( box, resolved_style, item_x_safety, item_y_safety 
 
 
 def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=None,
-                  sample_fps=None ):
+                  sample_fps=None, logger=None ):
     """
     Match detections into per-instance tracks, then smooth, style,
     interpolate and confirm them.
@@ -920,6 +920,9 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             interpolated ones.
         shot_cut_times: Sorted cut timestamps in seconds, or None.
         backend_name: Backend whose per-label settings apply.
+        profile_name: Structure profile whose overrides apply, or None.
+        sample_fps: Rate the detections were sampled at, or None.
+        logger: Where per-label lines go; the shared run log by default.
 
     Returns:
         A (rendered_boxes, stats) pair. stats is a dict with
@@ -927,7 +930,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         'tracks'.
     """
     shot_cut_times = shot_cut_times or []
-    logger = bu_log.get_logger()
+    logger = logger or bu_log.get_logger()
 
     def cut_between( earlier_time, later_time ):
         """
@@ -1475,16 +1478,20 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         # Track confirmation: a track that never reached min_track_hits
         # real detections contributes nothing, including its synthetic
         # interpolated boxes.
+        dropped_here = 0
         for track_id, track_boxes in boxes_by_track.items():
             if track_hits.get( track_id, 0 ) >= settings.min_track_hits:
                 output_boxes.extend( track_boxes )
                 stats['tracks'] += 1
             else:
-                stats['dropped_unconfirmed'] += len( track_boxes )
+                dropped_here += len( track_boxes )
+        stats['dropped_unconfirmed'] += dropped_here
 
+        # This label's own count: stats is shared across labels, so its
+        # running total would credit the second label with the first's.
         if settings.min_track_hits > 1:
             logger.debug( "%s: min_track_hits=%d dropped %d box(es) from unconfirmed tracks"%(
-                label, settings.min_track_hits, stats['dropped_unconfirmed'] ) )
+                label, settings.min_track_hits, dropped_here ) )
 
     return output_boxes, stats
 
@@ -1593,7 +1600,7 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         len( boxes ), stats['raw_detections'], len( shot_cut_times or [] ) ) )
 
     boxes, smoothing_stats = smooth_boxes( boxes, shot_cut_times, backend_name, profile_name,
-                                           sample_fps )
+                                           sample_fps, logger=logger )
     stats.update( smoothing_stats )
     boxes.sort( key=lambda box: box['start'] )
     stats['rendered_boxes'] = len( boxes )

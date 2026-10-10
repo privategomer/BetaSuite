@@ -714,6 +714,78 @@ def open_video_source( path, file_hash, logger=None ):
     return VideoSource( path, decode_path, cap, vid_fps, num_frames, width, height, transcoded )
 
 
+def merge_cut_bursts( cuts, window, max_span=None, keep='last' ):
+    """
+    Cuts with each short burst collapsed to one cut.
+
+    A fade, dissolve or white flash changes the picture over several
+    consecutive samples, and the histogram scan flags a cut at each, so
+    one transition arrives as a burst: 10.0, 10.1, 10.2, 10.3. Each cut
+    ends every live track, and each sliver between them is too short for
+    a new track to reach min_track_hits, so the censor can blink off for
+    the length of the burst plus a confirmation.
+
+    A burst is a run of cuts each less than `window` seconds after the
+    one before. A burst spanning at most max_span seconds, first cut to
+    last, becomes one cut: its last (keep='last', old tracks carry
+    through the transition) or its first (keep='first', new tracks start
+    confirming during it). A longer run is left alone, because a long
+    chain of cuts that close together is genuine rapid-fire editing, and
+    merging it would let a track carry across real cuts onto someone
+    else. max_span None merges every burst.
+
+    Args:
+        cuts: Cut times in seconds, any order.
+        window: The largest gap, in seconds, that still joins two cuts.
+        max_span: The longest burst merged, or None for no limit.
+        keep: 'last' or 'first'.
+
+    Returns:
+        A sorted list of cut times.
+    """
+    if keep not in ( 'last', 'first' ):
+        raise ValueError( "keep must be 'last' or 'first', not %r"%( keep, ) )
+    ordered = sorted( cuts or [] )
+    merged = []
+    group = []
+
+    # Cut times are sample times (k / fps), so a nominal 0.6s span can
+    # come out as 0.6000000000000001; compare with a tolerance far below
+    # one sample.
+    tolerance = 1e-6
+
+    def flush():
+        if len( group ) == 1 or ( max_span is not None
+                                  and group[-1] - group[0] > max_span + tolerance ):
+            merged.extend( group )
+        elif group:
+            merged.append( group[-1] if keep == 'last' else group[0] )
+
+    for cut in ordered:
+        if group and cut - group[-1] >= window - tolerance:
+            flush()
+            group = []
+        group.append( cut )
+    if group:
+        flush()
+    return merged
+
+
+def cut_bursts( cuts, window ):
+    """Runs of two or more cuts each less than `window` seconds after the one before."""
+    bursts = []
+    group = []
+    for cut in sorted( cuts or [] ):
+        if group and cut - group[-1] >= window - 1e-6:
+            if len( group ) > 1:
+                bursts.append( group )
+            group = []
+        group.append( cut )
+    if len( group ) > 1:
+        bursts.append( group )
+    return bursts
+
+
 def absolute_cut_times( shot_cut_times, offset_seconds ):
     """
     Cut times on the detection timeline, from a scan's own timeline.

@@ -56,7 +56,7 @@ class _Options:
 
 
 def _metrics( new_tracks=100, risky=100, coverage=None, dropped_unconfirmed=0,
-              rendered=1000 ):
+              rendered=1000, confident=100000, uncensored=0 ):
     return {
         'new_tracks': new_tracks,
         'risky_contention': risky,
@@ -65,6 +65,8 @@ def _metrics( new_tracks=100, risky=100, coverage=None, dropped_unconfirmed=0,
         'interpolated': 0,
         'dropped_unconfirmed': dropped_unconfirmed,
         'coverage_by_label': coverage if coverage is not None else { 'exposed_breast': 100.0 },
+        'confident_by_label': { 'exposed_breast': confident },
+        'confident_uncovered_by_label': { 'exposed_breast': uncensored },
     }
 
 
@@ -170,56 +172,11 @@ class TestLooseningDecisionRule( unittest.TestCase ):
         self.assertEqual( decision.chosen, 13.5 )
 
 
-class TestMinTrackHitsDecisionRule( unittest.TestCase ):
-    """A stage whose whole job is removing boxes, so the guard IS the rule."""
-
-    def setUp( self ):
-        self.stage = auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' )
-        self.baseline_metrics = _metrics( dropped_unconfirmed=0 )
-        self.baseline_row = _row( 1, 'baseline (1)', self.baseline_metrics, self.baseline_metrics )
-        self.baseline_row['verdict'] = 'baseline'
-
-    def _decide( self, rows, options=None, configurations=None ):
-        """Score and decide, the way the tool does: rows per configuration."""
-        options = options or _Options()
-        by_configuration = configurations or { 'only @320': rows }
-        for these in by_configuration.values():
-            self.stage.score_rows( these, options )
-        return self.stage.decide( by_configuration, options, None )
-
-    def test_a_tiny_coverage_cost_is_allowed( self ):
-        candidate = _row( 2, '2 hit(s)',
-                          _metrics( dropped_unconfirmed=400,
-                                    coverage={ 'exposed_breast': 99.9 } ),
-                          self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
-        self.assertTrue( decision.accepted )
-        self.assertEqual( decision.chosen, 2 )
-
-    def test_a_real_coverage_cost_is_not( self ):
-        candidate = _row( 2, '2 hit(s)',
-                          _metrics( dropped_unconfirmed=4000,
-                                    coverage={ 'exposed_breast': 95.0 } ),
-                          self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
-        self.assertFalse( decision.accepted,
-            "dropping four thousand boxes looks like a big cleanup right up until you notice "
-            "it cost 5% of the censoring" )
-
-    def test_a_value_that_changes_nothing_is_rejected( self ):
-        candidate = _row( 2, '2 hit(s)', _metrics( dropped_unconfirmed=0 ), self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
-        self.assertFalse( decision.accepted )
-
-
-class TestMinTrackHitsCeiling( unittest.TestCase ):
+class TestMinTrackHitsRecommendation( unittest.TestCase ):
     """
-    min_track_hits is never proposed above 2. The 2026-09-30 run raised
-    it to 3 and undid a hand-tuned 2. The 2026-10-09 run, at 3, tried
-    only 1 and 2, called both "drops no unconfirmed tracks, so it
-    changes nothing" while they drew 23,311 more boxes, and concluded
-    "no value stayed inside the coverage tolerance" when nothing had
-    failed on coverage.
+    The strictest value that leaves no more than 0.1% of confident
+    detections uncensored beyond the fewest any value leaves. No cap:
+    the tool says what the evidence supports and the operator decides.
     """
 
     def stage_at( self, baseline ):
@@ -227,62 +184,70 @@ class TestMinTrackHitsCeiling( unittest.TestCase ):
         stage.baseline_value = lambda: baseline
         return stage
 
-    def baseline_row( self, value ):
-        metrics = _metrics( dropped_unconfirmed=500, rendered=10000 )
-        row = _row( value, 'baseline (%d)'%( value, ), metrics, metrics )
-        row['verdict'] = 'baseline'
-        return row
+    def rows( self, baseline, uncensored_by_value, boxes_by_value=None ):
+        boxes_by_value = boxes_by_value or {}
+        base = _metrics( rendered=boxes_by_value.get( baseline, 10000 ),
+                         uncensored=uncensored_by_value[baseline] )
+        rows = [ dict( _row( baseline, 'baseline (%d)'%( baseline, ), base, base ),
+                       verdict='baseline' ) ]
+        for value in sorted( uncensored_by_value ):
+            if value == baseline:
+                continue
+            metrics = _metrics( rendered=boxes_by_value.get( value, 10000 ),
+                                uncensored=uncensored_by_value[value] )
+            rows.append( _row( value, '%d hit(s)'%( value, ), metrics, base ) )
+        return rows
 
-    def decide( self, stage, rows ):
-        options = _Options()
-        stage.score_rows( rows, options )
-        return stage.decide( { 'only @640': rows }, options, None )
+    def decide( self, stage, rows, loss=0.001 ):
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = loss
+        stage.score_rows( rows, opts )
+        return stage.decide( { 'only @640': rows }, opts, None )
 
-    def test_nothing_above_the_ceiling_is_ever_tried( self ):
-        for baseline in ( 1, 2, 3, 5 ):
-            values = [ value for value, _label in self.stage_at( baseline ).candidates() ]
-            self.assertTrue( all( value <= 2 for value in values ), ( baseline, values ) )
-        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1 ] )
-        self.assertEqual( [ v for v, _l in self.stage_at( 1 ).candidates() ], [ 2 ] )
+    def test_every_value_is_tried_with_no_cap( self ):
+        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1, 3, 4 ] )
 
-    def test_the_ceiling_holds_even_if_the_range_grows( self ):
-        stage = self.stage_at( 2 )
-        stage.VALUES = ( 1, 2, 3, 4, 5 )
-        self.assertEqual( [ v for v, _l in stage.candidates() ], [ 1 ] )
+    def test_noise_only_drops_recommend_going_stricter( self ):
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ) )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 3, "4 leaves 350 more bare, over the 100 allowed" )
 
-    def test_a_lower_value_reports_what_it_would_restore( self ):
-        stage = self.stage_at( 2 )
-        baseline = self.baseline_row( 2 )
-        lower = _row( 1, '1 hit(s)', _metrics( dropped_unconfirmed=0, rendered=10400 ),
-                      baseline['metrics'] )
-        decision = self.decide( stage, [ baseline, lower ] )
-        self.assertFalse( decision.accepted )
-        self.assertEqual( lower['restored_boxes'], 400 )
-        self.assertIn( 'draws 400 more box(es)', lower['verdict'] )
-        self.assertNotIn( 'changes nothing', lower['verdict'] )
-        self.assertIn( 'nothing stricter than 2 was tried: 2 is the ceiling', decision.reasoning )
-        self.assertIn( 'withholds up to 400 box(es)', decision.reasoning )
-        self.assertNotIn( 'coverage tolerance', decision.reasoning )
-
-    def test_a_stricter_value_failing_coverage_says_so( self ):
-        stage = self.stage_at( 1 )
-        baseline = self.baseline_row( 1 )
-        stricter = _row( 2, '2 hit(s)',
-                         _metrics( dropped_unconfirmed=4000, coverage={ 'exposed_breast': 90.0 } ),
-                         baseline['metrics'] )
-        decision = self.decide( stage, [ baseline, stricter ] )
-        self.assertFalse( decision.accepted )
-        self.assertIn( 'no stricter value stayed inside', decision.reasoning )
-
-    def test_a_stricter_value_inside_tolerance_is_chosen( self ):
-        stage = self.stage_at( 1 )
-        baseline = self.baseline_row( 1 )
-        stricter = _row( 2, '2 hit(s)',
-                         _metrics( dropped_unconfirmed=600, coverage={ 'exposed_breast': 99.9 } ),
-                         baseline['metrics'] )
-        decision = self.decide( stage, [ baseline, stricter ] )
+    def test_confident_losses_recommend_going_looser( self ):
+        # The 2026-10-09 shape: 3 left far more confident detections bare.
+        decision = self.decide( self.stage_at( 3 ),
+                                self.rows( 3, { 1: 50, 2: 120, 3: 900, 4: 2000 } ) )
         self.assertTrue( decision.accepted )
         self.assertEqual( decision.chosen, 2 )
+        self.assertIn( '3: 900 uncensored', decision.reasoning )
+
+    def test_the_current_value_is_kept_when_it_is_the_answer( self ):
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 50, 2: 90, 3: 500, 4: 900 } ) )
+        self.assertFalse( decision.accepted )
+        self.assertEqual( decision.chosen, 2 )
+        self.assertIn( 'keeping 2', decision.reasoning )
+
+    def test_the_tolerance_is_a_share_of_confident_detections( self ):
+        uncensored = { 1: 50, 2: 50, 3: 160, 4: 400 }
+        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001 )
+        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002 )
+        self.assertEqual( tight.chosen, 2, "110 more bare is over 0.1% of 100,000" )
+        self.assertEqual( loose.chosen, 3, "and under 0.2%" )
+
+    def test_a_value_exactly_at_the_tolerance_is_within_it( self ):
+        # 100,000 confident detections at 0.1% allows exactly 100 more bare.
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        self.assertEqual( decision.chosen, 3 )
+
+    def test_rows_report_boxes_and_confident_changes( self ):
+        rows = self.rows( 2, { 1: 40, 2: 50 }, boxes_by_value={ 1: 10400, 2: 10000 } )
+        self.decide( self.stage_at( 2 ), rows )
+        lower = rows[1]
+        self.assertEqual( lower['boxes_changed'], 400 )
+        self.assertEqual( lower['confident_change'], -10 )
+        self.assertIn( '+400 box(es)', lower['verdict'] )
 
 
 class TestMaskedStagesAreSkipped( unittest.TestCase ):

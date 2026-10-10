@@ -819,7 +819,9 @@ from the difference.
 | `tools/tuning/replay_tune.py` | replays cached detections through the real tracking and suppression code under config variants, with no re-detection |
 | `tools/tuning/batch_ab_test.py` | real `betatv.py` runs across batch sizes and backends, comparing detections and timing |
 | `tools/tuning/derive_suppression_rules.py` | turns overlap statistics into proposed rules |
-| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs |
+| `tools/tuning/suppression_ab.sh` | current `class_suppression` rules against a proposed set: ranks every cached video by how differently they censor it, then renders the two most-changed side by side and as colour-coded outlines |
+| `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |
+| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs, cut bursts |
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |
 | `tools/tuning/auto_tune.py` | the staged tuner: measures candidates, prices them, writes the winners |
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |

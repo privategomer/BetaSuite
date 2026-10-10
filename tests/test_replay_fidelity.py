@@ -76,6 +76,8 @@ class TestAnalysersReplayUnderTheRealProfileAndCuts( unittest.TestCase ):
             self.assertEqual( kwargs.get( 'shot_cut_times' ), [ 1.5, 4.0 ] )
             self.assertEqual( kwargs.get( 'sample_fps' ), 9 )
             self.assertEqual( kwargs.get( 'backend_name' ), 'nudenet_v3' )
+            self.assertIs( kwargs.get( 'logger' ), bu_tuning._QUIET_LOGGER,
+                           "a replay must not write per-video lines into the run log" )
 
     def test_track_breaks( self ):
         tool = _load_tool( 'tools/analysis/analyze_track_breaks.py', '_tb_fidelity' )
@@ -176,3 +178,177 @@ class TestTrackBreakSweepReachesProfileValues( unittest.TestCase ):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestReplayRendered( unittest.TestCase ):
+
+    def test_the_production_pipeline_gets_profile_cuts_rate_and_a_quiet_logger( self ):
+        seen = {}
+
+        def fake_prepare( raw, w, h, **kwargs ):
+            seen.update( kwargs, raw=raw, size=( w, h ) )
+            return [ 'box' ], { 'interpolated': 3 }
+
+        with mock.patch.object( bu_tuning, 'replay_tracking_context', return_value=TRACKING ), \
+             mock.patch.object( bu_tuning.bu_track, 'prepare_boxes_for_render', fake_prepare ):
+            rendered, stats, tracking = bu_tuning.replay_rendered(
+                'h1', '/v.mp4', [ 'c.gz' ], [ { 'class_id': 'x' } ], 640, 360, 'nudenet_v3' )
+        self.assertEqual( rendered, [ 'box' ] )
+        self.assertEqual( stats, { 'interpolated': 3 } )
+        self.assertIs( tracking, TRACKING )
+        self.assertEqual( seen['profile_name'], 'compilation' )
+        self.assertEqual( seen['shot_cut_times'], [ 1.5, 4.0 ] )
+        self.assertEqual( seen['sample_fps'], 9 )
+        self.assertEqual( seen['backend_name'], 'nudenet_v3' )
+        self.assertIs( seen['logger'], bu_tuning._QUIET_LOGGER )
+        self.assertEqual( seen['size'], ( 640, 360 ) )
+
+    def test_a_given_context_is_used_as_is( self ):
+        given = dict( TRACKING, profile_name='quick_cut' )
+        with mock.patch.object( bu_tuning, 'replay_tracking_context' ) as context, \
+             mock.patch.object( bu_tuning.bu_track, 'prepare_boxes_for_render',
+                                return_value=( [], {} ) ) as prepare:
+            bu_tuning.replay_rendered( 'h1', '/v.mp4', [], [], 640, 360, 'nudenet_v3', tracking=given )
+        context.assert_not_called()
+        self.assertEqual( prepare.call_args.kwargs['profile_name'], 'quick_cut' )
+
+
+class TestItemOverridesInEffect( unittest.TestCase ):
+    """A replay_tune variant must be what the pipeline reads, whichever tier sets the key."""
+
+    BACKEND = '_overrides_test_backend'
+
+    def setUp( self ):
+        self.saved_backends = copy.deepcopy( betaconfig.detector_backend )
+        self.saved_shared = copy.deepcopy( betaconfig.item_overrides )
+        betaconfig.detector_backend[self.BACKEND] = {
+            'item_overrides': { 'exposed_breast': { 'track_max_gap': 0.5 } },
+            'model_variant': 'big',
+            'variants': { 'big': { 'item_overrides': { 'exposed_breast': { 'track_max_gap': 0.7 } } },
+                          'small': { 'item_overrides': { 'exposed_breast': { 'track_max_gap': 0.9 } } } },
+            'profiles': { 'variants': {
+                'scene': { 'item_overrides': { 'exposed_breast': { 'track_max_gap': 3.0 } } },
+                'quick_cut': { 'item_overrides': { 'exposed_breast': { 'time_safety': 0.06 } } } } },
+        }
+        bu_config.invalidate_config_caches()
+
+    def tearDown( self ):
+        betaconfig.detector_backend = self.saved_backends
+        betaconfig.item_overrides = self.saved_shared
+        bu_config.invalidate_config_caches()
+
+    def block( self ):
+        return betaconfig.detector_backend[self.BACKEND]
+
+    def test_a_shadowed_key_is_patched_on_every_tier_that_sets_it( self ):
+        before = copy.deepcopy( self.block() )
+        with bu_tuning.item_overrides_in_effect(
+                self.BACKEND, { 'exposed_breast': { 'track_max_gap': 1.25 } }, 'scene' ):
+            self.assertEqual( bu_detector.get_item_overrides( 'exposed_breast', self.BACKEND )['track_max_gap'],
+                              1.25 )
+            self.assertEqual( bu_detector.get_profile_item_overrides(
+                'scene', 'exposed_breast', self.BACKEND )['track_max_gap'], 1.25 )
+            # the inactive variant and a profile that never set the key stay as they were
+            self.assertEqual( self.block()['variants']['small']['item_overrides']['exposed_breast'],
+                              { 'track_max_gap': 0.9 } )
+            self.assertNotIn( 'track_max_gap', self.block()['profiles']['variants']['quick_cut'][
+                'item_overrides']['exposed_breast'] )
+        self.assertEqual( self.block(), before )
+
+    def test_another_profile_is_not_touched( self ):
+        with bu_tuning.item_overrides_in_effect(
+                self.BACKEND, { 'exposed_breast': { 'track_max_gap': 1.25 } }, 'quick_cut' ):
+            self.assertEqual( bu_detector.get_profile_item_overrides(
+                'scene', 'exposed_breast', self.BACKEND )['track_max_gap'], 3.0 )
+
+    def test_a_render_key_goes_to_the_shared_tier( self ):
+        with bu_tuning.item_overrides_in_effect(
+                self.BACKEND, { 'exposed_breast': { 'censor_shape': 'box' } } ):
+            self.assertEqual( betaconfig.item_overrides['exposed_breast']['censor_shape'], 'box' )
+            self.assertNotIn( 'censor_shape', self.block()['item_overrides']['exposed_breast'] )
+            self.assertEqual( bu_detector.get_item_overrides( 'exposed_breast', self.BACKEND )['censor_shape'],
+                              'box' )
+        self.assertEqual( betaconfig.item_overrides, self.saved_shared )
+
+    def test_restored_after_an_exception_and_for_a_new_backend( self ):
+        with self.assertRaises( RuntimeError ):
+            with bu_tuning.item_overrides_in_effect( '_brand_new', { 'exposed_breast': { 'track_max_gap': 1.0 } } ):
+                self.assertIn( '_brand_new', betaconfig.detector_backend )
+                raise RuntimeError( 'boom' )
+        self.assertNotIn( '_brand_new', betaconfig.detector_backend )
+        self.assertEqual( betaconfig.item_overrides, self.saved_shared )
+
+
+class TestReplayTuneVariants( unittest.TestCase ):
+    """replay_tune: the variant is what the production pipeline reads."""
+
+    def setUp( self ):
+        self.tool = _load_tool( 'tools/tuning/replay_tune.py', '_replay_tune_fidelity' )
+        self.saved = copy.deepcopy( betaconfig.detector_backend )
+
+    def tearDown( self ):
+        betaconfig.detector_backend = self.saved
+        bu_config.invalidate_config_caches()
+
+    def test_overrides_and_suppression_reach_the_pipeline_then_restore( self ):
+        backend = bu_detector.selected_backend_name()
+        seen = {}
+
+        def fake_replay( file_hash, video_path, cache_paths, raw, w, h, backend_name, tracking=None ):
+            seen['gap'] = bu_detector.get_profile_item_overrides(
+                tracking['profile_name'], 'exposed_breast', backend_name ).get( 'track_max_gap' )
+            seen['backend_gap'] = bu_detector.get_item_overrides( 'exposed_breast', backend_name ).get(
+                'track_max_gap' )
+            seen['rules'] = bu_detector.get_class_suppression( backend_name )
+            seen['tracking'] = tracking
+            return [ 'a', 'b' ], { 'after_suppression': 7, 'label_counts': { 'exposed_breast': 7 },
+                                   'interpolated': 1,
+                                   'suppression_counts': { 'r': { 'total': 4, 'renderable': 2 } } }, tracking
+
+        rules = { 'exposed_breast': [ { 'suppressed_by': 'belly', 'margin': 0.5, 'min_iou': 0.9 } ] }
+        before_rules = copy.deepcopy( bu_detector.get_class_suppression( backend ) )
+        with mock.patch.object( self.tool.bu_tuning, 'replay_tracking_context', return_value=TRACKING ):
+            result = self.tool.run_variant(
+                [ { 'class_id': 'x' } ] * 9, 640, 360, 'h1', '/v.mp4', [ 'c.gz' ],
+                item_overrides_patch={ 'exposed_breast': { 'track_max_gap': 0.42 } },
+                class_suppression_patch=rules, replay=fake_replay )
+        self.assertEqual( seen['backend_gap'], 0.42 )
+        if 'track_max_gap' in bu_detector.get_profile_item_overrides( 'compilation', 'exposed_breast', backend ):
+            self.assertEqual( seen['gap'], 0.42, "the profile value would otherwise win" )
+        self.assertEqual( seen['rules']['exposed_breast'], rules['exposed_breast'] )
+        for label, label_rules in before_rules.items():
+            if label != 'exposed_breast':
+                self.assertEqual( seen['rules'][label], label_rules,
+                                  "a patch replaces only the labels it lists" )
+        self.assertIs( seen['tracking'], TRACKING )
+        self.assertEqual( bu_detector.get_class_suppression( backend ), before_rules )
+        self.assertEqual( result, {
+            'raw_detections': 9, 'surviving_after_suppression': 7, 'suppression_counts': { 'r': 4 },
+            'label_counts': { 'exposed_breast': 7 }, 'tracked_boxes': 2, 'interpolated_boxes': 1,
+            'profile': 'compilation' } )
+
+
+class TestRepairedTools( unittest.TestCase ):
+
+    def test_compare_effectiveness_imports_and_replays_each_config_at_its_own_caches( self ):
+        tool = _load_tool( 'tools/analysis/compare_effectiveness.py', '_compare_eff' )
+        calls = []
+
+        def fake_replay( file_hash, video_path, cache_paths, raw, w, h, backend_name ):
+            calls.append( ( file_hash, cache_paths, backend_name ) )
+            raw.clear()
+            return [ 'box' ], {}, TRACKING
+
+        raw = [ { 'class_id': 'x' } ]
+        rendered = tool.run_pipeline_for_config( 'h1', '/v.mp4', [ 'a.gz' ], raw, 640, 360,
+                                                 'nudenet_v3', replay=fake_replay )
+        self.assertEqual( rendered, [ 'box' ] )
+        self.assertEqual( calls, [ ( 'h1', [ 'a.gz' ], 'nudenet_v3' ) ] )
+        self.assertEqual( raw, [ { 'class_id': 'x' } ], "the caller's detections are not consumed" )
+
+    def test_span_merge_and_replay_tune_use_the_production_replay( self ):
+        for relative in ( 'tools/analysis/analyze_span_merge.py', 'tools/tuning/replay_tune.py' ):
+            with open( _repo_path( relative ) ) as handle:
+                source = handle.read()
+            self.assertIn( 'bu_tuning.replay_rendered', source, relative )
+            self.assertNotIn( 'process_raw_box(', source, relative )

@@ -387,7 +387,8 @@ def run_one_combo( match_mult, gap_mult, videos, hash_to_path, ns, labels_filter
             with bu_track.tracking_observer( ns['observer'] ):
                 smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
                                  backend_name=backend_name, profile_name=tracking['profile_name'],
-                                 sample_fps=tracking['sample_fps'] )
+                                 sample_fps=tracking['sample_fps'],
+                                 logger=bu_tuning._QUIET_LOGGER )
 
     match_dists_by_label = {}
     for ev in _match_events:

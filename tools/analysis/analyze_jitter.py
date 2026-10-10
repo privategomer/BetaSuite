@@ -271,7 +271,8 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
             with bu_track.tracking_observer( _JitterObserver() ):
                 tracked_boxes, _smoothing_stats = smooth_boxes_fn(
                     boxes, shot_cut_times=tracking['shot_cut_times'], backend_name=backend_name,
-                    profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'] )
+                    profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'],
+                                 logger=bu_tuning._QUIET_LOGGER )
 
             # group the ORIGINAL (non-interpolated) boxes by the track id
             # the instrumentation hooks tagged them with, then measure
