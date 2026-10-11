@@ -230,7 +230,7 @@ def censor_identity( backend_name=None ):
     for label in sorted( bu_config.get_parts_to_blur( backend_name ).keys() ):
         per_label[label] = bu_config.get_label_settings( label, backend_name )
 
-    return {
+    identity = {
         'labels':                   per_label,
         'variant':                  variant_name,
         'class_suppression':        bu_detector.get_class_suppression( backend_name ),
@@ -302,6 +302,15 @@ def censor_identity( backend_name=None ):
         'profile_by_path_pattern':   getattr( betaconfig, 'profile_by_path_pattern', None ),
         'profile_by_source_dir':     getattr( betaconfig, 'profile_by_source_dir', None ),
     }
+    # Merging bursts of cuts changes which cuts tracking stops at. Keyed
+    # only while it is on, so adding the setting left every existing
+    # render's key, and so every finished output, valid; any change to
+    # it once on moves the key.
+    import betautils_track as bu_track   # deferred: bu_track imports bu_config
+    cut_bursts = bu_track.cut_burst_settings()
+    if cut_bursts:
+        identity['shot_cut_bursts'] = cut_bursts
+    return identity
 
 
 def censor_key( backend_name=None ):

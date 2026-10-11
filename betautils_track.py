@@ -477,6 +477,7 @@ def apply_class_suppression( raw_boxes, suppression_rules=None, parts_to_blur=No
                     if other['score'] - raw['score'] >= rule.get( 'margin', 0.0 ):
                         suppressed.add( index )
                         rule_key = '%s<-%s'%( raw['class_id'], other['class_id'] )
+                        _notify( 'on_suppressed', raw, rule_key, other )
                         entry = suppression_counts.setdefault(
                             rule_key, { 'total': 0, 'renderable': 0 } )
                         entry['total'] += 1
@@ -708,6 +709,13 @@ class TrackingObserver:
     def on_independent_style_resolve( self, label, box, tracks, settings ):
         """A new track rolled its own style rather than sharing a pair's."""
 
+    def on_suppressed( self, raw, rule_key, suppressor ):
+        """
+        apply_class_suppression dropped raw under rule_key ('L<-S'),
+        because of the suppressor detection. Lets a tool say which rule
+        removed a censor without re-implementing the rule.
+        """
+
 
 _tracking_observer = None
 
@@ -853,8 +861,47 @@ def _apply_style_area_safety( box, resolved_style, item_x_safety, item_y_safety 
         box['_vid_w'], box['_vid_h'], style_x_safety, style_y_safety )
 
 
+def cut_burst_settings():
+    """
+    The configured shot-cut burst merge, or None when it is off.
+
+    shot_cut_burst_window above 0 turns it on: cuts each less than that
+    many seconds after the one before form a burst, and a burst spanning
+    at most shot_cut_burst_max_span (None: any length) collapses to its
+    shot_cut_burst_keep cut ('first' or 'last'). See
+    betautils_video.merge_cut_bursts for why a fade arrives as a burst.
+    """
+    window = getattr( betaconfig, 'shot_cut_burst_window', 0.0 ) or 0.0
+    if window <= 0:
+        return None
+    max_span = getattr( betaconfig, 'shot_cut_burst_max_span', None )
+    return { 'window': float( window ),
+             'max_span': None if max_span is None else float( max_span ),
+             'keep': getattr( betaconfig, 'shot_cut_burst_keep', 'first' ) }
+
+
+def tracking_cut_times( shot_cut_times, cut_bursts=None ):
+    """
+    The cuts tracking stops at.
+
+    shot_cut_times with bursts merged per cut_bursts: None reads the
+    config (cut_burst_settings), False leaves the cuts as scanned, and a
+    {'window', 'max_span', 'keep'} dict is used as given, which is how
+    an analyser compares merge variants against the scanned cuts. Only
+    tracking reads the result; the structure profile is always chosen
+    from the cuts as scanned.
+    """
+    cuts = list( shot_cut_times or [] )
+    settings = cut_burst_settings() if cut_bursts is None else cut_bursts
+    if not cuts or not settings:
+        return cuts
+    import betautils_video as bu_video   # deferred: cv2 is a heavy import for a pure helper
+    return bu_video.merge_cut_bursts( cuts, settings['window'], max_span=settings.get( 'max_span' ),
+                                      keep=settings.get( 'keep', 'first' ) )
+
+
 def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=None,
-                  sample_fps=None, logger=None ):
+                  sample_fps=None, logger=None, cut_bursts=None ):
     """
     Match detections into per-instance tracks, then smooth, style,
     interpolate and confirm them.
@@ -923,14 +970,20 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         profile_name: Structure profile whose overrides apply, or None.
         sample_fps: Rate the detections were sampled at, or None.
         logger: Where per-label lines go; the shared run log by default.
+        cut_bursts: How bursts of cuts are merged first; see
+            tracking_cut_times. None follows the config.
 
     Returns:
         A (rendered_boxes, stats) pair. stats is a dict with
-        'interpolated', 'dropped_provisional', 'dropped_unconfirmed' and
-        'tracks'.
+        'interpolated', 'dropped_provisional', 'dropped_unconfirmed',
+        'tracks' and 'cuts_merged' (cuts the burst merge removed).
     """
-    shot_cut_times = shot_cut_times or []
+    scanned_cut_count = len( shot_cut_times or [] )
+    shot_cut_times = tracking_cut_times( shot_cut_times, cut_bursts )
     logger = logger or bu_log.get_logger()
+    if scanned_cut_count > len( shot_cut_times ):
+        logger.debug( "shot-cut bursts: %d of %d cut(s) merged away before tracking"%(
+            scanned_cut_count - len( shot_cut_times ), scanned_cut_count ) )
 
     def cut_between( earlier_time, later_time ):
         """
@@ -959,7 +1012,8 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
     output_boxes = []
     stats = { 'interpolated': 0, 'dropped_provisional': 0,
-              'dropped_unconfirmed': 0, 'tracks': 0 }
+              'dropped_unconfirmed': 0, 'tracks': 0,
+              'cuts_merged': scanned_cut_count - len( shot_cut_times ) }
 
     for label, boxes_for_label in by_label.items():
         settings = _LabelSettings( label, backend_name, frame_step, profile_name )
@@ -1568,7 +1622,7 @@ def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=
 
 def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
                              backend_name=None, logger=None, profile_name=None,
-                             sample_fps=None ):
+                             sample_fps=None, cut_bursts=None ):
     """
     The whole detection -> renderable-boxes pipeline, in one call.
 
@@ -1586,6 +1640,8 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         profile_name: Structure profile whose overrides apply, or None.
         sample_fps: Rate the detections were sampled at. None means the
             global video_censor_fps.
+        cut_bursts: How bursts of cuts merge before tracking; see
+            tracking_cut_times. None follows the config.
 
     Returns:
         A (boxes, stats) pair. boxes is sorted by 'start' ascending,
@@ -1600,7 +1656,7 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         len( boxes ), stats['raw_detections'], len( shot_cut_times or [] ) ) )
 
     boxes, smoothing_stats = smooth_boxes( boxes, shot_cut_times, backend_name, profile_name,
-                                           sample_fps, logger=logger )
+                                           sample_fps, logger=logger, cut_bursts=cut_bursts )
     stats.update( smoothing_stats )
     boxes.sort( key=lambda box: box['start'] )
     stats['rendered_boxes'] = len( boxes )

@@ -52,7 +52,12 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  and without a triggered frame layer, and weights the
                  difference by how much of each file's runtime a trigger
                  would hold on. Not part of 'all'.
-    all          Every read-only subcommand, in order.
+    cache        The cache-only ones: structure, geometry, hysteresis,
+                 suppression, dedup. No model, no timing; what the
+                 analysis hub runs every time.
+    hardware     The timing ones: render, decode, detect. Worth re-running
+                 when the machine, drivers or encoder settings change.
+    all          cache, then hardware.
 
 RUNNING IT
     python3 tools/bench/betabench.py all
@@ -85,7 +90,6 @@ OUTPUT
 
 import argparse
 import json
-import logging
 import math
 import glob
 import os
@@ -103,20 +107,16 @@ import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_log as bu_log
 import betautils_render as bu_render
 import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 import betautils_video as bu_video
 
 
-TRACE = 5
-LEVEL_NAMES = {
-    'trace': TRACE,
-    'debug': logging.DEBUG,
-    'info': logging.INFO,
-    'warn': logging.WARNING,
-    'error': logging.ERROR,
-}
+# One level vocabulary for the whole project: betautils_log's.
+TRACE = bu_log.TRACE
+LEVEL_NAMES = bu_log.LEVEL_NAMES
 
 CORE_DIR = os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 
@@ -128,7 +128,8 @@ CORE_DIR = os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath( _
 def build_logger( run_dir, log_level_name, console_level_name ):
     """
     A logger writing everything to run_dir/betabench.log and a filtered
-    view to the terminal.
+    view to the terminal. Built by betautils_log, so it is trace-capable
+    and can be handed to the render path.
 
     Args:
         run_dir: This run's own output directory.
@@ -136,26 +137,10 @@ def build_logger( run_dir, log_level_name, console_level_name ):
         console_level_name: Level for the terminal.
 
     Returns:
-        A configured logging.Logger.
+        A configured logger.
     """
-    logging.addLevelName( TRACE, 'TRACE' )
-    logger = logging.getLogger( 'betabench' )
-    logger.propagate = False
-    logger.setLevel( TRACE )
-    for handler in list( logger.handlers ):
-        logger.removeHandler( handler )
-
-    os.makedirs( run_dir, exist_ok=True )
-    file_handler = logging.FileHandler( os.path.join( run_dir, 'betabench.log' ), encoding='UTF-8' )
-    file_handler.setLevel( LEVEL_NAMES[ log_level_name ] )
-    file_handler.setFormatter( logging.Formatter( '%(asctime)s [%(levelname)-5s] %(message)s' ) )
-    logger.addHandler( file_handler )
-
-    console_handler = logging.StreamHandler( sys.stdout )
-    console_handler.setLevel( LEVEL_NAMES[ console_level_name ] )
-    console_handler.setFormatter( logging.Formatter( '%(message)s' ) )
-    logger.addHandler( console_handler )
-    return logger
+    return bu_log.tool_logger( 'betabench', os.path.join( run_dir, 'betabench.log' ),
+                               LEVEL_NAMES[ log_level_name ], LEVEL_NAMES[ console_level_name ] )
 
 
 def confirm( logger, question, assume_yes ):
@@ -1356,6 +1341,7 @@ def _per_configuration( kind, body ):
             include_preview=True,
             logger=logger )
         extra = {}
+        loaded_any = False
         for config in configurations:
             logger.info( "" )
             logger.info( "-" * 72 )
@@ -1366,6 +1352,7 @@ def _per_configuration( kind, body ):
                 configuration=config )
             if not raw_boxes:
                 continue
+            loaded_any = True
             logger.info( "loaded %d cached detection(s) across %d video(s) for %s"%(
                 len( raw_boxes ), file_count, config.label ) )
             produced = body( args, logger, config, raw_boxes ) or {}
@@ -1381,9 +1368,15 @@ def _per_configuration( kind, body ):
                         row['size'] = config.size
                     extra.setdefault( result_key, [] ).append( row )
         merged = extra.pop( kind, [] )
-        if not merged:
+        # Only a missing cache is a problem. A measurement that read the
+        # caches and found nothing to report (dedup with one picture
+        # size, say) said why itself; repeating "no cached detections"
+        # after it sent people looking for caches that were there.
+        if not loaded_any:
             logger.warning( "no cached detections found for any configuration - run betatv.py first "
                             "(a --preview run is enough to get started)" )
+        elif not merged:
+            logger.info( "%s: nothing to report for these caches (see above for why)"%( kind, ) )
         return dict( extra, **{ kind: merged } )
     run.__name__ = 'bench_' + kind
     run.__doc__ = body.__doc__
@@ -3586,8 +3579,10 @@ SUBCOMMANDS = {
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
 # then the measurements that actually load a model.
-ALL_ORDER = [ 'structure', 'geometry', 'hysteresis', 'suppression', 'dedup',
-              'render', 'decode', 'detect' ]
+CACHE_ORDER = [ 'structure', 'geometry', 'hysteresis', 'suppression', 'dedup' ]
+HARDWARE_ORDER = [ 'render', 'decode', 'detect' ]
+ALL_ORDER = CACHE_ORDER + HARDWARE_ORDER
+GROUPS = { 'all': ALL_ORDER, 'cache': CACHE_ORDER, 'hardware': HARDWARE_ORDER }
 
 
 def _positive_int( text ):
@@ -3601,7 +3596,7 @@ def build_parser():
     """The full CLI. One parser, flags shared across subcommands."""
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter )
-    parser.add_argument( 'command', choices=sorted( SUBCOMMANDS.keys() ) + [ 'all' ],
+    parser.add_argument( 'command', choices=sorted( SUBCOMMANDS.keys() ) + sorted( GROUPS ),
         help="which measurement to run" )
 
     parser.add_argument( '--yes', action='store_true',
@@ -3719,12 +3714,12 @@ def main():
         betaconfig.video_censor_fps,
         getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ) ) )
 
-    commands = ALL_ORDER if args.command == 'all' else [ args.command ]
+    commands = GROUPS.get( args.command, [ args.command ] )
     results = { 'run': { 'command': args.command, 'started': time.time() } }
     failed = []
 
     for index, name in enumerate( commands ):
-        if args.command == 'all' and name in ( 'detect', ) and index > 0:
+        if args.command in GROUPS and name in ( 'detect', ) and index > 0:
             if not confirm( logger, "Next: '%s'. It loads every model and runs real inference, "
                                     "which takes a few minutes. Continue?"%(name), args.yes ):
                 logger.info( "skipped '%s' at your request"%(name) )

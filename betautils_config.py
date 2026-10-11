@@ -1432,6 +1432,19 @@ def _validate_blur_approximation( errors ):
     motion = getattr( betaconfig, 'render_motion_interpolation', True )
     if not isinstance( motion, bool ):
         errors.append( "render_motion_interpolation must be True/False, got %r"%(motion,) )
+    burst_window = getattr( betaconfig, 'shot_cut_burst_window', 0.0 )
+    if ( not isinstance( burst_window, (int, float) ) or isinstance( burst_window, bool )
+         or burst_window < 0 ):
+        errors.append( "shot_cut_burst_window must be a number of seconds >= 0 (0 turns burst "
+                       "merging off), got %r"%(burst_window,) )
+    burst_span = getattr( betaconfig, 'shot_cut_burst_max_span', None )
+    if burst_span is not None and ( not isinstance( burst_span, (int, float) )
+                                    or isinstance( burst_span, bool ) or burst_span <= 0 ):
+        errors.append( "shot_cut_burst_max_span must be a positive number of seconds or None "
+                       "(merge a burst of any length), got %r"%(burst_span,) )
+    burst_keep = getattr( betaconfig, 'shot_cut_burst_keep', 'first' )
+    if burst_keep not in ( 'first', 'last' ):
+        errors.append( "shot_cut_burst_keep must be 'first' or 'last', got %r"%(burst_keep,) )
     span = getattr( betaconfig, 'render_motion_max_span_seconds', None )
     if span is not None and ( not isinstance( span, (int, float) )
                               or isinstance( span, bool ) or span <= 0 ):

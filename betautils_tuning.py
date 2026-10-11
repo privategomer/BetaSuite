@@ -51,7 +51,6 @@ and no scoring function gets to trade that away.
 import contextlib
 import copy
 import json
-import logging
 import os
 import re
 import shutil
@@ -64,6 +63,7 @@ import betautils_censor as bu_censor
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_log as bu_log
 import betautils_track as bu_track
 import betautils_video as bu_video
 
@@ -240,6 +240,23 @@ def clear_replay_caches():
 _RAW_BOX_CACHE = {}
 
 
+def _parsed_caches( cache_paths ):
+    """The cached parse of each readable cache file, shared, never copied."""
+    parsed = []
+    for path in cache_paths:
+        if not os.path.exists( path ):
+            continue
+        try:
+            stat = os.stat( path )
+            key = ( path, stat.st_mtime_ns, stat.st_size )
+            if key not in _RAW_BOX_CACHE:
+                _RAW_BOX_CACHE[key] = bu_hash.read_json( path )
+            parsed.append( _RAW_BOX_CACHE[key] )
+        except Exception:
+            continue
+    return parsed
+
+
 def _read_raw_boxes( cache_paths ):
     """
     Read and concatenate detection caches, reusing parsed results.
@@ -251,17 +268,21 @@ def _read_raw_boxes( cache_paths ):
         A fresh list of box dicts, safe for the caller to mutate.
     """
     boxes = []
-    for path in cache_paths:
-        if not os.path.exists( path ):
-            continue
-        try:
-            stat = os.stat( path )
-            key = ( path, stat.st_mtime_ns, stat.st_size )
-            if key not in _RAW_BOX_CACHE:
-                _RAW_BOX_CACHE[key] = bu_hash.read_json( path )
-            boxes.extend( copy.deepcopy( _RAW_BOX_CACHE[key] ) )
-        except Exception:
-            continue
+    for entries in _parsed_caches( cache_paths ):
+        boxes.extend( copy.deepcopy( entries ) )
+    return boxes
+
+
+def raw_boxes_for_reading( cache_paths ):
+    """
+    The same detections without the deep copy, for a caller that only reads.
+
+    The parse is shared with every later replay, so mutating these dicts
+    corrupts them. On a large split-screen cache the copy is seconds.
+    """
+    boxes = []
+    for entries in _parsed_caches( cache_paths ):
+        boxes.extend( entries )
     return boxes
 
 
@@ -330,9 +351,7 @@ def replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
              'sample_fps': sample_fps, 'signals': signals }
 
 
-_QUIET_LOGGER = logging.getLogger( 'betasuite.replay.quiet' )
-_QUIET_LOGGER.addHandler( logging.NullHandler() )
-_QUIET_LOGGER.propagate = False
+_QUIET_LOGGER = bu_log.silent_logger( 'betasuite.replay.quiet' )
 
 
 def replay_tracking_inputs( file_hash, video_path, cache_paths, raw_boxes, vid_w, vid_h,
@@ -476,6 +495,74 @@ def confident_detections( raw_boxes, labels, confident_score ):
     return found
 
 
+def label_content( raw_boxes, labels, sample_fps, confident_score=CONFIDENT_SCORE ):
+    """
+    How much of a video shows each label, from its raw detections.
+
+    A sample counts for a label when at least one detection of it scores
+    confident_score or more there. Seconds are samples over sample_fps,
+    so a 9 fps cache and an 18 fps one measure the same footage alike.
+    mixed_seconds: samples where two or more of `labels` are present at
+    once, the footage where one label's suppression rule can remove
+    another's censor. pair_seconds: the same per pair ('a+b', sorted).
+
+    Returns:
+        {'seconds': {label: s}, 'mixed_seconds': s, 'pair_seconds': {pair: s}}
+        with every label present, zero when absent.
+    """
+    rate = float( sample_fps or 0 ) or 1.0
+    times = { label: set() for label in labels }
+    for raw in raw_boxes:
+        label = raw.get( 'class_id' )
+        if label in times and raw.get( 'score', 0.0 ) >= confident_score:
+            # Sample times are k / fps as floats; rounding makes two
+            # detections of one sample land on one key.
+            times[label].add( round( raw['t'] * rate ) )
+    present = {}
+    for label, samples in times.items():
+        for sample in samples:
+            present.setdefault( sample, set() ).add( label )
+    pairs = {}
+    ordered = sorted( labels )
+    for first_index, first in enumerate( ordered ):
+        for second in ordered[ first_index + 1: ]:
+            pairs['%s+%s'%( first, second )] = 0
+    mixed = 0
+    for found in present.values():
+        if len( found ) < 2:
+            continue
+        mixed += 1
+        found = sorted( found )
+        for first_index, first in enumerate( found ):
+            for second in found[ first_index + 1: ]:
+                pairs['%s+%s'%( first, second )] += 1
+    return {
+        'seconds': { label: round( len( samples ) / rate, 1 ) for label, samples in sorted( times.items() ) },
+        'mixed_seconds': round( mixed / rate, 1 ),
+        'pair_seconds': { pair: round( count / rate, 1 ) for pair, count in sorted( pairs.items() ) },
+    }
+
+
+def content_by_video( videos, labels, confident_score=CONFIDENT_SCORE, forget=True ):
+    """
+    {file_hash: label_content(...)} for {file_hash: cache_paths}.
+
+    Each video's rate comes from its own cache name, so quick-cut videos
+    cached at their profile's rate count in seconds like the rest.
+    forget drops each parsed cache once measured; a library's worth held
+    at once runs to gigabytes.
+    """
+    found = {}
+    for file_hash, cache_paths in sorted( videos.items() ):
+        name = bu_cache.parse_any_cache_name( cache_paths[0] ) if cache_paths else None
+        rate = ( name or {} ).get( 'fps' ) or betaconfig.video_censor_fps
+        found[file_hash] = label_content( raw_boxes_for_reading( cache_paths ), labels, rate,
+                                          confident_score )
+        if forget:
+            forget_raw_boxes( cache_paths )
+    return found
+
+
 def uncovered_detections( detections, rendered ):
     """
     {label: how many of detections no rendered box of that label covers}.
@@ -513,7 +600,8 @@ def uncovered_detections( detections, rendered ):
 
 
 def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_hash=None,
-                    seed=REPLAY_SEED, confident_score=CONFIDENT_SCORE, cut_transform=None ):
+                    seed=REPLAY_SEED, confident_score=CONFIDENT_SCORE, cut_transform=None,
+                    cut_bursts=None ):
     """
     Replay one configuration's caches and return everything a decision needs.
 
@@ -560,7 +648,11 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         cut_transform: Optional f(cuts) -> cuts applied to the cuts
             tracking stops at, after the profile is chosen from the raw
             ones. analyze_cut_bursts uses it to try merging cut bursts
-            without changing which profile a file gets.
+            without changing which profile a file gets. Given, it
+            replaces the configured burst merge rather than stacking on it.
+        cut_bursts: The burst merge to replay with (see
+            bu_track.tracking_cut_times): None follows the config, as a
+            real run does; False replays the cuts as scanned.
 
     Returns:
         A metrics dict: rendered/interpolated/track counts, the tracking
@@ -610,8 +702,13 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
         tracking = replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
                                             shot_cuts_by_hash )
         tracking_cuts = tracking['shot_cut_times']
-        if cut_transform is not None and tracking_cuts:
-            tracking_cuts = cut_transform( tracking_cuts )
+        replay_bursts = cut_bursts
+        if cut_transform is not None:
+            # The transform owns the cuts: merging them again by the
+            # config would measure a different variant than the one named.
+            replay_bursts = False
+            if tracking_cuts:
+                tracking_cuts = cut_transform( tracking_cuts )
         confident = confident_detections( raw_boxes, labels, confident_score )
         profile_name = tracking['profile_name']
         sample_fps = tracking['sample_fps']
@@ -628,7 +725,7 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
                     raw_boxes, vid_w, vid_h,
                     shot_cut_times=tracking_cuts, backend_name=backend_name,
                     logger=_QUIET_LOGGER, profile_name=profile_name,
-                    sample_fps=sample_fps )
+                    sample_fps=sample_fps, cut_bursts=replay_bursts )
 
         metrics['rendered_boxes'] += len( rendered )
         metrics['interpolated'] += stats.get( 'interpolated', 0 )
@@ -1092,6 +1189,47 @@ class ConfigWriter:
 # Decisions
 # ---------------------------------------------------------------------------
 
+TIGHTENING_COVERAGE_TOLERANCE = 0.0001
+
+
+def tightening_review( rows, baseline_value, coverage_tolerance=TIGHTENING_COVERAGE_TOLERANCE ):
+    """
+    A tighter value worth judging by eye, from a loosening stage's rows, or None.
+
+    The loosening stages accept only candidates that cut track resets,
+    so a tighter value never wins there, however much ambiguity it
+    removes: on 2026-10-11, match_distance 0.75 for exposed_breast cut
+    risky contention from 13,884 to 4,375 for 6,631 more resets at no
+    coverage loss, and was rejected for the resets alone. Whether a
+    snap (a reset) or a possible subject swap (risky contention) looks
+    worse is for eyes, not this metric, so this only names the candidate.
+
+    Eligible: below baseline_value, coverage loss within
+    coverage_tolerance, and at least one fewer risky assignment for each
+    reset it adds. Among those, the one removing the most risky ones.
+
+    Returns:
+        {'value', 'risky_removed', 'resets_added', 'why'} or None.
+    """
+    best = None
+    for row in rows:
+        value = row.get( 'value' )
+        if value is None or baseline_value is None or value >= baseline_value:
+            continue
+        risky_removed = -( row.get( 'risky_added' ) or 0 )
+        resets_added = -( row.get( 'resets_avoided' ) or 0 )
+        if ( row.get( 'coverage_loss', 1.0 ) > coverage_tolerance or risky_removed <= 0
+                or risky_removed < resets_added ):
+            continue
+        if best is None or risky_removed > best['risky_removed']:
+            best = { 'value': value, 'risky_removed': risky_removed, 'resets_added': resets_added }
+    if best:
+        best['why'] = ( "%s removes %d ambiguous track decisions for %d more resets at no coverage "
+                        "loss; whether that looks better is a judgement by eye"%(
+                            best['value'], best['risky_removed'], best['resets_added'] ) )
+    return best
+
+
 class Decision:
     """
     One stage's outcome, with the reasoning that produced it.
@@ -1103,12 +1241,17 @@ class Decision:
     """
 
     def __init__( self, stage_name, chosen, accepted, reasoning, rows,
-                  per_configuration=None ):
+                  per_configuration=None, review=None, key=None, label=None ):
         self.stage_name = stage_name
         self.chosen = chosen
         self.accepted = accepted
         self.reasoning = reasoning
         self.rows = rows
+        # A value the numbers cannot settle, for ab_compare.py to put in
+        # front of a person: {'value', 'why', ...} or None.
+        self.review = review
+        self.key = key
+        self.label = label
         # When the configurations sharing a key want DIFFERENT values,
         # this holds {configuration label: value} and `chosen` is None.
         # The write path then targets each variant's own block instead
@@ -1126,5 +1269,8 @@ class Decision:
             'per_configuration': self.per_configuration,
             'accepted': self.accepted,
             'reasoning': self.reasoning,
+            'review': self.review,
+            'key': self.key,
+            'label': self.label,
             'rows': self.rows,
         }

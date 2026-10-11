@@ -1029,6 +1029,10 @@ def debug_image( image, box ):
     cv2.putText( image, box['label'],         ( x+10, y+60 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     cv2.putText( image, '%.2f %.1f %.1f'%( box['score'], box['start'], box['end'] ),
                  ( x+10, y+80 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
+    if box.get( 'debug_note' ):
+        # A tool's own annotation, e.g. which suppression rule made the difference.
+        cv2.putText( image, str( box['debug_note'] ), ( x+10, y+100 ),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     return image
 
 
