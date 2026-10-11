@@ -12,8 +12,19 @@
 #   ./tools/analysis/run_all_analysis.sh
 #   ./tools/analysis/run_all_analysis.sh --labels exposed_vulva exposed_breast
 #   ./tools/analysis/run_all_analysis.sh --include-preview
-#   ./tools/analysis/run_all_analysis.sh --quick        # skip the slow steps
 #   ./tools/analysis/run_all_analysis.sh --log-level trace --console-level warn
+#
+# TIMING STEPS ARE OPT-IN
+#
+#   ./tools/analysis/run_all_analysis.sh --with-encode     # encoder speed/quality (~1 h)
+#   ./tools/analysis/run_all_analysis.sh --with-reverse    # reverse-mode render cost (~25 min)
+#   ./tools/analysis/run_all_analysis.sh --with-hardware   # decode/detect/render timing
+#   ./tools/analysis/run_all_analysis.sh --with-timing     # all three
+#
+# These measure the machine, not the run: their answer changes when the
+# hardware, drivers or encoder settings do, not after every batch of
+# footage. A default run reads caches only. --quick is accepted and does
+# nothing, since that is now the default.
 #
 # NARROWING TO ONE VARIANT
 #
@@ -50,11 +61,15 @@
 #                               that took 16% of a run caps the saving
 #                               at 16%, whatever the tuning output says.
 #
-#   2. betabench.py all         Derives suppression / hysteresis / structure /
+#   2. betabench.py cache       Derives suppression / hysteresis / structure /
 #                               geometry / dedup values from the same
-#                               caches, and times decode, detect and
-#                               render on this hardware. Every variant
-#                               of every backend, at its native size.
+#                               caches. Every variant of every backend, at
+#                               its native size. Writes moves.sh, the
+#                               reviewable source-folder moves the
+#                               structure survey recommends.
+#   2b. analyze_label_content.py      Which videos show which censored label,
+#                                     and which mix them: where to judge a
+#                                     per-label setting (AB_FOCUS).
 #
 #   3. analyze_suppression_pairs.py   Cross-label confusion signatures.
 #   3b. analyze_geometry_impact.py    What a candidate geometry bound would
@@ -68,6 +83,23 @@
 #                                     nothing about where to go.
 #   6. analyze_track_breaks.py $VARIANT_FLAG        match_distance / track_max_gap sweeps.
 #   7. analyze_style_flicker.py $VARIANT_FLAG       paired_style gate diagnostics.
+#   7b. analyze_cut_bursts.py $VARIANT_FLAG         Whether merging bursts of shot cuts
+#                                     (fades, flashes) would recover censoring,
+#                                     replayed per profile. Nothing is wired in
+#                                     until its numbers say so.
+#
+#   T. (opt-in, see above) TIMING steps, one at a time after the
+#      parallel batch, so no other step's CPU use is measured with them:
+#      betabench.py hardware    decode / detect / render timing, plus
+#                               render without the blur approximation
+#                               (--with-hardware)
+#      betabench.py encode      Render encode speed and quality per
+#                               encoder on this machine, through the
+#                               real chunk command and worker count.
+#                               Informs encode_video_codec / preset / crf
+#                               (--with-encode).
+#      betabench.py reverse     What reverse mode would cost to render,
+#                               from this run's caches (--with-reverse).
 #
 #   8. auto_tune.py             A dry run of the staged tuner: what it
 #                               would change and why, writing nothing.
@@ -96,6 +128,9 @@ fi
 LOG_LEVEL="debug"
 CONSOLE_LEVEL="info"
 QUICK=0
+WITH_HARDWARE=0
+WITH_ENCODE=0
+WITH_REVERSE=0
 ALPHA_SWEEP="0.15 0.25 0.35 0.50 0.70"
 declare -a PASSTHROUGH=()
 VARIANTS=""
@@ -112,6 +147,10 @@ while [ "$#" -gt 0 ]; do
         --log-level)     LOG_LEVEL="$2"; shift 2 ;;
         --console-level) CONSOLE_LEVEL="$2"; shift 2 ;;
         --quick)         QUICK=1; shift ;;
+        --with-hardware) WITH_HARDWARE=1; shift ;;
+        --with-encode)   WITH_ENCODE=1; shift ;;
+        --with-reverse)  WITH_REVERSE=1; shift ;;
+        --with-timing)   WITH_HARDWARE=1; WITH_ENCODE=1; WITH_REVERSE=1; shift ;;
         --variants)      shift; VARIANTS=""
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              VARIANTS="$VARIANTS $1"; shift
@@ -122,7 +161,8 @@ while [ "$#" -gt 0 ]; do
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              ALPHA_SWEEP="$ALPHA_SWEEP $1"; shift
                          done ;;
-        --help|-h)       sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h)       awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" \
+                             | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)               PASSTHROUGH+=("$1"); shift ;;
     esac
 done
@@ -138,8 +178,13 @@ if [ "${#PASSTHROUGH[@]}" -gt 0 ]; then
     echo "extra args (passed to every tool that accepts them): ${PASSTHROUGH[*]}"
 fi
 if [ "$QUICK" -eq 1 ]; then
-    echo "--quick: skipping the steps that load models or time rendering"
+    echo "--quick: nothing to skip, timing steps are already opt-in (--with-timing to run them)"
 fi
+TIMING_ON=""
+[ "$WITH_HARDWARE" -eq 1 ] && TIMING_ON="$TIMING_ON hardware"
+[ "$WITH_ENCODE" -eq 1 ] && TIMING_ON="$TIMING_ON encode"
+[ "$WITH_REVERSE" -eq 1 ] && TIMING_ON="$TIMING_ON reverse"
+echo "timing steps:${TIMING_ON:- none (--with-encode, --with-reverse, --with-hardware or --with-timing)}"
 echo
 echo "Configurations this run will cover (read from the cache, not from config):"
 "$PYTHON_BIN" - <<'PYEOF'
@@ -167,15 +212,13 @@ declare -a STEPS=()
 
 STEPS+=("summarize_run|${PYTHON_BIN} $SCRIPT_DIR/summarize_run.py")
 
-if [ "$QUICK" -eq 0 ]; then
-    STEPS+=("betabench_all|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-else
-    # structure is cache-only and the profile question depends on it,
-    # so --quick keeps it alongside geometry.
-    STEPS+=("betabench_cache_only|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_structure|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-fi
+# Every betabench step gets its own --out-dir under this run's folder.
+# Without one, betabench names its folder after the current second, and
+# two steps launched together in the parallel batch landed in the SAME
+# folder: one results.json overwrote the other and both wrote one
+# interleaved betabench.log.
+STEPS+=("betabench_cache|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py cache --yes $VARIANT_FLAG --write-move-script $LOG_DIR/moves.sh --out-dir $LOG_DIR/betabench_cache --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+STEPS+=("analyze_label_content|${PYTHON_BIN} $SCRIPT_DIR/analyze_label_content.py $VARIANT_FLAG --json $LOG_DIR/label_content.json")
 
 STEPS+=("analyze_suppression_pairs|${PYTHON_BIN} $SCRIPT_DIR/analyze_suppression_pairs.py")
 STEPS+=("analyze_geometry_impact|${PYTHON_BIN} $SCRIPT_DIR/analyze_geometry_impact.py ${PASSTHROUGH[*]:-}")
@@ -183,10 +226,26 @@ STEPS+=("analyze_score_distribution|${PYTHON_BIN} $SCRIPT_DIR/analyze_score_dist
 STEPS+=("analyze_jitter|${PYTHON_BIN} $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLAG --sweep-alpha $ALPHA_SWEEP ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_cut_bursts|${PYTHON_BIN} $SCRIPT_DIR/analyze_cut_bursts.py $VARIANT_FLAG --json $LOG_DIR/analyze_cut_bursts.json")
 STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
+# Timing steps: run one at a time, after the parallel batch and before
+# auto_tune. They measure wall clock and throughput, so anything running
+# beside them would be measured with them.
+declare -a TIMING_STEPS=()
+if [ "$WITH_HARDWARE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_hardware|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py hardware --yes $VARIANT_FLAG --out-dir $LOG_DIR/betabench_hardware --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    TIMING_STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --out-dir $LOG_DIR/betabench_render_noapprox --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_ENCODE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_encode|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py encode --yes --out-dir $LOG_DIR/betabench_encode --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_REVERSE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_reverse|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py reverse --yes --out-dir $LOG_DIR/betabench_reverse --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+
 declare -a RESULTS=()
-TOTAL=${#STEPS[@]}
+TOTAL=$(( ${#STEPS[@]} + ${#TIMING_STEPS[@]} ))
 
 # WHY SOME STEPS RUN IN PARALLEL AND SOME DO NOT
 #
@@ -238,8 +297,10 @@ replay_step_log() {
 }
 
 # Split the steps: first and last stay pinned, the middle can batch.
+# LAST_INDEX indexes STEPS, so it is counted from STEPS alone: TOTAL also
+# counts the timing steps, which are a separate list.
 FIRST_LABEL="${STEPS[0]%%|*}"
-LAST_INDEX=$(( TOTAL - 1 ))
+LAST_INDEX=$(( ${#STEPS[@]} - 1 ))
 LAST_LABEL="${STEPS[$LAST_INDEX]%%|*}"
 
 STEP=1
@@ -276,6 +337,13 @@ for label in "${BATCH[@]}"; do
     replay_step_log "$label" "$STEP"
 done
 
+for entry in ${TIMING_STEPS[@]+"${TIMING_STEPS[@]}"}; do
+    label="${entry%%|*}"
+    run_one_step "$label" "${entry#*|}"
+    STEP=$(( STEP + 1 ))
+    replay_step_log "$label" "$STEP"
+done
+
 STEP=$(( STEP + 1 ))
 run_one_step "$LAST_LABEL" "${STEPS[$LAST_INDEX]#*|}"
 replay_step_log "$LAST_LABEL" "$STEP"
@@ -288,8 +356,25 @@ done
 echo
 echo "full logs: $LOG_DIR"
 echo
-echo "Next: the tuner above ran as a DRY RUN and wrote nothing. When you agree with what"
-echo "it proposed, apply it with:"
+echo "--- where the recommendations are ---"
+where() {   # where LABEL PATH: print the line only when the file was written
+    [ -e "$2" ] && printf "  %-34s %s\n" "$1" "$2"
+    return 0
+}
+where "tuner proposals (auto_tune):" "$LOG_DIR/auto_tune/decisions.json"
+where "suppression/hysteresis/geometry:" "$LOG_DIR/betabench_cache/results.json"
+where "structure: source-folder moves" "$LOG_DIR/moves.sh"
+where "structure: per-file table" "$LOG_DIR/betabench_cache.log"
+where "which videos show which label:" "$LOG_DIR/label_content.json"
+where "cut-burst merge, best variant:" "$LOG_DIR/analyze_cut_bursts.json"
+where "encoder speed and quality:" "$LOG_DIR/betabench_encode/results.json"
+where "reverse-mode cost:" "$LOG_DIR/betabench_reverse/results.json"
+where "decode/detect/render timing:" "$LOG_DIR/betabench_hardware/results.json"
+echo "  every step's full output:           $LOG_DIR/<step>.log"
+echo
+echo "Next: the tuner above ran as a DRY RUN and wrote nothing. Values it marked 'worth"
+echo "judging by eye' go through the A/B first: bash tools/tuning/ab_compare.sh"
+echo "When you agree with the rest, apply it with:"
 echo "    ${PYTHON_BIN} tools/tuning/auto_tune.py --apply"
 echo "It backs betaconfig.py up before every write and verifies each value took effect."
 

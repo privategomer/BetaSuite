@@ -38,7 +38,6 @@ import argparse
 import bisect
 import collections
 import glob
-import logging
 import os
 import sys
 
@@ -53,30 +52,16 @@ import betautils_cache_paths as bu_cache
 import betautils_censor as bu_censor
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_log as bu_log
 import betautils_track as bu_track
 
 
-LEVELS = { 'trace': 5, 'debug': logging.DEBUG, 'info': logging.INFO,
-           'warn': logging.WARNING, 'error': logging.ERROR }
+LEVELS = bu_log.LEVEL_NAMES
 
 
 def build_logger( log_path, stdout_level ):
-    logging.addLevelName( 5, 'TRACE' )
-    logger = logging.getLogger( 'diagnose_style_variety' )
-    logger.setLevel( 5 )
-    logger.handlers = []
-
-    file_handler = logging.FileHandler( log_path, mode='w' )
-    file_handler.setLevel( 5 )
-    file_handler.setFormatter( logging.Formatter(
-        '%(asctime)s [%(levelname)-5s] %(message)s' ) )
-    logger.addHandler( file_handler )
-
-    stream = logging.StreamHandler( sys.stdout )
-    stream.setLevel( LEVELS[stdout_level] )
-    stream.setFormatter( logging.Formatter( '%(message)s' ) )
-    logger.addHandler( stream )
-    return logger
+    return bu_log.tool_logger( 'diagnose_style_variety', log_path, 'trace', LEVELS[stdout_level],
+                               file_mode='w' )
 
 
 def find_detection_caches( label ):

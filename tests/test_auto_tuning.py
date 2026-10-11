@@ -25,6 +25,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 
@@ -55,7 +56,7 @@ class _Options:
 
 
 def _metrics( new_tracks=100, risky=100, coverage=None, dropped_unconfirmed=0,
-              rendered=1000 ):
+              rendered=1000, confident=100000, uncensored=0 ):
     return {
         'new_tracks': new_tracks,
         'risky_contention': risky,
@@ -64,6 +65,8 @@ def _metrics( new_tracks=100, risky=100, coverage=None, dropped_unconfirmed=0,
         'interpolated': 0,
         'dropped_unconfirmed': dropped_unconfirmed,
         'coverage_by_label': coverage if coverage is not None else { 'exposed_breast': 100.0 },
+        'confident_by_label': { 'exposed_breast': confident },
+        'confident_uncovered_by_label': { 'exposed_breast': uncensored },
     }
 
 
@@ -169,46 +172,148 @@ class TestLooseningDecisionRule( unittest.TestCase ):
         self.assertEqual( decision.chosen, 13.5 )
 
 
-class TestMinTrackHitsDecisionRule( unittest.TestCase ):
-    """A stage whose whole job is removing boxes, so the guard IS the rule."""
+class TestMinTrackHitsRecommendation( unittest.TestCase ):
+    """
+    The strictest value that leaves no more than 0.1% of confident
+    detections uncensored beyond the fewest any value leaves. No cap:
+    the tool says what the evidence supports and the operator decides.
+    """
 
-    def setUp( self ):
-        self.stage = auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' )
-        self.baseline_metrics = _metrics( dropped_unconfirmed=0 )
-        self.baseline_row = _row( 1, 'baseline (1)', self.baseline_metrics, self.baseline_metrics )
-        self.baseline_row['verdict'] = 'baseline'
+    def stage_at( self, baseline ):
+        stage = auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' )
+        stage.baseline_value = lambda: baseline
+        return stage
 
-    def _decide( self, rows, options=None, configurations=None ):
-        """Score and decide, the way the tool does: rows per configuration."""
-        options = options or _Options()
-        by_configuration = configurations or { 'only @320': rows }
-        for these in by_configuration.values():
-            self.stage.score_rows( these, options )
-        return self.stage.decide( by_configuration, options, None )
+    def rows( self, baseline, uncensored_by_value, boxes_by_value=None ):
+        boxes_by_value = boxes_by_value or {}
+        base = _metrics( rendered=boxes_by_value.get( baseline, 10000 ),
+                         uncensored=uncensored_by_value[baseline] )
+        rows = [ dict( _row( baseline, 'baseline (%d)'%( baseline, ), base, base ),
+                       verdict='baseline' ) ]
+        for value in sorted( uncensored_by_value ):
+            if value == baseline:
+                continue
+            metrics = _metrics( rendered=boxes_by_value.get( value, 10000 ),
+                                uncensored=uncensored_by_value[value] )
+            rows.append( _row( value, '%d hit(s)'%( value, ), metrics, base ) )
+        return rows
 
-    def test_a_tiny_coverage_cost_is_allowed( self ):
-        candidate = _row( 2, '2 hit(s)',
-                          _metrics( dropped_unconfirmed=400,
-                                    coverage={ 'exposed_breast': 99.9 } ),
-                          self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
+    def decide( self, stage, rows, loss=0.001 ):
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = loss
+        stage.score_rows( rows, opts )
+        return stage.decide( { 'only @640': rows }, opts, None )
+
+    def test_every_value_is_tried_with_no_cap( self ):
+        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1, 3, 4 ] )
+
+    def test_noise_only_drops_recommend_going_stricter( self ):
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ) )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 3, "4 leaves 350 more bare, over the 100 allowed" )
+
+    def test_confident_losses_recommend_going_looser( self ):
+        # The 2026-10-09 shape: 3 left far more confident detections bare.
+        decision = self.decide( self.stage_at( 3 ),
+                                self.rows( 3, { 1: 50, 2: 120, 3: 900, 4: 2000 } ) )
         self.assertTrue( decision.accepted )
         self.assertEqual( decision.chosen, 2 )
+        self.assertIn( '3: 900 uncensored', decision.reasoning )
 
-    def test_a_real_coverage_cost_is_not( self ):
-        candidate = _row( 2, '2 hit(s)',
-                          _metrics( dropped_unconfirmed=4000,
-                                    coverage={ 'exposed_breast': 95.0 } ),
-                          self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
-        self.assertFalse( decision.accepted,
-            "dropping four thousand boxes looks like a big cleanup right up until you notice "
-            "it cost 5% of the censoring" )
-
-    def test_a_value_that_changes_nothing_is_rejected( self ):
-        candidate = _row( 2, '2 hit(s)', _metrics( dropped_unconfirmed=0 ), self.baseline_metrics )
-        decision = self._decide( [ self.baseline_row, candidate ] )
+    def test_the_current_value_is_kept_when_it_is_the_answer( self ):
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 50, 2: 90, 3: 500, 4: 900 } ) )
         self.assertFalse( decision.accepted )
+        self.assertEqual( decision.chosen, 2 )
+        self.assertIn( 'keeping 2', decision.reasoning )
+
+    def test_the_tolerance_is_a_share_of_confident_detections( self ):
+        uncensored = { 1: 50, 2: 50, 3: 160, 4: 400 }
+        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001 )
+        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002 )
+        self.assertEqual( tight.chosen, 2, "110 more bare is over 0.1% of 100,000" )
+        self.assertEqual( loose.chosen, 3, "and under 0.2%" )
+
+    def test_a_value_exactly_at_the_tolerance_is_within_it( self ):
+        # 100,000 confident detections at 0.1% allows exactly 100 more bare.
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        self.assertEqual( decision.chosen, 3 )
+
+    def test_rows_report_boxes_and_confident_changes( self ):
+        rows = self.rows( 2, { 1: 40, 2: 50 }, boxes_by_value={ 1: 10400, 2: 10000 } )
+        self.decide( self.stage_at( 2 ), rows )
+        lower = rows[1]
+        self.assertEqual( lower['boxes_changed'], 400 )
+        self.assertEqual( lower['confident_change'], -10 )
+        self.assertIn( '+400 box(es)', lower['verdict'] )
+
+
+class TestMaskedStagesAreSkipped( unittest.TestCase ):
+    """auto_tune must not replay candidates no file will ever read."""
+
+    def run_main( self, profile_overrides ):
+        import shutil
+        import tempfile
+        import types as _types
+        out_dir = tempfile.mkdtemp( prefix='betasuite-autotune-' )
+        self.addCleanup( shutil.rmtree, out_dir, True )
+        config = _types.SimpleNamespace( backend_name='nudenet_v3', picture_sizes=[ 640 ],
+                                         label='nudenet_v3/640m @640', variant='640m' )
+        measured = []
+        argv = [ 'auto_tune.py', '--stages', 'track_max_gap', '--labels', 'exposed_breast',
+                 '--out-dir', out_dir, '--backends', 'nudenet_v3' ]
+        with mock.patch( 'sys.argv', argv ), \
+             mock.patch.object( auto_tune.bu_cache, 'configurations_to_analyse',
+                                return_value=[ config ] ), \
+             mock.patch.object( auto_tune.bu_cache, 'discover_full_run_videos',
+                                return_value=( { 'h1': [ 'x.gz' ], 'h2': [ 'y.gz' ] }, {} ) ), \
+             mock.patch.object( auto_tune.bu_cache, 'build_hash_to_video_path',
+                                return_value={ 'h1': '/a.mp4', 'h2': '/b.mp4' } ), \
+             mock.patch.object( auto_tune.bu_tuning, 'replay_tracking_context',
+                                side_effect=lambda h, *a, **k: { 'profile_name':
+                                                                 { 'h1': 'scene', 'h2': 'compilation' }[h] } ), \
+             mock.patch.object( auto_tune.bu_tuning.bu_detector, 'get_profile_item_overrides',
+                                side_effect=lambda profile, label, backend=None:
+                                    profile_overrides.get( profile, {} ) ), \
+             mock.patch.object( auto_tune, 'measure_stage',
+                                side_effect=lambda *a, **k: measured.append( 1 ) or [
+                                    dict( _row( 0.17, 'baseline', _metrics(), _metrics() ),
+                                          verdict='baseline' ) ] ), \
+             mock.patch.object( auto_tune, '_median_shot_seconds_for', return_value=None ):
+            auto_tune.main()
+        import json as _json
+        import os as _os
+        with open( _os.path.join( out_dir, 'decisions.json' ) ) as handle:
+            return measured, _json.load( handle )
+
+    def test_a_key_every_profile_sets_is_not_replayed( self ):
+        measured, decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 },
+                                               'compilation': { 'track_max_gap': 1.5 } } )
+        self.assertEqual( measured, [] )
+        self.assertEqual( len( decisions ), 1 )
+        self.assertFalse( decisions[0]['accepted'] )
+        self.assertIn( 'compilation 1.5, scene 3.0', decisions[0]['reasoning'] )
+
+    def test_a_key_only_some_profiles_set_is_still_measured( self ):
+        measured, _decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 } } )
+        self.assertEqual( len( measured ), 1 )
+
+
+class TestProfileMasking( unittest.TestCase ):
+    """A profile that sets a key hides the backend value from its files."""
+
+    def test_only_profiles_that_set_the_key_mask_it( self ):
+        overrides = { ( 'scene', 'exposed_breast' ): { 'track_max_gap': 3.0 },
+                      ( 'compilation', 'exposed_breast' ): { 'track_max_gap': 1.5 },
+                      ( 'split_screen', 'exposed_breast' ): { 'match_distance_multiplier': 0.8 } }
+        fake = lambda profile, label, backend=None: overrides.get( ( profile, label ), {} )
+        profiles = { 'a': 'scene', 'b': 'compilation', 'c': 'split_screen', 'd': None }
+        with mock.patch.object( bu_tuning.bu_detector, 'get_profile_item_overrides', fake ):
+            masking = bu_tuning.profile_masking( profiles, 'exposed_breast', 'track_max_gap',
+                                                 'nudenet_v3' )
+        self.assertEqual( masking, { 'scene': 3.0, 'compilation': 1.5 } )
 
 
 

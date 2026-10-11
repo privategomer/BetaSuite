@@ -15,9 +15,9 @@ at a higher fps or bigger picture_size is expected even when detection
 quality is IDENTICAL, and tells you nothing about whether the setting is
 worth its extra processing time.
 
-What this does instead: runs the real apply_class_suppression/
-process_raw_box/smooth_boxes pipeline (same functions replay_tune.py
-extracts from betatv.py - never reimplemented) against two ALREADY-
+What this does instead: runs the production pipeline
+(bu_track.prepare_boxes_for_render, with the profile, shot cuts and
+sample rate a real run would use) against two ALREADY-
 COMPUTED detection caches for the same video/preview slice (config A and
 config B - typically the same video at two different picture_sizes, or
 two different video_censor_fps), collapses each into discrete per-label
@@ -67,32 +67,20 @@ _sys.path.insert( 0, _os.path.dirname( _os.path.dirname( _os.path.dirname( _os.p
 
 import betaconst
 import betaconfig
+import betautils_cache_paths as bu_cache
+import betautils_detector as bu_detector
 import betautils_hash as bu_hash
-import betautils_censor as bu_censor
-
-import replay_tune as rt
+import betautils_tuning as bu_tuning
 
 
-def run_pipeline_for_config( flat_raw, vid_w, vid_h, fps, smooth_boxes_fn, apply_suppression_fn ):
-    # smooth_boxes uses betaconfig.video_censor_fps directly (for
-    # max_gap/frame_step - see its own comments), so that has to reflect
-    # whichever config's fps we're currently processing, same monkeypatch-
-    # then-restore pattern replay_tune.run_variant uses for item_overrides/
-    # class_suppression.
-    orig_fps = betaconfig.video_censor_fps
-    try:
-        betaconfig.video_censor_fps = fps
-        raw_copy = copy.deepcopy( flat_raw )
-        surviving, _ = apply_suppression_fn( raw_copy )
-        boxes = []
-        for r in surviving:
-            res = bu_censor.process_raw_box( r, vid_w, vid_h )
-            if res:
-                boxes.append( res )
-        tracked_boxes, _ = smooth_boxes_fn( boxes )
-        return( tracked_boxes )
-    finally:
-        betaconfig.video_censor_fps = orig_fps
+def run_pipeline_for_config( file_hash, video_path, cache_paths, flat_raw, vid_w, vid_h,
+                             backend_name, replay=None ):
+    # The sample rate comes from the cache names, so each config is
+    # tracked at the rate it was detected at; no betaconfig patching.
+    replay = replay or bu_tuning.replay_rendered
+    rendered, _stats, _tracking = replay( file_hash, video_path, cache_paths,
+                                          copy.deepcopy( flat_raw ), vid_w, vid_h, backend_name )
+    return rendered
 
 
 def boxes_to_events( tracked_boxes ):
@@ -161,7 +149,10 @@ def main():
     parser.add_argument( '--fps-a', type=float, required=True )
     parser.add_argument( '--sizes-b', type=int, nargs='+', required=True )
     parser.add_argument( '--fps-b', type=float, required=True )
+    parser.add_argument( '--backend', default=None,
+        help="backend whose caches to compare (default: the selected one)" )
     args = parser.parse_args()
+    backend_name = args.backend or bu_detector.selected_backend_name()
 
     video_path = os.path.join( betaconst.video_path_uncensored, args.video )
     if not os.path.exists( video_path ):
@@ -178,12 +169,15 @@ def main():
 
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     file_hash = bu_hash.md5_for_file( video_path, 16 )
-    cache_suffix = '-preview@%.1fs'%(args.preview_start_seconds)
+    cache_suffix = bu_cache.preview_cache_suffix( True, args.preview_start_seconds )
 
-    smooth_boxes_fn, apply_suppression_fn = rt._load_real_pipeline_functions()
+    def cache_paths_for( sizes, fps ):
+        return [ bu_cache.box_hash_path_for( file_hash, size, fps, global_min_prob, backend_name,
+                                             cache_suffix ) for size in sizes ]
 
     def load_or_die( sizes, fps, label ):
-        flat_raw, missing = rt.load_cached_raw_boxes( file_hash, sizes, fps, global_min_prob, cache_suffix )
+        flat_raw, missing = bu_cache.load_cached_raw_boxes(
+            file_hash, sizes, fps, global_min_prob, backend_name, cache_suffix )
         if missing:
             print( "missing detection cache for config %s (size(s) %s @ fps=%s) - run this first:"%(
                 label, [m[0] for m in missing], fps ) )
@@ -198,8 +192,10 @@ def main():
     print( "config A: picture_sizes=%s video_censor_fps=%s (%d raw detections)"%(args.sizes_a, args.fps_a, len(raw_a)) )
     print( "config B: picture_sizes=%s video_censor_fps=%s (%d raw detections)"%(args.sizes_b, args.fps_b, len(raw_b)) )
 
-    tracked_a = run_pipeline_for_config( raw_a, vid_w, vid_h, args.fps_a, smooth_boxes_fn, apply_suppression_fn )
-    tracked_b = run_pipeline_for_config( raw_b, vid_w, vid_h, args.fps_b, smooth_boxes_fn, apply_suppression_fn )
+    tracked_a = run_pipeline_for_config( file_hash, video_path, cache_paths_for( args.sizes_a, args.fps_a ),
+                                         raw_a, vid_w, vid_h, backend_name )
+    tracked_b = run_pipeline_for_config( file_hash, video_path, cache_paths_for( args.sizes_b, args.fps_b ),
+                                         raw_b, vid_w, vid_h, backend_name )
 
     events_a = boxes_to_events( tracked_a )
     events_b = boxes_to_events( tracked_b )

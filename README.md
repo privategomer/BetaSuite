@@ -658,6 +658,21 @@ python3 tools/bench/betabench.py --help
 | `structure` | per source file: cut rate, subjects on screen, spatial layout | which source folder each file belongs in |
 | `structure-scan` | whole-file shot-cut scans, in parallel; `--geometry-slices N` adds detection-only slices | the inputs `structure` reads, reused by the next real run |
 | `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure-scan --workers` |
+| `encode` | render encode speed and quality (SSIM, PSNR) per encoder: current x264 settings, faster x264 presets, NVENC at several cq values; real worker count, real chunk command; not part of `all` | `encode_video_codec`, `encode_preset`, `encode_crf`, and `render_workers` if NVENC caps sessions |
+| `reverse` | what reverse mode would cost to render here, before it is built: each frame style and window blend on real frames, the real pipeline with and without a triggered frame layer, and the share of each file's runtime a trigger would hold on | the reverse-mode frame-style default, and whether it is affordable |
+
+**Measuring a subset.** `--first-videos N` (the first N files by name,
+case-insensitive, across every folder and both source trees) or
+`--videos-per-folder N` (the first N by name in each directory) narrows
+`structure`, `structure-scan`, `concurrency`, `encode` and `reverse` to
+the same files every time, so two runs stay comparable. The chosen files
+are listed in the log. The harnesses take the same choice as
+`VIDEOS_FIRST=N` or `VIDEOS_PER_FOLDER=N`:
+
+```bash
+VIDEOS_PER_FOLDER=1 bash tools/bench/structure_survey.sh
+VIDEOS_FIRST=3 bash tools/bench/reverse_cost.sh
+```
 
 `structure` is the one to read per file rather than pooled: it reports
 cut rate, how many subjects are live at once, and where they sit in
@@ -665,7 +680,8 @@ frame, which is what decides whether a file wants different timing and
 tracking values from the rest. See CONFIG_REFERENCE.md ->
 "Reading `structure`, and what profiles would need".
 
-Everything goes to `../output/benchmarks/<timestamp>/` with a log at
+Run on its own, everything goes to `../output/benchmarks/<timestamp>/`
+(under `run_all_analysis.sh`, to that run's own folder per step) with a log at
 `--log-level` (default `trace`, so the file keeps everything), a terminal
 view at `--console-level` (default `info`), and machine-readable
 `results.json`. Any step needing a decision prompts; `--yes` accepts
@@ -709,6 +725,13 @@ tools/analysis/run_all_analysis.sh        # the whole suite, every configuration
 python3 tools/bench/betabench.py all      # same, for the benchmarks
 python3 tools/tuning/auto_tune.py         # same, for the tuner
 ```
+
+`run_all_analysis.sh` reads caches only by default. The steps that
+measure the machine rather than the run are opt-in: `--with-encode`,
+`--with-reverse`, `--with-hardware`, or `--with-timing` for all three.
+They run one at a time after the parallel analysis steps have finished,
+never alongside them. The run ends with a list of where each
+recommendation was written.
 
 A *configuration* is one backend at one detection size under one
 detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
@@ -798,11 +821,16 @@ from the difference.
 | `tools/tuning/replay_tune.py` | replays cached detections through the real tracking and suppression code under config variants, with no re-detection |
 | `tools/tuning/batch_ab_test.py` | real `betatv.py` runs across batch sizes and backends, comparing detections and timing |
 | `tools/tuning/derive_suppression_rules.py` | turns overlap statistics into proposed rules |
-| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs |
+| `tools/tuning/ab_compare.sh` | the config against one change (suppression rules, `min_track_hits`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
+| `tools/tuning/suppression_ab.sh` | `ab_compare.sh` with the suppression experiment |
+| `tools/analysis/analyze_label_content.py` | which videos show which censored label, and which mix them |
+| `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |
+| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs, cut bursts |
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |
 | `tools/tuning/auto_tune.py` | the staged tuner: measures candidates, prices them, writes the winners |
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |
 | `tools/bench/structure_survey.sh` | measures every source file and writes a reviewable script sorting them into profile folders |
+| `tools/bench/reverse_cost.sh` | one click for `betabench reverse`: logs everything, replays the summary |
 
 Every tool that replays the pipeline imports the real
 `betautils_track` functions and observes their decisions through

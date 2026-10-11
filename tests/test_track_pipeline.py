@@ -605,6 +605,26 @@ class TestTrackConfirmation( _ConfirmationPinnedMixin, unittest.TestCase ):
         self.assertEqual( rendered, [],
             "an unconfirmed track must not leave synthetic boxes behind" )
 
+    def test_each_label_logs_its_own_drop_count_to_the_given_logger( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set_min_track_hits( 'exposed_vulva', 2 )
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100 ),
+                  censorable_box( 'exposed_breast', 5.0, x=900 ),
+                  censorable_box( 'exposed_vulva', 1.0, x=100 ) ]
+        lines = []
+
+        class _Capture:
+            def debug( self, message, *args ):
+                lines.append( message )
+            info = warning = error = debug
+
+        _rendered, stats = bu_track.smooth_boxes( boxes, logger=_Capture() )
+        self.assertEqual( stats['dropped_unconfirmed'], 3 )
+        dropped = sorted( line for line in lines if 'unconfirmed tracks' in line )
+        self.assertEqual( dropped, [
+            'exposed_breast: min_track_hits=2 dropped 2 box(es) from unconfirmed tracks',
+            'exposed_vulva: min_track_hits=2 dropped 1 box(es) from unconfirmed tracks' ] )
+
 
 class TestTrackPruningIsBehaviourPreserving( unittest.TestCase ):
     """
