@@ -169,13 +169,33 @@ class TestDiffBoxes( unittest.TestCase ):
         self.assertEqual( both, [] )
         self.assertEqual( proposed_only, proposed )
 
-    def test_each_current_box_matches_once( self ):
+    def test_a_spot_censored_twice_is_still_censored_under_both( self ):
         current = [ _box( 0.0, 1.0 ) ]
         proposed = [ _box( 0.0, 1.0 ), _box( 0.0, 1.0 ) ]
         both, current_only, proposed_only = TOOL.diff_boxes( current, proposed )
-        self.assertEqual( len( both ), 1 )
+        self.assertEqual( len( both ), 2 )
+        self.assertEqual( ( current_only, proposed_only ), ( [], [] ) )
+
+    def test_identical_tracks_of_overlapping_samples_do_not_differ( self ):
+        # Each sample's box overlaps its neighbours in time. Greedy pairing
+        # took the next sample's box, leaving one spurious box per track on
+        # each side: 9% of an identical render reported as different.
+        track = [ _box( 10.0 + step / 9.0 - 0.15, 10.0 + step / 9.0 + 0.15, x=100 + step )
+                  for step in range( 12 ) ]
+        both, current_only, proposed_only = TOOL.diff_boxes( track, [ dict( box ) for box in track ] )
+        self.assertEqual( len( both ), 12 )
+        self.assertEqual( ( current_only, proposed_only ), ( [], [] ) )
+
+    def test_boxes_in_one_time_bucket_must_still_overlap_in_time( self ):
+        both, current_only, proposed_only = TOOL.diff_boxes( [ _box( 0.0, 0.1 ) ], [ _box( 0.3, 0.4 ) ] )
+        self.assertEqual( ( len( both ), len( current_only ), len( proposed_only ) ), ( 0, 1, 1 ) )
+
+    def test_a_long_box_is_found_from_any_bucket_it_spans( self ):
+        current = [ _box( 0.0, 30.0 ) ]
+        proposed = [ _box( 17.2, 17.3 ) ]
+        both, current_only, _proposed_only = TOOL.diff_boxes( current, proposed )
+        self.assertEqual( both, proposed )
         self.assertEqual( current_only, [] )
-        self.assertEqual( len( proposed_only ), 1 )
 
     def test_the_iou_floor( self ):
         # 100x100 against 100x100 shifted 60px: IoU 40/160 = 0.25
@@ -247,7 +267,7 @@ class TestRanking( unittest.TestCase ):
         raw = [ { 'class_id': 'exposed_breast', 'score': 0.9, 't': 6.0,
                   'x': 400, 'y': 0, 'w': 100, 'h': 100 } ]
         with mock.patch.object( bu_tuning, 'replay_tracking_context', return_value=context ), \
-             mock.patch.object( bu_tuning, '_read_raw_boxes', return_value=raw ), \
+             mock.patch.object( bu_tuning, 'raw_boxes_for_reading', return_value=raw ), \
              mock.patch.object( bu_tuning, 'forget_raw_boxes', forget or ( lambda paths: None ) ):
             return TOOL.rank_videos(
                 { 'ha': [ 'a.gz' ], 'hb': [ 'b.gz' ], 'hc': [ 'c.gz' ], 'hd': [ 'd.gz' ] },
@@ -367,6 +387,40 @@ class TestVideosAcrossSampleRates( unittest.TestCase ):
         self.assertEqual( list( videos ), [ 'aaaa' ] )
 
 
+class TestRawCacheReaders( unittest.TestCase ):
+
+    def test_reading_shares_the_parse_and_replaying_copies_it( self ):
+        import gzip, json
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join( tmp, 'c.gz' )
+            with gzip.open( path, 'wt' ) as handle:
+                json.dump( [ { 'class_id': 'exposed_breast', 't': 1.0 } ], handle )
+            try:
+                shared = bu_tuning.raw_boxes_for_reading( [ path ] )
+                again = bu_tuning.raw_boxes_for_reading( [ path, os.path.join( tmp, 'missing.gz' ) ] )
+                fresh = bu_tuning._read_raw_boxes( [ path ] )
+                self.assertIs( shared[0], again[0] )
+                self.assertIsNot( fresh[0], shared[0] )
+                self.assertEqual( fresh, shared )
+            finally:
+                bu_tuning.forget_raw_boxes( [ path ] )
+
+
+class TestBenchLogger( unittest.TestCase ):
+
+    def test_the_bench_logger_can_trace( self ):
+        with tempfile.TemporaryDirectory() as tmp:
+            logger = TOOL._load_betabench().build_logger( tmp, 'trace', 'error' )
+            logger.trace( "render chunk %d command: %s", 3, 'ffmpeg' )
+            for handler in logger.handlers:
+                handler.flush()
+            with open( os.path.join( tmp, 'betabench.log' ) ) as handle:
+                self.assertIn( 'render chunk 3 command: ffmpeg', handle.read() )
+            for handler in list( logger.handlers ):
+                handler.close()
+                logger.removeHandler( handler )
+
+
 class TestOverlay( unittest.TestCase ):
 
     def test_one_outline_colour_per_group_sorted_by_start( self ):
@@ -411,15 +465,17 @@ class TestRenderPlan( unittest.TestCase ):
     def comparison( self, stack_ok=True, **kwargs ):
         current = [ _box( 0.0, 1.0 ) ]
         proposed = [ _box( 0.0, 1.0 ), _box( 2.0, 3.0, x=400 ) ]
-        result = ( {}, [ proposed[0] ], [], [ proposed[1] ], current, proposed )
+        result = { 'current_boxes': current, 'proposed_boxes': proposed, 'both': [ proposed[0] ],
+                   'current_only': [], 'proposed_only': [ proposed[1] ],
+                   'current_only_causes': [], 'proposed_only_causes': [ 'exposed_breast<-face_femme' ] }
         row = { 'file_hash': 'h', 'video': '/v/My Video.mp4', 'name': 'My Video.mp4',
                 'cache_paths': [ 'c.gz' ], 'windows': [ ( 10.0, 25.0 ) ] }
         ranking = { 'backend': 'nudenet_v3', 'current_rules': {}, 'proposed_rules': {},
                     'labels': [ 'exposed_breast' ] }
-        with mock.patch.object( TOOL, 'compare_video', return_value=result ):
-            return TOOL.render_video_comparison(
-                row, ranking, _Logger(), self.tmpdir, render=self.fake_render,
-                stack=lambda left, right, out, logger: stack_ok, **kwargs ), current, proposed
+        return TOOL.render_video_comparison(
+            row, ranking, _Logger(), self.tmpdir, render=self.fake_render,
+            stack=lambda left, right, out, logger: stack_ok,
+            compare=lambda *args: result, **kwargs ), current, proposed
 
     def test_clip_renders_outlines_then_current_then_proposed( self ):
         produced, current, proposed = self.comparison()
@@ -433,6 +489,13 @@ class TestRenderPlan( unittest.TestCase ):
                           [ 'My_Video_clip01_10s_diff.mp4', 'My_Video_clip01_10s_ab.mp4' ] )
         self.assertFalse( os.path.exists( os.path.join( self.tmpdir, names[1] ) ),
                           "the halves are removed once stacked" )
+
+    def test_outlines_carry_the_rule_that_made_the_difference( self ):
+        self.comparison( censored=False )
+        outlines = self.calls[0][3]
+        notes = { box['censor_style']['color']: box.get( 'debug_note' ) for box in outlines }
+        self.assertEqual( notes[TOOL.COLOUR_PROPOSED_ONLY], '<-face_femme' )
+        self.assertIsNone( notes[TOOL.COLOUR_BOTH] )
 
     def test_a_failed_stack_keeps_both_halves( self ):
         produced, _current, _proposed = self.comparison( stack_ok=False, overlay=False )
@@ -470,7 +533,9 @@ class TestRealRender( unittest.TestCase ):
         shutil.rmtree( cls.tmpdir, ignore_errors=True )
 
     def test_window_render_and_side_by_side( self ):
-        logger = _Logger()
+        # The tool's own logger: a stand-in with trace() hid that the real
+        # one lacked it, and every chunk of the first real run failed.
+        logger = TOOL._load_betabench().build_logger( self.tmpdir, 'debug', 'error' )
         styled = TOOL.overlay_boxes( [ _box( 0.0, 4.0, w=40, h=40 ) ], [], [] )
         diff = TOOL.render_window( self.source, 'abhash', styled,
                                    os.path.join( self.tmpdir, 'diff.mp4' ), 1.0, 2.0, logger )

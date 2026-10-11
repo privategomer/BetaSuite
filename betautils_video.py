@@ -35,7 +35,6 @@ detection loop did it anyway. Both now go through
 iter_sampled_frames().
 """
 
-import logging
 import math
 import os
 import shutil
@@ -1029,10 +1028,7 @@ def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None
     """
     for name, value in ( const_paths or {} ).items():
         setattr( betaconst, name, value )
-    worker_logger = logging.getLogger( 'betasuite.scan-worker' )
-    if not worker_logger.handlers:
-        worker_logger.addHandler( logging.NullHandler() )
-    worker_logger.propagate = False
+    worker_logger = bu_log.silent_logger( 'betasuite.scan-worker' )
     started = time.perf_counter()
     try:
         source = open_video_source( path, file_hash, worker_logger )

@@ -184,9 +184,9 @@ class TestAnalysis( unittest.TestCase ):
         calls = []
 
         def fake_measure( videos, hash_to_path, backend, labels, seed=None,
-                          confident_score=None, cut_transform=None ):
-            calls.append( ( tuple( sorted( videos ) ), cut_transform is not None ) )
-            return self.metrics( 400 if cut_transform else 500 )
+                          confident_score=None, cut_bursts=None ):
+            calls.append( ( tuple( sorted( videos ) ), cut_bursts ) )
+            return self.metrics( 400 if cut_bursts else 500 )
 
         entries = [ ( 'a', '/a.mp4', [ 'a.gz' ], 'scene', [] ),
                     ( 'b', '/b.mp4', [ 'b.gz' ], 'compilation', [] ),
@@ -198,8 +198,11 @@ class TestAnalysis( unittest.TestCase ):
         label = variants[0].label
         self.assertEqual( results['scene'][label]['confident_restored'], 100 )
         self.assertEqual( results['total'][label]['confident_restored'], 200 )
+        # The baseline is the cuts as scanned (False, never None: None
+        # would follow the config), the variant its own explicit merge.
         self.assertIn( ( ( 'a', 'c' ), False ), calls )
-        self.assertIn( ( ( 'a', 'c' ), True ), calls )
+        self.assertIn( ( ( 'a', 'c' ), { 'window': 0.35, 'max_span': 0.6, 'keep': 'last' } ), calls )
+        self.assertNotIn( None, [ bursts for _videos, bursts in calls ] )
 
     def test_best_variant_is_the_one_recovering_most_at_a_fair_price( self ):
         totals = { 'cheap': { 'confident_restored': 100, 'risky_added': 10 },

@@ -726,10 +726,12 @@ python3 tools/bench/betabench.py all      # same, for the benchmarks
 python3 tools/tuning/auto_tune.py         # same, for the tuner
 ```
 
-`run_all_analysis.sh` also runs `betabench encode` and `betabench
-reverse`. They measure time, so they run one at a time after the
-parallel analysis steps have finished, never alongside them; `--quick`
-skips them.
+`run_all_analysis.sh` reads caches only by default. The steps that
+measure the machine rather than the run are opt-in: `--with-encode`,
+`--with-reverse`, `--with-hardware`, or `--with-timing` for all three.
+They run one at a time after the parallel analysis steps have finished,
+never alongside them. The run ends with a list of where each
+recommendation was written.
 
 A *configuration* is one backend at one detection size under one
 detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
@@ -819,7 +821,9 @@ from the difference.
 | `tools/tuning/replay_tune.py` | replays cached detections through the real tracking and suppression code under config variants, with no re-detection |
 | `tools/tuning/batch_ab_test.py` | real `betatv.py` runs across batch sizes and backends, comparing detections and timing |
 | `tools/tuning/derive_suppression_rules.py` | turns overlap statistics into proposed rules |
-| `tools/tuning/suppression_ab.sh` | current `class_suppression` rules against a proposed set: ranks every cached video by how differently they censor it, then renders the two most-changed side by side and as colour-coded outlines |
+| `tools/tuning/ab_compare.sh` | the config against one change (suppression rules, `min_track_hits`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
+| `tools/tuning/suppression_ab.sh` | `ab_compare.sh` with the suppression experiment |
+| `tools/analysis/analyze_label_content.py` | which videos show which censored label, and which mix them |
 | `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |
 | `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs, cut bursts |
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |

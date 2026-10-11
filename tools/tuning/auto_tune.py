@@ -55,7 +55,6 @@ import argparse
 import copy
 import glob
 import json
-import logging
 import os
 import statistics
 import sys
@@ -70,13 +69,11 @@ import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_log as bu_log
 import betautils_tuning as bu_tuning
 
-TRACE = 5
-LEVEL_NAMES = {
-    'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO,
-    'warn': logging.WARNING, 'error': logging.ERROR,
-}
+TRACE = bu_log.TRACE
+LEVEL_NAMES = bu_log.LEVEL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -85,24 +82,8 @@ LEVEL_NAMES = {
 
 def build_logger( run_dir, log_level_name, console_level_name ):
     """Everything to run_dir/auto_tune.log; a filtered view to the terminal."""
-    logging.addLevelName( TRACE, 'TRACE' )
-    logger = logging.getLogger( 'auto_tune' )
-    logger.propagate = False
-    logger.setLevel( TRACE )
-    for handler in list( logger.handlers ):
-        logger.removeHandler( handler )
-
-    os.makedirs( run_dir, exist_ok=True )
-    file_handler = logging.FileHandler( os.path.join( run_dir, 'auto_tune.log' ), encoding='UTF-8' )
-    file_handler.setLevel( LEVEL_NAMES[ log_level_name ] )
-    file_handler.setFormatter( logging.Formatter( '%(asctime)s [%(levelname)-5s] %(message)s' ) )
-    logger.addHandler( file_handler )
-
-    console_handler = logging.StreamHandler( sys.stdout )
-    console_handler.setLevel( LEVEL_NAMES[ console_level_name ] )
-    console_handler.setFormatter( logging.Formatter( '%(message)s' ) )
-    logger.addHandler( console_handler )
-    return logger
+    return bu_log.tool_logger( 'auto_tune', os.path.join( run_dir, 'auto_tune.log' ),
+                               LEVEL_NAMES[ log_level_name ], LEVEL_NAMES[ console_level_name ] )
 
 
 def confirm( logger, question, assume_yes ):
@@ -115,6 +96,11 @@ def confirm( logger, question, assume_yes ):
         return input( "  [y/N] " ).strip().lower() in ( 'y', 'yes' )
     except EOFError:
         return False
+
+
+# The ab_compare.py experiment that puts each reviewed key in front of a person.
+REVIEW_EXPERIMENTS = { 'min_track_hits': 'min_track_hits',
+                       'match_distance_multiplier': 'match_distance' }
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +166,10 @@ class Stage:
 
     def write( self, writer, value ):
         writer.set_item_override( self.backend_name, self.label, self.key, value )
+
+    def review( self, decision, rows_by_configuration ):
+        """A value the numbers cannot settle, for ab_compare.py to show a person, or None."""
+        return None
 
 
 class LooseningStage( Stage ):
@@ -295,6 +285,23 @@ class LooseningStage( Stage ):
     @staticmethod
     def _format_value( value ):
         return '%g'%(value) if isinstance( value, float ) else str( value )
+
+    def review( self, decision, rows_by_configuration ):
+        """
+        A tighter value that trades resets for much less ambiguity, when
+        every configuration names the same one (bu_tuning.tightening_review).
+        The price rule above only ever loosens, so this is the one way a
+        tighter value reaches a person.
+        """
+        if decision.accepted:
+            return None
+        found = [ bu_tuning.tightening_review( rows, _baseline_value_of( { name: rows } ) )
+                  for name, rows in sorted( rows_by_configuration.items() ) ]
+        if not found or any( item is None for item in found ):
+            return None
+        if len( set( item['value'] for item in found ) ) != 1:
+            return None
+        return found[0]
 
 
 class TrackMaxGapStage( LooseningStage ):
@@ -470,6 +477,19 @@ class MinTrackHitsStage( Stage ):
             baseline_value, boxes, missed )
         return bu_tuning.Decision( self.title, chosen, True, reasoning,
                                    _flatten_rows( rows_by_configuration ) )
+
+    def review( self, decision, rows_by_configuration ):
+        """
+        Every change of value goes in front of a person first: the
+        confident-score evidence cannot see a misfire that scores above
+        it, which is the case a higher value exists to stop.
+        """
+        if not decision.accepted or decision.chosen is None:
+            return None
+        return { 'value': decision.chosen,
+                 'why': "%s leaves fewer confident detections uncensored, but a misfire scoring "
+                        "above %.2f looks the same to this metric as a real detection; judge the "
+                        "extra boxes by eye"%( decision.chosen, bu_tuning.CONFIDENT_SCORE ) }
 
 
 # ---------------------------------------------------------------------------
@@ -948,7 +968,11 @@ def main():
                     print_stage_table( config.label, rows, logger )
 
                 decision = probe.decide( rows_by_configuration, args, logger )
+                decision.key, decision.label = probe.key, label
+                decision.review = probe.review( decision, rows_by_configuration )
                 logger.info( "  => %s"%( decision.reasoning ) )
+                if decision.review:
+                    logger.info( "  worth judging by eye: %s"%( decision.review['why'], ) )
                 decisions.append( decision )
 
                 if decision.accepted and args.apply:
@@ -1009,6 +1033,15 @@ def main():
         else:
             outcome = "-> %s"%(decision.chosen)
         logger.info( "  %-52s %s"%( decision.stage_name, outcome ) )
+    reviews = [ decision for decision in decisions if decision.review ]
+    if reviews:
+        logger.info( "" )
+        logger.info( "worth judging by eye before writing (the numbers cannot settle these):" )
+        for decision in reviews:
+            logger.info( "  %-52s %s"%( decision.stage_name, decision.review['value'] ) )
+        for key in sorted( set( decision.key for decision in reviews ) ):
+            logger.info( "  side by side on your footage: AB_EXPERIMENT=%s bash tools/tuning/ab_compare.sh"%(
+                REVIEW_EXPERIMENTS.get( key, 'tracking' ), ) )
     logger.info( "" )
     logger.info( "decisions written to %s"%( os.path.abspath( results_path ) ) )
     if writer.backups:

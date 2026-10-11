@@ -357,7 +357,7 @@ def main():
         print_comparison( groups )
 
     print( "next steps, in the order that usually pays off:" )
-    print( "  1. tools/bench/betabench.py all --yes      derive suppression/hysteresis/geometry/dedup" )
+    print( "  1. tools/bench/betabench.py cache --yes    derive suppression/hysteresis/geometry/dedup" )
     print( "     values from these same caches (add --sizes N to read a size this backend is no" )
     print( "     longer configured for)" )
     print( "  2. tools/analysis/run_all_analysis.sh      tracking and style diagnostics per backend" )

@@ -28,8 +28,10 @@ WHAT THIS DOES
 
 A variant helps when it leaves fewer confident detections uncensored
 without paying more than --max-risky-per-restored risky assignments for
-each one it recovers. Nothing here changes a real run: merging is not
-wired into betatv.py until these numbers say it should be.
+each one it recovers. Every variant is measured against the cuts as
+scanned, so the numbers mean the same whether or not merging is on in
+betaconfig (shot_cut_burst_window and friends). Nothing here changes a
+real run; the best variant is printed as the config lines that would.
 
     python3 tools/analysis/analyze_cut_bursts.py
     python3 tools/analysis/analyze_cut_bursts.py --windows 0.25 0.4 --max-spans 0.6 1.0 none
@@ -37,6 +39,7 @@ wired into betatv.py until these numbers say it should be.
 
 import argparse
 import functools
+import json
 import os
 import sys
 
@@ -46,6 +49,7 @@ sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.dirname(
 import betaconfig
 import betaconst
 import betautils_cache_paths as bu_cache
+import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 import betautils_video as bu_video
 
@@ -66,6 +70,24 @@ class Variant( object ):
     def transform( self ):
         return functools.partial( bu_video.merge_cut_bursts, window=self.window,
                                   max_span=self.max_span, keep=self.keep )
+
+    def settings( self ):
+        """The same merge as bu_track.tracking_cut_times takes it, and as the config spells it."""
+        return { 'window': self.window, 'max_span': self.max_span, 'keep': self.keep }
+
+
+def config_lines( variant ):
+    """The betaconfig lines that turn `variant` on."""
+    return "shot_cut_burst_window = %g; shot_cut_burst_max_span = %s; shot_cut_burst_keep = '%s'"%(
+        variant.window, 'None' if variant.max_span is None else '%g'%( variant.max_span, ), variant.keep )
+
+
+def describe_configured():
+    """What the config does now, in this tool's variant words."""
+    settings = bu_track.cut_burst_settings()
+    if not settings:
+        return "off (shot_cut_burst_window = 0)"
+    return Variant( settings['window'], settings['max_span'], settings['keep'] ).label
 
 
 def parse_span( text ):
@@ -146,13 +168,15 @@ def compare_variants( entries, backend_name, labels, variants, seed, confident_s
     results = {}
     totals = {}
     for profile, ( videos, hash_to_path ) in sorted( groups.items() ):
+        # The cuts as scanned, whatever the config says: every variant,
+        # the configured one included, is measured against no merging.
         baseline = measure( videos, hash_to_path, backend_name, labels, seed=seed,
-                            confident_score=confident_score )
+                            confident_score=confident_score, cut_bursts=False )
         results[profile] = { 'files': len( videos ) }
         for variant in variants:
             candidate = measure( videos, hash_to_path, backend_name, labels, seed=seed,
                                  confident_score=confident_score,
-                                 cut_transform=variant.transform() )
+                                 cut_bursts=variant.settings() )
             change = compare( baseline, candidate )
             results[profile][variant.label] = change
             total = totals.setdefault( variant.label, dict.fromkeys( change, 0 ) )
@@ -245,6 +269,9 @@ def build_parser():
         help="replay RNG seed (default: %(default)s)" )
     parser.add_argument( '--top', type=int, default=10,
         help="files listed in the census (default: %(default)s)" )
+    parser.add_argument( '--json', default=None, metavar='FILE',
+        help="also write the comparison and the best variant's settings here; "
+             "ab_compare.sh's cut_bursts experiment proposes them" )
     return parser
 
 
@@ -260,6 +287,7 @@ def main( argv=None ):
     if not configurations:
         print( "no detection caches found: run betatv.py on real footage first" )
         return 1
+    report = { 'configurations': {}, 'best_settings': None }
     for config in configurations:
         print( "" )
         print( "#" * 72 )
@@ -270,6 +298,7 @@ def main( argv=None ):
         videos, rates = bu_cache.videos_across_sample_rates( config, min_prob )
         print( "# %d video(s), sample rates %s"%(
             len( videos ), ", ".join( '%g'%( rate, ) for rate in rates ) or 'none' ) )
+        print( "# burst merging in config now: %s"%( describe_configured(), ) )
         hash_to_path = bu_cache.build_hash_to_video_path( videos.keys() )
         entries = []
         for file_hash, cache_paths in sorted( videos.items() ):
@@ -286,15 +315,26 @@ def main( argv=None ):
         _print_census( burst_census( entries, min( args.windows ) ), min( args.windows ), args.top )
         results = compare_variants( entries, config.backend_name, labels, variants, args.seed,
                                     args.confident_score )
+        report['configurations'][config.label] = results
         _print_comparison( results, variants, args.max_risky_per_restored )
         best = best_variant( results['total'], args.max_risky_per_restored )
         print( "" )
         if best:
-            print( "  best: %s. Check its per-profile rows before wiring it in: a quick_cut or "
+            print( "  best: %s. Check its per-profile rows before turning it on: a quick_cut or "
                    "split_screen row that went worse is where merging hurts."%( best, ) )
+            chosen = [ variant for variant in variants if variant.label == best ][0]
+            print( "  as config: %s"%( config_lines( chosen ), ) )
+            if report['best_settings'] is None:
+                report['best_settings'] = chosen.settings()
+            print( "  to see it before deciding: AB_EXPERIMENT=cut_bursts bash tools/tuning/ab_compare.sh" )
         else:
             print( "  no variant recovered confident detections at an acceptable price; merging "
                    "would not help this footage." )
+    if args.json:
+        with open( args.json, 'w', encoding='UTF-8' ) as handle:
+            json.dump( report, handle, indent=2, default=str )
+        print( "" )
+        print( "comparison and best settings: %s"%( args.json, ) )
     return 0
 
 
