@@ -8,6 +8,11 @@
 #   AB_EXPERIMENT=suppression AB_FOCUS=exposed_vulva bash tools/tuning/ab_compare.sh
 #   AB_EXPERIMENT=tracking AB_SET="exposed_breast.match_distance_multiplier=0.75" bash tools/tuning/ab_compare.sh
 #
+# Pick up a round that stopped (closed terminal, q, unattended run), from
+# the step it had not finished; DIR is the newest run by default:
+#   bash tools/tuning/ab_compare.sh resume [DIR]
+# DIR is a folder path, or just its name as output/benchmarks lists it.
+#
 # Pieces of a round, if you want one on its own (DIR: newest run by default):
 #   bash tools/tuning/ab_compare.sh explain [DIR]    # rewrite clips.md + feedback.csv
 #   bash tools/tuning/ab_compare.sh decide [DIR]     # verdicts -> chosen.json + config lines
@@ -31,14 +36,18 @@
 #                  *_diff.mp4  outlines: grey both, orange LEFT only,
 #                              magenta RIGHT only, cause under the label
 #                asks first
-#   3  full      both sides over each chosen video whole (hours), asks
+#   3  next      asks: judge the clips now, render the whole videos on
+#                both sides first (hours), or stop and resume later.
+#                Judging comes before the hours of whole-video renders
 #   4  judge     waits while you watch the clips and put right / left /
-#                same in feedback.csv, then decides: chosen.json and the
-#                config lines to paste
+#                same in feedback.csv (and waits again while it has no
+#                verdicts), then decides: chosen.json and the config
+#                lines to paste
 #   5  confirm   asks whether to check the chosen side on videos you
 #                have not judged yet, then runs that round the same way
-# Unattended, it runs phases 1 to 2 (3 with AB_FULL=1) and stops; run
-# decide and confirm when you are back.
+# Unattended, it runs phases 1 to 2 (whole videos too with AB_FULL=1)
+# and stops; run resume when you are back. Every finished file is kept
+# on resume, and a half-rendered whole video resumes from its chunks.
 #
 # OUTPUT
 #   ../output/benchmarks/ab_<experiment>_<timestamp>/
@@ -63,6 +72,12 @@ cd "$REPO_ROOT" || exit 1
 
 MODE="${1:-run}"
 BENCH_ROOT="$(cd "$REPO_ROOT/.." && pwd)/output/benchmarks"
+case "$MODE" in
+    -h|--help|help)
+        awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        exit 0
+        ;;
+esac
 mkdir -p "$BENCH_ROOT"
 TOOL="$REPO_ROOT/tools/tuning/ab_compare.py"
 
@@ -82,15 +97,21 @@ case "$MODE" in
     run)
         START_DIR="$BENCH_ROOT/.ab_start_$(date '+%Y%m%d_%H%M%S')"
         ;;
-    explain|decide|confirm)
+    explain|decide|confirm|resume)
         START_DIR="${2:-$(newest_run)}"
+        START_DIR="${START_DIR%/}"
+        # A bare folder name, as `ls output/benchmarks` shows it, means
+        # that folder under output/benchmarks.
+        if [ -n "$START_DIR" ] && [ ! -d "$START_DIR" ] && [ -d "$BENCH_ROOT/$START_DIR" ]; then
+            START_DIR="$BENCH_ROOT/$START_DIR"
+        fi
         if [ -z "$START_DIR" ] || [ ! -f "$START_DIR/ranking.json" ]; then
             echo "no A/B run with a ranking.json found (${START_DIR:-none}); run a round first: bash $0" >&2
             exit 1
         fi
         ;;
     *)
-        echo "usage: $0 [explain|decide|confirm [DIR]]" >&2
+        echo "usage: $0 [resume|explain|decide|confirm [DIR]]   ($0 --help for more)" >&2
         exit 2
         ;;
 esac
@@ -173,7 +194,38 @@ has_adopted() {
     [ -f "$1/chosen.json" ] && [ "$(tr -d ' \n\t' < "$1/chosen.json")" != "{}" ]
 }
 
-# run_round DIR EXPERIMENT [extra rank args...]: phases 1 to 5.
+# read_status DIR: how far DIR's round got, into ST_<key> (see ab_compare.py --status).
+# Fails, and says so, when the status cannot be read: a status that
+# silently reads as "nothing done" sent a finished round back to "start
+# a new one" when ab_compare.py was an older copy without --status.
+read_status() {
+    ST_ranked=0; ST_experiment=""; ST_videos=0; ST_explained=0; ST_clips=0; ST_full=0
+    ST_rows=0; ST_verdicts=0; ST_decided=0; ST_adopted=0
+    local output key value
+    if ! output="$("$PYTHON_BIN" "$TOOL" --status "$1" 2>>"$HARNESS_LOG_FILE")" \
+            || ! grep -q '^ranked=' <<< "$output"; then
+        log_error "could not read how far the round in $1 got: ab_compare.py --status failed (see $HARNESS_LOG_FILE). If ab_compare.sh and ab_compare.py are from different versions, update both"
+        return 1
+    fi
+    while IFS='=' read -r key value; do
+        case "$key" in
+            ranked|experiment|videos|explained|clips|full|rows|verdicts|decided|adopted)
+                printf -v "ST_$key" '%s' "$value" ;;
+        esac
+    done <<< "$output"
+}
+
+list_renders() {
+    if ls "$1"/*.mp4 >/dev/null 2>&1; then
+        for clip in "$1"/*.mp4; do log_info "  $(basename "$clip")"; done
+    fi
+}
+
+resume_hint() {
+    log_info "pick up where this stopped: bash tools/tuning/ab_compare.sh resume $1"
+}
+
+# run_round DIR EXPERIMENT [extra rank args...]: rank, then the rest of the round.
 run_round() {
     local dir="$1" experiment="$2"; shift 2
     mkdir -p "$dir"
@@ -200,66 +252,130 @@ run_round() {
         log_error "phase 1 wrote no ranking.json; see $HARNESS_LOG_FILE"
         return 1
     fi
-    if grep -q '"chosen": \[\]' "$dir/ranking.json"; then
+    continue_round "$dir"
+}
+
+# continue_round DIR: every step DIR's round has not finished yet, in
+# order. A new round arrives here straight after ranking; `resume` comes
+# here for a round that stopped (a closed terminal, a q, an unattended run).
+continue_round() {
+    local dir="$1" rc
+    common_args "$dir"
+    read_status "$dir" || return 1
+    if [ "$ST_ranked" != "1" ]; then
+        log_error "$dir has no ranking.json: phase 1 never finished, so there is nothing to pick up. Start a new round: bash tools/tuning/ab_compare.sh"
+        return 1
+    fi
+    if [ "$ST_videos" = "0" ]; then
         log_warn "no video renders differently on the two sides; nothing to judge"
         return 0
     fi
+    if [ "$ST_decided" = "1" ]; then
+        log_info "already decided: $dir/chosen.json"
+        after_decide "$dir"
+        return $?
+    fi
+    if [ "$ST_explained" != "1" ]; then
+        run_explain "$dir" || return 1
+    fi
+    if [ "$ST_clips" != "1" ]; then
+        render_clips "$dir"
+        rc=$?
+        if [ "$rc" -eq 2 ]; then return 0; fi
+        if [ "$rc" -ne 0 ]; then return 1; fi
+    fi
+    judge_menu "$dir"
+}
 
-    # --- phase 1b ------------------------------------------------------------
-    run_explain "$dir"
-
-    # --- phase 2 -------------------------------------------------------------
-    local run_clips=1
+# render_clips DIR: phase 2, asking first. 0 rendered, 1 failed, 2 declined.
+render_clips() {
+    local dir="$1"
     if [ -t 0 ]; then
-        if ! wait_for_confirmation "Phase 2 renders $AB_CLIPS clip(s) of ${AB_CLIP_SECONDS}s per chosen video (outlines plus side by side). Run it?"; then
-            run_clips=0
+        if ! wait_for_confirmation "Phase 2 renders each chosen video's clip windows (outlines plus side by side; minutes). Run it?"; then
             log_warn "phase 2 skipped at your request; ranking.json and clips.md are in $dir"
+            resume_hint "$dir"
+            return 2
         fi
     else
         log_warn "no terminal to ask on, so phase 2 runs (the default)"
     fi
-    local clips_failed=0
-    if [ "$run_clips" -eq 1 ]; then
-        if ! run_logged "phase 2: clip renders" "$PYTHON_BIN" "$TOOL" --phase render "${COMMON[@]}"; then
-            clips_failed=1
-            log_warn "phase 2 failed; see $HARNESS_LOG_FILE"
-        fi
+    if ! run_logged "phase 2: clip renders" "$PYTHON_BIN" "$TOOL" --phase render --skip-existing "${COMMON[@]}"; then
+        log_warn "phase 2 failed; see $HARNESS_LOG_FILE"
+        return 1
     fi
-
-    # --- phase 3 -------------------------------------------------------------
-    # Same render path as phase 2, so a phase 2 failure would only repeat
-    # itself for hours. AB_FULL=1 still forces it.
-    local run_full="$AB_FULL"
-    if [ "$clips_failed" -eq 1 ] && [ "$run_full" != "1" ]; then
-        log_error "phase 3 skipped: phase 2's renders failed, and phase 3 renders the same way (AB_FULL=1 forces it)"
-        run_full=0
-    elif [ -t 0 ] && [ "$run_full" != "1" ]; then
-        if wait_for_confirmation "Phase 3 renders each chosen video whole on both sides (hours). Run it?"; then
-            run_full=1
-        fi
-    elif [ "$run_full" != "1" ]; then
-        log_info "no terminal to ask on, so phase 3 is skipped (AB_FULL=1 runs it unattended)"
-    fi
-    if [ "$run_full" = "1" ]; then
-        run_logged "phase 3: whole-video renders on both sides" \
-            "$PYTHON_BIN" "$TOOL" --phase render --no-overlay --no-censored --full "${COMMON[@]}" \
-            || log_warn "phase 3 failed; see $HARNESS_LOG_FILE"
-    fi
-    if ls "$dir"/*.mp4 >/dev/null 2>&1; then
-        for clip in "$dir"/*.mp4; do log_info "  $(basename "$clip")"; done
-    fi
-
-    judge_and_continue "$dir"
+    list_renders "$dir"
+    return 0
 }
 
-# Phases 4 and 5: wait for the verdicts, decide, offer the confirm round.
-judge_and_continue() {
+# render_full DIR: phase 3, the whole videos on both sides (hours). A
+# whole video an earlier attempt finished is kept, and a half-finished
+# one resumes from its finished chunks.
+render_full() {
     local dir="$1"
-    if ! wait_for_enter "Watch the clips in $dir with clips.md open beside them, and put right / left / same in each row of feedback.csv (blank if you cannot tell)."; then
-        log_info "stopped before deciding. When the verdicts are in: bash tools/tuning/ab_compare.sh decide $dir"
+    if ! run_logged "phase 3: whole-video renders on both sides (hours)" \
+            "$PYTHON_BIN" "$TOOL" --phase render --no-overlay --no-censored --full --skip-existing "${COMMON[@]}"; then
+        log_warn "phase 3 failed; see $HARNESS_LOG_FILE"
+        return 1
+    fi
+    list_renders "$dir"
+    return 0
+}
+
+# judge_menu DIR: the clips are ready. Judge now, render the whole videos
+# first, or stop; judging comes before the hours of whole-video renders,
+# so a closed terminal during them costs no verdicts.
+judge_menu() {
+    local dir="$1"
+    read_status "$dir" || return 1
+    if [ ! -t 0 ]; then
+        if [ "$AB_FULL" = "1" ] && [ "$ST_full" != "1" ]; then
+            render_full "$dir"
+        fi
+        log_info "the clips are ready; put verdicts in $dir/feedback.csv"
+        resume_hint "$dir"
         return 0
     fi
+    local options=( "judge the clips now" )
+    if [ "$ST_full" != "1" ]; then
+        options+=( "render the whole videos first (hours), then judge" )
+    fi
+    options+=( "stop here and pick up later" )
+    choose_option "The clips are ready. What next?" 1 "${options[@]}"
+    case "$CHOSEN_OPTION" in
+        render*)
+            render_full "$dir" || return 1
+            ;;
+        stop*)
+            resume_hint "$dir"
+            return 0
+            ;;
+    esac
+    judge_and_decide "$dir"
+}
+
+# judge_and_decide DIR: wait for verdicts (again while there are none), decide.
+judge_and_decide() {
+    local dir="$1"
+    while true; do
+        if ! wait_for_enter "Watch the clips in $dir with clips.md open beside them, and put right / left / same in each row of feedback.csv (blank if you cannot tell)."; then
+            log_info "stopped before deciding"
+            resume_hint "$dir"
+            return 0
+        fi
+        read_status "$dir" || return 1
+        if [ "$ST_verdicts" != "0" ]; then
+            break
+        fi
+        log_warn "feedback.csv has no verdicts yet (0 of $ST_rows rows); save it, then press Enter again"
+    done
+    log_info "$ST_verdicts of $ST_rows row(s) have a verdict"
     run_decide "$dir" || return 1
+    after_decide "$dir"
+}
+
+# after_decide DIR: offer the confirm round when a change won.
+after_decide() {
+    local dir="$1"
     if ! has_adopted "$dir"; then
         log_info "nothing won, so there is nothing to confirm; the config stays as it is"
         return 0
@@ -305,6 +421,11 @@ case "$MODE" in
         ;;
     confirm)
         run_confirm "$START_DIR"
+        exit $?
+        ;;
+    resume)
+        log_info "resuming the round in $START_DIR"
+        continue_round "$START_DIR"
         exit $?
         ;;
 esac

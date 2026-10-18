@@ -196,19 +196,30 @@ class TestExplain( unittest.TestCase ):
         self.assertIn( 'retuned', rows[2]['change'] )
         with open( os.path.join( self.dir, 'clips.md' ) ) as handle:
             text = handle.read()
-        self.assertIn( '| v1c1.1 | 0:02.0-0:03.0 | exposed_breast | RIGHT only |', text )
+        self.assertIn( '| v1c1.1 | 0:02.0-0:03.0 | exposed_breast | RIGHT censors, LEFT bare |', text )
         self.assertIn( 'No differences inside this clip.', text )
         with open( os.path.join( self.dir, 'feedback.csv' ) ) as handle:
             self.assertEqual( len( list( csv.DictReader( handle ) ) ), 3 )
 
-    def test_an_existing_feedback_file_is_never_overwritten( self ):
+    def test_a_feedback_file_with_verdicts_is_never_overwritten( self ):
         path = os.path.join( self.dir, 'feedback.csv' )
+        mine = 'id,cause,verdict\nv1c1.1,x,right\n'
         with open( path, 'w' ) as handle:
-            handle.write( 'mine' )
+            handle.write( mine )
         TOOL.phase_explain( self.args, _Logger(), _ranking(), compare=_fake_compare )
         with open( path ) as handle:
-            self.assertEqual( handle.read(), 'mine' )
+            self.assertEqual( handle.read(), mine )
         self.assertTrue( os.path.exists( os.path.join( self.dir, 'feedback_template.csv' ) ) )
+
+    def test_a_feedback_file_without_verdicts_is_replaced( self ):
+        path = os.path.join( self.dir, 'feedback.csv' )
+        with open( path, 'w' ) as handle:
+            handle.write( 'id,cause,verdict\nold,x,\nolder,x,maybe\n' )
+        TOOL.phase_explain( self.args, _Logger(), _ranking(), compare=_fake_compare )
+        with open( path ) as handle:
+            self.assertEqual( [ row['id'] for row in csv.DictReader( handle ) ],
+                              [ 'v1c1.1', 'v1c1.2', 'v1c1.3' ] )
+        self.assertFalse( os.path.exists( os.path.join( self.dir, 'feedback_template.csv' ) ) )
 
 
 class TestDecide( unittest.TestCase ):
@@ -286,6 +297,7 @@ class TestDecide( unittest.TestCase ):
 FAKE_PYTHON = r'''#!/bin/bash
 if [ "${1:-}" = "-c" ]; then exit 0; fi
 case " $* " in *" --run-experiment "*) echo "min_track_hits"; exit 0 ;; esac
+case " $* " in *" --status "*) cat "${FAKE_STATUS:-/dev/null}"; exit 0 ;; esac
 echo "$*" >> "__CALLS__"
 '''
 
@@ -309,8 +321,8 @@ class TestWrapperModes( unittest.TestCase ):
     def tearDown( self ):
         shutil.rmtree( self.root, ignore_errors=True )
 
-    def run_mode( self, *args ):
-        environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in' )
+    def run_mode( self, *args, **env ):
+        environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in', **env )
         return subprocess.run( [ 'bash', 'tools/tuning/suppression_ab.sh' ] + list( args ),
                                cwd=self.repo, env=environment, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=60 )
@@ -377,6 +389,136 @@ class TestWrapperModes( unittest.TestCase ):
         result = self.run_mode( 'confirm' )
         self.assertNotEqual( result.returncode, 0 )
         self.assertFalse( os.path.exists( self.calls ) and '--phase rank' in open( self.calls ).read() )
+
+    def status( self, **values ):
+        state = dict( ranked=1, experiment='cut_bursts', videos=2, explained=1, clips=1, full=0,
+                      rows=35, verdicts=0, decided=0, adopted=0 )
+        state.update( values )
+        path = os.path.join( self.root, 'status.txt' )
+        with open( path, 'w' ) as handle:
+            handle.write( ''.join( '%s=%s\n'%( key, value ) for key, value in state.items() ) )
+        return path
+
+    def calls_made( self ):
+        if not os.path.exists( self.calls ):
+            return []
+        with open( self.calls ) as handle:
+            return handle.read().splitlines()
+
+    def test_resume_picks_up_at_the_first_unfinished_step( self ):
+        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.run_mode( 'resume', FAKE_STATUS=self.status( explained=0, clips=0 ) )
+        self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
+        calls = self.calls_made()
+        self.assertEqual( len( calls ), 2, calls )
+        self.assertIn( '--phase explain --out-dir %s'%( run, ), calls[0] )
+        self.assertIn( '--phase render --skip-existing', calls[1] )
+        self.assertNotIn( '--full', calls[1] )
+        self.assertIn( 'ab_compare.sh resume %s'%( run, ), result.stdout,
+                       "unattended, it says how to pick up again" )
+
+    def test_resume_after_the_clips_skips_straight_to_judging( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.run_mode( 'resume', FAKE_STATUS=self.status() )
+        self.assertEqual( result.returncode, 0 )
+        self.assertEqual( self.calls_made(), [], "nothing re-run; unattended it stops at the verdicts" )
+        self.assertIn( 'feedback.csv', result.stdout )
+
+    def test_resume_unattended_renders_whole_videos_only_when_asked( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.run_mode( 'resume', FAKE_STATUS=self.status(), AB_FULL='1' )
+        calls = self.calls_made()
+        self.assertEqual( len( calls ), 1, calls )
+        self.assertIn( '--full --skip-existing', calls[0] )
+        os.remove( self.calls )
+        self.run_mode( 'resume', FAKE_STATUS=self.status( full=1 ), AB_FULL='1' )
+        self.assertEqual( self.calls_made(), [], "already rendered whole" )
+
+    def test_resume_of_a_decided_round_renders_nothing( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.run_mode( 'resume', FAKE_STATUS=self.status( decided=1, adopted=0 ) )
+        self.assertEqual( self.calls_made(), [] )
+        self.assertIn( 'nothing won', result.stdout )
+
+    def at_a_terminal( self, answers, **env ):
+        """Run resume with a terminal on stdin, the answers already typed into it."""
+        import pty
+        master, slave = pty.openpty()
+        try:
+            os.write( master, answers.encode() )
+            environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in', **env )
+            return subprocess.run( [ 'bash', 'tools/tuning/suppression_ab.sh', 'resume' ], cwd=self.repo,
+                                   env=environment, stdin=slave, capture_output=True, text=True,
+                                   timeout=60 )
+        finally:
+            os.close( slave )
+            os.close( master )
+
+    def test_at_a_terminal_judging_waits_again_while_there_are_no_verdicts( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( '1\n\nq\n', FAKE_STATUS=self.status() )
+        self.assertIn( 'no verdicts yet', result.stdout )
+        self.assertIn( 'stopped before deciding', result.stdout )
+        self.assertEqual( self.calls_made(), [] )
+
+    def test_at_a_terminal_whole_videos_come_after_the_choice_then_judging( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( '2\nq\n', FAKE_STATUS=self.status() )
+        calls = self.calls_made()
+        self.assertEqual( len( calls ), 1, result.stdout )
+        self.assertIn( '--full --skip-existing', calls[0] )
+        self.assertIn( 'stopped before deciding', result.stdout )
+
+    def test_at_a_terminal_stop_leaves_a_resume_line( self ):
+        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( '3\n', FAKE_STATUS=self.status() )
+        self.assertEqual( self.calls_made(), [] )
+        self.assertIn( 'ab_compare.sh resume %s'%( run, ), result.stdout )
+
+    def test_at_a_terminal_with_whole_videos_done_the_menu_has_two_choices( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( '2\n', FAKE_STATUS=self.status( full=1 ) )
+        self.assertNotIn( 'render the whole videos first', result.stdout )
+        self.assertEqual( self.calls_made(), [], "2 is now stop" )
+
+    def test_at_a_terminal_verdicts_lead_to_decide( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( '1\n\n', FAKE_STATUS=self.status( verdicts=12 ) )
+        calls = self.calls_made()
+        self.assertEqual( len( calls ), 1, result.stdout )
+        self.assertIn( '--phase decide', calls[0] )
+        self.assertIn( '12 of 35 row(s) have a verdict', result.stdout )
+
+    def test_resume_takes_a_bare_folder_name( self ):
+        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_min_track_hits_20261012_090000' )      # newer, so not the default
+        result = self.run_mode( 'resume', 'ab_cut_bursts_20261011_175010/',
+                                FAKE_STATUS=self.status( decided=1, adopted=0 ) )
+        self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
+        self.assertIn( 'resuming the round in %s\n'%( run, ), result.stdout,
+                       "the folder named once, without the trailing slash" )
+
+    def test_an_unreadable_status_says_so_instead_of_blaming_the_ranking( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        empty = os.path.join( self.root, 'empty.txt' )
+        open( empty, 'w' ).close()
+        result = self.run_mode( 'resume', FAKE_STATUS=empty )
+        self.assertEqual( result.returncode, 1 )
+        self.assertIn( 'could not read how far', result.stdout )
+        self.assertNotIn( 'has no ranking.json', result.stdout )
+        self.assertEqual( self.calls_made(), [] )
+
+    def test_help_prints_the_header( self ):
+        result = self.run_mode( '--help' )
+        self.assertEqual( result.returncode, 0 )
+        self.assertIn( 'resume [DIR]', result.stdout )
+        self.assertIn( 'never touches betaconfig.py', result.stdout, "the last header line" )
+        self.assertNotIn( 'set -uo pipefail', result.stdout )
+
+    def test_resume_without_a_ranking_is_an_error( self ):
+        result = self.run_mode( 'resume' )
+        self.assertEqual( result.returncode, 1 )
+        self.assertIn( 'run a round first', result.stderr )
 
     def test_the_old_name_runs_the_suppression_experiment( self ):
         self.run_mode()

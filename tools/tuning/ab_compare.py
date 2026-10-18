@@ -330,6 +330,75 @@ def window_events( boxes, causes, start, end, side, join_gap=0.5 ):
     return events
 
 
+SIDE_RIGHT = 'RIGHT only'
+SIDE_LEFT = 'LEFT only'
+SIDE_BOTH = 'both differ'
+WHAT_DIFFERS = {
+    SIDE_RIGHT: 'RIGHT censors, LEFT bare',
+    SIDE_LEFT: 'LEFT censors, RIGHT bare',
+    SIDE_BOTH: 'both censor, boxes differ (place or size)',
+}
+
+
+def _intersects( a, b ):
+    return ( a['x'] < b['x'] + b['w'] and b['x'] < a['x'] + a['w']
+             and a['y'] < b['y'] + b['h'] and b['y'] < a['y'] + a['h'] )
+
+
+def _censored_nearby( box, index ):
+    """Whether the other side has a box of this label live at the same time that touches this one."""
+    label = box.get( 'label' )
+    for bucket in range( int( math.floor( box['start'] / _BUCKET_SECONDS ) ),
+                         int( math.floor( box['end'] / _BUCKET_SECONDS ) ) + 1 ):
+        for other in index.get( ( label, bucket ), () ):
+            if other['start'] <= box['end'] and other['end'] >= box['start'] and _intersects( box, other ):
+                return True
+    return False
+
+
+def window_moments( result, start, end, join_gap=0.5 ):
+    """
+    The differences live in [start, end), as moments: one per stretch of
+    time, label, cause and kind, which is one feedback row each.
+
+    A box counted on one side only (no box of its label overlaps it by
+    MATCH_IOU on the other) is often still censored there, just by a box
+    in another place or of another size. When the other side has a box
+    of the same label live at that time and touching it, the moment is
+    SIDE_BOTH, whichever side it came from: both censor, the boxes
+    differ, and the question is which covers better. Otherwise it is
+    SIDE_RIGHT or SIDE_LEFT: one side censors, the other leaves it bare.
+    Spans less than join_gap apart join; times are clip relative.
+
+    result is compare_with_causes' dict.
+    """
+    other_side = { SIDE_RIGHT: _time_index( result['current_boxes'] ),
+                   SIDE_LEFT: _time_index( result['proposed_boxes'] ) }
+    grouped = {}
+    for side, boxes, causes in ( ( SIDE_RIGHT, result['proposed_only'], result['proposed_only_causes'] ),
+                                 ( SIDE_LEFT, result['current_only'], result['current_only_causes'] ) ):
+        for box, cause in zip( boxes, causes ):
+            if box['end'] <= start or box['start'] >= end:
+                continue
+            kind = SIDE_BOTH if _censored_nearby( box, other_side[side] ) else side
+            grouped.setdefault( ( box.get( 'label' ), cause, kind ), [] ).append(
+                ( max( box['start'], start ) - start, min( box['end'], end ) - start ) )
+    moments = []
+    for ( label, cause, kind ), spans in grouped.items():
+        spans.sort()
+        merged = [ list( spans[0] ) ]
+        for span_start, span_end in spans[1:]:
+            if span_start - merged[-1][1] < join_gap:
+                merged[-1][1] = max( merged[-1][1], span_end )
+            else:
+                merged.append( [ span_start, span_end ] )
+        for span_start, span_end in merged:
+            moments.append( { 'side': kind, 'label': label, 'cause': cause,
+                              'span': ( round( span_start, 2 ), round( span_end, 2 ) ) } )
+    moments.sort( key=lambda moment: ( moment['span'][0], moment['label'] or '', moment['side'] ) )
+    return moments
+
+
 def cause_seconds( boxes, causes ):
     """{cause: box-seconds} over a whole video, largest first."""
     totals = {}
@@ -421,17 +490,29 @@ def render_window( video_path, file_hash, boxes, out_path, start, length, logger
 
 
 def side_by_side( left, right, out_path, logger ):
-    """left | right in one file, left's audio. False when ffmpeg refuses."""
-    command = [ 'ffmpeg', '-y', '-loglevel', 'error', '-i', left, '-i', right,
-                '-filter_complex', '[0:v][1:v]hstack=inputs=2[v]', '-map', '[v]', '-map', '0:a?',
-                '-c:v', getattr( betaconfig, 'encode_video_codec', 'libx264' ),
-                '-crf', str( getattr( betaconfig, 'encode_crf', 17 ) ),
-                '-preset', getattr( betaconfig, 'encode_preset', 'fast' ), '-c:a', 'copy', out_path ]
+    """
+    left | right in one file, left's audio. False when ffmpeg refuses.
+    Written beside out_path and moved into place when complete, so a run
+    killed mid-stack never leaves a half file that looks finished.
+    """
+    tmp_path = bu_cache.temp_sibling( out_path )
+    # The render's own encoder arguments, so NVENC gets its quality as -cq
+    # (handed -crf it ignores it and encodes at its default bitrate).
+    # Threads 0: x264 picks its own, as it did when none were passed.
+    encode = bu_render.encoder_options( getattr( betaconfig, 'encode_video_codec', 'libx264' ),
+                                        getattr( betaconfig, 'encode_crf', 17 ),
+                                        getattr( betaconfig, 'encode_preset', 'fast' ), 0 )
+    command = ( [ 'ffmpeg', '-y', '-loglevel', 'error', '-i', left, '-i', right,
+                  '-filter_complex', '[0:v][1:v]hstack=inputs=2[v]', '-map', '[v]', '-map', '0:a?' ]
+                + encode + [ '-c:a', 'copy', tmp_path ] )
     result = subprocess.run( command, capture_output=True, text=True )
     if result.returncode != 0:
+        if os.path.exists( tmp_path ):
+            os.remove( tmp_path )
         logger.warning( "side-by-side failed (%s); keeping the two clips separately"%(
             result.stderr.strip().splitlines()[-1] if result.stderr.strip() else result.returncode, ) )
         return False
+    os.replace( tmp_path, out_path )
     return True
 
 
@@ -439,12 +520,48 @@ def _stem( row ):
     return os.path.splitext( row['name'] )[0][ :60 ].replace( ' ', '_' )
 
 
+def clip_tags( row ):
+    """One tag per clip window: '<stem>_clipNN_<start>s', the prefix of its files."""
+    stem = _stem( row )
+    return [ '%s_clip%02d_%ds'%( stem, number, int( start ) )
+             for number, ( start, _end ) in enumerate( row.get( 'windows', [] ), 1 ) ]
+
+
+def clip_done( out_dir, tag ):
+    """A window's side-by-side exists: the stacked file, or both halves when stacking failed."""
+    return ( os.path.exists( os.path.join( out_dir, tag + '_ab.mp4' ) )
+             or ( os.path.exists( os.path.join( out_dir, tag + '_current.mp4' ) )
+                  and os.path.exists( os.path.join( out_dir, tag + '_proposed.mp4' ) ) ) )
+
+
+def full_paths( out_dir, row ):
+    return [ os.path.join( out_dir, '%s_full_%s.mp4'%( _stem( row ), name ) )
+             for name in ( 'current', 'proposed' ) ]
+
+
 def render_video_comparison( row, ranking, logger, out_dir, overlay=True, censored=True, full=False,
-                             render=None, stack=None, compare=None ):
-    """Every requested render for one ranked video."""
+                             render=None, stack=None, compare=None, skip_existing=False ):
+    """
+    Every requested render for one ranked video. skip_existing leaves
+    alone every file a finished earlier attempt wrote (all of them are
+    written whole or not at all), and skips the replay too when nothing
+    is left to render: how a resumed round picks up where it stopped.
+    """
     ranking = normalised( ranking )
     render = render or render_window
     stack = stack or side_by_side
+    if skip_existing:
+        wanted = []
+        for tag in clip_tags( row ):
+            if overlay:
+                wanted.append( os.path.exists( os.path.join( out_dir, tag + '_diff.mp4' ) ) )
+            if censored:
+                wanted.append( clip_done( out_dir, tag ) )
+        if full:
+            wanted += [ os.path.exists( path ) for path in full_paths( out_dir, row ) ]
+        if all( wanted ):
+            logger.info( "already rendered, nothing to do: %s"%( row['name'], ) )
+            return []
     experiment = ab_experiments.experiment_named( ranking['experiment'] )
     compare = compare or functools.partial( compare_with_causes, experiment=experiment )
     result = compare( row['file_hash'], row['video'], row['cache_paths'], ranking['backend'],
@@ -454,21 +571,24 @@ def render_video_comparison( row, ranking, logger, out_dir, overlay=True, censor
         return experiment.note( cause, ranking['proposed'] )
     current_only = noted( result['current_only'], result['current_only_causes'], note )
     proposed_only = noted( result['proposed_only'], result['proposed_only_causes'], note )
-    stem = _stem( row )
     produced = []
-    for number, ( start, end ) in enumerate( row.get( 'windows', [] ), 1 ):
+    for tag, ( start, end ) in zip( clip_tags( row ), row.get( 'windows', [] ) ):
         length = end - start
-        tag = '%s_clip%02d_%ds'%( stem, number, int( start ) )
         if overlay:
             path = os.path.join( out_dir, tag + '_diff.mp4' )
-            logger.info( "rendering %s (outlines: grey both, orange config only, magenta "
-                         "change only)"%( os.path.basename( path ), ) )
-            with motion_interpolation_off():
-                render( row['video'], row['file_hash'],
-                        overlay_boxes( both, current_only, proposed_only ),
-                        path, start, length, logger )
-            produced.append( path )
-        if censored:
+            if skip_existing and os.path.exists( path ):
+                logger.info( "already rendered: %s"%( os.path.basename( path ), ) )
+            else:
+                logger.info( "rendering %s (outlines: grey both, orange config only, magenta "
+                             "change only)"%( os.path.basename( path ), ) )
+                with motion_interpolation_off():
+                    render( row['video'], row['file_hash'],
+                            overlay_boxes( both, current_only, proposed_only ),
+                            path, start, length, logger )
+                produced.append( path )
+        if censored and skip_existing and clip_done( out_dir, tag ):
+            logger.info( "already rendered: %s side by side"%( tag, ) )
+        elif censored:
             left = os.path.join( out_dir, tag + '_current.mp4' )
             right = os.path.join( out_dir, tag + '_proposed.mp4' )
             render( row['video'], row['file_hash'], current_boxes, left, start, length, logger )
@@ -483,12 +603,51 @@ def render_video_comparison( row, ranking, logger, out_dir, overlay=True, censor
             else:
                 produced += [ left, right ]
     if full:
-        for name, boxes in ( ( 'current', current_boxes ), ( 'proposed', proposed_boxes ) ):
-            path = os.path.join( out_dir, '%s_full_%s.mp4'%( stem, name ) )
+        for path, name, boxes in zip( full_paths( out_dir, row ), ( 'current', 'proposed' ),
+                                      ( current_boxes, proposed_boxes ) ):
+            if skip_existing and os.path.exists( path ):
+                logger.info( "already rendered: %s"%( os.path.basename( path ), ) )
+                continue
             logger.info( "rendering the whole video, %s side: %s"%( name, path ) )
             render( row['video'], row['file_hash'], boxes, path, None, None, logger )
             produced.append( path )
     return produced
+
+
+def round_status( out_dir ):
+    """
+    How far the round in out_dir got, for resuming it: ranked, explained,
+    clips (every window's side by side), full (both whole videos of every
+    chosen one), verdicts filled in of rows, decided, adopted (a change won).
+    """
+    status = { 'ranked': 0, 'experiment': '', 'videos': 0, 'explained': 0, 'clips': 0,
+               'full': 0, 'rows': 0, 'verdicts': 0, 'decided': 0, 'adopted': 0 }
+    path = os.path.join( out_dir, 'ranking.json' )
+    if not os.path.exists( path ):
+        return status
+    with open( path ) as handle:
+        ranking = normalised( json.load( handle ) )
+    by_hash = { row['file_hash']: row for row in ranking.get( 'videos', [] ) }
+    chosen = [ by_hash[file_hash] for file_hash in ranking.get( 'chosen', [] ) if file_hash in by_hash ]
+    status.update( ranked=1, experiment=ranking['experiment'], videos=len( chosen ) )
+    feedback = os.path.join( out_dir, 'feedback.csv' )
+    status['explained'] = int( os.path.exists( os.path.join( out_dir, 'clips.md' ) )
+                               and os.path.exists( feedback ) )
+    status['clips'] = int( bool( chosen ) and all( clip_done( out_dir, tag )
+                                                   for row in chosen for tag in clip_tags( row ) ) )
+    status['full'] = int( bool( chosen ) and all( os.path.exists( full )
+                                                  for row in chosen for full in full_paths( out_dir, row ) ) )
+    if os.path.exists( feedback ):
+        with open( feedback, newline='', encoding='UTF-8' ) as handle:
+            rows = list( csv.DictReader( handle ) )
+        status['rows'] = len( rows )
+        status['verdicts'] = verdict_count( feedback )
+    chosen_path = os.path.join( out_dir, 'chosen.json' )
+    if os.path.exists( chosen_path ):
+        status['decided'] = 1
+        with open( chosen_path ) as handle:
+            status['adopted'] = int( bool( json.load( handle ) ) )
+    return status
 
 
 # --- phases ---------------------------------------------------------------------------
@@ -606,7 +765,8 @@ def phase_render( args, logger, ranking ):
         logger.info( "=== %s ==="%( row['name'], ) )
         produced += render_video_comparison( row, ranking, logger, args.out_dir,
                                              overlay=not args.no_overlay,
-                                             censored=not args.no_censored, full=args.full )
+                                             censored=not args.no_censored, full=args.full,
+                                             skip_existing=args.skip_existing )
     logger.info( "" )
     logger.info( "%d file(s) in %s"%( len( produced ), args.out_dir ) )
     for path in produced:
@@ -656,25 +816,23 @@ def explain_video( row, ranking, video_number, compare=None ):
         lines += [ "### Clip %d: `%s_ab.mp4` (and `_diff.mp4`)"%( clip_number, tag ),
                    "", "Source %s to %s. LEFT is the config as it is, RIGHT the change."%(
                        _clock( start ), _clock( end ) ), "" ]
-        events = ( window_events( result['proposed_only'], result['proposed_only_causes'],
-                                  start, end, 'RIGHT only' )
-                   + window_events( result['current_only'], result['current_only_causes'],
-                                    start, end, 'LEFT only' ) )
-        if not events:
+        moments = window_moments( result, start, end )
+        if not moments:
             lines += [ "No differences inside this clip.", "" ]
             continue
-        lines += [ "| id | when in clip | label | censored on | cause | change |",
+        lines += [ "| id | when in clip | label | what differs | cause | change |",
                    "|---|---|---|---|---|---|" ]
-        for item, event in enumerate( events, 1 ):
+        for item, moment in enumerate( moments, 1 ):
             row_id = 'v%dc%d.%d'%( video_number, clip_number, item )
-            when = "; ".join( "%s-%s"%( _clock( a ), _clock( b ) ) for a, b in event['spans'] )
-            source = "; ".join( "%.1f-%.1f"%( start + a, start + b ) for a, b in event['spans'] )
-            change = _change_text( changes, event['cause'] )
+            span_start, span_end = moment['span']
+            when = "%s-%s"%( _clock( span_start ), _clock( span_end ) )
+            source = "%.1f-%.1f"%( start + span_start, start + span_end )
+            change = _change_text( changes, moment['cause'] )
             lines.append( "| %s | %s | %s | %s | %s | %s |"%(
-                row_id, when, event['label'], event['side'], event['cause'], change ) )
+                row_id, when, moment['label'], WHAT_DIFFERS[moment['side']], moment['cause'], change ) )
             rows.append( { 'id': row_id, 'clip': tag + '_ab.mp4', 'when_in_clip': when,
-                           'source_seconds': source, 'label': event['label'],
-                           'censored_on': event['side'], 'cause': event['cause'], 'change': change,
+                           'source_seconds': source, 'label': moment['label'],
+                           'censored_on': moment['side'], 'cause': moment['cause'], 'change': change,
                            'verdict': '', 'note': '' } )
         lines.append( "" )
     return lines, rows
@@ -687,13 +845,19 @@ def phase_explain( args, logger, ranking, compare=None ):
     by_hash = { row['file_hash']: row for row in ranking['videos'] }
     lines = [ "# A/B, %s: what differs in each clip"%( experiment.title, ), "",
               experiment.explain_intro(), "",
-              "How to read a row: `censored on` says which side has a censor box there that the "
-              "other side does not. `cause` is the setting responsible. `change` is what the "
-              "proposal does to that setting; for suppression it describes the rule, so "
-              "`dropped` means the proposal deletes that rule from the config.", "",
+              "Each row is one moment: one label, at one stretch of time in the clip. `what "
+              "differs` (`censored_on` in feedback.csv) is one of three things:", "",
+              "- RIGHT censors, LEFT bare (`RIGHT only`): RIGHT is right if something real is "
+              "exposed there, LEFT if the RIGHT box sits on nothing", "",
+              "- LEFT censors, RIGHT bare (`LEFT only`): the same question the other way round", "",
+              "- both censor, boxes differ (`both differ`): both sides have a box there, in "
+              "another place or of another size; pick the side whose box covers the body part", "",
+              "`cause` is the setting responsible. `change` is what the proposal does to that "
+              "setting; for suppression it describes the rule, so `dropped` means the proposal "
+              "deletes that rule from the config.", "",
               "Verdict per row, in feedback.csv or in chat by id: `right` (the RIGHT side looks "
               "right there), `left` (the LEFT side does), `same`, or blank if you cannot tell. "
-              "Then `bash tools/tuning/ab_compare.sh decide`.", "",
+              "Then `bash tools/tuning/ab_compare.sh decide` (or `resume`).", "",
               "Changes under test:", "" ]
     lines += [ "- %s"%( line, ) for line in experiment.change_lines(
         ranking['current'], ranking['proposed'], ranking['backend'] ) ]
@@ -711,10 +875,12 @@ def phase_explain( args, logger, ranking, compare=None ):
     with open( markdown, 'w', encoding='UTF-8' ) as handle:
         handle.write( "\n".join( lines ) + "\n" )
     feedback = os.path.join( args.out_dir, 'feedback.csv' )
-    if os.path.exists( feedback ):
+    if os.path.exists( feedback ) and verdict_count( feedback ):
         feedback = os.path.join( args.out_dir, 'feedback_template.csv' )
-        logger.warning( "feedback.csv already exists and is kept; the fresh template is %s"%(
+        logger.warning( "feedback.csv already has verdicts and is kept; the fresh template is %s"%(
             feedback, ) )
+    elif os.path.exists( feedback ):
+        logger.info( "feedback.csv had no verdicts yet, so it is replaced" )
     with open( feedback, 'w', newline='', encoding='UTF-8' ) as handle:
         writer = csv.DictWriter( handle, fieldnames=FEEDBACK_COLUMNS )
         writer.writeheader()
@@ -722,6 +888,16 @@ def phase_explain( args, logger, ranking, compare=None ):
     logger.info( "%d difference(s) to judge: %s"%( len( rows ), markdown ) )
     logger.info( "verdicts go in %s"%( feedback, ) )
     return rows
+
+
+def verdict_count( path ):
+    """Rows of a feedback.csv that carry a verdict (0 for an unreadable file)."""
+    try:
+        with open( path, newline='', encoding='UTF-8' ) as handle:
+            return sum( 1 for row in csv.DictReader( handle )
+                        if VERDICTS.get( ( row.get( 'verdict' ) or '' ).strip().lower() ) )
+    except ( OSError, csv.Error, UnicodeDecodeError ):
+        return 0
 
 
 def tally_verdicts( rows ):
@@ -825,6 +1001,10 @@ def build_parser():
     parser.add_argument( '--no-censored', action='store_true', help="skip the side-by-side renders" )
     parser.add_argument( '--full', action='store_true',
         help="also render each chosen video whole on both sides (hours)" )
+    parser.add_argument( '--skip-existing', action='store_true',
+        help="render phase: leave every file an earlier attempt finished (resuming a round)" )
+    parser.add_argument( '--status', default=None, metavar='DIR',
+        help="print how far DIR's round got, one key=value per line, then stop" )
     parser.add_argument( '--proposed', default=None, metavar='FILE.json',
         help="the proposed side as JSON (e.g. an earlier round's chosen.json)" )
     parser.add_argument( '--set', action='append', default=None, metavar='label.key=value',
@@ -861,6 +1041,10 @@ def main( argv=None, default_experiment=None ):
     if args.list_experiments:
         for experiment in ab_experiments.experiments():
             print( "%s - %s"%( experiment.name, experiment.summary ) )
+        return 0
+    if args.status:
+        for key, value in round_status( args.status ).items():
+            print( "%s=%s"%( key, value ) )
         return 0
     if args.run_experiment:
         with open( os.path.join( args.run_experiment, 'ranking.json' ) ) as handle:

@@ -572,6 +572,245 @@ class TestConfirming( unittest.TestCase ):
         self.assertIn( 'nothing to confirm', str( empty.exception ) )
 
 
+class _RoundDir( unittest.TestCase ):
+
+    ROW = { 'file_hash': 'h1', 'name': 'My Video.mp4', 'video': '/v/My Video.mp4',
+            'cache_paths': [ 'c.gz' ], 'windows': [ [ 10.0, 25.0 ], [ 100.0, 115.0 ] ] }
+
+    def setUp( self ):
+        self.dir = tempfile.mkdtemp( prefix='betasuite-round-' )
+        self.addCleanup( shutil.rmtree, self.dir )
+
+    def write( self, name, content='' ):
+        with open( os.path.join( self.dir, name ), 'w' ) as handle:
+            handle.write( content if isinstance( content, str ) else json.dumps( content ) )
+
+    def ranked( self, chosen=( 'h1', ) ):
+        self.write( 'ranking.json', { 'experiment': 'cut_bursts', 'current': {}, 'proposed': {},
+                                      'videos': [ self.ROW ], 'chosen': list( chosen ) } )
+
+
+class TestRoundStatus( _RoundDir ):
+    """Where a round stopped, read from its folder, so resume knows what is left."""
+
+    def status( self ):
+        return ab.round_status( self.dir )
+
+    def test_nothing_ranked( self ):
+        self.assertEqual( self.status()['ranked'], 0 )
+
+    def test_each_step_flips_when_its_files_are_there( self ):
+        self.ranked()
+        status = self.status()
+        self.assertEqual( ( status['ranked'], status['experiment'], status['videos'] ),
+                          ( 1, 'cut_bursts', 1 ) )
+        self.assertEqual( ( status['explained'], status['clips'], status['full'], status['decided'] ),
+                          ( 0, 0, 0, 0 ) )
+        self.write( 'clips.md' )
+        self.assertEqual( self.status()['explained'], 0, "clips.md alone is half an explain" )
+        self.write( 'feedback.csv', 'id,cause,verdict\nv1c1.1,a,\n' )
+        self.assertEqual( self.status()['explained'], 1 )
+        self.write( 'My_Video_clip01_10s_ab.mp4' )
+        self.assertEqual( self.status()['clips'], 0, "one of two windows" )
+        self.write( 'My_Video_clip02_100s_current.mp4' )
+        self.assertEqual( self.status()['clips'], 0, "one half is not a side by side" )
+        self.write( 'My_Video_clip02_100s_proposed.mp4' )
+        self.assertEqual( self.status()['clips'], 1, "both halves stand in for a failed stack" )
+        self.write( 'My_Video_full_current.mp4' )
+        self.assertEqual( self.status()['full'], 0 )
+        self.write( 'My_Video_full_proposed.mp4' )
+        self.assertEqual( self.status()['full'], 1 )
+
+    def test_verdicts_count_only_real_verdicts( self ):
+        self.ranked()
+        self.write( 'feedback.csv', 'id,cause,verdict\na,x,right\nb,x, L \nc,x,maybe\nd,x,\n' )
+        status = self.status()
+        self.assertEqual( ( status['rows'], status['verdicts'] ), ( 4, 2 ) )
+
+    def test_decided_and_adopted( self ):
+        self.ranked()
+        self.write( 'chosen.json', {} )
+        self.assertEqual( ( self.status()['decided'], self.status()['adopted'] ), ( 1, 0 ) )
+        self.write( 'chosen.json', { 'shot_cut_burst_window': 0.35 } )
+        self.assertEqual( self.status()['adopted'], 1 )
+
+    def test_no_chosen_video_is_never_complete( self ):
+        self.ranked( chosen=() )
+        status = self.status()
+        self.assertEqual( ( status['videos'], status['clips'], status['full'] ), ( 0, 0, 0 ) )
+
+
+class TestSkipExisting( _RoundDir ):
+    """A resumed render keeps every finished file and replays nothing it does not need."""
+
+    def setUp( self ):
+        super().setUp()
+        self.rendered = []
+        self.compared = []
+
+    def render( self, video, file_hash, boxes, path, start, length, logger ):
+        self.rendered.append( os.path.basename( path ) )
+        open( path, 'w' ).close()
+
+    def compare( self, *args ):
+        self.compared.append( args )
+        return { 'current_boxes': [], 'proposed_boxes': [], 'both': [], 'current_only': [],
+                 'proposed_only': [], 'current_only_causes': [], 'proposed_only_causes': [] }
+
+    def run_render( self, **kwargs ):
+        ranking = { 'experiment': 'cut_bursts', 'backend': 'nudenet_v3', 'current': {}, 'proposed': {} }
+        return ab.render_video_comparison( self.ROW, ranking, _Logger(), self.dir, render=self.render,
+                                           stack=lambda left, right, out, logger: open( out, 'w' ).close() or True,
+                                           compare=self.compare, skip_existing=True, **kwargs )
+
+    def test_everything_there_means_no_replay_and_no_render( self ):
+        for name in ( 'My_Video_clip01_10s_diff.mp4', 'My_Video_clip01_10s_ab.mp4',
+                      'My_Video_clip02_100s_diff.mp4', 'My_Video_clip02_100s_ab.mp4',
+                      'My_Video_full_current.mp4', 'My_Video_full_proposed.mp4' ):
+            self.write( name )
+        self.assertEqual( self.run_render( full=True ), [] )
+        self.assertEqual( ( self.rendered, self.compared ), ( [], [] ) )
+
+    def test_only_the_missing_files_are_rendered( self ):
+        self.write( 'My_Video_clip01_10s_diff.mp4' )
+        self.write( 'My_Video_clip01_10s_ab.mp4' )
+        self.write( 'My_Video_full_current.mp4' )
+        self.run_render( full=True )
+        self.assertEqual( len( self.compared ), 1 )
+        self.assertEqual( self.rendered, [ 'My_Video_clip02_100s_diff.mp4', 'My_Video_clip02_100s_current.mp4',
+                                           'My_Video_clip02_100s_proposed.mp4', 'My_Video_full_proposed.mp4' ] )
+
+    def test_clips_done_but_whole_videos_missing_still_renders_them( self ):
+        for name in ( 'My_Video_clip01_10s_diff.mp4', 'My_Video_clip01_10s_ab.mp4',
+                      'My_Video_clip02_100s_diff.mp4', 'My_Video_clip02_100s_ab.mp4' ):
+            self.write( name )
+        self.run_render( full=True )
+        self.assertEqual( self.rendered, [ 'My_Video_full_current.mp4', 'My_Video_full_proposed.mp4' ] )
+
+    def test_without_skip_everything_is_rendered_again( self ):
+        self.write( 'My_Video_clip01_10s_ab.mp4' )
+        ranking = { 'experiment': 'cut_bursts', 'backend': 'nudenet_v3', 'current': {}, 'proposed': {} }
+        ab.render_video_comparison( self.ROW, ranking, _Logger(), self.dir, render=self.render,
+                                    stack=lambda left, right, out, logger: True, compare=self.compare,
+                                    overlay=False )
+        self.assertIn( 'My_Video_clip01_10s_current.mp4', self.rendered )
+
+
+class TestSideBySideIsWholeOrAbsent( unittest.TestCase ):
+
+    def setUp( self ):
+        self.dir = tempfile.mkdtemp( prefix='betasuite-stack-' )
+        self.addCleanup( shutil.rmtree, self.dir )
+        self.out = os.path.join( self.dir, 'x_ab.mp4' )
+
+    def fake_ffmpeg( self, code ):
+        def run( command, capture_output=True, text=True ):
+            open( command[-1], 'w' ).close()       # ffmpeg writes wherever it is told
+            return mock.Mock( returncode=code, stderr='boom' if code else '' )
+        return run
+
+    def test_success_moves_the_finished_file_into_place( self ):
+        with mock.patch.object( ab.subprocess, 'run', self.fake_ffmpeg( 0 ) ) as run:
+            self.assertTrue( ab.side_by_side( 'l.mp4', 'r.mp4', self.out, _Logger() ) )
+        self.assertEqual( os.listdir( self.dir ), [ 'x_ab.mp4' ] )
+
+    def test_the_encoder_arguments_are_the_renders_own( self ):
+        seen = {}
+
+        def run( command, capture_output=True, text=True ):
+            seen['command'] = command
+            open( command[-1], 'w' ).close()
+            return mock.Mock( returncode=0, stderr='' )
+
+        with mock.patch.object( betaconfig, 'encode_video_codec', 'h264_nvenc', create=True ), \
+                mock.patch.object( betaconfig, 'encode_crf', 21, create=True ), \
+                mock.patch.object( betaconfig, 'encode_preset', 'p5', create=True ), \
+                mock.patch.object( ab.subprocess, 'run', run ):
+            ab.side_by_side( 'l.mp4', 'r.mp4', self.out, _Logger() )
+        command = seen['command']
+        self.assertNotIn( '-crf', command, "NVENC ignores -crf and falls back to its default bitrate" )
+        self.assertEqual( command[ command.index( '-cq' ) + 1 ], '21' )
+        self.assertEqual( command[ command.index( '-preset' ) + 1 ], 'p5' )
+
+    def test_failure_leaves_nothing_that_looks_finished( self ):
+        with mock.patch.object( ab.subprocess, 'run', self.fake_ffmpeg( 1 ) ):
+            self.assertFalse( ab.side_by_side( 'l.mp4', 'r.mp4', self.out, _Logger() ) )
+        self.assertEqual( os.listdir( self.dir ), [] )
+
+
+def _placed( start, end, x, label='exposed_breast', w=100, y=0 ):
+    return { 'start': start, 'end': end, 't': start, 'x': x, 'y': y, 'w': w, 'h': 100, 'label': label }
+
+
+class TestWindowMoments( unittest.TestCase ):
+    """One feedback row per moment, and a moment both sides censor differently says so."""
+
+    def result( self, current_boxes, proposed_boxes ):
+        both, current_only, proposed_only = ab.diff_boxes( current_boxes, proposed_boxes )
+        return { 'current_boxes': current_boxes, 'proposed_boxes': proposed_boxes, 'both': both,
+                 'current_only': current_only, 'proposed_only': proposed_only,
+                 'current_only_causes': [ 'c' ] * len( current_only ),
+                 'proposed_only_causes': [ 'c' ] * len( proposed_only ) }
+
+    def test_one_side_bare( self ):
+        moments = ab.window_moments( self.result( [], [ _placed( 12.0, 13.0, 0 ) ] ), 10.0, 25.0 )
+        self.assertEqual( moments, [ { 'side': ab.SIDE_RIGHT, 'label': 'exposed_breast', 'cause': 'c',
+                                       'span': ( 2.0, 3.0 ) } ] )
+        moments = ab.window_moments( self.result( [ _placed( 12.0, 13.0, 0 ) ], [] ), 10.0, 25.0 )
+        self.assertEqual( moments[0]['side'], ab.SIDE_LEFT )
+
+    def test_both_censor_in_different_places_is_one_moment( self ):
+        # Touching but under MATCH_IOU: each counts as "only" in the diff, both censor on screen.
+        moments = ab.window_moments( self.result( [ _placed( 12.0, 13.0, 0 ) ],
+                                                  [ _placed( 12.0, 13.0, 80 ) ] ), 10.0, 25.0 )
+        self.assertEqual( [ moment['side'] for moment in moments ], [ ab.SIDE_BOTH ] )
+        self.assertEqual( moments[0]['span'], ( 2.0, 3.0 ) )
+
+    def test_a_box_elsewhere_or_of_another_label_is_not_the_same_spot( self ):
+        apart = ab.window_moments( self.result( [ _placed( 12.0, 13.0, 0 ) ],
+                                                [ _placed( 12.0, 13.0, 500 ) ] ), 10.0, 25.0 )
+        self.assertEqual( sorted( moment['side'] for moment in apart ), [ ab.SIDE_LEFT, ab.SIDE_RIGHT ] )
+        other = ab.window_moments( self.result( [ _placed( 12.0, 13.0, 0, label='exposed_vulva' ) ],
+                                                [ _placed( 12.0, 13.0, 0 ) ] ), 10.0, 25.0 )
+        self.assertNotIn( ab.SIDE_BOTH, [ moment['side'] for moment in other ] )
+
+    def test_a_box_at_another_time_does_not_count( self ):
+        moments = ab.window_moments( self.result( [ _placed( 20.0, 21.0, 0 ) ],
+                                                  [ _placed( 12.0, 13.0, 0 ) ] ), 10.0, 25.0 )
+        self.assertEqual( sorted( moment['side'] for moment in moments ), [ ab.SIDE_LEFT, ab.SIDE_RIGHT ] )
+        # The same half-second bucket, one after the other: still not at the same time.
+        moments = ab.window_moments( self.result( [ _placed( 12.30, 12.45, 0 ) ],
+                                                  [ _placed( 12.0, 12.2, 0 ) ] ), 10.0, 25.0 )
+        self.assertNotIn( ab.SIDE_BOTH, [ moment['side'] for moment in moments ] )
+
+    def test_a_box_straight_above_is_not_the_same_spot( self ):
+        moments = ab.window_moments( self.result( [ _placed( 12.0, 13.0, 0, y=500 ) ],
+                                                  [ _placed( 12.0, 13.0, 0 ) ] ), 10.0, 25.0 )
+        self.assertNotIn( ab.SIDE_BOTH, [ moment['side'] for moment in moments ] )
+
+    def test_moments_split_on_gaps_join_close_ones_sort_by_time_and_clip_to_the_window( self ):
+        proposed = [ _placed( 9.0, 10.5, 0 ), _placed( 10.6, 11.0, 0 ), _placed( 14.0, 15.0, 0 ),
+                     _placed( 12.0, 12.5, 0, label='exposed_vulva' ), _placed( 26.0, 27.0, 0 ) ]
+        moments = ab.window_moments( self.result( [], proposed ), 10.0, 25.0 )
+        self.assertEqual( [ ( moment['label'], moment['span'] ) for moment in moments ],
+                          [ ( 'exposed_breast', ( 0.0, 1.0 ) ), ( 'exposed_vulva', ( 2.0, 2.5 ) ),
+                            ( 'exposed_breast', ( 4.0, 5.0 ) ) ] )
+
+    def test_explain_writes_one_row_per_moment( self ):
+        row = { 'file_hash': 'h', 'video': '/v/My Video.mp4', 'name': 'My Video.mp4',
+                'cache_paths': [ 'c.gz' ], 'windows': [ ( 10.0, 25.0 ) ] }
+        result = self.result( [ _placed( 12.0, 13.0, 0 ) ],
+                              [ _placed( 12.0, 13.0, 80 ), _placed( 16.0, 17.0, 900 ),
+                                _placed( 20.0, 21.0, 900 ) ] )
+        ranking = { 'experiment': 'cut_bursts', 'backend': 'nudenet_v3', 'current': {},
+                    'proposed': { 'shot_cut_burst_window': 0.35 } }
+        lines, rows = ab.explain_video( row, ranking, 1, compare=lambda *args: result )
+        self.assertEqual( [ ( item['when_in_clip'], item['censored_on'] ) for item in rows ],
+                          [ ( '0:02.0-0:03.0', ab.SIDE_BOTH ), ( '0:06.0-0:07.0', ab.SIDE_RIGHT ),
+                            ( '0:10.0-0:11.0', ab.SIDE_RIGHT ) ] )
+        self.assertIn( 'both censor, boxes differ (place or size)', "\n".join( lines ) )
+
+
 class TestRegistry( unittest.TestCase ):
 
     def test_every_experiment_is_named_once_and_found( self ):

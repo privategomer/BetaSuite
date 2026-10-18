@@ -110,9 +110,8 @@ class Experiment( object ):
         raise NotImplementedError
 
     def explain_intro( self ):
-        return ( "Each row is one difference: a label censored on one side only, at those times "
-                 "in the clip, and the change that caused it. LEFT is the config as it is, RIGHT "
-                 "the proposed change." )
+        return ( "LEFT is the config as it is, RIGHT the proposed change. Each row below is "
+                 "one moment where the two censor differently, and the change that caused it." )
 
     def note( self, cause, proposed ):
         """The text drawn under a differing box's label in the outline render."""
@@ -326,12 +325,13 @@ class SuppressionExperiment( Experiment ):
         return '<-' + cause.split( '<-', 1 )[-1]
 
     def explain_intro( self ):
-        return ( "Each row is one difference: a label censored on one side only, at those times in "
-                 "the clip, and the rule that caused it. RIGHT only: the CURRENT rule in the cause "
-                 "column removes that censor today, and the proposed change (dropped or retuned) "
-                 "lets it through. LEFT only: the PROPOSED rule removes a censor the current rules "
-                 "keep. In `_diff.mp4` the same boxes are magenta (RIGHT only) and orange (LEFT "
-                 "only), with the cause written under the label." )
+        return ( "LEFT is the current rules, RIGHT the proposed ones. Each row below is one "
+                 "moment where the two censor differently, and the rule that caused it. RIGHT "
+                 "censors: the CURRENT rule in the cause column removes that censor today, and the "
+                 "proposed change (dropped or retuned) lets it through. LEFT censors: the PROPOSED "
+                 "rule removes a censor the current rules keep. In `_diff.mp4` the boxes only RIGHT "
+                 "has are magenta and the ones only LEFT has are orange, with the cause written "
+                 "under the label." )
 
 
 # --- per-label item overrides ----------------------------------------------------

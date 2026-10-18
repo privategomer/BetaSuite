@@ -699,25 +699,46 @@ once, so the tool works out which one made each difference (for
 suppression, the observer reports which rule dropped each detection;
 for a per-label setting, the label's own change) and writes it down:
 
-- `clips.md`: for each clip, every difference with its time in the
-  clip, the side that censors it, the cause, and what the proposal does
-  to it. In a suppression run the change column describes the rule:
+- `clips.md`: for each clip, one row per moment (one label, one
+  stretch of time) with what differs, the cause, and what the proposal
+  does to it. What differs is one of three things: RIGHT censors and
+  LEFT is bare, LEFT censors and RIGHT is bare, or both censor with
+  boxes in different places or sizes (`both differ`: pick the side
+  whose box covers the body part). A box the other side covers with an
+  overlapping but different box counts as `both differ`, never as one
+  side bare. In a suppression run the change column describes the rule:
   `dropped` means the proposal deletes that rule from the config. A
   `RIGHT only` row with cause `exposed_breast<-face_femme` and change
   `dropped` is a breast censor the current rule removes near a face,
   which the proposal would draw. "tracking" means no single change: a
   knock-on effect nearby
-- `feedback.csv`: one row per difference, with a `verdict` column:
+- `feedback.csv`: one row per moment, with a `verdict` column:
   `right` (the RIGHT side looks right there), `left` (the LEFT side
-  does), `same`, or blank. Row ids (`v1c3.2`) also work in chat
+  does), `same`, or blank. Row ids (`v1c3.2`) also work in chat.
+  Running `explain` again replaces a `feedback.csv` with no verdicts
+  yet, and leaves one with verdicts alone (writing
+  `feedback_template.csv` beside it)
 
-After the renders the round waits while you watch the clips and fill in
-verdicts, then decides: each change takes the side its verdicts favour
-(a tie or no verdict keeps the config), `chosen.json` is written, and
-the config lines to paste are printed. It then offers a **confirm
+Once the clips are rendered the round asks what next: judge the clips
+now, render the two chosen videos whole on both sides first (hours), or
+stop. Judging comes before the whole-video renders, so a terminal that
+closes during those hours costs no verdicts. Judging waits while you
+watch the clips and fill in verdicts (and waits again if `feedback.csv`
+still has none), then decides: each change takes the side its verdicts
+favour (a tie or no verdict keeps the config), `chosen.json` is written,
+and the config lines to paste are printed. It then offers a **confirm
 round**: the chosen side against the config on videos you have not
 judged yet, like an eye exam narrowing in. Every round's folder is
 `../output/benchmarks/ab_<experiment>_<timestamp>/`.
+
+**Picking a round up again.** `bash tools/tuning/ab_compare.sh resume`
+(the newest round, or name its folder) reads how far the round got from
+its folder and carries on from the first unfinished step: explain,
+clips, the judge-or-render choice, deciding, the confirm offer. Every
+finished file is kept, a half-rendered whole video resumes from its
+finished chunks, and a video whose files are all there is not replayed
+at all. Ranking is the one step it cannot resume; a folder without
+`ranking.json` needs a new round.
 
 The pieces also run on their own, on the newest run or a named one:
 `ab_compare.sh explain`, `decide` and `confirm`. `AB_FOCUS=exposed_vulva`
@@ -726,7 +747,8 @@ is how a breast-heavy library still gets a vulva round
 (`analyze_label_content.py` lists which videos show which label).
 `AB_PROPOSED=side.json` tests any other proposal; `AB_FULL=1` also
 renders the chosen videos whole. Unattended, a round stops after the
-clip renders; run `decide` and `confirm` when you are back. Every sample
+clip renders (the whole videos too with `AB_FULL=1`); run `resume` when
+you are back. Every sample
 rate's caches are ranked, so quick-cut videos detected at 18 fps are
 included. Nothing touches `betaconfig.py`.
 
@@ -1443,6 +1465,30 @@ says, and writes the best one to `analyze_cut_bursts.json`.
 your footage before you turn it on. The settings join the censor key
 only while the merge is on, so adding them left every finished render
 valid; turning it on, or changing it, re-renders (detections are reused).
+
+> **Decided (2026-10-18): on, at 0.35 s, any span, keep first.** Two
+> rounds of `ab_compare.sh` judged by eye, one verdict per moment:
+>
+> | round | videos | merge better | config better | same |
+> |---|---|---|---|---|
+> | first | "hour a half long goon fest pt.2", "GOONER Blowjob Doggy Cowgirl" | 94 | 31 | 18 |
+> | confirm | "NOFAP Therapy", "Hypno edge addict 8" (not seen before) | 53 | 32 | 19 |
+> | both | four files, three distinct footages | 147 (70%) | 63 | 37 |
+>
+> The first round's two files are near-identical copies of one
+> compilation, so it carries the weight of one video; the confirm
+> round, on footage not judged before, still favoured the merge,
+> with each of its two videos and both labels coming out the merge's
+> way. Every moment was the merge drawing a censor the config did not
+> (139) or both drawing one in different places (108); none was the
+> merge removing one, as expected, since merging only ever takes cuts
+> away. The config's 63 wins are moments where the merge's extra or
+> moved box was the wrong one. The likely cause is a track carried
+> across a real cut onto the wrong spot, the cost
+> `shot_cut_burst_max_span` exists to cap. A refinement worth testing
+> once the merge is in
+> betaconfig: `AB_EXPERIMENT=cut_bursts AB_SET="shot_cut_burst_max_span=0.6"`
+> puts a capped merge beside the uncapped one.
 
 Turn it off entirely if your material never has cuts: the scan is then
 skipped completely, cache read included.
