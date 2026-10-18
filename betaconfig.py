@@ -320,6 +320,10 @@ cross_size_dedup = {
 shot_cut_detection_enabled = True
 shot_cut_threshold = 0.40   # Bhattacharyya distance 0-1; higher = less sensitive
 
+shot_cut_burst_window = 0.35
+shot_cut_burst_max_span = None
+shot_cut_burst_keep = 'first'
+
 # --- Resumability and rendering -----------------------------------------
 
 detection_checkpoint_frames = 500
@@ -332,9 +336,9 @@ ffmpeg_retry_backoff_seconds = 5
 
 # --- Encoding -----------------------------------------------------------
 
-encode_video_codec = 'libx264'
-encode_crf = 17
-encode_preset = 'fast'
+encode_video_codec = 'h264_nvenc'
+encode_preset = 'p5'
+encode_crf = 21
 
 # --- Source folder convention: folder -> structure profile --------------
 
