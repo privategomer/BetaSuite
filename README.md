@@ -194,6 +194,7 @@ rejects it at startup.
 | `nms_iou` *(nudenet_v3)* | `0.45` | overlap at which NMS drops the lower score |
 | `nms_mode` *(nudenet_v3)* | `'per_class'` | `'per_class'` leaves cross-label overlaps for `class_suppression`; `'agnostic'` is NudeNet's upstream behaviour |
 | `class_suppression` *(per-backend)* | per model | which labels suppress which, and how strictly |
+| `class_suppression_refused` *(per-backend)* | `[]` | `'label<-suppressor'` pairs you decided never get a rule; the suppression A/B never proposes them |
 | `class_promotion` *(per-backend)* | `{}` | relabel a detection when corroborating evidence overlaps it, e.g. `covered_vulva` → `exposed_vulva` under an `exposed_penis`. See [Class promotion](CONFIG_REFERENCE.md#class-promotion) |
 | `item_overrides` *(per-backend)* | per model | per-label detection and tracking settings |
 
@@ -342,6 +343,7 @@ Reference: [Structure profiles](CONFIG_REFERENCE.md#structure-profiles)
 | Setting | Default | What it does |
 |---|---|---|
 | `default_min_track_hits`, `min_track_hits` *(per-label)* | `1` | real detections a track needs before any of its boxes render. `1` renders every track |
+| `default_confirm_score`, `confirm_score` *(per-label)* | `None` | a track short of `min_track_hits` still renders once one of its detections scores at least this. `None` leaves it to the hit count |
 
 Reference: [Track confirmation](CONFIG_REFERENCE.md#track-confirmation)
 
@@ -821,7 +823,7 @@ from the difference.
 | `tools/tuning/replay_tune.py` | replays cached detections through the real tracking and suppression code under config variants, with no re-detection |
 | `tools/tuning/batch_ab_test.py` | real `betatv.py` runs across batch sizes and backends, comparing detections and timing |
 | `tools/tuning/derive_suppression_rules.py` | turns overlap statistics into proposed rules |
-| `tools/tuning/ab_compare.sh` | the config against one change (suppression rules, `min_track_hits`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
+| `tools/tuning/ab_compare.sh` | the config against one change (suppression rules including suggested additions, `min_track_hits`, `confirm_score`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
 | `tools/tuning/suppression_ab.sh` | `ab_compare.sh` with the suppression experiment |
 | `tools/analysis/analyze_label_content.py` | which videos show which censored label, and which mix them |
 | `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |

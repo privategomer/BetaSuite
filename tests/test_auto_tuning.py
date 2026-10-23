@@ -250,6 +250,107 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertIn( '+400 box(es)', lower['verdict'] )
 
 
+class TestConfirmScoreRecommendation( unittest.TestCase ):
+    """
+    confirm_score uses min_track_hits' rule, with off (None) the
+    strictest value of all and a higher score stricter than a lower one.
+    """
+
+    def stage( self, baseline=None ):
+        stage = auto_tune.ConfirmScoreStage( 'nudenet_v3', 'exposed_breast' )
+        stage.baseline_value = lambda: baseline
+        return stage
+
+    def rows( self, uncensored_by_value, boxes_by_value=None ):
+        boxes_by_value = boxes_by_value or {}
+        base = _metrics( rendered=boxes_by_value.get( None, 10000 ), uncensored=uncensored_by_value[None] )
+        rows = [ dict( _row( None, 'baseline (None)', base, base ), verdict='baseline' ) ]
+        for value in ( 0.5, 0.6, 0.7 ):
+            metrics = _metrics( rendered=boxes_by_value.get( value, 10000 ),
+                                uncensored=uncensored_by_value[value] )
+            rows.append( _row( value, '%g'%( value, ), metrics, base ) )
+        return rows
+
+    def decide( self, rows, loss=0.001 ):
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = loss
+        stage = self.stage()
+        stage.score_rows( rows, opts )
+        decision = stage.decide( { 'only @640': rows }, opts, None )
+        return stage, decision
+
+    def test_candidates_skip_the_baseline( self ):
+        self.assertEqual( [ v for v, _l in self.stage().candidates() ], [ 0.5, 0.6, 0.7 ] )
+        self.assertEqual( [ v for v, _l in self.stage( 0.6 ).candidates() ], [ 0.5, 0.7 ] )
+
+    def test_the_strictest_score_within_the_tolerance_wins( self ):
+        _stage, decision = self.decide( self.rows( { None: 2400, 0.5: 40, 0.6: 120, 0.7: 400 } ) )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 0.6, "0.7 leaves 360 more bare, over the 100 allowed" )
+        self.assertIn( '0.5: 40 uncensored, 0.6: 120 uncensored, 0.7: 400 uncensored, None: 2400 '
+                       'uncensored', decision.reasoning, "loosest to strictest" )
+
+    def test_off_is_kept_when_nothing_scores_high( self ):
+        _stage, decision = self.decide( self.rows( { None: 60, 0.5: 40, 0.6: 50, 0.7: 55 } ) )
+        self.assertFalse( decision.accepted )
+        self.assertIsNone( decision.chosen )
+
+    def test_a_change_is_always_for_review( self ):
+        stage, decision = self.decide( self.rows( { None: 2400, 0.5: 40, 0.6: 120, 0.7: 400 } ) )
+        review = stage.review( decision, {} )
+        self.assertEqual( review['value'], 0.6 )
+        self.assertIn( 'by eye', review['why'] )
+        self.assertEqual( auto_tune.REVIEW_EXPERIMENTS['confirm_score'], 'confirm_score' )
+
+    def test_no_change_no_review( self ):
+        stage, decision = self.decide( self.rows( { None: 60, 0.5: 40, 0.6: 50, 0.7: 55 } ) )
+        self.assertIsNone( stage.review( decision, {} ) )
+
+    def test_it_runs_after_min_track_hits( self ):
+        order = auto_tune.STAGE_ORDER
+        self.assertEqual( order.index( 'confirm_score' ), order.index( 'min_track_hits' ) + 1 )
+
+
+class TestConfirmScoreSkip( unittest.TestCase ):
+    """Nothing to admit when every file already draws one-hit tracks."""
+
+    def setUp( self ):
+        self.saved = copy.deepcopy( betaconfig.detector_backend )
+        self.addCleanup( setattr, betaconfig, 'detector_backend', self.saved )
+        self.addCleanup( bu_config.invalidate_config_caches )
+
+    def configure( self, backend_hits, profile_hits=None ):
+        block = copy.deepcopy( self.saved )
+        block['nudenet_v3'].setdefault( 'item_overrides', {} ).setdefault( 'exposed_breast', {} )[
+            'min_track_hits'] = backend_hits
+        variants = block['nudenet_v3'].setdefault( 'profiles', {} ).setdefault( 'variants', {} )
+        overrides = variants.setdefault( 'quick_cut', {} ).setdefault( 'item_overrides', {} )
+        overrides['exposed_breast'] = ( { 'min_track_hits': profile_hits } if profile_hits else {} )
+        betaconfig.detector_backend = block
+        bu_config.invalidate_config_caches()
+
+    def reason( self, profiles ):
+        return auto_tune.ConfirmScoreStage( 'nudenet_v3', 'exposed_breast' ).skip_reason( profiles )
+
+    def test_one_hit_everywhere_skips( self ):
+        self.configure( 1 )
+        self.assertIn( 'min_track_hits is 1', self.reason( { 'a': 'scene', 'b': 'quick_cut' } ) )
+
+    def test_two_hits_on_the_backend_measures( self ):
+        self.configure( 2 )
+        self.assertIsNone( self.reason( { 'a': 'scene' } ) )
+
+    def test_a_profile_needing_two_hits_measures( self ):
+        self.configure( 1, profile_hits=2 )
+        self.assertIsNone( self.reason( { 'a': 'scene', 'b': 'quick_cut' } ) )
+        self.assertIn( 'skipped', self.reason( { 'a': 'scene' } ), "no file runs quick_cut" )
+
+    def test_no_profiles_reads_the_backend( self ):
+        self.configure( 2 )
+        self.assertIsNone( self.reason( {} ) )
+
+
 class TestMaskedStagesAreSkipped( unittest.TestCase ):
     """auto_tune must not replay candidates no file will ever read."""
 

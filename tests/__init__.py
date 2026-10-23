@@ -60,3 +60,12 @@ betautils_log.DEFAULT_LOG_PATH = TEST_LOG_PATH
 betautils_log.DEFAULT_STATS_PATH = TEST_STATS_PATH
 betaconfig.log_path = TEST_LOG_PATH
 betaconfig.stats_path = TEST_STATS_PATH
+
+# The synthetic end-to-end renders encode with x264 whatever encoder the
+# user's config names. Once that named h264_nvenc, every one of them
+# needed a free GPU session (and failed outright without a GPU), though
+# none of them is about the encoder. Tests that are about the encoder
+# set their own values.
+TEST_ENCODE = { 'encode_video_codec': 'libx264', 'encode_preset': 'fast', 'encode_crf': 17 }
+for _name, _value in TEST_ENCODE.items():
+    setattr( betaconfig, _name, _value )

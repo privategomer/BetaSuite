@@ -382,6 +382,23 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertIn( 'ab_min_track_hits_', rank )
         self.assertIn( '_confirm', rank )
 
+    def test_confirm_takes_ab_focus_over_the_earlier_rounds( self ):
+        previous = self.make_run( 'ab_suppression_20261019_100748' )
+        with open( os.path.join( previous, 'ranking.json' ), 'w' ) as handle:
+            handle.write( '{"experiment": "suppression", "focus": [], "chosen": ["h1"]}' )
+        with open( os.path.join( previous, 'chosen.json' ), 'w' ) as handle:
+            handle.write( '{"exposed_breast": []}' )
+        for focus, expected in ( ( 'exposed_vulva', '--focus exposed_vulva' ), ( '', None ) ):
+            if os.path.exists( self.calls ):
+                os.remove( self.calls )
+            self.run_mode( 'confirm', previous, AB_FOCUS=focus )
+            with open( self.calls ) as handle:
+                rank = [ line for line in handle.read().splitlines() if '--phase rank' in line ][0]
+            if expected:
+                self.assertIn( expected, rank )
+            else:
+                self.assertNotIn( '--focus', rank, "no AB_FOCUS: the earlier round's focus stands" )
+
     def test_confirm_with_nothing_chosen_runs_nothing( self ):
         previous = self.make_run( 'ab_min_track_hits_20261011_090000' )
         with open( os.path.join( previous, 'chosen.json' ), 'w' ) as handle:

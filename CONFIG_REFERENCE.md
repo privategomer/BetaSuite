@@ -667,9 +667,37 @@ because a rule there would mostly remove real detections. It then runs
 every configured rule through the production suppression function, as
 configured and as suggested, and prints how many renderable detections
 each removes and what share of those removals sat side by side (IoU
-under 0.20) with the detection that removed them. Add one pair at a
-time and look at the output: a suppression rule removes real detections
-when it is wrong.
+under 0.20) with the detection that removed them. Below those, each
+same-spot pair that has no rule yet is listed as `not configured`, with
+how many renderable detections adding the suggested rule would remove.
+Add one pair at a time and look at the output: a suppression rule
+removes real detections when it is wrong.
+
+### `class_suppression_refused` (per backend)
+
+```python
+detector_backend['nudenet_v3']['class_suppression_refused'] = [
+    'exposed_vulva<-exposed_penis',
+]
+```
+
+Pairs, written `'label<-suppressor'`, that you have decided should never
+get a rule. **Empty** by default. The bench suggests a rule wherever a
+pair's overlaps form a same-spot cluster, and it cannot tell a mislabel
+from two body parts that really do share a spot: `exposed_vulva` and
+`exposed_penis` overlap on the same spot during penetration, and a rule
+there removes the vulva censor exactly when it is needed. A pair listed
+here is never proposed as an addition by the suppression A/B and is
+marked "refused" in the bench report. It changes nothing a run renders,
+so it is not part of the censor key. `ab_compare.sh decide` prints this
+line with every addition your verdicts turned down added to it.
+
+> **In the config since 2026-10-19: the 2026-09-19 decisions.** `exposed_vulva<-exposed_penis`
+> (the penetrative case: removing that rule fixed a miss),
+> `exposed_vulva<-exposed_buttocks` (about 90% of vulva detections would
+> sit behind the gate: anatomy, not a competing claim about one object)
+> and `exposed_vulva<-exposed_feet` (the same shape, smaller). Listing
+> them keeps them out of every later round.
 
 **Looking at the output** is what `tools/tuning/ab_compare.sh` is for
 (`suppression_ab.sh` is the same tool with the suppression experiment
@@ -678,8 +706,9 @@ own footage. What changes is an *experiment*:
 
 | experiment | the proposed side |
 |---|---|
-| `suppression` | `betabench suppression`'s suggestions: each configured pair retuned where there is a same-spot cluster, dropped where the bench measured none, kept where there were too few overlaps to measure; never a new pair |
+| `suppression` | `betabench suppression`'s suggestions: each configured pair retuned where there is a same-spot cluster, dropped where the bench measured none, kept where there were too few overlaps to measure; plus each same-spot pair with no rule yet, added at its suggested values, unless it is in `class_suppression_refused` or its suppressor wins under 20% of those overlaps (`AB_ADDITIONS=0` turns additions off) |
 | `min_track_hits` | the values auto_tune flagged "worth judging by eye" in the newest analysis run |
+| `confirm_score` | auto_tune's flagged `confirm_score` values, or 0.5 for every censored label when it flagged none |
 | `match_distance` | auto_tune's tightening candidate (see `match_distance_multiplier`) |
 | `cut_bursts` | the shot-cut burst merge, from `analyze_cut_bursts`' best variant |
 | `tracking` | any per-label setting, named in `AB_SET` (`exposed_breast.match_distance_multiplier=0.75`) |
@@ -710,8 +739,10 @@ for a per-label setting, the label's own change) and writes it down:
   `dropped` means the proposal deletes that rule from the config. A
   `RIGHT only` row with cause `exposed_breast<-face_femme` and change
   `dropped` is a breast censor the current rule removes near a face,
-  which the proposal would draw. "tracking" means no single change: a
-  knock-on effect nearby
+  which the proposal would draw. A rule marked `added` only ever shows
+  as `LEFT only` rows: the censors it would take away, so the question
+  each row asks is whether that censor was on the right thing.
+  "tracking" means no single change: a knock-on effect nearby
 - `feedback.csv`: one row per moment, with a `verdict` column:
   `right` (the RIGHT side looks right there), `left` (the LEFT side
   does), `same`, or blank. Row ids (`v1c3.2`) also work in chat.
@@ -741,12 +772,19 @@ at all. Ranking is the one step it cannot resume; a folder without
 `ranking.json` needs a new round.
 
 The pieces also run on their own, on the newest run or a named one:
-`ab_compare.sh explain`, `decide` and `confirm`. `AB_FOCUS=exposed_vulva`
+`ab_compare.sh explain`, `decide` and `confirm`. A confirm round keeps
+the earlier round's focus unless `AB_FOCUS` names another, and it only
+re-tests the changes that won: a rule the verdicts kept as configured
+needs a fresh round, not a confirm round, to be seen again. `AB_FOCUS=exposed_vulva`
 ranks videos and picks windows by that label's differences only, which
 is how a breast-heavy library still gets a vulva round
 (`analyze_label_content.py` lists which videos show which label).
 `AB_PROPOSED=side.json` tests any other proposal; `AB_FULL=1` also
-renders the chosen videos whole. Unattended, a round stops after the
+renders the chosen videos whole. A round never spends two of its videos
+on the same footage: a video whose runtime and labelled seconds match
+one it already picked (or one an earlier round showed) is skipped with a
+log line, since a library can hold one compilation under two names
+(`analyze_label_content.py` lists those pairs). Unattended, a round stops after the
 clip renders (the whole videos too with `AB_FULL=1`); run `resume` when
 you are back. Every sample
 rate's caches are ranked, so quick-cut videos detected at 18 fps are
@@ -764,6 +802,34 @@ included. Nothing touches `betaconfig.py`.
 > face, 16,812 for overlapping a belly and 22,860 for overlapping a
 > covered breast, and `analyze_suppression_pairs.py` puts the bulk of
 > the face and belly overlaps at IoU 0.01 to 0.05.
+
+> **Decided (2026-10-23): breast rules, by eye.** One suppression round
+> (`ab_suppression_20261019_100748`, no focus, cut-burst merge on) on
+> the two most-changed videos, Compilation for big bouncing boobs
+> lovers and oo Gooner Heaven, 12 clips, 128 moments judged:
+>
+> | rule | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_breast<-face_femme` | 40 | 1 | 13 | **dropped** |
+> | `exposed_breast<-exposed_belly` | 2 | 0 | 3 | **dropped** |
+> | `exposed_breast<-covered_breast` | 3 | 0 | 0 | **retuned** to `min_iou 0.425`, `margin 0.081` |
+> | `exposed_vulva<-exposed_breast` | 0 | 2 | 2 | kept |
+> | `exposed_vulva<-exposed_belly` | 0 | 2 | 0 | kept |
+> | `exposed_vulva<-exposed_anus` | 0 | 1 | 2 | kept |
+> | `exposed_breast<-exposed_chest` (addition) | 0 | 0 | 1 | not added, not refused |
+>
+> RIGHT was the proposal. The face and belly rules were the two the
+> 2026-10-18 bench measured removing 16,780 and 14,295 renderable breast
+> detections, 99% of them with the face or belly beside the breast
+> rather than on it; on screen those were real breasts left bare beside
+> a face. `exposed_breast<-exposed_buttocks`'s retune, the vulva rules'
+> drops and the `exposed_vulva<-covered_vulva` addition had no rows, so
+> they stay as configured until a vulva-focused round
+> (`AB_EXPERIMENT=suppression AB_FOCUS=exposed_vulva`) puts them on
+> screen; the vulva evidence above is 1 to 4 rows a rule. 56 "tracking"
+> rows (33 right, 5 left, 18 same) were knock-on effects and decide
+> nothing. Applied to `betaconfig.py` on 2026-10-23. The censor key
+> moved, so the next run re-renders.
 
 `margin` semantics validation enforces:
 
@@ -1399,6 +1465,46 @@ never confirmed contributes nothing at all.
 > like a missed detection on brief or partially-occluded content, and is
 > easy to misdiagnose as a threshold problem. This is a recall-side
 > change: expect slightly more short-lived false positives in exchange.
+
+> **2026-10-18, with the cut-burst merge on: the case for 1 shrank.**
+> auto_tune still picks 1, but for 2,356 fewer confident breast
+> detections uncensored (was 7,022) and 653 vulva (was 1,568). The
+> merge already rescued most of the shots that were splitting tracks.
+> Every box 1 adds is a one-detection track (tracks and boxes both rise
+> by exactly 6,420 for breast, interpolation unchanged), and only 37%
+> of them come from a detection scoring 0.5 or more (vulva 26%). The
+> rest are single low-score hits, the shape of a false positive.
+> `confirm_score` below draws the confident ones and none of the rest.
+
+### `default_confirm_score` (per-label: `confirm_score`)
+
+A track short of `min_track_hits` still renders once one of its real
+detections scores at least this. **None** (off): the hit count alone
+decides.
+
+**The analogy.** The second opinion `min_track_hits` waits for is worth
+waiting for when the first witness was unsure. When the first witness is
+certain, waiting only means missing the moment.
+
+**What you see.** In quick-cut footage a brief exposure can be a single
+sample: one detection, then the shot changes. `min_track_hits: 2` drops
+it whatever it scored. With `confirm_score: 0.5`, a one-detection track
+scoring 0.5 or more is drawn; one scoring 0.3 is still dropped. It can
+only add boxes to what `min_track_hits` keeps, never remove one. A
+provisional detection (between `min_prob_continue` and `min_prob`)
+never confirms a track. It has no effect where `min_track_hits` is 1.
+
+**How to pick.** auto_tune's `confirm_score` stage tries 0.5, 0.6 and
+0.7 against off and recommends the strictest (highest) value that
+leaves no more than `--max-confident-loss` (0.1%) of the label's
+confident detections uncensored beyond the fewest any value leaves, the
+same rule as `min_track_hits`. A misfire scoring above the value looks
+like a real detection to that metric, so every change it recommends is
+marked "worth judging by eye":
+`AB_EXPERIMENT=confirm_score bash tools/tuning/ab_compare.sh` (0.5 for
+every censored label when auto_tune has not flagged a value yet). It is
+in the censor key only while set, so adding the setting re-rendered
+nothing.
 
 ---
 
@@ -2876,7 +2982,11 @@ its default bitrate, which is what this setting used to do. It now
 passes `encode_crf` to NVENC as constant quality (`-cq`, with
 `-b:v 0`), and translates x264 preset names to NVENC's `p1` (fastest)
 to `p7` (best), so `preview_encode_preset = 'ultrafast'` becomes `p1`
-rather than an error. `p1` to `p7` can also be set directly.
+rather than an error. `p1` to `p7` can also be set directly whenever
+the codec is an NVENC one. Until 2026-10-18 validation knew only x264's
+names and rejected the `p5` that `betabench encode` recommends, so a
+config switched to NVENC failed `validate_config`; it now checks the
+preset against the codec, and `p5` with `libx264` is still an error.
 
 The cq and crf scales do not match number for number, so do not carry
 17 across and assume the same quality. `betabench encode` times the

@@ -921,6 +921,9 @@ SAME_SPOT_MIN_COUNT = 30
 # The IoU below which a suppression is counted as firing on two things
 # side by side, for the impact table.
 ADJACENT_IOU = 0.20
+# A same-spot pair whose suppressor wins less often than this would
+# almost never fire; the bench notes it and never offers it as an addition.
+ADDITION_MIN_WIN_RATE = 0.2
 
 
 def iou_valley( ious ):
@@ -1034,6 +1037,7 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
     censored_labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
     parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     configured = bu_detector.get_class_suppression( backend_name ) or {}
+    refused = set( bu_detector.get_class_suppression_refused( backend_name ) )
     pair_data = {}
     current_hits = {}
 
@@ -1085,6 +1089,7 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
 
     results = []
     suggested_rules = {}
+    win_rates = {}
     logger.info( "" )
     logger.info( "Cross-label overlaps at the same instant in the same video, censored labels only:" )
     for key in sorted( pair_data, key=lambda k: -len( pair_data[k]['iou'] ) ):
@@ -1112,15 +1117,18 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
                 min_iou, same_spot, 100*same_spot_wins ) )
             logger.info( "      suggested: { 'suppressed_by': '%s', 'min_iou': %s, 'margin': %s }"%(
                 suppressor, min_iou, margin ) )
-            if same_spot_wins < 0.2:
+            if same_spot_wins < ADDITION_MIN_WIN_RATE:
                 logger.info( "      NOTE: even on the same spot the suppressor rarely wins, so this "
                              "rule would almost never fire. Consider leaving the pair out." )
+            if key in refused:
+                logger.info( "      refused in class_suppression_refused: never proposed as an addition" )
             suggested_rules.setdefault( label, [] ).append(
                 { 'suppressed_by': suppressor, 'min_iou': min_iou, 'margin': margin } )
+            win_rates[key] = same_spot_wins
         results.append( row )
 
     impact = _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, current_hits,
-                                      parts_to_blur )
+                                      parts_to_blur, refused, win_rates )
     logger.info( "" )
     logger.info( "These are starting points, not answers. A suppression rule removes real "
                  "detections when it is wrong, so change one pair at a time and look at the output." )
@@ -1128,9 +1136,14 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
 
 
 def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, current_hits,
-                             parts_to_blur ):
-    """What each configured rule removes now, and with the suggestion in its place."""
-    if not configured:
+                             parts_to_blur, refused=(), win_rates=None ):
+    """
+    What each configured rule removes now, and with the suggestion in its
+    place; then what each suggested pair that is not configured (and not
+    refused) would remove if added, which is what the suppression A/B
+    proposes adding.
+    """
+    if not configured and not suggested_rules:
         return []
     proposed = {}
     for label, rules in configured.items():
@@ -1162,10 +1175,34 @@ def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, cur
             rows.append( { 'rule': key, 'min_iou': rule.get( 'min_iou' ), 'margin': rule.get( 'margin' ),
                            'removed': now.get( key, 0 ), 'side_by_side': adjacent,
                            'suggested': match[0] if match else None, 'removed_suggested': removed_after } )
+    additions = {}
+    for label, rules in sorted( suggested_rules.items() ):
+        named = { rule['suppressed_by'] for rule in
+                  ( [ configured.get( label ) ] if isinstance( configured.get( label ), dict )
+                    else configured.get( label ) or [] ) }
+        for rule in rules:
+            key = '%s<-%s'%( label, rule['suppressed_by'] )
+            if ( rule['suppressed_by'] not in named and key not in refused
+                 and ( win_rates or {} ).get( key, 1.0 ) >= ADDITION_MIN_WIN_RATE ):
+                additions.setdefault( label, [] ).append( rule )
+    added_counts = _suppression_renderable_counts( raw_boxes, additions, parts_to_blur ) if additions else {}
+    for label, rules in sorted( additions.items() ):
+        for rule in rules:
+            key = '%s<-%s'%( label, rule['suppressed_by'] )
+            logger.info( "  %-34s %-20s %9s %10s   %-20s %9d"%(
+                key, 'not configured', '-', '-',
+                'iou %.3f m %.3f'%( rule['min_iou'], rule['margin'] ), added_counts.get( key, 0 ) ) )
+            rows.append( { 'rule': key, 'min_iou': None, 'margin': None, 'removed': 0,
+                           'side_by_side': 0, 'suggested': rule,
+                           'removed_suggested': added_counts.get( key, 0 ), 'configured': False } )
     logger.info( "  side-by-side: share of a rule's removals where the suppressor overlapped by "
                  "IoU < %.2f, i.e. two things next to each other rather than one thing named "
                  "twice. A removal there leaves a real detection uncensored for that sample."%(
                      ADJACENT_IOU, ) )
+    if additions:
+        logger.info( "  not configured: a same-spot pair with no rule yet; its last column is what "
+                     "adding the suggested rule would remove. The suppression A/B proposes these "
+                     "as additions; class_suppression_refused keeps a pair out for good." )
     return rows
 
 

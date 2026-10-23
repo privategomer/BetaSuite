@@ -543,6 +543,12 @@ def label_content( raw_boxes, labels, sample_fps, confident_score=CONFIDENT_SCOR
     }
 
 
+def cache_sample_rate( cache_paths ):
+    """The sample rate a video's detection cache was written at, from its name; else the config's."""
+    name = bu_cache.parse_any_cache_name( cache_paths[0] ) if cache_paths else None
+    return ( name or {} ).get( 'fps' ) or betaconfig.video_censor_fps
+
+
 def content_by_video( videos, labels, confident_score=CONFIDENT_SCORE, forget=True ):
     """
     {file_hash: label_content(...)} for {file_hash: cache_paths}.
@@ -554,13 +560,84 @@ def content_by_video( videos, labels, confident_score=CONFIDENT_SCORE, forget=Tr
     """
     found = {}
     for file_hash, cache_paths in sorted( videos.items() ):
-        name = bu_cache.parse_any_cache_name( cache_paths[0] ) if cache_paths else None
-        rate = ( name or {} ).get( 'fps' ) or betaconfig.video_censor_fps
-        found[file_hash] = label_content( raw_boxes_for_reading( cache_paths ), labels, rate,
-                                          confident_score )
+        found[file_hash] = label_content( raw_boxes_for_reading( cache_paths ), labels,
+                                          cache_sample_rate( cache_paths ), confident_score )
         if forget:
             forget_raw_boxes( cache_paths )
     return found
+
+
+# Two videos are the same footage (a re-encode, another container, a
+# trim) when their runtimes and every labelled-seconds figure agree this
+# closely. Re-encodes land well inside: the four pairs in the 2026-10-18
+# library differ by at most 0.8% in runtime and 4.4% in any label.
+DUPLICATE_DURATION_SHARE = 0.02
+DUPLICATE_SECONDS_SHARE = 0.06
+DUPLICATE_SECONDS_FLOOR = 2.0     # seconds, for a label a video barely shows
+DUPLICATE_MIN_LABELLED = 30.0     # seconds of labelled footage; less says too little
+
+
+def content_signature( duration, content ):
+    """
+    What near_duplicates compares: runtime and labelled seconds.
+
+    content is one label_content() result. None when the runtime is
+    unknown, since runtime is the one figure every copy shares exactly.
+    """
+    if not duration:
+        return None
+    return { 'duration': float( duration ),
+             'seconds': dict( content.get( 'seconds', {} ) ),
+             'mixed': content.get( 'mixed_seconds', 0.0 ) }
+
+
+def _close( first, second, share, floor=0.0 ):
+    return abs( first - second ) <= max( share * max( first, second ), floor )
+
+
+def same_content( first, second ):
+    """
+    Whether two signatures describe the same footage.
+
+    Runtime within DUPLICATE_DURATION_SHARE, and each label's seconds and
+    the mixed seconds within DUPLICATE_SECONDS_SHARE (or the floor, for a
+    label one of them barely shows). Each needs DUPLICATE_MIN_LABELLED
+    seconds of labelled footage: two short clips with almost nothing
+    detected agree on everything without being the same video.
+    """
+    if not first or not second:
+        return False
+    if not _close( first['duration'], second['duration'], DUPLICATE_DURATION_SHARE ):
+        return False
+    if ( sum( first['seconds'].values() ) < DUPLICATE_MIN_LABELLED
+            or sum( second['seconds'].values() ) < DUPLICATE_MIN_LABELLED ):
+        return False
+    for label in set( first['seconds'] ) | set( second['seconds'] ):
+        if not _close( first['seconds'].get( label, 0.0 ), second['seconds'].get( label, 0.0 ),
+                       DUPLICATE_SECONDS_SHARE, DUPLICATE_SECONDS_FLOOR ):
+            return False
+    return _close( first.get( 'mixed', 0.0 ), second.get( 'mixed', 0.0 ),
+                   DUPLICATE_SECONDS_SHARE, DUPLICATE_SECONDS_FLOOR )
+
+
+def near_duplicates( signatures ):
+    """
+    [(key, key)] for every pair of signatures with the same content.
+
+    signatures is {key: content_signature or None}. Pairs come out in key
+    order within a pair and sorted overall. Sorted by runtime first, so
+    only videos within the runtime tolerance are ever compared.
+    """
+    ordered = sorted( ( signature['duration'], key ) for key, signature in signatures.items()
+                      if signature )
+    pairs = []
+    for index, ( duration, key ) in enumerate( ordered ):
+        for other_duration, other in ordered[ index + 1: ]:
+            if not _close( duration, other_duration, DUPLICATE_DURATION_SHARE ):
+                break
+            if same_content( signatures[key], signatures[other] ):
+                pairs.append( tuple( sorted( ( key, other ) ) ) )
+    return sorted( pairs )
 
 
 def uncovered_detections( detections, rendered ):

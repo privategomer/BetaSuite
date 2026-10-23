@@ -3,7 +3,8 @@ test_suppression_ab.py - A/B two class_suppression rule sets on footage.
 
 suppression_ab ranks every cached video by how differently the current
 and proposed rules censor it, then renders the most-changed ones. These
-tests pin the proposed set it derives (never adds a pair), that the
+tests pin the proposed set it derives (additions only when asked for and
+never a refused pair), that the
 production pipeline sees the swapped rules and gets the old ones back,
 the box matching behind "differs", the clip windows, the ranking, the
 overlay colours and the renders, including a real one through ffmpeg.
@@ -71,7 +72,7 @@ class TestProposedRules( unittest.TestCase ):
             { 'pair': 'exposed_breast<-exposed_buttocks', 'suggested_min_iou': 0.175,
               'suggested_margin': 0.141 },
         ]
-        proposed = TOOL.proposed_rules( self.CONFIGURED, rows )
+        proposed = TOOL.proposed_rules( self.CONFIGURED, rows, additions=False )
         self.assertEqual( proposed['exposed_breast'], [
             { 'suppressed_by': 'covered_breast', 'margin': 0.081, 'min_iou': 0.425 },
             # belly: no row, too few overlaps to judge, kept as configured
@@ -80,11 +81,150 @@ class TestProposedRules( unittest.TestCase ):
         self.assertEqual( proposed['exposed_vulva'],
                           [ { 'suppressed_by': 'exposed_anus', 'margin': 0.1, 'min_iou': 0.2 } ] )
 
-    def test_never_adds_a_pair_that_is_not_configured( self ):
+    def test_with_additions_off_an_unconfigured_pair_is_never_added( self ):
         rows = [ { 'pair': 'exposed_breast<-exposed_buttocks', 'suggested_min_iou': 0.175,
-                   'suggested_margin': 0.141 } ]
-        proposed = TOOL.proposed_rules( { 'exposed_breast': [] }, rows )
+                   'suggested_margin': 0.141, 'same_spot_win_rate': 0.4 } ]
+        proposed = TOOL.proposed_rules( { 'exposed_breast': [] }, rows, additions=False )
         self.assertEqual( proposed, {} )
+
+    def test_an_unconfigured_same_spot_pair_is_added_after_the_configured_rules( self ):
+        configured = { 'exposed_breast': [ { 'suppressed_by': 'covered_breast', 'margin': 0.05,
+                                             'min_iou': 0.03 } ] }
+        rows = [ { 'pair': 'exposed_breast<-exposed_chest', 'suggested_min_iou': 0.525,
+                   'suggested_margin': 0.087, 'same_spot_win_rate': 0.4 },
+                 { 'pair': 'exposed_vulva<-covered_vulva', 'suggested_min_iou': 0.425,
+                   'suggested_margin': 0.065, 'same_spot_win_rate': 0.46 } ]
+        proposed = TOOL.proposed_rules( configured, rows, min_win_rate=0.2 )
+        self.assertEqual( proposed, {
+            'exposed_breast': [
+                { 'suppressed_by': 'covered_breast', 'margin': 0.05, 'min_iou': 0.03 },
+                { 'suppressed_by': 'exposed_chest', 'margin': 0.087, 'min_iou': 0.525 } ],
+            'exposed_vulva': [
+                { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 } ] } )
+        self.assertEqual( TOOL.added_pairs( configured, proposed ),
+                          [ 'exposed_breast<-exposed_chest', 'exposed_vulva<-covered_vulva' ] )
+
+    def test_a_refused_pair_is_never_added( self ):
+        rows = [ { 'pair': 'exposed_vulva<-exposed_penis', 'suggested_min_iou': 0.575,
+                   'suggested_margin': 0.116, 'same_spot_win_rate': 0.59 } ]
+        self.assertEqual( TOOL.proposed_rules( {}, rows, refused=[ 'exposed_vulva<-exposed_penis' ] ), {} )
+        self.assertIn( 'exposed_vulva', TOOL.proposed_rules( {}, rows, refused=[ 'other<-pair' ] ) )
+
+    def test_a_pair_with_no_same_spot_cluster_is_never_added( self ):
+        rows = [ { 'pair': 'exposed_breast<-face_femme', 'suggested_min_iou': None,
+                   'suggested_margin': None, 'same_spot_win_rate': 0.9 } ]
+        self.assertEqual( TOOL.proposed_rules( {}, rows ), {} )
+
+    def test_a_pair_whose_suppressor_rarely_wins_is_not_added( self ):
+        def rows( rate ):
+            return [ { 'pair': 'exposed_breast<-exposed_chest', 'suggested_min_iou': 0.5,
+                       'suggested_margin': 0.0, 'same_spot_win_rate': rate } ]
+        self.assertEqual( TOOL.proposed_rules( {}, rows( 0.19 ), min_win_rate=0.2 ), {} )
+        self.assertIn( 'exposed_breast', TOOL.proposed_rules( {}, rows( 0.2 ), min_win_rate=0.2 ),
+                       "the threshold itself is enough" )
+
+    def test_a_configured_pair_is_retuned_never_added_twice( self ):
+        configured = { 'exposed_breast': [ { 'suppressed_by': 'exposed_chest', 'margin': 0.2,
+                                             'min_iou': 0.8 } ] }
+        rows = [ { 'pair': 'exposed_breast<-exposed_chest', 'suggested_min_iou': 0.525,
+                   'suggested_margin': 0.087, 'same_spot_win_rate': 0.4 } ]
+        self.assertEqual( TOOL.proposed_rules( configured, rows ), { 'exposed_breast': [
+            { 'suppressed_by': 'exposed_chest', 'margin': 0.087, 'min_iou': 0.525 } ] } )
+
+
+class TestProposeReadsRefusals( unittest.TestCase ):
+    """SuppressionExperiment.propose: the bench rows, the refused list, --no-additions."""
+
+    ROWS = [ { 'pair': 'exposed_breast<-exposed_chest', 'suggested_min_iou': 0.525,
+               'suggested_margin': 0.087, 'same_spot_win_rate': 0.4 },
+             { 'pair': 'exposed_vulva<-exposed_penis', 'suggested_min_iou': 0.575,
+               'suggested_margin': 0.116, 'same_spot_win_rate': 0.59 },
+             { 'pair': 'exposed_vulva<-covered_vulva', 'suggested_min_iou': 0.425,
+               'suggested_margin': 0.065, 'same_spot_win_rate': 0.1 } ]
+
+    class _Bench:
+        ADDITION_MIN_WIN_RATE = 0.2
+
+        def __init__( self, rows ):
+            self.rows = rows
+
+        def load_cached_detections( self, *args, **kwargs ):
+            return [], 0
+
+        def _bench_suppression_one( self, *args ):
+            return { 'suppression': self.rows }
+
+    def propose( self, additions=True ):
+        import argparse, types
+        experiment = TOOL.ab_experiments.SuppressionExperiment()
+        args = argparse.Namespace( min_samples=30, additions=additions )
+        config = types.SimpleNamespace( backend_name='nudenet_v3', label='640m', picture_sizes=[ 640 ] )
+        logger = _Logger()
+        with mock.patch.object( TOOL.ab_experiments.bu_detector, 'get_class_suppression',
+                                return_value={} ), \
+             mock.patch.object( TOOL.ab_experiments.bu_detector, 'get_class_suppression_refused',
+                                return_value=[ 'exposed_vulva<-exposed_penis' ] ):
+            proposed, source = experiment.propose( args, logger, config, self._Bench( self.ROWS ) )
+        return proposed, source, logger
+
+    def test_refused_and_rarely_winning_pairs_stay_out( self ):
+        proposed, source, logger = self.propose()
+        self.assertEqual( proposed, { 'exposed_breast': [
+            { 'suppressed_by': 'exposed_chest', 'margin': 0.087, 'min_iou': 0.525 } ] } )
+        self.assertIn( '1 addition(s): exposed_breast<-exposed_chest', source )
+        self.assertTrue( any( 'exposed_vulva<-exposed_penis' in line for line in logger.lines ) )
+
+    def test_no_additions_keeps_to_the_configured_rules( self ):
+        proposed, source, _logger = self.propose( additions=False )
+        self.assertEqual( proposed, {} )
+        self.assertIn( 'additions off', source )
+
+
+class TestAdditionFollowUp( unittest.TestCase ):
+    """decide names every addition the verdicts turned down, for class_suppression_refused."""
+
+    CURRENT = { 'exposed_breast': [ { 'suppressed_by': 'face_femme', 'margin': 0.1, 'min_iou': 0.01 } ] }
+    PROPOSED = { 'exposed_breast': [ { 'suppressed_by': 'exposed_chest', 'margin': 0.087, 'min_iou': 0.525 } ],
+                 'exposed_vulva': [ { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 },
+                                    { 'suppressed_by': 'exposed_penis', 'margin': 0.116, 'min_iou': 0.575 } ] }
+
+    def lines( self, decisions, refused=() ):
+        experiment = TOOL.ab_experiments.SuppressionExperiment()
+        with mock.patch.object( TOOL.ab_experiments.bu_detector, 'get_class_suppression_refused',
+                                return_value=list( refused ) ):
+            return experiment.follow_up_lines( self.CURRENT, self.PROPOSED, decisions, 'nudenet_v3' )
+
+    def test_turned_down_additions_join_the_refused_list( self ):
+        lines = self.lines( { 'exposed_breast<-exposed_chest': 'current',
+                              'exposed_vulva<-covered_vulva': 'proposed',
+                              'exposed_vulva<-exposed_penis': 'current',
+                              'exposed_breast<-face_femme': 'current' },
+                            refused=[ 'exposed_vulva<-exposed_buttocks' ] )
+        self.assertEqual( lines[1], "detector_backend['nudenet_v3']['class_suppression_refused'] = "
+                                    "['exposed_vulva<-exposed_buttocks', 'exposed_breast<-exposed_chest', "
+                                    "'exposed_vulva<-exposed_penis']" )
+        self.assertIn( 'exposed_breast<-exposed_chest, exposed_vulva<-exposed_penis', lines[0] )
+
+    def test_an_unjudged_addition_is_not_refused( self ):
+        self.assertEqual( self.lines( { 'exposed_breast<-exposed_chest': 'current (no verdict yet)' } ), [] )
+
+    def test_an_already_refused_pair_is_not_listed_twice( self ):
+        lines = self.lines( { 'exposed_breast<-exposed_chest': 'current' },
+                            refused=[ 'exposed_breast<-exposed_chest' ] )
+        self.assertEqual( lines[1].count( 'exposed_breast<-exposed_chest' ), 1 )
+
+    def test_other_experiments_have_nothing_to_add( self ):
+        experiment = TOOL.ab_experiments.experiment_named( 'min_track_hits' )
+        self.assertEqual( experiment.follow_up_lines( {}, {}, { 'exposed_breast': 'current' },
+                                                      'nudenet_v3' ), [] )
+
+    def test_choose_adopts_an_addition_the_verdicts_favour( self ):
+        tally = { 'exposed_breast<-exposed_chest': { 'proposed': 3, 'current': 1 } }
+        chosen, decisions = TOOL.ab_experiments.choose_rules( self.CURRENT, self.PROPOSED, tally )
+        self.assertEqual( decisions['exposed_breast<-exposed_chest'], 'proposed' )
+        self.assertIn( { 'suppressed_by': 'exposed_chest', 'margin': 0.087, 'min_iou': 0.525 },
+                       chosen['exposed_breast'] )
+        self.assertNotIn( 'exposed_vulva', chosen, "unjudged additions stay out" )
 
     def test_a_label_whose_every_pair_is_dropped_disappears( self ):
         configured = { 'exposed_breast': [ { 'suppressed_by': 'face_femme', 'margin': 0.0,

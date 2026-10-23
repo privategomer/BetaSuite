@@ -141,3 +141,53 @@ class TestClassSuppressionMarginRequired( unittest.TestCase ):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestClassSuppressionRefused( unittest.TestCase ):
+    """class_suppression_refused: 'label<-suppressor' pairs a person decided against."""
+
+    CLASSES = { 'exposed_vulva', 'exposed_penis', 'covered_vulva' }
+
+    def setUp( self ):
+        self._orig = betaconfig.detector_backend
+
+    def tearDown( self ):
+        betaconfig.detector_backend = self._orig
+        bu_config.invalidate_config_caches()
+
+    def errors_for( self, refused ):
+        betaconfig.detector_backend = { 'selected': 'nudenet_v3',
+                                        'nudenet_v3': { 'class_suppression_refused': refused } }
+        bu_config.invalidate_config_caches()
+        errors = []
+        bu_config._validate_class_suppression( errors, self.CLASSES )
+        return errors
+
+    def test_known_pairs_validate( self ):
+        self.assertEqual( self.errors_for( [ 'exposed_vulva<-exposed_penis' ] ), [] )
+
+    def test_an_unknown_class_is_flagged( self ):
+        errors = self.errors_for( [ 'exposed_vulva<-exposed_elbow' ] )
+        self.assertTrue( any( 'exposed_elbow' in e for e in errors ), errors )
+        errors = self.errors_for( [ 'exposed_elbow<-exposed_penis' ] )
+        self.assertTrue( any( 'exposed_elbow' in e for e in errors ), errors )
+
+    def test_a_pair_without_the_arrow_is_flagged( self ):
+        errors = self.errors_for( [ 'exposed_vulva exposed_penis' ] )
+        self.assertTrue( any( 'class_suppression_refused' in e for e in errors ), errors )
+
+    def test_a_non_string_entry_is_flagged( self ):
+        self.assertTrue( self.errors_for( [ 3 ] ) )
+
+    def test_a_non_list_is_flagged( self ):
+        errors = self.errors_for( 'exposed_vulva<-exposed_penis' )
+        self.assertTrue( any( 'must be a list' in e for e in errors ), errors )
+
+    def test_absent_means_nothing_refused( self ):
+        betaconfig.detector_backend = { 'selected': 'nudenet_v3', 'nudenet_v3': {} }
+        bu_config.invalidate_config_caches()
+        import betautils_detector as bu_detector
+        self.assertEqual( bu_detector.get_class_suppression_refused( 'nudenet_v3' ), [] )
+        errors = []
+        bu_config._validate_class_suppression( errors, self.CLASSES )
+        self.assertEqual( errors, [] )

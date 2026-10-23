@@ -100,6 +100,7 @@ def confirm( logger, question, assume_yes ):
 
 # The ab_compare.py experiment that puts each reviewed key in front of a person.
 REVIEW_EXPERIMENTS = { 'min_track_hits': 'min_track_hits',
+                       'confirm_score': 'confirm_score',
                        'match_distance_multiplier': 'match_distance' }
 
 
@@ -169,6 +170,14 @@ class Stage:
 
     def review( self, decision, rows_by_configuration ):
         """A value the numbers cannot settle, for ab_compare.py to show a person, or None."""
+        return None
+
+    def skip_reason( self, profiles ):
+        """
+        Why no candidate could change anything for these files, or None.
+
+        profiles is {file_hash: structure profile} for every file measured.
+        """
         return None
 
 
@@ -419,6 +428,11 @@ class MinTrackHitsStage( Stage ):
         baseline = self.baseline_value() or 1
         return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES if value != baseline ]
 
+    @staticmethod
+    def strictness( value ):
+        """How few boxes a value draws, for ordering candidates: more hits, fewer boxes."""
+        return value
+
     def _confident( self, row ):
         """(confident detections, of them uncensored) for this stage's label."""
         metrics = row['metrics']
@@ -459,9 +473,9 @@ class MinTrackHitsStage( Stage ):
         floor = min( entry['missed'] for entry in by_value.values() )
         allowed = floor + options.max_confident_loss * total
         within = [ value for value, entry in by_value.items() if entry['missed'] <= allowed ]
-        chosen = max( within )
+        chosen = max( within, key=self.strictness )
         summary = ", ".join( "%s: %d uncensored"%( value, by_value[value]['missed'] )
-                             for value in sorted( by_value ) )
+                             for value in sorted( by_value, key=self.strictness ) )
         reasoning = (
             "confident detections (score >= %.2f) left uncensored: %s, of %d. %s is the strictest "
             "value within %.2f%% (%d) of the fewest"%(
@@ -490,6 +504,58 @@ class MinTrackHitsStage( Stage ):
                  'why': "%s leaves fewer confident detections uncensored, but a misfire scoring "
                         "above %.2f looks the same to this metric as a real detection; judge the "
                         "extra boxes by eye"%( decision.chosen, bu_tuning.CONFIDENT_SCORE ) }
+
+
+class ConfirmScoreStage( MinTrackHitsStage ):
+    """
+    The score at which one detection draws a track short of min_track_hits.
+
+    min_track_hits 2 drops every one-detection track, and with the
+    cut-burst merge on that is about 6,400 breast boxes on this library,
+    63% of them from detections under 0.5. Lowering it to 1 draws all of
+    them; confirm_score draws only the ones whose detection scores at
+    least the value, so it can only add boxes to what min_track_hits
+    keeps. The evidence and the rule are min_track_hits': the strictest
+    (highest) value that leaves no more than --max-confident-loss of the
+    label's confident detections uncensored beyond the fewest any value
+    leaves. Off (the baseline, None) draws nothing extra, so it counts
+    as the strictest of all.
+    """
+
+    name = 'confirm_score'
+    key = 'confirm_score'
+    summary = "the score at which one detection draws a track short of min_track_hits"
+
+    VALUES = ( 0.5, 0.6, 0.7 )
+
+    def candidates( self ):
+        baseline = self.baseline_value()
+        return [ ( value, '%g'%( value, ) ) for value in self.VALUES if value != baseline ]
+
+    @staticmethod
+    def strictness( value ):
+        return float( 'inf' ) if value is None else value
+
+    def skip_reason( self, profiles ):
+        """Every file confirms on one hit already: nothing for a score to admit."""
+        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get(
+            'min_track_hits', getattr( betaconfig, 'default_min_track_hits', 1 ) )
+        effective = set()
+        for profile in set( profiles.values() ) or { None }:
+            overrides = bu_detector.get_profile_item_overrides( profile, self.label, self.backend_name )
+            effective.add( overrides.get( 'min_track_hits', backend_value ) )
+        if max( effective ) > 1:
+            return None
+        return ( "skipped: min_track_hits is 1 for %s on every file here, so every track already "
+                 "renders and no confirm_score could add one"%( self.label, ) )
+
+    def review( self, decision, rows_by_configuration ):
+        if not decision.accepted or decision.chosen is None:
+            return None
+        return { 'value': decision.chosen,
+                 'why': "%s draws a short track once one detection scores at least that; a misfire "
+                        "scoring that high looks the same to this metric as a real detection, so judge "
+                        "the extra boxes by eye"%( decision.chosen, ) }
 
 
 # ---------------------------------------------------------------------------
@@ -622,14 +688,16 @@ STAGE_TYPES = {
     'track_max_gap': TrackMaxGapStage,
     'match_distance': MatchDistanceStage,
     'min_track_hits': MinTrackHitsStage,
+    'confirm_score': ConfirmScoreStage,
 }
 
 # The order matters. track_max_gap first because it is the cheapest
 # lever and it changes how many resets the later stages even see;
 # match_distance second, judged against whatever gap won; min_track_hits
-# last because it removes boxes and should judge the tracks the first
-# two stages actually produce.
-STAGE_ORDER = ( 'track_max_gap', 'match_distance', 'min_track_hits' )
+# after them because it removes boxes and should judge the tracks the
+# first two stages actually produce; confirm_score last, since it only
+# admits tracks min_track_hits turned away.
+STAGE_ORDER = ( 'track_max_gap', 'match_distance', 'min_track_hits', 'confirm_score' )
 
 
 # ---------------------------------------------------------------------------
@@ -943,6 +1011,12 @@ def main():
                                  if profile in masking ]
                 masking_text = ", ".join( "%s %s"%( name, value )
                                           for name, value in sorted( masking.items() ) )
+                skip = probe.skip_reason( profiles )
+                if skip:
+                    logger.info( "  => %s"%( skip, ) )
+                    decisions.append( bu_tuning.Decision(
+                        probe.title, probe.baseline_value(), False, skip, [] ) )
+                    continue
                 if profiles and len( masked_files ) == len( profiles ):
                     reasoning = (
                         "skipped: every file here runs a structure profile that sets %s for %s "

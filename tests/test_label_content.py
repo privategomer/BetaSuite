@@ -128,5 +128,103 @@ class TestRankings( unittest.TestCase ):
         self.assertIn( 'breast+vulva 300s', text )
 
 
+def _signature( duration, breast, vulva, mixed ):
+    return bu_tuning.content_signature( duration, {
+        'seconds': { 'exposed_breast': breast, 'exposed_vulva': vulva }, 'mixed_seconds': mixed } )
+
+
+class TestSameContent( unittest.TestCase ):
+    """The same footage twice: runtime and every labelled-seconds figure agree."""
+
+    # The 2026-10-18 library's re-encoded pair, and its trimmed one.
+    REENCODE = ( _signature( 5704.16, 2105.7, 871.6, 625.2 ), _signature( 5704.4, 2090.2, 854.3, 609.0 ) )
+    TRIM = ( _signature( 738.6, 458.3, 176.4, 111.1 ), _signature( 733.3, 460.3, 174.8, 110.8 ) )
+
+    def test_a_reencode_and_a_trim_are_the_same_content( self ):
+        self.assertTrue( bu_tuning.same_content( *self.REENCODE ) )
+        self.assertTrue( bu_tuning.same_content( *self.TRIM ) )
+
+    def test_runtime_must_agree_within_its_share( self ):
+        base = _signature( 1000.0, 500.0, 100.0, 50.0 )
+        self.assertTrue( bu_tuning.same_content( base, _signature( 1020.0, 500.0, 100.0, 50.0 ) ) )
+        self.assertFalse( bu_tuning.same_content( base, _signature( 1021.0, 500.0, 100.0, 50.0 ) ) )
+
+    def test_each_label_must_agree_within_its_share( self ):
+        base = _signature( 1000.0, 500.0, 100.0, 50.0 )
+        self.assertTrue( bu_tuning.same_content( base, _signature( 1000.0, 470.0, 100.0, 50.0 ) ) )
+        self.assertFalse( bu_tuning.same_content( base, _signature( 1000.0, 469.0, 100.0, 50.0 ) ) )
+        self.assertFalse( bu_tuning.same_content( base, _signature( 1000.0, 500.0, 90.0, 50.0 ) ) )
+        self.assertFalse( bu_tuning.same_content( base, _signature( 1000.0, 500.0, 100.0, 40.0 ) ),
+                          "mixed seconds count too" )
+
+    def test_a_label_barely_shown_compares_by_the_floor( self ):
+        base = _signature( 1000.0, 500.0, 0.4, 0.2 )
+        self.assertTrue( bu_tuning.same_content( base, _signature( 1000.0, 500.0, 2.4, 2.2 ) ) )
+        self.assertFalse( bu_tuning.same_content( base, _signature( 1000.0, 500.0, 2.5, 0.2 ) ) )
+
+    def test_too_little_labelled_footage_says_nothing( self ):
+        self.assertFalse( bu_tuning.same_content( _signature( 300.0, 20.0, 9.0, 0.0 ),
+                                                  _signature( 300.0, 20.0, 9.0, 0.0 ) ) )
+        self.assertTrue( bu_tuning.same_content( _signature( 300.0, 20.0, 10.0, 0.0 ),
+                                                 _signature( 300.0, 20.0, 10.0, 0.0 ) ),
+                         "exactly the minimum is enough" )
+
+    def test_both_need_the_minimum_not_just_one( self ):
+        # Close on every figure, but the second has 29s of labelled footage.
+        self.assertFalse( bu_tuning.same_content( _signature( 300.0, 21.0, 10.0, 0.0 ),
+                                                  _signature( 300.0, 20.0, 9.0, 0.0 ) ) )
+        self.assertFalse( bu_tuning.same_content( _signature( 300.0, 20.0, 9.0, 0.0 ),
+                                                  _signature( 300.0, 21.0, 10.0, 0.0 ) ) )
+
+    def test_no_runtime_no_signature( self ):
+        self.assertIsNone( bu_tuning.content_signature( None, { 'seconds': {} } ) )
+        self.assertFalse( bu_tuning.same_content( None, self.TRIM[0] ) )
+
+    def test_near_duplicates_pairs_only_the_copies( self ):
+        signatures = { 'b': self.REENCODE[1], 'a': self.REENCODE[0], 'c': self.TRIM[0],
+                       'd': self.TRIM[1], 'e': _signature( 5704.0, 100.0, 10.0, 5.0 ), 'f': None }
+        self.assertEqual( bu_tuning.near_duplicates( signatures ), [ ( 'a', 'b' ), ( 'c', 'd' ) ] )
+
+    def test_three_copies_make_three_pairs( self ):
+        signature = _signature( 1000.0, 500.0, 100.0, 50.0 )
+        self.assertEqual( bu_tuning.near_duplicates( { 'x': signature, 'y': signature, 'z': signature } ),
+                          [ ( 'x', 'y' ), ( 'x', 'z' ), ( 'y', 'z' ) ] )
+
+
+class TestDuplicateReport( unittest.TestCase ):
+
+    def setUp( self ):
+        self.tool = _load_tool()
+        content = {
+            'a': { 'seconds': { 'exposed_breast': 635.7, 'exposed_vulva': 128.7 }, 'mixed_seconds': 75.7,
+                   'pair_seconds': {} },
+            'b': { 'seconds': { 'exposed_breast': 635.7, 'exposed_vulva': 128.7 }, 'mixed_seconds': 75.7,
+                   'pair_seconds': {} },
+            'c': { 'seconds': { 'exposed_breast': 200.0, 'exposed_vulva': 600.0 }, 'mixed_seconds': 300.0,
+                   'pair_seconds': {} },
+        }
+        self.rows = self.tool.content_rows( content, { 'a': 'A.mp4', 'b': 'B.mp4', 'c': 'C.mp4' },
+                                            { 'a': 1080.0, 'b': 1080.0, 'c': 1080.0 } )
+
+    def test_each_copy_names_the_other( self ):
+        pairs = self.tool.mark_duplicates( self.rows )
+        self.assertEqual( [ ( first['name'], second['name'] ) for first, second in pairs ],
+                          [ ( 'A.mp4', 'B.mp4' ) ] )
+        by_name = { row['name']: row['near_duplicate_of'] for row in self.rows }
+        self.assertEqual( by_name, { 'A.mp4': [ 'B.mp4' ], 'B.mp4': [ 'A.mp4' ], 'C.mp4': [] } )
+
+    def test_the_report_counts_the_footage_held_twice( self ):
+        lines = []
+        self.tool.print_duplicates( self.tool.mark_duplicates( self.rows ), out=lines.append )
+        text = "\n".join( lines )
+        self.assertIn( '= B.mp4  (1080s and 1080s)', text )
+        self.assertIn( '1 pair(s), 0.3 h', text )
+
+    def test_none_says_none( self ):
+        lines = []
+        self.tool.print_duplicates( [], out=lines.append )
+        self.assertEqual( lines[-1], '  none' )
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -760,7 +760,7 @@ class _LabelSettings:
                   'max_gap', 'match_distance_multiplier', 'time_safety', 'item_x_safety',
                   'item_y_safety', 'paired_style', 'paired_style_max_distance',
                   'paired_style_tiebreak_margin', 'paired_style_max_age',
-                  'min_track_hits', 'unresolved_censor_style', 'size_alpha',
+                  'min_track_hits', 'confirm_score', 'unresolved_censor_style', 'size_alpha',
                   'style_min_dwell_seconds', 'profile_name' )
 
     def __init__( self, label, backend_name, frame_step, profile_name=None ):
@@ -841,6 +841,10 @@ class _LabelSettings:
 
         self.min_track_hits = max( 1, int( overrides.get(
             'min_track_hits', getattr( betaconfig, 'default_min_track_hits', 1 ) ) ) )
+        # A track short of min_track_hits still renders once one of its
+        # real detections scores at least this. None: hits alone decide.
+        self.confirm_score = overrides.get(
+            'confirm_score', getattr( betaconfig, 'default_confirm_score', None ) )
 
 
 def _apply_style_area_safety( box, resolved_style, item_x_safety, item_y_safety ):
@@ -898,6 +902,23 @@ def tracking_cut_times( shot_cut_times, cut_bursts=None ):
     import betautils_video as bu_video   # deferred: cv2 is a heavy import for a pure helper
     return bu_video.merge_cut_bursts( cuts, settings['window'], max_span=settings.get( 'max_span' ),
                                       keep=settings.get( 'keep', 'first' ) )
+
+
+def cut_separates( cut_times, earlier_time, later_time ):
+    """
+    Whether a cut in sorted cut_times falls in (earlier_time, later_time].
+
+    A cut AT later_time counts: later_time is the first moment of the
+    new shot. A cut AT earlier_time does not, because it already forced
+    a reset when earlier_time's own box was matched. O(log n) via
+    bisect, since smooth_boxes asks this for every candidate pairing.
+    Shared with the analysers so their idea of "across a cut" is the
+    tracker's.
+    """
+    if not cut_times:
+        return False
+    index = bisect.bisect_right( cut_times, earlier_time )
+    return index < len( cut_times ) and cut_times[index] <= later_time
 
 
 def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=None,
@@ -959,6 +980,9 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         otherwise paint a censor blob for time_safety seconds.
         min_track_hits defaults to 1, which admits every track and is
         exactly the earlier behaviour.
+      - confirm_score, when set, admits a track short of min_track_hits
+        anyway once one of its real detections scores at least that:
+        it can only add boxes to what min_track_hits keeps.
 
     Args:
         boxes: Censorable boxes from process_raw_box, any order, all
@@ -986,18 +1010,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             scanned_cut_count - len( shot_cut_times ), scanned_cut_count ) )
 
     def cut_between( earlier_time, later_time ):
-        """
-        Whether a recorded cut falls in (earlier_time, later_time].
-
-        A cut AT later_time counts: later_time is the first moment of
-        the new shot. A cut AT earlier_time does not, because it already
-        forced a reset when earlier_time's own box was matched. O(log n)
-        via bisect, since this runs for every candidate pairing.
-        """
-        if not shot_cut_times:
-            return False
-        index = bisect.bisect_right( shot_cut_times, earlier_time )
-        return index < len( shot_cut_times ) and shot_cut_times[index] <= later_time
+        return cut_separates( shot_cut_times, earlier_time, later_time )
 
     by_label = {}
     for box in boxes:
@@ -1012,7 +1025,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
     output_boxes = []
     stats = { 'interpolated': 0, 'dropped_provisional': 0,
-              'dropped_unconfirmed': 0, 'tracks': 0,
+              'dropped_unconfirmed': 0, 'tracks': 0, 'confirmed_by_score': 0,
               'cuts_merged': scanned_cut_count - len( shot_cut_times ) }
 
     for label, boxes_for_label in by_label.items():
@@ -1036,6 +1049,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
         tracks = []              # live tracks only; pruned every frame
         track_hits = {}          # track id -> real (non-interpolated) hit count
+        track_best = {}          # track id -> best score among those real hits
         boxes_by_track = {}      # track id -> [box, ...] including interpolated
         next_track_id = 0
 
@@ -1270,6 +1284,8 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                 boxes_by_track.setdefault( track['id'], [] ).append( box )
                 if not box.get( 'provisional' ):
                     track_hits[ track['id'] ] = track_hits.get( track['id'], 0 ) + 1
+                    track_best[ track['id'] ] = max( track_best.get( track['id'], 0.0 ),
+                                                     box.get( 'score', 0.0 ) )
 
                 tracks[track_index] = {
                     'id': track['id'],
@@ -1508,6 +1524,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                 box['_track_id'] = track_id
                 boxes_by_track.setdefault( track_id, [] ).append( box )
                 track_hits[track_id] = 1
+                track_best[track_id] = box.get( 'score', 0.0 )
                 # The size blur/pixel STRENGTH is scaled from, fixed for
                 # this track's lifetime. Position and extent still track
                 # the subject frame by frame; only the strength multiplier
@@ -1531,12 +1548,20 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
         # Track confirmation: a track that never reached min_track_hits
         # real detections contributes nothing, including its synthetic
-        # interpolated boxes.
+        # interpolated boxes, unless one of those detections scored
+        # confirm_score or more. A single confident detection is a brief
+        # real exposure far more often than a misfire; the hit count
+        # exists for the low-scoring single hits.
         dropped_here = 0
         for track_id, track_boxes in boxes_by_track.items():
             if track_hits.get( track_id, 0 ) >= settings.min_track_hits:
                 output_boxes.extend( track_boxes )
                 stats['tracks'] += 1
+            elif ( settings.confirm_score is not None
+                   and track_best.get( track_id, 0.0 ) >= settings.confirm_score ):
+                output_boxes.extend( track_boxes )
+                stats['tracks'] += 1
+                stats['confirmed_by_score'] += 1
             else:
                 dropped_here += len( track_boxes )
         stats['dropped_unconfirmed'] += dropped_here

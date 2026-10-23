@@ -352,6 +352,22 @@ def get_class_suppression( backend_name=None ):
     return {}
 
 
+def get_class_suppression_refused( backend_name=None ):
+    """
+    Suppression pairs ('label<-suppressor') a person has decided against.
+
+    The bench suggests a rule for every pair whose overlaps form a
+    same-spot cluster, and it cannot tell a mislabel from two body parts
+    that genuinely share a spot (exposed_vulva<-exposed_penis during
+    penetration). A pair named here is never proposed as an addition
+    again, so a decision made once stays made. It changes nothing a run
+    renders.
+
+    Resolution: backend block -> detector_backend['defaults'] -> [].
+    """
+    return list( resolve_backend_setting( 'class_suppression_refused', backend_name, None ) or [] )
+
+
 def get_class_promotion( backend_name=None ):
     """
     The class_promotion ruleset for a backend: suppression's inverse.
@@ -417,7 +433,7 @@ ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS = {
     # tracking / smoothing
     'position_smoothing', 'size_smoothing', 'style_min_dwell_seconds',
     'interpolation_enabled', 'interpolation_max_gap',
-    'track_max_gap', 'match_distance_multiplier', 'min_track_hits',
+    'track_max_gap', 'match_distance_multiplier', 'min_track_hits', 'confirm_score',
     # paired style
     'paired_style', 'paired_style_max_distance', 'paired_style_tiebreak_margin',
     'paired_style_max_age',

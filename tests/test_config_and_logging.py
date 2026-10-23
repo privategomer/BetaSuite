@@ -283,6 +283,35 @@ class TestTrackConfirmationValidation( ConfigHarness ):
         self.assert_no_errors()
 
 
+class TestConfirmScoreValidation( ConfigHarness ):
+
+    def _with_confirm_score( self, value, where='item_overrides' ):
+        backend = copy.deepcopy( betaconfig.detector_backend )
+        name = backend['selected']
+        backend[name].setdefault( where, {} ).setdefault(
+            'exposed_breast', {} )['confirm_score'] = value
+        self.set_config( 'detector_backend', backend )
+
+    def test_a_score_validates( self ):
+        for value in ( 0.5, 1, 0.01 ):
+            self._with_confirm_score( value )
+            self.assert_no_errors()
+
+    def test_none_validates( self ):
+        self._with_confirm_score( None )
+        self.assert_no_errors()
+
+    def test_out_of_range_is_an_error( self ):
+        for value in ( 0, -0.1, 1.01 ):
+            self._with_confirm_score( value )
+            self.assert_error_mentioning( 'confirm_score' )
+
+    def test_a_non_number_is_an_error( self ):
+        for value in ( 'high', True ):
+            self._with_confirm_score( value )
+            self.assert_error_mentioning( 'confirm_score' )
+
+
 class TestGeometryFilterValidation( ConfigHarness ):
 
     def _with_limits( self, **keys ):
@@ -342,6 +371,36 @@ class TestRenderAndEncodeValidation( ConfigHarness ):
     def test_an_unknown_encode_preset_is_an_error( self ):
         self.set_config( 'encode_preset', 'turbo' )
         self.assert_error_mentioning( 'encode_preset' )
+
+    def test_an_nvenc_preset_validates_for_an_nvenc_codec( self ):
+        # 'p5' is what betabench encode recommends for h264_nvenc; the
+        # check used to know only x264's names and rejected it.
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'encode_preset', 'p5' )
+        self.assert_no_errors()
+
+    def test_an_x264_preset_still_validates_for_an_nvenc_codec( self ):
+        # encoder_options translates x264 names for NVENC.
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'encode_preset', 'slow' )
+        self.assert_no_errors()
+
+    def test_an_nvenc_preset_is_an_error_for_x264( self ):
+        self.set_config( 'encode_video_codec', 'libx264' )
+        self.set_config( 'encode_preset', 'p5' )
+        self.assert_error_mentioning( 'encode_preset', 'libx264' )
+
+    def test_nvenc_presets_run_p1_to_p7( self ):
+        self.assertEqual( bu_config.valid_encode_presets( 'hevc_nvenc' ) - bu_config.VALID_ENCODE_PRESETS,
+                          { 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7' } )
+
+    def test_a_preview_preset_follows_the_codec_too( self ):
+        self.set_config( 'preview_mode_enabled', True )
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'preview_encode_preset', 'p1' )
+        self.assert_no_errors()
+        self.set_config( 'encode_video_codec', 'libx264' )
+        self.assert_error_mentioning( 'preview_encode_preset' )
 
 
 class TestCrossSizeDedupValidation( ConfigHarness ):
