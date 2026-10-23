@@ -93,6 +93,9 @@ VID_HASH_DIR = bu_cache.VID_HASH_DIR
 _match_events = []
 _new_track_events = []
 _contention_events = []
+# The cuts tracking stops at in the video being replayed, as smooth_boxes
+# sees them (bursts merged per the config).
+_cut_times = []
 
 
 def _reset_events():
@@ -119,7 +122,8 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
     # trustworthy, not a separate guess.
     cx = b['x'] + b['w']/2
     cy = b['y'] + b['h']/2
-    best = None  # (dist, gap, threshold, max_gap) for the nearest-in-time-and-space live track
+    box_t = b.get( 't', b['start'] )
+    best = None  # (dist, gap, threshold, max_gap, across a cut) for the nearest live track
     for prev in tracks:
         if prev is tracks[ti]:
             continue
@@ -129,12 +133,18 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
         dist = ( (cx-pcx)**2 + (cy-pcy)**2 ) ** 0.5
         threshold = match_distance_multiplier * max( prev['w'], prev['h'], b['w'], b['h'] )
         if best is None or dist < best[0]:
-            best = ( dist, gap, threshold, max_gap )
+            best = ( dist, gap, threshold, max_gap,
+                     bu_track.cut_separates( _cut_times, prev.get( 't', prev['end'] ), box_t ) )
 
     if best is None:
         reason = 'no-nearby-track'  # genuinely nothing else live for this label
+    elif best[4]:
+        # The tracker never continues a track across a shot cut, however
+        # close, so this is a new shot's first detection, not a reset.
+        # Neither threshold can (or should) bridge it.
+        reason = 'after-cut'
     else:
-        dist, gap, threshold, mg = best
+        dist, gap, threshold, mg, _across = best
         dist_blocked = dist >= threshold
         gap_blocked = gap > mg
         if dist_blocked and gap_blocked:
@@ -144,7 +154,7 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
         elif gap_blocked:
             reason = 'gap-blocked'
         else:
-            reason = 'unexplained'  # shouldn't happen - would mean the real code should have matched this
+            reason = 'unexplained'  # qualified on both, so another box claimed this track first
             # (known, disclosed gap: the real algorithm does global greedy
             # assignment across every box/track in the frame - a detection
             # can also fail to match because a DIFFERENT box claimed the
@@ -384,6 +394,7 @@ def run_one_combo( match_mult, gap_mult, videos, hash_to_path, ns, labels_filter
             if not boxes:
                 continue
 
+            _cut_times[:] = bu_track.tracking_cut_times( tracking['shot_cut_times'] )
             with bu_track.tracking_observer( ns['observer'] ):
                 smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
                                  backend_name=backend_name, profile_name=tracking['profile_name'],
@@ -530,7 +541,10 @@ def main():
         print( "loosening match_distance_multiplier alone would fix these. 'gap-blocked' is the reverse - close enough in space but too much time " )
         print( "passed - raising track_max_gap (or video_censor_fps) would fix these. 'both-blocked' needs both loosened together. " )
         print( "'no-nearby-track' means there was nothing else live for this label at all - a genuinely fresh appearance (or the model missed " )
-        print( "several consecutive frames badly), not something either threshold can fix." )
+        print( "several consecutive frames badly), not something either threshold can fix. 'after-cut' means the nearest track ended before a " )
+        print( "shot cut: the tracker never continues a track across one, so that is a new shot starting, not a reset. 'unexplained' is what " )
+        print( "is left: the nearest track qualified on both distance and time, and another box in the same frame claimed it first (see " )
+        print( "contention below). Until 2026-10-18 this tool ignored cuts and counted every post-cut start as 'unexplained'." )
         print()
         print( "reading contention: this is the real evidence for whether loosening match_distance_multiplier's default is safe. A contention " )
         print( "event means 2+ different boxes in one frame both qualified as candidates for the same existing track - the greedy assignment picks " )

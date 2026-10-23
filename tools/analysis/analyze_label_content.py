@@ -12,6 +12,9 @@ from the detection caches alone (no replay, no video decode):
     are on screen at once: where one label's suppression rule can take
     another's censor away, so a cross-label rule is judged there
   - per mixed video, which pairs make up the mix
+  - near-duplicate videos: the same footage twice (a re-encode, another
+    container, a trim), by runtime and labelled seconds, which every
+    bench, auto_tune and A/B ranking otherwise counts twice
 
 A second counts for a label when a detection of it scores at least
 --confident-score (0.5) in that sample. Seconds are samples over the
@@ -54,6 +57,42 @@ def content_rows( content, names, durations=None ):
             'duration_seconds': duration,
         } )
     return rows
+
+
+def mark_duplicates( rows ):
+    """
+    [(row, row)] for each near-duplicate pair (bu_tuning.near_duplicates),
+    and every row's 'near_duplicate_of': the names of its copies.
+    """
+    by_hash = { row['file_hash']: row for row in rows }
+    signatures = { row['file_hash']: bu_tuning.content_signature( row['duration_seconds'], row )
+                   for row in rows }
+    pairs = [ ( by_hash[first], by_hash[second] )
+              for first, second in bu_tuning.near_duplicates( signatures ) ]
+    for row in rows:
+        row['near_duplicate_of'] = []
+    for first, second in pairs:
+        first['near_duplicate_of'].append( second['name'] )
+        second['near_duplicate_of'].append( first['name'] )
+    return pairs
+
+
+def print_duplicates( pairs, out=print ):
+    out( "" )
+    out( "Near-duplicate videos (runtime and every labelled-seconds figure agree: the same "
+         "footage twice):" )
+    if not pairs:
+        out( "  none" )
+        return
+    for first, second in pairs:
+        out( "  %s"%( first['name'], ) )
+        out( "    = %s  (%.0fs and %.0fs)"%( second['name'], first['duration_seconds'],
+                                             second['duration_seconds'] ) )
+    hours = sum( min( first['duration_seconds'], second['duration_seconds'] )
+                 for first, second in pairs ) / 3600.0
+    out( "  %d pair(s), %.1f h of footage counted twice by every bench, auto_tune and A/B "
+         "ranking, and processed twice by every full run. The A/B ranking already skips a "
+         "copy of a video it picked; setting one of each aside is your call."%( len( pairs ), hours ) )
 
 
 def top_by( rows, key, count ):
@@ -176,6 +215,7 @@ def main( argv=None ):
         content = bu_tuning.content_by_video( videos, labels, args.confident_score )
         rows = content_rows( content, names, durations )
         print_report( rows, labels, args.top )
+        print_duplicates( mark_duplicates( rows ) )
         report[config.label] = rows
     if args.json:
         with open( args.json, 'w', encoding='UTF-8' ) as handle:

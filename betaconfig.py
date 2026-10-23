@@ -116,10 +116,8 @@ detector_backend = {
         # See CONFIG_REFERENCE.md -> "Re-deriving suppression rules".
         'class_suppression': {
             'exposed_breast': [
-                { 'suppressed_by': 'face_femme',       'margin': 0.105, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_belly',    'margin': 0.069, 'min_iou': 0.010 },
                 { 'suppressed_by': 'exposed_buttocks', 'margin': 0.119, 'min_iou': 0.010 },
-                { 'suppressed_by': 'covered_breast',   'margin': 0.045, 'min_iou': 0.029 },
+                { 'suppressed_by': 'covered_breast',   'margin': 0.081, 'min_iou': 0.425 },
             ],
             'exposed_vulva': [
                 { 'suppressed_by': 'face_femme',    'margin': 0.255, 'min_iou': 0.010 },
@@ -129,6 +127,13 @@ detector_backend = {
                 { 'suppressed_by': 'exposed_anus',  'margin': 0.113, 'min_iou': 0.080 },
             ],
         },
+
+        # Pairs never to propose as new suppression rules.
+        'class_suppression_refused': [
+            'exposed_vulva<-exposed_penis',
+            'exposed_vulva<-exposed_buttocks',
+            'exposed_vulva<-exposed_feet',
+        ],
 
         # Detection- and tracking-sensitive per-label settings
         'item_overrides': {

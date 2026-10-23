@@ -17,10 +17,12 @@
 #   bash tools/tuning/ab_compare.sh explain [DIR]    # rewrite clips.md + feedback.csv
 #   bash tools/tuning/ab_compare.sh decide [DIR]     # verdicts -> chosen.json + config lines
 #   bash tools/tuning/ab_compare.sh confirm [DIR]    # DIR's chosen side, on videos not yet judged
+#                                                    # (AB_FOCUS replaces DIR's focus)
 #
 # WHAT TO COMPARE (AB_EXPERIMENT; the menu lists them with a line each)
-#   suppression      class_suppression rules: the bench's retune/drop proposal
+#   suppression      class_suppression rules: the bench's retune/drop/add proposal
 #   min_track_hits   auto_tune's value against the config, per label
+#   confirm_score    draw a short track on one confident detection, per label
 #   match_distance   auto_tune's tightening candidate against the config
 #   cut_bursts       merging bursts of shot cuts (fades, flashes) before tracking
 #   tracking         any per-label setting, named in AB_SET
@@ -62,9 +64,11 @@
 # Env vars: AB_EXPERIMENT (menu, or suppression unattended), AB_SET
 # (space-separated label.key=value, or name=value for cut_bursts),
 # AB_FOCUS (labels to rank by), AB_VIDEOS (2), AB_CLIPS (6),
-# AB_CLIP_SECONDS (15), AB_PROPOSED (a side as JSON), AB_BACKEND,
-# AB_VARIANT, AB_FULL (0), LOG_LEVEL (info; terminal only, the log keeps
-# everything). Reads caches only; never touches betaconfig.py.
+# AB_CLIP_SECONDS (15), AB_PROPOSED (a side as JSON), AB_ADDITIONS (1;
+# 0 keeps suppression to retuning and dropping configured rules),
+# AB_BACKEND, AB_VARIANT, AB_FULL (0), LOG_LEVEL (info; terminal only,
+# the log keeps everything).
+# Reads caches only; never touches betaconfig.py.
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -131,6 +135,7 @@ source "$REPO_ROOT/tools/tuning/harness_lib.sh"
 : "${AB_BACKEND:=}"
 : "${AB_VARIANT:=}"
 : "${AB_FULL:=0}"
+: "${AB_ADDITIONS:=1}"
 
 log_info "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
 if ! python_env_require cv2 2>>"$HARNESS_LOG_FILE"; then
@@ -402,9 +407,12 @@ run_confirm() {
         return 1
     fi
     # The Python side takes the experiment, proposal, focus and the videos
-    # to leave out from the previous round itself.
+    # to leave out from the previous round itself; AB_FOCUS replaces the focus.
+    local focus=()
+    # shellcheck disable=SC2206
+    [ -n "$AB_FOCUS" ] && focus=( --focus $AB_FOCUS )
     run_round "$BENCH_ROOT/ab_${experiment}_$(date '+%Y%m%d_%H%M%S')_confirm" "$experiment" \
-        --confirm-from "$previous"
+        --confirm-from "$previous" ${focus[@]+"${focus[@]}"}
 }
 
 case "$MODE" in
@@ -442,6 +450,7 @@ if [ -z "$AB_EXPERIMENT" ]; then
 fi
 EXTRA=()
 [ -n "$AB_PROPOSED" ] && EXTRA+=( --proposed "$AB_PROPOSED" )
+[ "$AB_ADDITIONS" = "0" ] && EXTRA+=( --no-additions )
 for item in $AB_SET; do EXTRA+=( --set "$item" ); done
 # shellcheck disable=SC2206
 [ -n "$AB_FOCUS" ] && EXTRA+=( --focus $AB_FOCUS )

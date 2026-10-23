@@ -252,8 +252,9 @@ def compare_video( file_hash, video_path, cache_paths, backend_name, current, pr
     current_boxes = replay( video_path, cache_paths, backend_name, current, tracking )
     proposed_boxes = replay( video_path, cache_paths, backend_name, proposed, tracking )
     both, current_only, proposed_only = diff_boxes( current_boxes, proposed_boxes )
-    confident = bu_tuning.confident_detections(
-        bu_tuning.raw_boxes_for_reading( cache_paths ), labels, bu_tuning.CONFIDENT_SCORE )
+    raw_boxes = bu_tuning.raw_boxes_for_reading( cache_paths )
+    confident = bu_tuning.confident_detections( raw_boxes, labels, bu_tuning.CONFIDENT_SCORE )
+    duration = duration_of( video_path ) or 0.0
     missed_now = sum( bu_tuning.uncovered_detections( confident, current_boxes ).values() )
     missed_after = sum( bu_tuning.uncovered_detections( confident, proposed_boxes ).values() )
     censored = box_seconds( focused( current_boxes, focus ) )
@@ -272,8 +273,10 @@ def compare_video( file_hash, video_path, cache_paths, backend_name, current, pr
     }
     row['differing_seconds'] = round( row['current_only_seconds'] + row['proposed_only_seconds'], 2 )
     row['differing_share'] = round( row['differing_seconds'] / censored, 4 ) if censored else 0.0
-    row['windows'] = pick_windows( ranked_current + ranked_proposed,
-                                   duration_of( video_path ) or 0.0, clip_seconds, clips )
+    row['windows'] = pick_windows( ranked_current + ranked_proposed, duration, clip_seconds, clips )
+    # What choose_videos compares to tell a copy of this video apart.
+    row['signature'] = bu_tuning.content_signature( duration, bu_tuning.label_content(
+        raw_boxes, labels, bu_tuning.cache_sample_rate( cache_paths ) ) )
     return row, both, current_only, proposed_only, current_boxes, proposed_boxes
 
 
@@ -687,6 +690,46 @@ def _log_ranking( logger, rows, shown, focus ):
                      bu_tuning.CONFIDENT_SCORE ) )
 
 
+def choose_videos( rows, count, earlier=None, logger=None ):
+    """
+    The `count` most-changed rows that differ at all, skipping a copy.
+
+    A copy is a row whose signature bu_tuning.same_content matches a video
+    already chosen here or shown by an earlier round (earlier: {name:
+    signature}). The first cut-burst round spent both its videos on one
+    compilation saved twice under two names.
+    """
+    chosen = []
+    seen = list( ( earlier or {} ).items() )
+    for row in rows:
+        if len( chosen ) >= count or row['differing_seconds'] <= 0:
+            break
+        copy_of = next( ( name for name, signature in seen
+                          if bu_tuning.same_content( row.get( 'signature' ), signature ) ), None )
+        if copy_of:
+            if logger:
+                logger.info( "skipping %s: the same footage as %s"%( row['name'], copy_of ) )
+            continue
+        chosen.append( row )
+        seen.append( ( row['name'], row.get( 'signature' ) ) )
+    return chosen
+
+
+def earlier_signatures( paths ):
+    """{name: signature} of the videos earlier rounds showed, where their ranking recorded one."""
+    found = {}
+    for path in paths or []:
+        if os.path.isdir( path ):
+            path = os.path.join( path, 'ranking.json' )
+        with open( path ) as handle:
+            earlier = json.load( handle )
+        shown = set( earlier.get( 'chosen', [] ) )
+        for row in earlier.get( 'videos', [] ):
+            if row.get( 'file_hash' ) in shown and row.get( 'signature' ):
+                found[row['name']] = row['signature']
+    return found
+
+
 def excluded_hashes( paths ):
     """Videos earlier rounds already showed: each ranking's chosen and its own exclusions."""
     found = set()
@@ -737,7 +780,7 @@ def phase_rank( args, logger, betabench ):
                         clip_seconds=args.clip_seconds, clips=args.clips, experiment=experiment,
                         focus=focus )
     _log_ranking( logger, rows, max( 10, args.videos ), focus )
-    chosen = [ row for row in rows[ :args.videos ] if row['differing_seconds'] > 0 ]
+    chosen = choose_videos( rows, args.videos, earlier_signatures( args.exclude_from ), logger )
     for row in chosen:
         logger.info( "chosen: %s, %d clip window(s): %s"%(
             row['name'], len( row['windows'] ),
@@ -950,6 +993,13 @@ def phase_decide( args, logger, ranking ):
             logger.info( "    %s"%( line, ) )
         logger.info( "next round: check the chosen side on videos you have not judged yet, before "
                      "pasting: bash tools/tuning/ab_compare.sh confirm" )
+    follow_up = experiment.follow_up_lines( ranking['current'], ranking['proposed'], decisions,
+                                            ranking['backend'] )
+    if follow_up:
+        logger.info( "" )
+        logger.info( "also worth pasting, %s"%( follow_up[0], ) )
+        for line in follow_up[1:]:
+            logger.info( "    %s"%( line, ) )
     return chosen, decisions
 
 
@@ -1016,6 +1066,8 @@ def build_parser():
         help="explain/render/decide: the rank phase's output (default: --out-dir/ranking.json)" )
     parser.add_argument( '--min-samples', type=int, default=30,
         help="suppression: overlaps a pair needs before the bench suggests a rule (default: 30)" )
+    parser.add_argument( '--no-additions', dest='additions', action='store_false',
+        help="suppression: only retune or drop configured rules, never propose adding a pair" )
     parser.add_argument( '--confirm-from', default=None, metavar='DIR',
         help="rank phase: DIR's chosen side against the config, same experiment and focus, "
              "leaving out every video DIR's rounds already showed" )

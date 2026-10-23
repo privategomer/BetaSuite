@@ -14,8 +14,10 @@ verdicts); an experiment supplies the parts that depend on what changes:
   chosen_lines the config lines a person pastes
 
 Experiments here:
-  suppression     class_suppression rules (the bench's retune/drop proposal)
+  suppression     class_suppression rules (the bench's retune/drop/add proposal)
   min_track_hits  per-label item override, from auto_tune's review values
+  confirm_score   per-label item override, from auto_tune's review values
+                  or the confident score
   match_distance  per-label match_distance_multiplier, same source
   tracking        any per-label item override, from --set label.key=value
   cut_bursts      the shot-cut burst merge (shot_cut_burst_* globals)
@@ -113,6 +115,10 @@ class Experiment( object ):
         return ( "LEFT is the config as it is, RIGHT the proposed change. Each row below is "
                  "one moment where the two censor differently, and the change that caused it." )
 
+    def follow_up_lines( self, current, proposed, decisions, backend_name ):
+        """Config lines worth pasting whatever was adopted (see SuppressionExperiment)."""
+        return []
+
     def note( self, cause, proposed ):
         """The text drawn under a differing box's label in the outline render."""
         return cause
@@ -135,23 +141,32 @@ def _rule_list( rules ):
     return [ rules ] if isinstance( rules, dict ) else list( rules or [] )
 
 
-def proposed_rules( configured, suggestions ):
+def proposed_rules( configured, suggestions, refused=(), additions=True, min_win_rate=0.0 ):
     """
-    The configured rules with each pair retuned or dropped per the bench.
+    The configured rules retuned or dropped per the bench, plus additions.
 
     suggestions is betabench suppression's rows ({'pair': 'L<-S',
-    'suggested_min_iou', 'suggested_margin'}). A configured pair with a
-    suggestion takes its min_iou and margin; one the bench measured and
-    found no same-spot cluster for is dropped; one with too few overlaps
-    to measure (no row) stays as configured, since there is no evidence
-    either way. Pairs that are not configured are never added: adding
-    one is a separate decision with its own evidence.
+    'suggested_min_iou', 'suggested_margin', 'same_spot_win_rate'}). A
+    configured pair with a suggestion takes its min_iou and margin; one
+    the bench measured and found no same-spot cluster for is dropped;
+    one with too few overlaps to measure (no row) stays as configured,
+    since there is no evidence either way.
+
+    With additions, a pair that is not configured joins the proposed set
+    when the bench found a same-spot cluster for it, unless it is in
+    refused (class_suppression_refused: a person decided against it) or
+    its suppressor wins under min_win_rate of those overlaps (the bench's
+    ADDITION_MIN_WIN_RATE, below which a rule would almost never fire).
+    Each addition is its own change in the round, judged on its own.
     """
     by_pair = { row['pair']: row for row in suggestions }
     proposed = {}
+    configured_pairs = set()
     for label, rules in configured.items():
         for rule in _rule_list( rules ):
-            row = by_pair.get( '%s<-%s'%( label, rule['suppressed_by'] ) )
+            pair = '%s<-%s'%( label, rule['suppressed_by'] )
+            configured_pairs.add( pair )
+            row = by_pair.get( pair )
             if row is None:
                 proposed.setdefault( label, [] ).append( dict( rule ) )
                 continue
@@ -162,7 +177,28 @@ def proposed_rules( configured, suggestions ):
                 'margin': row['suggested_margin'],
                 'min_iou': row['suggested_min_iou'],
             } )
+    if additions:
+        for row in suggestions:
+            pair = row['pair']
+            if ( pair in configured_pairs or pair in refused
+                 or row.get( 'suggested_min_iou' ) is None
+                 or row.get( 'same_spot_win_rate', 0.0 ) < min_win_rate ):
+                continue
+            label, _sep, suppressor = pair.partition( '<-' )
+            proposed.setdefault( label, [] ).append( {
+                'suppressed_by': suppressor,
+                'margin': row['suggested_margin'],
+                'min_iou': row['suggested_min_iou'],
+            } )
     return proposed
+
+
+def added_pairs( current, proposed ):
+    """'L<-S' pairs the proposed side has and the current side does not."""
+    def pairs( rules ):
+        return { '%s<-%s'%( label, rule['suppressed_by'] )
+                 for label, entries in rules.items() for rule in _rule_list( entries ) }
+    return sorted( pairs( proposed ) - pairs( current ) )
 
 
 def rule_changes( current, proposed ):
@@ -270,7 +306,7 @@ class SuppressionExperiment( Experiment ):
 
     name = 'suppression'
     title = 'suppression rules'
-    summary = "class_suppression: the bench's retune/drop proposal against the configured rules"
+    summary = "class_suppression: the bench's retune/drop/add proposal against the configured rules"
     chosen_file = 'chosen_rules.json'
 
     def current( self, backend_name ):
@@ -286,7 +322,20 @@ class SuppressionExperiment( Experiment ):
         bench_args = argparse.Namespace( min_samples=args.min_samples )
         rows = betabench._bench_suppression_one( bench_args, logger, config, raw_boxes )['suppression']
         del raw_boxes
-        return proposed_rules( current, rows ), 'betabench suppression suggestions'
+        refused = bu_detector.get_class_suppression_refused( config.backend_name )
+        additions = getattr( args, 'additions', True )
+        proposed = proposed_rules( current, rows, refused=refused, additions=additions,
+                                   min_win_rate=betabench.ADDITION_MIN_WIN_RATE )
+        added = added_pairs( current, proposed )
+        if refused:
+            logger.info( "never proposed as additions (class_suppression_refused): %s"%(
+                ", ".join( refused ), ) )
+        source = 'betabench suppression suggestions'
+        if added:
+            source += ', with %d addition(s): %s'%( len( added ), ', '.join( added ) )
+        elif not additions:
+            source += ', additions off'
+        return proposed, source
 
     def change_lines( self, current, proposed, backend_name ):
         return rule_changes( current, proposed )
@@ -318,6 +367,21 @@ class SuppressionExperiment( Experiment ):
         lines.append( "}" )
         return lines
 
+    def follow_up_lines( self, current, proposed, decisions, backend_name ):
+        """
+        The refused list with every addition the verdicts turned down, so
+        the next round does not propose it again. An addition with no
+        verdict yet is not turned down: it was never judged.
+        """
+        turned_down = [ pair for pair in added_pairs( current, proposed )
+                        if decisions.get( pair ) == 'current' ]
+        if not turned_down:
+            return []
+        refused = bu_detector.get_class_suppression_refused( backend_name )
+        merged = refused + [ pair for pair in turned_down if pair not in refused ]
+        return [ "so the next round does not propose %s again:"%( ", ".join( turned_down ), ),
+                 "detector_backend[%r]['class_suppression_refused'] = %r"%( backend_name, merged ) ]
+
     def note( self, cause, proposed ):
         # The label is drawn on the line above, so the suppressor alone.
         if cause == TRACKING_CAUSE or '<-' not in cause:
@@ -329,7 +393,9 @@ class SuppressionExperiment( Experiment ):
                  "moment where the two censor differently, and the rule that caused it. RIGHT "
                  "censors: the CURRENT rule in the cause column removes that censor today, and the "
                  "proposed change (dropped or retuned) lets it through. LEFT censors: the PROPOSED "
-                 "rule removes a censor the current rules keep. In `_diff.mp4` the boxes only RIGHT "
+                 "rule removes a censor the current rules keep; for a rule marked 'added' in the "
+                 "change list that is the whole of what it does, so judge whether the censor it "
+                 "takes away was on the right thing. In `_diff.mp4` the boxes only RIGHT "
                  "has are magenta and the ones only LEFT has are orange, with the cause written "
                  "under the label." )
 
@@ -402,11 +468,14 @@ class OverrideExperiment( Experiment ):
     label apart, so a label's keys are judged together.
     """
 
-    def __init__( self, name, key=None, title=None, summary=None ):
+    def __init__( self, name, key=None, title=None, summary=None, default_value=None ):
         self.name = name
         self.key = key
         self.title = title or name
         self.summary = summary or "per-label item override"
+        # The value every censored label is proposed when auto_tune has
+        # nothing to review for this key, or None to require one.
+        self.default_value = default_value
 
     def propose( self, args, logger, config, betabench ):
         patch = parse_sets( getattr( args, 'set', None ) or [] )
@@ -427,6 +496,12 @@ class OverrideExperiment( Experiment ):
         if patch:
             return patch, "auto_tune's review values (%s)"%( os.path.basename(
                 os.path.dirname( os.path.dirname( path ) ) ), )
+        if self.default_value is not None:
+            logger.info( "auto_tune flagged nothing to review for %s (%s); proposing %s for every "
+                         "censored label"%( self.key, path or 'no decisions.json found',
+                                            _format( self.default_value ) ) )
+            return ( { label: { self.key: self.default_value } for label in sorted( censored ) },
+                     "the default %s of %s"%( self.key, _format( self.default_value ) ) )
         raise SystemExit(
             "auto_tune flagged nothing to review for %s (%s). Run the analysis hub again, or name "
             "the values: AB_SET='exposed_breast.%s=VALUE' (--set)"%(
@@ -624,6 +699,10 @@ def experiments():
         SuppressionExperiment(),
         OverrideExperiment( 'min_track_hits', 'min_track_hits', 'min_track_hits',
                             "detections a track needs before it is drawn (auto_tune's value vs the config)" ),
+        OverrideExperiment( 'confirm_score', 'confirm_score', 'confirm score',
+                            "draw a track short of min_track_hits once one detection scores this "
+                            "much (auto_tune's value, else %g)"%( bu_tuning.CONFIDENT_SCORE, ),
+                            default_value=bu_tuning.CONFIDENT_SCORE ),
         OverrideExperiment( 'match_distance', 'match_distance_multiplier', 'match distance',
                             "how far a detection may jump and still continue a track "
                             "(auto_tune's tightening candidate vs the config)" ),

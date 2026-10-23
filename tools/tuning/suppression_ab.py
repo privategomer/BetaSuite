@@ -23,7 +23,7 @@ from ab_compare import (                                             # noqa: F40
     phase_rank, phase_render, pick_windows, rank_videos, render_video_comparison, render_window,
     replay_video, short_cause, side_by_side, tally_verdicts, window_events, bu_tuning )
 from ab_experiments import (                                         # noqa: F401
-    TRACKING_CAUSE, SuppressionLog, attribute, changes_by_rule, choose_rules, proposed_rules,
+    TRACKING_CAUSE, SuppressionLog, added_pairs, attribute, changes_by_rule, choose_rules, proposed_rules,
     rule_changes )
 
 

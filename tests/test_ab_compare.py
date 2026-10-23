@@ -100,6 +100,20 @@ class TestFocus( unittest.TestCase ):
         # The per-label split still shows everything, so nothing is hidden.
         self.assertEqual( row['current_only_by_label'], { 'exposed_breast': 10.0 } )
 
+    def test_the_row_carries_the_videos_signature( self ):
+        raw = [ { 'class_id': 'exposed_breast', 'score': 0.9, 't': step / 9.0, 'x': 0, 'y': 0,
+                  'w': 10, 'h': 10 } for step in range( 90 ) ]
+        context = { 'shot_cut_times': None, 'profile_name': 'scene', 'sample_fps': 9 }
+        with mock.patch.object( bu_tuning, 'replay_tracking_context', return_value=context ), \
+                mock.patch.object( bu_tuning, 'raw_boxes_for_reading', return_value=raw ), \
+                mock.patch.object( bu_tuning, 'cache_sample_rate', return_value=9 ):
+            row = ab.compare_video( 'h', '/v/a.mp4', [ 'a.gz' ], 'nudenet_v3', 'old', 'new',
+                                    { 'exposed_breast', 'exposed_vulva' }, 4.0, 3,
+                                    replay=lambda *args, **kwargs: [],
+                                    duration_of=lambda path: 100.0 )[0]
+        self.assertEqual( row['signature'], { 'duration': 100.0, 'mixed': 0.0, 'seconds': {
+            'exposed_breast': 10.0, 'exposed_vulva': 0.0 } } )
+
     def test_focused_keeps_all_without_a_focus( self ):
         boxes = [ _box( 0, 1, 'a' ), _box( 0, 1, 'b' ) ]
         self.assertEqual( ab.focused( boxes, [] ), boxes )
@@ -480,6 +494,107 @@ class TestDecideWritesChosen( _ConfigSnapshot ):
             with open( os.path.join( directory, name ) ) as handle:
                 self.assertEqual( json.load( handle ), {} )
         self.assertEqual( decisions, { 'exposed_breast<-face_femme': 'proposed' } )
+
+    def test_a_turned_down_addition_is_offered_for_the_refused_list( self ):
+        current = { 'exposed_breast': [ { 'suppressed_by': 'face_femme', 'margin': 0.1, 'min_iou': 0.01 } ] }
+        proposed = { 'exposed_breast': [ { 'suppressed_by': 'face_femme', 'margin': 0.1, 'min_iou': 0.01 },
+                                         { 'suppressed_by': 'exposed_chest', 'margin': 0.087,
+                                           'min_iou': 0.525 } ] }
+        ranking = { 'experiment': 'suppression', 'backend': self.backend_name,
+                    'current': current, 'proposed': proposed }
+        with mock.patch.object( ab.ab_experiments.bu_detector, 'get_class_suppression_refused',
+                                return_value=[] ):
+            _directory, chosen, decisions, logger = self.decide(
+                ranking, [ ( 'exposed_breast<-exposed_chest', 'left' ) ] )
+        self.assertEqual( decisions, { 'exposed_breast<-exposed_chest': 'current' } )
+        self.assertTrue( any( 'nothing to paste' in line for line in logger.lines ) )
+        self.assertTrue( any( "['class_suppression_refused'] = ['exposed_breast<-exposed_chest']" in line
+                              for line in logger.lines ), logger.lines )
+
+
+class TestChooseVideosSkipsCopies( unittest.TestCase ):
+    """A round never spends two of its videos on the same footage."""
+
+    SAME = { 'duration': 1080.0, 'seconds': { 'exposed_breast': 635.7, 'exposed_vulva': 128.7 },
+             'mixed': 75.7 }
+    OTHER = { 'duration': 2000.0, 'seconds': { 'exposed_breast': 300.0, 'exposed_vulva': 300.0 },
+              'mixed': 100.0 }
+
+    def row( self, name, differing, signature ):
+        return { 'name': name, 'file_hash': name.lower(), 'differing_seconds': differing,
+                 'signature': signature }
+
+    def test_a_copy_of_a_chosen_video_is_skipped( self ):
+        logger = _Logger()
+        rows = [ self.row( 'A', 90, self.SAME ), self.row( 'A2', 89, self.SAME ),
+                 self.row( 'B', 50, self.OTHER ) ]
+        chosen = ab.choose_videos( rows, 2, logger=logger )
+        self.assertEqual( [ row['name'] for row in chosen ], [ 'A', 'B' ] )
+        self.assertIn( 'skipping A2: the same footage as A', logger.lines )
+
+    def test_a_copy_of_an_earlier_rounds_video_is_skipped( self ):
+        rows = [ self.row( 'A2', 89, self.SAME ), self.row( 'B', 50, self.OTHER ) ]
+        chosen = ab.choose_videos( rows, 2, earlier={ 'A': self.SAME } )
+        self.assertEqual( [ row['name'] for row in chosen ], [ 'B' ] )
+
+    def test_videos_that_do_not_differ_are_never_chosen( self ):
+        rows = [ self.row( 'A', 90, self.SAME ), self.row( 'B', 0, self.OTHER ) ]
+        self.assertEqual( [ row['name'] for row in ab.choose_videos( rows, 2 ) ], [ 'A' ] )
+
+    def test_rows_without_a_signature_are_never_copies( self ):
+        rows = [ self.row( 'A', 90, None ), self.row( 'A2', 89, None ) ]
+        self.assertEqual( len( ab.choose_videos( rows, 2 ) ), 2 )
+
+    def test_count_is_respected( self ):
+        rows = [ self.row( 'A', 90, self.SAME ), self.row( 'B', 50, self.OTHER ) ]
+        self.assertEqual( [ row['name'] for row in ab.choose_videos( rows, 1 ) ], [ 'A' ] )
+
+    def test_earlier_signatures_reads_only_the_videos_a_round_showed( self ):
+        directory = tempfile.mkdtemp( prefix='betasuite-ab-' )
+        self.addCleanup( shutil.rmtree, directory )
+        with open( os.path.join( directory, 'ranking.json' ), 'w' ) as handle:
+            json.dump( { 'chosen': [ 'a' ], 'videos': [
+                self.row( 'A', 90, self.SAME ), self.row( 'B', 50, self.OTHER ),
+                { 'name': 'Old', 'file_hash': 'a', 'differing_seconds': 1 } ] }, handle )
+        self.assertEqual( ab.earlier_signatures( [ directory ] ), { 'A': self.SAME } )
+        self.assertEqual( ab.earlier_signatures( None ), {} )
+
+
+class TestConfirmScoreExperiment( unittest.TestCase ):
+    """auto_tune's review values when it has some, else the confident score for every label."""
+
+    def propose( self, decisions ):
+        experiment = ab.ab_experiments.experiment_named( 'confirm_score' )
+        directory = tempfile.mkdtemp( prefix='betasuite-ab-' )
+        self.addCleanup( shutil.rmtree, directory )
+        path = os.path.join( directory, 'decisions.json' )
+        with open( path, 'w' ) as handle:
+            json.dump( decisions, handle )
+        args = argparse.Namespace( set=None, auto_tune=path )
+        return experiment.propose( args, _Logger(), None, None )
+
+    def test_without_a_review_every_censored_label_gets_the_confident_score( self ):
+        proposed, source = self.propose( [] )
+        self.assertEqual( proposed, { label: { 'confirm_score': 0.5 }
+                                      for label in sorted( ab.betaconfig.items_to_censor ) } )
+        self.assertIn( 'default confirm_score of 0.5', source )
+
+    def test_a_review_value_wins( self ):
+        decisions = [ { 'stage': 'confirm_score / nudenet_v3 / exposed_breast', 'key': 'confirm_score',
+                        'label': 'exposed_breast', 'review': { 'value': 0.6 } } ]
+        proposed, source = self.propose( decisions )
+        self.assertEqual( proposed, { 'exposed_breast': { 'confirm_score': 0.6 } } )
+        self.assertIn( "auto_tune's review values", source )
+
+    def test_it_is_on_the_menu( self ):
+        names = [ experiment.name for experiment in ab.ab_experiments.experiments() ]
+        self.assertIn( 'confirm_score', names )
+
+    def test_min_track_hits_still_needs_a_review( self ):
+        experiment = ab.ab_experiments.experiment_named( 'min_track_hits' )
+        args = argparse.Namespace( set=None, auto_tune='/nonexistent/decisions.json' )
+        with self.assertRaises( SystemExit ):
+            experiment.propose( args, _Logger(), None, None )
 
 
 # --- auto_tune flags what only eyes can settle ------------------------------------------------

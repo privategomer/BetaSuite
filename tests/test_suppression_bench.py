@@ -67,7 +67,8 @@ class TestValley( unittest.TestCase ):
         self.assertIsNone( betabench.suggest_suppression_rule( [ 0.05 ] * 300, [ 0.2 ] * 300 ) )
 
 
-class TestSuppressionBench( unittest.TestCase ):
+class _BenchCase( unittest.TestCase ):
+    """The bench on hand-built boxes, with exposed_breast censored."""
 
     def setUp( self ):
         self.args = types.SimpleNamespace( min_samples=1 )
@@ -84,6 +85,9 @@ class TestSuppressionBench( unittest.TestCase ):
     def run_bench( self, boxes, rules ):
         with mock.patch.object( betabench.bu_detector, 'get_class_suppression', return_value=rules ):
             return betabench._bench_suppression_one( self.args, _quiet_logger(), self.config, boxes )
+
+
+class TestSuppressionBench( _BenchCase ):
 
     def test_boxes_in_different_videos_never_pair( self ):
         boxes = [ _box( 'exposed_breast', 0.5, 0, 0, video='a' ),
@@ -153,6 +157,49 @@ class TestSuppressionBench( unittest.TestCase ):
         self.assertEqual( impact['removed'], 90 )
         self.assertIsNotNone( impact['suggested'] )
         self.assertEqual( impact['removed_suggested'], 30, "only the same-spot overlaps" )
+
+
+class TestSuppressionAdditions( _BenchCase ):
+    """Unconfigured same-spot pairs: what adding the suggested rule would remove."""
+
+    def cluster( self, same_spot_face_score=0.9, winners=30 ):
+        boxes = []
+        for index in range( 60 ):         # side by side
+            boxes += [ _box( 'exposed_breast', 0.5, 0, 0, t=index ),
+                       _box( 'face_femme', 0.9, 95, 0, t=index ) ]
+        for index in range( 30 ):         # on the same spot
+            score = same_spot_face_score if index < winners else 0.3
+            boxes += [ _box( 'exposed_breast', 0.5, 0, 0, t=100 + index ),
+                       _box( 'face_femme', score, 2, 2, t=100 + index ) ]
+        return boxes
+
+    def additions( self, boxes, refused=() ):
+        with mock.patch.object( betabench.bu_detector, 'get_class_suppression_refused',
+                                return_value=list( refused ) ):
+            impact = self.run_bench( boxes, {} )['suppression_impact']
+        return { row['rule']: row for row in impact if row.get( 'configured' ) is False }
+
+    def test_an_unconfigured_cluster_reports_what_adding_it_removes( self ):
+        rows = self.additions( self.cluster() )
+        self.assertEqual( list( rows ), [ 'exposed_breast<-face_femme' ] )
+        self.assertEqual( rows['exposed_breast<-face_femme']['removed_suggested'], 30,
+                          "only the same-spot overlaps" )
+        self.assertEqual( rows['exposed_breast<-face_femme']['removed'], 0, "nothing removes it today" )
+
+    def test_a_refused_pair_is_not_offered( self ):
+        self.assertEqual( self.additions( self.cluster(), refused=[ 'exposed_breast<-face_femme' ] ), {} )
+
+    def test_a_rarely_winning_pair_is_not_offered( self ):
+        # 5 of 30 same-spot overlaps won: 17%, under ADDITION_MIN_WIN_RATE.
+        self.assertEqual( self.additions( self.cluster( winners=5 ) ), {} )
+        self.assertIn( 'exposed_breast<-face_femme', self.additions( self.cluster( winners=6 ) ),
+                       "6 of 30 is exactly the threshold" )
+
+    def test_a_configured_pair_is_not_an_addition( self ):
+        rules = { 'exposed_breast': [ { 'suppressed_by': 'face_femme', 'min_iou': 0.01, 'margin': 0.0 } ] }
+        impact = self.run_bench( self.cluster(), rules )['suppression_impact']
+        self.assertEqual( [ row['rule'] for row in impact ], [ 'exposed_breast<-face_femme' ] )
+        self.assertNotIn( 'configured', impact[0] )
 
 
 class TestConfigurationCaches( unittest.TestCase ):
