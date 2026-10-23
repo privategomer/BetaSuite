@@ -1110,13 +1110,16 @@ def main( argv=None, default_experiment=None ):
     os.makedirs( args.out_dir, exist_ok=True )
     betabench = _load_betabench()
     logger = betabench.build_logger( args.out_dir, args.log_level, args.console_level )
-    logger.info( "A/B (%s): output in %s"%( args.experiment, args.out_dir ) )
     ranking = None
-    if args.phase in ( 'rank', 'all' ):
-        ranking = phase_rank( args, logger, betabench )
-    if ranking is None:
+    if args.phase not in ( 'rank', 'all' ):
         with open( args.ranking or os.path.join( args.out_dir, 'ranking.json' ) ) as handle:
             ranking = normalised( json.load( handle ) )
+        # A later phase works on the round's own experiment; --experiment
+        # only defaults to suppression, and the log said so for every round.
+        args.experiment = ranking['experiment']
+    logger.info( "A/B (%s): output in %s"%( args.experiment, args.out_dir ) )
+    if ranking is None:
+        ranking = phase_rank( args, logger, betabench )
     if args.phase in ( 'explain', 'all' ):
         phase_explain( args, logger, ranking )
     if args.phase in ( 'render', 'all' ):

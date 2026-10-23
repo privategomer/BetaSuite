@@ -124,7 +124,7 @@ detector_backend = {
                 { 'suppressed_by': 'exposed_breast','margin': 0.231, 'min_iou': 0.022 },
                 { 'suppressed_by': 'exposed_belly', 'margin': 0.293, 'min_iou': 0.015 },
                 { 'suppressed_by': 'covered_breast','margin': 0.295, 'min_iou': 0.016 },
-                { 'suppressed_by': 'exposed_anus',  'margin': 0.113, 'min_iou': 0.080 },
+                { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 },
             ],
         },
 
@@ -147,6 +147,7 @@ detector_backend = {
                 'position_smoothing': 0.75,
                 'paired_style': False,
                 'min_track_hits': 2,
+                'confirm_score': 0.5,
                 'match_distance_multiplier': 3,  # set by auto_tune 2026-09-18
             },
             'exposed_breast': {
@@ -159,6 +160,7 @@ detector_backend = {
                 'paired_style': True,
                 'paired_style_max_age': 0.8,
                 'min_track_hits': 2,
+                'confirm_score': 0.5,
                 'position_smoothing': 0.60,
                 'match_distance_multiplier': 2.0,  # set by auto_tune 2026-09-30
             },

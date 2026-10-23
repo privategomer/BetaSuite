@@ -833,6 +833,7 @@ from the difference.
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |
 | `tools/bench/structure_survey.sh` | measures every source file and writes a reviewable script sorting them into profile folders |
 | `tools/bench/reverse_cost.sh` | one click for `betabench reverse`: logs everything, replays the summary |
+| `tools/maintenance/cleanup_output.sh` | frees disk under `../output`: shows what each category would free, then asks before removing the renders of decided A/B rounds, the renders of undecided rounds untouched for 14 days (one at a time), round folders that never finished ranking, and an oversized `betasuite.log` (compressed, five copies kept). Never touches stats, caches, analysis runs, benchmark results or any round's ranking, clips, verdicts, decision or logs |
 
 Every tool that replays the pipeline imports the real
 `betautils_track` functions and observes their decisions through

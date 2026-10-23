@@ -298,6 +298,7 @@ FAKE_PYTHON = r'''#!/bin/bash
 if [ "${1:-}" = "-c" ]; then exit 0; fi
 case " $* " in *" --run-experiment "*) echo "min_track_hits"; exit 0 ;; esac
 case " $* " in *" --status "*) cat "${FAKE_STATUS:-/dev/null}"; exit 0 ;; esac
+case " $* " in *" --summary "*) echo "${FAKE_RENDERS:-0 0}"; exit 0 ;; esac
 echo "$*" >> "__CALLS__"
 '''
 
@@ -505,6 +506,30 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertEqual( len( calls ), 1, result.stdout )
         self.assertIn( '--phase decide', calls[0] )
         self.assertIn( '12 of 35 row(s) have a verdict', result.stdout )
+
+    def test_at_a_terminal_a_decided_round_offers_to_free_its_renders( self ):
+        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        status = self.status( decided=1, adopted=0 )
+        result = self.at_a_terminal( 'y\n', FAKE_STATUS=status, FAKE_RENDERS='24 486539264' )
+        self.assertIn( "Delete this round's renders (464MB)", result.stdout )
+        calls = self.calls_made()
+        self.assertEqual( len( calls ), 1, result.stdout )
+        self.assertIn( 'cleanup_output.py --root %s --apply decided_renders --only %s'%(
+            os.path.dirname( os.path.dirname( run ) ), os.path.basename( run ) ), calls[0] )
+
+    def test_at_a_terminal_declining_keeps_the_renders( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( 'n\n', FAKE_STATUS=self.status( decided=1, adopted=0 ),
+                                     FAKE_RENDERS='24 486539264' )
+        self.assertEqual( self.calls_made(), [] )
+        self.assertIn( 'kept the renders', result.stdout )
+
+    def test_no_renders_no_question_and_unattended_never_deletes( self ):
+        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        result = self.at_a_terminal( 'y\n', FAKE_STATUS=self.status( decided=1, adopted=0 ) )
+        self.assertNotIn( "Delete this round's renders", result.stdout )
+        self.run_mode( 'resume', FAKE_STATUS=self.status( decided=1, adopted=0 ), FAKE_RENDERS='24 486539264' )
+        self.assertEqual( self.calls_made(), [] )
 
     def test_resume_takes_a_bare_folder_name( self ):
         run = self.make_run( 'ab_cut_bursts_20261011_175010' )

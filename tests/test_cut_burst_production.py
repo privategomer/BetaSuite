@@ -130,6 +130,7 @@ class TestTrackingThroughABurst( _BurstConfig ):
             if isinstance( block, dict ):
                 for overrides in block.get( 'item_overrides', {} ).values():
                     overrides.pop( 'min_track_hits', None )
+                    overrides.pop( 'confirm_score', None )   # hits alone confirm here
         bu_config.invalidate_config_caches()
 
     def tearDown( self ):
