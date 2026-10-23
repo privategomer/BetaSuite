@@ -378,9 +378,25 @@ judge_and_decide() {
     after_decide "$dir"
 }
 
-# after_decide DIR: offer the confirm round when a change won.
+# offer_render_cleanup DIR: once decided, the renders are only disk; ask.
+offer_render_cleanup() {
+    local dir="$1" count size cleanup
+    cleanup=( "$PYTHON_BIN" "$REPO_ROOT/tools/maintenance/cleanup_output.py" --root "$(dirname "$BENCH_ROOT")" )
+    read -r count size <<< "$("${cleanup[@]}" --summary decided_renders --only "$(basename "$dir")" \
+                               2>>"$HARNESS_LOG_FILE")"
+    [ "${count:-0}" -gt 0 ] || return 0
+    size="$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size bytes")"
+    if wait_for_confirmation "The decision is written down. Delete this round's renders ($size)? ranking.json, clips.md, feedback.csv and chosen.json stay"; then
+        run_logged "remove this round's renders" "${cleanup[@]}" --apply decided_renders --only "$(basename "$dir")"
+    else
+        log_info "kept the renders; later: bash tools/maintenance/cleanup_output.sh"
+    fi
+}
+
+# after_decide DIR: offer to free the renders, then the confirm round when a change won.
 after_decide() {
     local dir="$1"
+    offer_render_cleanup "$dir"
     if ! has_adopted "$dir"; then
         log_info "nothing won, so there is nothing to confirm; the config stays as it is"
         return 0
@@ -425,6 +441,7 @@ case "$MODE" in
         status=$?
         [ "$status" -eq 0 ] && has_adopted "$START_DIR" \
             && log_info "check it on videos you have not judged: bash tools/tuning/ab_compare.sh confirm $START_DIR"
+        [ "$status" -eq 0 ] && log_info "free its renders once you are done with them: bash tools/maintenance/cleanup_output.sh"
         exit $status
         ;;
     confirm)

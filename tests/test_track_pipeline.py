@@ -452,7 +452,8 @@ class TestRelevantLabels( unittest.TestCase ):
 
 class _ConfirmationPinnedMixin:
     """
-    Pin min_track_hits to 1 for tests that are not about confirmation.
+    Pin min_track_hits to 1 and confirm_score off for tests that are not
+    about confirmation.
 
     These fixtures are one or two boxes in one or two frames. The
     shipped config sets min_track_hits: 2, which drops any track with
@@ -475,6 +476,9 @@ class _ConfirmationPinnedMixin:
             for label_overrides in block.get( 'item_overrides', {} ).values():
                 if isinstance( label_overrides, dict ):
                     label_overrides.pop( 'min_track_hits', None )
+                    # Off too, so a tuned confirm_score cannot confirm
+                    # what a test means to drop.
+                    label_overrides.pop( 'confirm_score', None )
         bu_config.invalidate_config_caches()
 
     def tearDown( self ):

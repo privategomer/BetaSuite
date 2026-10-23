@@ -757,7 +757,10 @@ closes during those hours costs no verdicts. Judging waits while you
 watch the clips and fill in verdicts (and waits again if `feedback.csv`
 still has none), then decides: each change takes the side its verdicts
 favour (a tie or no verdict keeps the config), `chosen.json` is written,
-and the config lines to paste are printed. It then offers a **confirm
+and the config lines to paste are printed. It then offers to delete the
+round's renders (its ranking, `clips.md`, `feedback.csv` and
+`chosen.json` stay; `tools/maintenance/cleanup_output.sh` does the same
+for older rounds), and then a **confirm
 round**: the chosen side against the config on videos you have not
 judged yet, like an eye exam narrowing in. Every round's folder is
 `../output/benchmarks/ab_<experiment>_<timestamp>/`.
@@ -830,6 +833,28 @@ included. Nothing touches `betaconfig.py`.
 > rows (33 right, 5 left, 18 same) were knock-on effects and decide
 > nothing. Applied to `betaconfig.py` on 2026-10-23. The censor key
 > moved, so the next run re-renders.
+
+> **Decided (2026-10-23): vulva rules, by eye.** A vulva-focused round
+> (`ab_suppression_20261023_100129`, `AB_FOCUS=exposed_vulva`) on Gooner
+> shit and AssGoonEdge2, 12 clips, 83 moments judged:
+>
+> | rule | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_vulva<-covered_vulva` (addition, `min_iou 0.425`, `margin 0.065`) | 12 | 0 | 1 | **added** |
+> | `exposed_vulva<-exposed_anus` | 1 | 0 | 24 | **dropped** |
+>
+> The addition removes a vulva censor where the model reads the same
+> spot as covered and is more sure of it. The anus drop rests on one
+> moment by eye, 24 alike; the bench agrees (on 2026-10-18 the rule
+> removed 1,833 renderable vulva detections, 73% with the anus beside
+> the vulva rather than on it), and dropping a rule can only add
+> censors. 45 "tracking" rows (10 right, 35 same) decide nothing.
+> `exposed_vulva<-face_femme`, `<-exposed_breast`, `<-exposed_belly`
+> and `<-covered_breast` had no rows: together they removed about 1,165
+> renderable vulva detections library-wide on 2026-10-18, 98% to 100% of
+> them side by side, too rare to land in two videos' clips. They stay as
+> configured. `exposed_breast<-exposed_buttocks`'s retune and the
+> `exposed_breast<-exposed_chest` addition had no rows either.
 
 `margin` semantics validation enforces:
 
@@ -1505,6 +1530,27 @@ marked "worth judging by eye":
 every censored label when auto_tune has not flagged a value yet). It is
 in the censor key only while set, so adding the setting re-rendered
 nothing.
+
+> **Decided (2026-10-23): 0.5 for both labels, by eye.** The 2026-10-23
+> hub run (both suppression rounds applied, moves.sh run) had auto_tune
+> at breast 0.7 and vulva 0.5. Breast 0.7 sat inside the 0.1% tolerance
+> by 4 detections, and 0.5 covers 1,095 more confident breast detections
+> for 1,105 more boxes, about one for one, so the round tested 0.5 for
+> both (`ab_confirm_score_20261023_141041`, GOONER Blowjob and NOFAP
+> Therapy; the ranking skipped "hour a half long goon fest", the same
+> footage as GOONER):
+>
+> | label | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_breast` | 8 | 3 | 40 | **0.5** |
+> | `exposed_vulva` | 1 | 0 | 26 | **0.5** |
+>
+> Against `min_track_hits: 1` it covers more for less: breast 2,985
+> fewer confident detections left uncensored for 3,010 more boxes, where
+> 1 manages 2,026 for 6,208; vulva 879 for 935, where 1 manages 558 for
+> 2,605. The five quick_cut files set `min_track_hits` in their profile,
+> so a backend `min_track_hits` change never reaches them, and
+> `confirm_score` does. `min_track_hits` stays at 2.
 
 ---
 

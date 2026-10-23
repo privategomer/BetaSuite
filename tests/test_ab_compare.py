@@ -512,6 +512,23 @@ class TestDecideWritesChosen( _ConfigSnapshot ):
                               for line in logger.lines ), logger.lines )
 
 
+class TestLaterPhasesNameTheRoundsExperiment( unittest.TestCase ):
+
+    def test_decide_logs_the_experiment_from_the_ranking( self ):
+        directory = tempfile.mkdtemp( prefix='betasuite-ab-' )
+        self.addCleanup( shutil.rmtree, directory )
+        with open( os.path.join( directory, 'ranking.json' ), 'w' ) as handle:
+            json.dump( { 'experiment': 'confirm_score', 'backend': 'nudenet_v3', 'current': {},
+                         'proposed': { 'exposed_breast': { 'confirm_score': 0.5 } } }, handle )
+        with open( os.path.join( directory, 'feedback.csv' ), 'w', newline='' ) as handle:
+            csv.DictWriter( handle, fieldnames=ab.FEEDBACK_COLUMNS ).writeheader()
+        ab.main( [ '--phase', 'decide', '--out-dir', directory, '--console-level', 'error' ] )
+        with open( os.path.join( directory, 'betabench.log' ) ) as handle:
+            text = handle.read()
+        self.assertIn( 'A/B (confirm_score): output in', text )
+        self.assertNotIn( 'A/B (suppression)', text )
+
+
 class TestChooseVideosSkipsCopies( unittest.TestCase ):
     """A round never spends two of its videos on the same footage."""
 
