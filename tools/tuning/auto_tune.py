@@ -172,13 +172,22 @@ class Stage:
         """A value the numbers cannot settle, for ab_compare.py to show a person, or None."""
         return None
 
-    def skip_reason( self, profiles ):
+    def skip_reason( self, profiles, options=None ):
         """
         Why no candidate could change anything for these files, or None.
 
         profiles is {file_hash: structure profile} for every file measured.
         """
         return None
+
+    def effective_values( self, profiles, key, default ):
+        """Every value of key this label resolves to across the files' profiles."""
+        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get( key, default )
+        found = set()
+        for profile in set( profiles.values() ) or { None }:
+            overrides = bu_detector.get_profile_item_overrides( profile, self.label, self.backend_name )
+            found.add( overrides.get( key, backend_value ) )
+        return found
 
 
 class LooseningStage( Stage ):
@@ -416,6 +425,20 @@ class MinTrackHitsStage( Stage ):
     The tolerance is a share of confident detections rather than of
     censored area, because area hides it: 23,311 boxes was 1.2% of the
     rendered boxes and under 0.1% of area in the run that dropped them.
+    Area still caps it: a value costing more than --max-coverage-loss is
+    rejected, as in every other stage.
+
+    WHEN THE EVIDENCE GOES BLIND
+    ----------------------------
+    confirm_score at or below --confident-score draws every track holding
+    a confident detection, whatever min_track_hits says, so every value
+    leaves the same confident detections uncensored. The rule above then
+    reads "strictest" as free: on 2026-10-24, with confirm_score 0.5, it
+    recommended 4 for both labels (1,403 breast and 161 vulva uncensored
+    at every value) although 4 cost 1.71% of vulva coverage. So the stage
+    is skipped when confirm_score hides it on every file, and anywhere
+    else that every value leaves the same count, the current value stays:
+    no difference in the evidence is no reason to move.
     """
 
     name = 'min_track_hits'
@@ -432,6 +455,19 @@ class MinTrackHitsStage( Stage ):
     def strictness( value ):
         """How few boxes a value draws, for ordering candidates: more hits, fewer boxes."""
         return value
+
+    def skip_reason( self, profiles, options=None ):
+        """confirm_score draws every confident short track on every file: the evidence cannot see this key."""
+        confident = _confident_score( options )
+        scores = self.effective_values( profiles, 'confirm_score',
+                                        getattr( betaconfig, 'default_confirm_score', None ) )
+        if any( score is None or score > confident for score in scores ):
+            return None
+        return ( "skipped: confirm_score is %s for %s on every file here, at or below the confident "
+                 "score %.2f, so every track holding a confident detection renders whatever "
+                 "min_track_hits says and this evidence cannot tell its values apart. Judge it by eye: "
+                 "AB_EXPERIMENT=min_track_hits bash tools/tuning/ab_compare.sh"%(
+                     ", ".join( '%g'%( score, ) for score in sorted( scores ) ), self.label, confident ) )
 
     def _confident( self, row ):
         """(confident detections, of them uncensored) for this stage's label."""
@@ -455,32 +491,54 @@ class MinTrackHitsStage( Stage ):
             row['eligible'] = None          # decided across every configuration in decide()
             row['verdict'] = ( '%+d box(es); confident detections left uncensored %d (%+d)'%(
                 row['boxes_changed'], row['confident_uncensored'], row['confident_change'] ) )
+            if row['coverage_loss'] > options.max_coverage_loss:
+                row['eligible'] = False
+                row['verdict'] = 'rejected: censor coverage fell %.2f%% (limit %.2f%%); %s'%(
+                    100*row['coverage_loss'], 100*options.max_coverage_loss, row['verdict'] )
 
     def decide( self, rows_by_configuration, options, logger ):
         baseline_value = _baseline_value_of( rows_by_configuration )
         by_value = {}
         for rows in rows_by_configuration.values():
             for row in rows:
-                entry = by_value.setdefault( row['value'], { 'missed': 0, 'total': 0, 'boxes': 0 } )
+                entry = by_value.setdefault( row['value'], { 'missed': 0, 'total': 0, 'boxes': 0,
+                                                             'coverage_loss': 0.0 } )
                 entry['missed'] += row.get( 'confident_uncensored', 0 )
                 entry['total'] += row.get( 'confident_detections', 0 )
                 entry['boxes'] += row['metrics']['rendered_boxes']
+                entry['coverage_loss'] = max( entry['coverage_loss'], row.get( 'coverage_loss', 0.0 ) )
         if len( by_value ) < 2:
             return bu_tuning.Decision( self.title, baseline_value, False,
                                        "nothing to compare against; keeping %s"%( baseline_value, ),
                                        _flatten_rows( rows_by_configuration ) )
+        confident = _confident_score( options )
+        counts = set( entry['missed'] for entry in by_value.values() )
+        if len( counts ) == 1:
+            return bu_tuning.Decision(
+                self.title, baseline_value, False,
+                "every value leaves the same %d confident detection(s) (score >= %.2f) uncensored, so "
+                "this evidence cannot tell them apart; keeping %s"%(
+                    counts.pop(), confident, baseline_value ),
+                _flatten_rows( rows_by_configuration ) )
+        rejected = sorted( ( value for value, entry in by_value.items()
+                             if entry['coverage_loss'] > options.max_coverage_loss ),
+                           key=self.strictness )
+        usable = { value: entry for value, entry in by_value.items() if value not in rejected }
         total = max( entry['total'] for entry in by_value.values() )
-        floor = min( entry['missed'] for entry in by_value.values() )
+        floor = min( entry['missed'] for entry in usable.values() )
         allowed = floor + options.max_confident_loss * total
-        within = [ value for value, entry in by_value.items() if entry['missed'] <= allowed ]
+        within = [ value for value, entry in usable.items() if entry['missed'] <= allowed ]
         chosen = max( within, key=self.strictness )
         summary = ", ".join( "%s: %d uncensored"%( value, by_value[value]['missed'] )
                              for value in sorted( by_value, key=self.strictness ) )
         reasoning = (
             "confident detections (score >= %.2f) left uncensored: %s, of %d. %s is the strictest "
             "value within %.2f%% (%d) of the fewest"%(
-                options.confident_score, summary, total, chosen,
+                confident, summary, total, chosen,
                 100*options.max_confident_loss, round( allowed - floor ) ) )
+        if rejected:
+            reasoning += " (%s rejected: censor coverage fell more than %.2f%%)"%(
+                ", ".join( str( value ) for value in rejected ), 100*options.max_coverage_loss )
         if chosen == baseline_value:
             return bu_tuning.Decision( self.title, baseline_value, False,
                                        reasoning + "; keeping %s"%( baseline_value, ),
@@ -492,18 +550,29 @@ class MinTrackHitsStage( Stage ):
         return bu_tuning.Decision( self.title, chosen, True, reasoning,
                                    _flatten_rows( rows_by_configuration ) )
 
+    def loosens( self, decision ):
+        """True when the chosen value draws more boxes than the current one."""
+        return self.strictness( decision.chosen ) < self.strictness( self.baseline_value() )
+
     def review( self, decision, rows_by_configuration ):
         """
-        Every change of value goes in front of a person first: the
-        confident-score evidence cannot see a misfire that scores above
-        it, which is the case a higher value exists to stop.
+        Every change of value goes in front of a person first. Going
+        looser, the evidence cannot see a misfire scoring above the
+        confident score; going stricter, it cannot see a real exposure
+        scoring below it.
         """
-        if not decision.accepted or decision.chosen is None:
+        if not decision.accepted or decision.is_split:
             return None
+        if self.loosens( decision ):
+            why = ( "%s draws more boxes than %s and leaves fewer confident detections uncensored, but "
+                    "a misfire scoring at least %.2f looks the same to this metric as a real detection; "
+                    "judge the extra boxes by eye" )
+        else:
+            why = ( "%s draws fewer boxes than %s, nearly all of them from detections scoring under "
+                    "%.2f, but a real exposure scoring that low looks the same to this metric as a "
+                    "misfire; judge the boxes it removes by eye" )
         return { 'value': decision.chosen,
-                 'why': "%s leaves fewer confident detections uncensored, but a misfire scoring "
-                        "above %.2f looks the same to this metric as a real detection; judge the "
-                        "extra boxes by eye"%( decision.chosen, bu_tuning.CONFIDENT_SCORE ) }
+                 'why': why%( decision.chosen, self.baseline_value(), bu_tuning.CONFIDENT_SCORE ) }
 
 
 class ConfirmScoreStage( MinTrackHitsStage ):
@@ -536,26 +605,29 @@ class ConfirmScoreStage( MinTrackHitsStage ):
     def strictness( value ):
         return float( 'inf' ) if value is None else value
 
-    def skip_reason( self, profiles ):
+    def skip_reason( self, profiles, options=None ):
         """Every file confirms on one hit already: nothing for a score to admit."""
-        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get(
-            'min_track_hits', getattr( betaconfig, 'default_min_track_hits', 1 ) )
-        effective = set()
-        for profile in set( profiles.values() ) or { None }:
-            overrides = bu_detector.get_profile_item_overrides( profile, self.label, self.backend_name )
-            effective.add( overrides.get( 'min_track_hits', backend_value ) )
+        effective = self.effective_values( profiles, 'min_track_hits',
+                                           getattr( betaconfig, 'default_min_track_hits', 1 ) )
         if max( effective ) > 1:
             return None
         return ( "skipped: min_track_hits is 1 for %s on every file here, so every track already "
                  "renders and no confirm_score could add one"%( self.label, ) )
 
     def review( self, decision, rows_by_configuration ):
-        if not decision.accepted or decision.chosen is None:
+        if not decision.accepted or decision.is_split:
             return None
+        if self.loosens( decision ):
+            why = ( "%s draws a short track once one detection scores at least that, more than %s "
+                    "does; a misfire scoring that high looks the same to this metric as a real "
+                    "detection, so judge the extra boxes by eye" )
+        else:
+            why = ( "%s draws fewer short tracks than %s; a real exposure whose best detection scores "
+                    "between the two looks the same to this metric as a misfire, so judge the boxes "
+                    "it removes by eye" )
+        shown = lambda value: 'off' if value is None else value
         return { 'value': decision.chosen,
-                 'why': "%s draws a short track once one detection scores at least that; a misfire "
-                        "scoring that high looks the same to this metric as a real detection, so judge "
-                        "the extra boxes by eye"%( decision.chosen, ) }
+                 'why': why%( shown( decision.chosen ), shown( self.baseline_value() ) ) }
 
 
 # ---------------------------------------------------------------------------
@@ -1011,7 +1083,7 @@ def main():
                                  if profile in masking ]
                 masking_text = ", ".join( "%s %s"%( name, value )
                                           for name, value in sorted( masking.items() ) )
-                skip = probe.skip_reason( profiles )
+                skip = probe.skip_reason( profiles, args )
                 if skip:
                     logger.info( "  => %s"%( skip, ) )
                     decisions.append( bu_tuning.Decision(
