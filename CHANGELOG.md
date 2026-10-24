@@ -51,6 +51,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Fixed
 
+- auto_tune recommended `min_track_hits` 4 for both labels on 2026-10-24: with `confirm_score` 0.5 every track holding a confident detection renders whatever `min_track_hits` says, so every value left the same confident detections uncensored (1,403 breast, 161 vulva) and the rule read the strictest as free, though 4 cost 1.71% of vulva coverage. The stage is now skipped when `confirm_score` is at or below `--confident-score` on every file, keeps the current value whenever every value leaves the same count, and rejects any value costing more than `--max-coverage-loss`, like every other stage. The review line for a stricter `min_track_hits` or `confirm_score` described a looser one ("leaves fewer confident detections uncensored"); it now says what the stricter value removes, and turning `confirm_score` off is reviewed too
 - `ab_compare.py`'s explain, render and decide phases logged every round as "A/B (suppression)": the header read `--experiment`, which defaults to suppression, instead of the round's own `ranking.json`
 - Track tests now pin `confirm_score` off along with `min_track_hits`, so a tuned config cannot confirm a box a test means to drop
 - `ab_compare.sh confirm` ignored `AB_FOCUS`: the confirm round always took the earlier round's focus. `AB_FOCUS` now replaces it

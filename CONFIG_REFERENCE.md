@@ -1501,6 +1501,17 @@ never confirmed contributes nothing at all.
 > rest are single low-score hits, the shape of a false positive.
 > `confirm_score` below draws the confident ones and none of the rest.
 
+> **2026-10-24, with `confirm_score` 0.5: the stage went blind.**
+> `confirm_score` at or below `--confident-score` draws every track
+> holding a confident detection, so every `min_track_hits` value left
+> the same confident detections uncensored (1,403 breast, 161 vulva)
+> and the stage recommended 4 for both, at 0.35% and 1.71% of coverage.
+> It now skips itself when `confirm_score` hides it on every file,
+> keeps the current value when every value ties, and rejects a value
+> costing more than `--max-coverage-loss`. What `min_track_hits` still
+> decides with `confirm_score` on, short tracks made only of
+> detections under 0.5, takes eyes: `AB_EXPERIMENT=min_track_hits`.
+
 ### `default_confirm_score` (per-label: `confirm_score`)
 
 A track short of `min_track_hits` still renders once one of its real

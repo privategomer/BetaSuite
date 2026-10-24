@@ -249,6 +249,141 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertEqual( lower['confident_change'], -10 )
         self.assertIn( '+400 box(es)', lower['verdict'] )
 
+    def test_identical_counts_keep_the_current_value( self ):
+        # The 2026-10-24 shape: confirm_score 0.5 drew every confident short
+        # track, so 1-4 all left 1,403 bare and the old rule chose 4.
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 1403, 2: 1403, 3: 1403, 4: 1403 } ) )
+        self.assertFalse( decision.accepted )
+        self.assertEqual( decision.chosen, 2 )
+        self.assertIn( 'same 1403', decision.reasoning )
+        self.assertIn( 'keeping 2', decision.reasoning )
+
+    def test_one_differing_count_is_evidence( self ):
+        decision = self.decide( self.stage_at( 2 ),
+                                self.rows( 2, { 1: 1402, 2: 1403, 3: 1403, 4: 1403 } ) )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 4 )
+
+    def with_coverage( self, rows, area_by_value ):
+        """Give each row the censored area area_by_value names, against the baseline's."""
+        base_area = area_by_value[rows[0]['value']]
+        for row in rows:
+            row['metrics']['coverage_by_label'] = { 'exposed_breast': area_by_value[row['value']] }
+            row['coverage_loss'] = bu_tuning.worst_coverage_loss(
+                { 'coverage_by_label': { 'exposed_breast': base_area } }, row['metrics'] )
+        return rows
+
+    def test_a_value_costing_coverage_is_rejected( self ):
+        # 2026-10-24 vulva: 3 cost 0.84% of coverage and 4 cost 1.71%.
+        rows = self.with_coverage( self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ),
+                                   { 1: 1000.0, 2: 1000.0, 3: 991.6, 4: 982.9 } )
+        decision = self.decide( self.stage_at( 2 ), rows )
+        self.assertFalse( decision.accepted, "3 is within the confident tolerance but costs 0.84%" )
+        self.assertEqual( decision.chosen, 2 )
+        self.assertIn( '3, 4 rejected: censor coverage fell more than 0.50%', decision.reasoning )
+        three = [ row for row in rows if row['value'] == 3 ][0]
+        self.assertTrue( three['verdict'].startswith( 'rejected: censor coverage fell 0.84%' ) )
+        self.assertIs( three['eligible'], False )
+
+    def test_coverage_at_the_limit_is_allowed( self ):
+        rows = self.with_coverage( self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ),
+                                   { 1: 1000.0, 2: 1000.0, 3: 995.0, 4: 900.0 } )
+        decision = self.decide( self.stage_at( 2 ), rows )
+        self.assertEqual( decision.chosen, 3, "exactly 0.50% is within the limit" )
+        three = [ row for row in rows if row['value'] == 3 ][0]
+        self.assertFalse( three['verdict'].startswith( 'rejected' ), three['verdict'] )
+
+    def test_the_floor_ignores_a_rejected_value( self ):
+        # A rejected value that left the fewest bare must not set the floor
+        # the others are measured from.
+        rows = self.with_coverage( self.rows( 2, { 1: 300, 2: 400, 3: 0, 4: 1000 } ),
+                                   { 1: 1100.0, 2: 1000.0, 3: 900.0, 4: 900.0 } )
+        decision = self.decide( self.stage_at( 2 ), rows )
+        self.assertEqual( decision.chosen, 2, "floor 300 allows 400, so 2 stays; a floor of 0 from "
+                                              "the rejected 3 would leave no value within reach" )
+        self.assertFalse( decision.accepted )
+
+    def test_review_wording_follows_the_direction( self ):
+        stricter = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ) )
+        looser = self.decide( self.stage_at( 3 ), self.rows( 3, { 1: 50, 2: 120, 3: 900, 4: 2000 } ) )
+        self.assertIn( 'draws fewer boxes than 2', self.stage_at( 2 ).review( stricter, {} )['why'] )
+        self.assertIn( 'removes', self.stage_at( 2 ).review( stricter, {} )['why'] )
+        self.assertIn( 'draws more boxes than 3', self.stage_at( 3 ).review( looser, {} )['why'] )
+        self.assertIn( 'extra boxes', self.stage_at( 3 ).review( looser, {} )['why'] )
+
+
+    def test_coverage_lost_under_any_configuration_rejects( self ):
+        stage = self.stage_at( 2 )
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = 0.001
+        losing = self.with_coverage( self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ),
+                                     { 1: 1000.0, 2: 1000.0, 3: 900.0, 4: 900.0 } )
+        clean = self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } )
+        for rows in ( losing, clean ):
+            stage.score_rows( rows, opts )
+        decision = stage.decide( { 'a @640': losing, 'b @320': clean }, opts, None )
+        self.assertEqual( decision.chosen, 2, "3 cost 10% under one configuration" )
+
+    def test_a_split_decision_is_not_reviewed( self ):
+        decision = bu_tuning.Decision( 'x', None, True, '', [], per_configuration={ 'a': 3 } )
+        self.assertIsNone( self.stage_at( 2 ).review( decision, {} ) )
+
+
+class TestMinTrackHitsSkip( unittest.TestCase ):
+    """confirm_score at or below the confident score hides min_track_hits from the evidence."""
+
+    def setUp( self ):
+        self.saved = copy.deepcopy( betaconfig.detector_backend )
+        self.addCleanup( setattr, betaconfig, 'detector_backend', self.saved )
+        self.addCleanup( bu_config.invalidate_config_caches )
+
+    def configure( self, backend_score, profile_score='unset' ):
+        block = copy.deepcopy( self.saved )
+        block['nudenet_v3'].setdefault( 'item_overrides', {} ).setdefault( 'exposed_breast', {} )[
+            'confirm_score'] = backend_score
+        variants = block['nudenet_v3'].setdefault( 'profiles', {} ).setdefault( 'variants', {} )
+        overrides = variants.setdefault( 'quick_cut', {} ).setdefault( 'item_overrides', {} )
+        overrides['exposed_breast'] = ( {} if profile_score == 'unset'
+                                        else { 'confirm_score': profile_score } )
+        betaconfig.detector_backend = block
+        bu_config.invalidate_config_caches()
+
+    def reason( self, profiles, confident=0.5 ):
+        options = _Options()
+        options.confident_score = confident
+        return auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' ).skip_reason( profiles, options )
+
+    def test_confirm_score_at_the_confident_score_skips( self ):
+        self.configure( 0.5 )
+        reason = self.reason( { 'a': 'scene' } )
+        self.assertIn( 'confirm_score is 0.5', reason )
+        self.assertIn( 'AB_EXPERIMENT=min_track_hits', reason )
+
+    def test_below_the_confident_score_skips( self ):
+        self.configure( 0.4 )
+        self.assertIsNotNone( self.reason( { 'a': 'scene' } ) )
+
+    def test_above_the_confident_score_measures( self ):
+        self.configure( 0.6 )
+        self.assertIsNone( self.reason( { 'a': 'scene' } ) )
+        self.assertIsNotNone( self.reason( { 'a': 'scene' }, confident=0.6 ), "follows --confident-score" )
+
+    def test_off_measures( self ):
+        self.configure( None )
+        self.assertIsNone( self.reason( { 'a': 'scene' } ) )
+
+    def test_a_profile_turning_it_off_measures( self ):
+        self.configure( 0.5, profile_score=None )
+        self.assertIsNone( self.reason( { 'a': 'scene', 'b': 'quick_cut' } ) )
+        self.assertIsNotNone( self.reason( { 'a': 'scene' } ), "no file runs quick_cut" )
+
+    def test_no_options_uses_the_default_confident_score( self ):
+        self.configure( 0.5 )
+        stage = auto_tune.MinTrackHitsStage( 'nudenet_v3', 'exposed_breast' )
+        self.assertIsNotNone( stage.skip_reason( { 'a': 'scene' } ) )
+
 
 class TestConfirmScoreRecommendation( unittest.TestCase ):
     """
@@ -307,6 +442,25 @@ class TestConfirmScoreRecommendation( unittest.TestCase ):
         stage, decision = self.decide( self.rows( { None: 60, 0.5: 40, 0.6: 50, 0.7: 55 } ) )
         self.assertIsNone( stage.review( decision, {} ) )
 
+    def test_a_stricter_score_is_reviewed_for_what_it_removes( self ):
+        # The 2026-10-24 breast shape: 0.5 decided by eye, 0.7 within the tolerance.
+        stage = self.stage( 0.5 )
+        decision = bu_tuning.Decision( stage.title, 0.7, True, '', [] )
+        why = stage.review( decision, {} )['why']
+        self.assertIn( '0.7 draws fewer short tracks than 0.5', why )
+        self.assertIn( 'removes', why )
+
+    def test_turning_it_off_is_reviewed( self ):
+        stage = self.stage( 0.5 )
+        review = stage.review( bu_tuning.Decision( stage.title, None, True, '', [] ), {} )
+        self.assertIsNotNone( review, "off is a value here, not a split decision" )
+        self.assertIn( 'off draws fewer short tracks than 0.5', review['why'] )
+
+    def test_a_split_decision_is_not_reviewed( self ):
+        stage = self.stage( 0.5 )
+        decision = bu_tuning.Decision( stage.title, None, True, '', [], per_configuration={ 'a': 0.6 } )
+        self.assertIsNone( stage.review( decision, {} ) )
+
     def test_it_runs_after_min_track_hits( self ):
         order = auto_tune.STAGE_ORDER
         self.assertEqual( order.index( 'confirm_score' ), order.index( 'min_track_hits' ) + 1 )
@@ -354,7 +508,7 @@ class TestConfirmScoreSkip( unittest.TestCase ):
 class TestMaskedStagesAreSkipped( unittest.TestCase ):
     """auto_tune must not replay candidates no file will ever read."""
 
-    def run_main( self, profile_overrides ):
+    def run_main( self, profile_overrides, stage='track_max_gap', extra=() ):
         import shutil
         import tempfile
         import types as _types
@@ -363,8 +517,8 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
         config = _types.SimpleNamespace( backend_name='nudenet_v3', picture_sizes=[ 640 ],
                                          label='nudenet_v3/640m @640', variant='640m' )
         measured = []
-        argv = [ 'auto_tune.py', '--stages', 'track_max_gap', '--labels', 'exposed_breast',
-                 '--out-dir', out_dir, '--backends', 'nudenet_v3' ]
+        argv = [ 'auto_tune.py', '--stages', stage, '--labels', 'exposed_breast',
+                 '--out-dir', out_dir, '--backends', 'nudenet_v3' ] + list( extra )
         with mock.patch( 'sys.argv', argv ), \
              mock.patch.object( auto_tune.bu_cache, 'configurations_to_analyse',
                                 return_value=[ config ] ), \
@@ -400,6 +554,15 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
     def test_a_key_only_some_profiles_set_is_still_measured( self ):
         measured, _decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 } } )
         self.assertEqual( len( measured ), 1 )
+
+    def test_min_track_hits_hidden_by_confirm_score_is_not_replayed( self ):
+        hiding = { 'scene': { 'confirm_score': 0.5 }, 'compilation': { 'confirm_score': 0.5 } }
+        measured, decisions = self.run_main( hiding, stage='min_track_hits' )
+        self.assertEqual( measured, [] )
+        self.assertIn( 'confirm_score is 0.5', decisions[0]['reasoning'] )
+        measured, _decisions = self.run_main( hiding, stage='min_track_hits',
+                                              extra=( '--confident-score', '0.4' ) )
+        self.assertEqual( len( measured ), 1, "0.5 is above a confident score of 0.4" )
 
 
 class TestProfileMasking( unittest.TestCase ):
