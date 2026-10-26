@@ -1,6 +1,7 @@
 # setup.ps1 - one-shot BetaSuite environment setup for Windows.
 # Double-click setup.cmd, or run: powershell -ExecutionPolicy Bypass -File setup.ps1
 # Safe to re-run: every step checks before it acts. See SETUP.md.
+# In a git checkout it first offers to switch to the latest release tag.
 
 [CmdletBinding()]
 param(
@@ -11,6 +12,7 @@ param(
     [switch]$Tests,
     [switch]$NoTests,
     [switch]$Yes,
+    [switch]$NoReleaseCheck,       # stay on the current branch/commit (development)
     [ValidateSet('trace','debug','info','warn','error')]
     [string]$LogLevel = 'info',
     [switch]$Help
@@ -24,6 +26,7 @@ Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup
   -Python VERSION        Python version (default: from .python-version)
   -Vision                also install betavision-* dependencies (mss, pywin32)
   -Tests | -NoTests      run the unit tests at the end (default: ask, no)
+  -NoReleaseCheck        stay on the current branch or commit instead of offering to switch to the latest release
   -Yes                   accept the default answer to every prompt
   -LogLevel LEVEL        console level: trace|debug|info|warn|error (default info); setup.log gets everything
 '@ | Write-Host
@@ -103,6 +106,49 @@ function Update-SessionPath {
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                 [Environment]::GetEnvironmentVariable('Path', 'User')
 }
+
+# ---------------------------------------------------------------- release
+# Offer to move a git checkout onto the newest vX.Y.Z tag, then restart setup
+# from that release's own copy of this script. BETASUITE_RELEASE_CHECKED stops
+# the restarted copy (possibly an older release's) from asking again.
+$BoundAtStart = $PSBoundParameters
+function Invoke-ReleaseCheck {
+    if ($NoReleaseCheck -or $env:BETASUITE_RELEASE_CHECKED -eq '1') { Write-Log debug 'release check skipped'; return }
+    if (-not (Test-Path (Join-Path $RepoDir '.git')) -or -not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Log debug 'not a git checkout; using the files as they are'; return
+    }
+    if (-not (Invoke-Logged 'fetch release tags' 'git' @('-C', $RepoDir, 'fetch', '--tags', '--quiet'))) {
+        Write-Log warn 'could not fetch tags; checking against the tags already here'
+    }
+    $latest = & git -C $RepoDir tag --list 'v[0-9]*' --sort=-v:refname 2>$null |
+        Where-Object { $_ -notmatch '-' } | Select-Object -First 1
+    if (-not $latest) { Write-Log warn 'no release tags found; installing the current checkout'; return }
+    $headTag = & git -C $RepoDir describe --tags --exact-match HEAD 2>$null
+    if ($LASTEXITCODE -ne 0) { $headTag = $null }
+    if ($headTag -eq $latest) { Write-Log info "on the latest release, $latest"; return }
+    $here = & git -C $RepoDir rev-parse --abbrev-ref HEAD 2>$null
+    if ($here -eq 'HEAD') { $here = if ($headTag) { $headTag } else { 'commit ' + (& git -C $RepoDir rev-parse --short HEAD) } }
+    if (& git -C $RepoDir status --porcelain --untracked-files=no 2>$null) {
+        Write-Log warn "latest release is $latest, but $here has uncommitted changes; staying on $here"; return
+    }
+    if (-not (Ask-YesNo "Latest release is $latest; this checkout is on $here. Switch to $latest?" $true)) {
+        Write-Log info "staying on $here"; return
+    }
+    if (-not (Invoke-Logged "check out $latest" 'git' @('-C', $RepoDir, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', $latest))) {
+        Stop-Setup "could not check out $latest"
+    }
+    Write-Log info "switched to $latest; restarting setup from that release"
+    $env:BETASUITE_RELEASE_CHECKED = '1'
+    $passArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $RepoDir 'setup.ps1'))
+    foreach ($kv in $BoundAtStart.GetEnumerator()) {
+        if ($kv.Value -is [System.Management.Automation.SwitchParameter]) { if ($kv.Value) { $passArgs += "-$($kv.Key)" } }
+        else { $passArgs += @("-$($kv.Key)", "$($kv.Value)") }
+    }
+    & (Get-Process -Id $PID).Path @passArgs
+    exit $LASTEXITCODE
+}
+Invoke-ReleaseCheck
+$env:BETASUITE_RELEASE_CHECKED = '1'
 
 # ---------------------------------------------------------------- preflight
 Write-Log info "BetaSuite setup starting in $RepoDir (log: $LogFile)"
