@@ -37,9 +37,11 @@ THREAD SAFETY REQUIREMENT
     producing chunk-order-dependent output.
 """
 
+import collections
 import math
 import bisect
 import os
+import re
 import subprocess
 import threading
 import time
@@ -588,11 +590,181 @@ def boxes_for_chunk( boxes, chunk_start_time ):
 # Chunk rendering
 # ---------------------------------------------------------------------------
 
+def _ffmpeg_prints_errors_only():
+    """
+    Whether render ffmpeg runs at -loglevel error, so anything it prints
+    is an error. debug_mode bit 1 turns that off and ffmpeg prints its
+    normal chatter, which is not worth a warning.
+    """
+    return not ( getattr( betaconfig, 'debug_mode', 0 ) & 1 )
+
+
 def _ffmpeg_base_command():
     """The ffmpeg prefix every render command shares."""
-    if getattr( betaconfig, 'debug_mode', 0 ) & 1:
+    if not _ffmpeg_prints_errors_only():
         return [ 'ffmpeg', '-y' ]
     return [ 'ffmpeg', '-y', '-loglevel', 'error' ]
+
+
+def ffmpeg_error_line( text, keyword=None ):
+    """
+    The line of ffmpeg's stderr that says what went wrong: the first one
+    naming `keyword` (usually the encoder), else the first line. ffmpeg's
+    LAST line is usually a generic consequence ("Nothing was written into
+    output file") rather than the cause ("Cannot load libcuda.so.1").
+
+    Lived in betabench until the render needed it too; betabench now
+    imports it from here.
+    """
+    lines = [ line.strip() for line in text.strip().splitlines() if line.strip() ]
+    if keyword:
+        for line in lines:
+            if keyword.lower() in line.lower():
+                return line
+    return lines[0] if lines else None
+
+
+_STDERR_LINE_BREAK = re.compile( rb'[\r\n]' )
+
+
+class FfmpegStderr:
+    """
+    One ffmpeg process's stderr, drained on a thread, with its first and
+    last lines kept.
+
+    Render ffmpeg used to inherit the terminal's stderr, so its reason for
+    failing never reached betasuite.log. On 2026-10-23/24 two 4K files
+    each lost one chunk to an encoder that quit within seconds, three
+    attempts running, and all the log could say was BrokenPipeError: the
+    encoder's own message went to a terminal nobody kept.
+
+    Drained on a thread rather than read after wait(): a pipe nobody
+    reads blocks ffmpeg once the OS buffer fills (64 KB on Linux), and the
+    chunk writer, blocked on ffmpeg's stdin, would wait forever. A temp
+    file beside the output (what betabench does for its throwaway
+    encodes) was the other option, rejected because a killed run would
+    leave it in the output folder for resume and cleanup to trip over.
+
+    Bounded: with debug_mode bit 1 ffmpeg prints a progress line twice a
+    second for the whole encode, so only the first HEAD_LINES (where the
+    cause usually is) and the last TAIL_LINES are kept, and \\r counts as
+    a line break because the progress line rewrites itself with it.
+    """
+    HEAD_LINES = 10
+    TAIL_LINES = 30
+    MAX_LINE_BYTES = 4096
+
+    def __init__( self, stream ):
+        self._head = []
+        self._tail = collections.deque( maxlen=self.TAIL_LINES )
+        self.line_count = 0
+        self._thread = threading.Thread( target=self._drain, args=( stream, ),
+                                         name='ffmpeg-stderr', daemon=True )
+        self._thread.start()
+
+    def _keep( self, raw ):
+        line = raw.decode( 'utf-8', 'replace' ).strip()
+        if not line:
+            return
+        self.line_count += 1
+        if len( self._head ) < self.HEAD_LINES:
+            self._head.append( line )
+        else:
+            self._tail.append( line )
+
+    def _drain( self, stream ):
+        pending = b''
+        try:
+            while True:
+                block = stream.read1( 65536 )
+                if not block:
+                    break
+                pending += block
+                parts = _STDERR_LINE_BREAK.split( pending )
+                pending = parts.pop()
+                for part in parts:
+                    self._keep( part )
+                # A line with no break past MAX_LINE_BYTES keeps its start
+                # and drops the rest: ffmpeg never writes one, so this is
+                # only a bound on memory, not a case worth reassembling.
+                if len( pending ) > self.MAX_LINE_BYTES:
+                    self._keep( pending[:self.MAX_LINE_BYTES] )
+                    pending = b''
+            if pending:
+                self._keep( pending )
+        except ( OSError, ValueError ):
+            pass
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+    def finish( self, timeout_seconds=10.0 ):
+        """
+        Wait for the drain to reach end of stream. Call once the process
+        has exited; safe to call more than once.
+        """
+        self._thread.join( timeout_seconds )
+        return self
+
+    def lines( self ):
+        """The kept lines in order, with a marker where some were dropped."""
+        dropped = self.line_count - len( self._head ) - len( self._tail )
+        middle = [ '... %d line(s) not kept ...'%( dropped, ) ] if dropped > 0 else []
+        return self._head + middle + list( self._tail )
+
+    def error_line( self, keyword=None ):
+        """The kept line that best says what went wrong; see ffmpeg_error_line."""
+        return ffmpeg_error_line( '\n'.join( self._head + list( self._tail ) ), keyword )
+
+
+def describe_ffmpeg_failure( returncode, captured_stderr, keyword=None ):
+    """'ffmpeg exited N: <the line that says why>', or just the exit when ffmpeg said nothing."""
+    line = captured_stderr.error_line( keyword ) if captured_stderr is not None else None
+    reason = "ffmpeg exited %d"%( returncode, )
+    return "%s: %s"%( reason, line ) if line else reason
+
+
+def _command_codec( command ):
+    """The encoder a command actually asks for (the value after -c:v), or None."""
+    for index, argument in enumerate( command[:-1] ):
+        if argument == '-c:v':
+            return command[index + 1]
+    return None
+
+
+def _log_ffmpeg_stderr( logger, what, returncode, captured_stderr ):
+    """
+    Put what ffmpeg printed into the log file.
+
+    Everything kept goes in at debug, success or failure. A FAILURE's
+    reason is already carried by the retry warning and the RenderError,
+    so it gets no second warning here. A SUCCESS that printed anything at
+    -loglevel error is degraded but proceeding, which is a warning; under
+    debug_mode the same output is ordinary chatter and stays at debug.
+    """
+    lines = captured_stderr.lines()
+    if not lines:
+        return
+    logger.debug( "%s: ffmpeg exited %d, stderr (%d line(s)):\n  %s"%(
+        what, returncode, captured_stderr.line_count, '\n  '.join( lines ) ) )
+    if returncode == 0 and _ffmpeg_prints_errors_only():
+        logger.warning( "%s: ffmpeg succeeded but reported: %s"%(
+            what, captured_stderr.error_line() ) )
+
+
+def _run_ffmpeg( command ):
+    """
+    Run an ffmpeg command that needs no stdin to completion.
+
+    Returns:
+        ( returncode, FfmpegStderr ) with the stderr fully drained.
+    """
+    process = subprocess.Popen( command, stderr=subprocess.PIPE )
+    captured_stderr = FfmpegStderr( process.stderr )
+    process.wait()
+    return process.returncode, captured_stderr.finish()
 
 
 NVENC_CODECS = ( 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc' )
@@ -773,6 +945,39 @@ def _motion_settings( source ):
              None if window is None else float( window ) )
 
 
+def chunk_failure_reason( returncode, frames_written, write_error, captured_stderr, codec ):
+    """
+    Why one chunk attempt failed, or None when it did not.
+
+    BUG FIX: when the encoder quits mid-chunk, the next frame write raises
+    BrokenPipeError, and that consequence used to be the whole report.
+    NEU LING NIKA on 2026-10-23 logged "render chunk 5 failed after 3
+    attempt(s): BrokenPipeError(32, 'Broken pipe')" while ffmpeg's exit
+    status went unread and its message went to the terminal. An encoder
+    that exited non-zero is the cause, so its exit code and the line
+    naming the encoder lead. A frame-loop error other than the broken
+    pipe is kept beside it, because then two separate things went wrong.
+
+    Args:
+        returncode: The encoder's exit status, None if it never started.
+        frames_written: Frames handed to the encoder before the end.
+        write_error: The exception the frame loop raised, or None.
+        captured_stderr: The encoder's FfmpegStderr, or None.
+        codec: The encoder the command asked for, to find its own line.
+    """
+    if returncode not in ( None, 0 ):
+        reason = "ffmpeg exited %d after %d frame(s) written"%( returncode, frames_written )
+        line = captured_stderr.error_line( codec ) if captured_stderr is not None else None
+        if line:
+            reason += ": " + line
+        if write_error is not None and not isinstance( write_error, BrokenPipeError ):
+            reason += "; the frame loop also raised %r"%( write_error, )
+        return reason
+    if write_error is not None:
+        return repr( write_error )
+    return None
+
+
 def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                       retry_backoff, progress, logger, motion_timelines=None ):
     """
@@ -825,6 +1030,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
 
         capture = source.open_capture()
         process = None
+        captured_stderr = None
+        command = None
         frames_written = 0
         write_error = None
         try:
@@ -832,7 +1039,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             command = _chunk_encode_command(
                 tmp_path, source.width, source.height, source.vid_fps, preset, encoder_threads )
             logger.trace( "render chunk %d command: %s"%(plan.index, ' '.join( command )) )
-            process = subprocess.Popen( command, stdin=subprocess.PIPE )
+            process = subprocess.Popen( command, stdin=subprocess.PIPE, stderr=subprocess.PIPE )
+            captured_stderr = FfmpegStderr( process.stderr )
 
             live_boxes = list( base_live )
             pending_boxes = base_pending
@@ -895,12 +1103,17 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 except Exception:
                     pass
                 process.wait()
+            if captured_stderr is not None:
+                captured_stderr.finish()
 
-        if write_error is not None:
-            last_error = repr( write_error )
-            continue
-        if process.returncode != 0:
-            last_error = "ffmpeg exited %d"%(process.returncode)
+        returncode = process.returncode if process is not None else None
+        if captured_stderr is not None:
+            _log_ffmpeg_stderr( logger, "render chunk %d attempt %d"%( plan.index, attempt + 1 ),
+                                returncode, captured_stderr )
+        failure = chunk_failure_reason( returncode, frames_written, write_error, captured_stderr,
+                                        _command_codec( command ) if command else None )
+        if failure is not None:
+            last_error = failure
             continue
         if not bu_video.probe_video_ok( tmp_path ):
             last_error = "chunk failed the container sanity check"
@@ -987,10 +1200,11 @@ def concat_chunks( plans, intermediate_path, max_retries, retry_backoff, logger 
         if attempt > 0:
             logger.warning( "chunk concat: retry %d/%d after %s"%(attempt, max_retries, last_error) )
             time.sleep( retry_backoff )
-        process = subprocess.Popen( command )
-        process.wait()
-        if process.returncode != 0:
-            last_error = "ffmpeg exited %d"%(process.returncode)
+        returncode, captured_stderr = _run_ffmpeg( command )
+        _log_ffmpeg_stderr( logger, "chunk concat attempt %d"%( attempt + 1, ),
+                            returncode, captured_stderr )
+        if returncode != 0:
+            last_error = describe_ffmpeg_failure( returncode, captured_stderr )
             continue
         if not bu_video.probe_video_ok( tmp_path ):
             last_error = "concatenated output failed the container sanity check"
@@ -1090,10 +1304,11 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
                     strategy_name, attempt, max_retries, last_error ) )
                 time.sleep( retry_backoff )
             logger.trace( "final mux command: %s"%(' '.join( command )) )
-            process = subprocess.Popen( command )
-            process.wait()
-            if process.returncode != 0:
-                last_error = "ffmpeg exited %d"%(process.returncode)
+            returncode, captured_stderr = _run_ffmpeg( command )
+            _log_ffmpeg_stderr( logger, "final mux (%s) attempt %d"%( strategy_name, attempt + 1 ),
+                                returncode, captured_stderr )
+            if returncode != 0:
+                last_error = describe_ffmpeg_failure( returncode, captured_stderr )
                 continue
             if not bu_video.probe_video_ok( tmp_path ):
                 last_error = "final output failed the container sanity check"

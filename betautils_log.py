@@ -361,20 +361,55 @@ def write_stats( record ):
     """
     if not getattr( betaconfig, 'stats_enabled', False ):
         return
+    _append_record( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH, record,
+                    'stats record' )
 
+
+def failures_path_for( stats_path ):
+    """
+    The failures file that sits beside a stats file:
+    betasuite_stats.jsonl -> betasuite_stats.failures.jsonl.
+
+    Derived rather than configured, so a tool pointed at any stats file
+    (summarize_run --stats-path) finds that run's failures with it.
+    """
+    stem, extension = os.path.splitext( stats_path )
+    return stem + '.failures' + ( extension or '.jsonl' )
+
+
+def write_failure( record ):
+    """
+    Append one JSON-Lines record for a file that failed to process.
+
+    A separate file, not a row in the stats file: five tools read every
+    stats row as a finished render (timings, label counts, encode
+    estimates), and a failure row among them would quietly skew all of
+    them. Before this existed a failed file left no trace outside
+    betasuite.log, so summarize_run showed it as simply absent; on
+    2026-10-24 two render failures read as "missing from the run".
+
+    Same switch and same swallow-and-log behaviour as write_stats.
+    """
+    if not getattr( betaconfig, 'stats_enabled', False ):
+        return
     stats_path = getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH
+    _append_record( failures_path_for( stats_path ), record, 'failure record' )
+
+
+def _append_record( path, record, what ):
+    """Append record as one JSON line to path; log and swallow any failure."""
     payload = dict( record )
     payload.setdefault( 'timestamp', time.time() )
     try:
-        stats_dir = os.path.dirname( stats_path )
-        if stats_dir:
-            os.makedirs( stats_dir, exist_ok=True )
+        directory = os.path.dirname( path )
+        if directory:
+            os.makedirs( directory, exist_ok=True )
         line = json.dumps( payload, default=str ) + "\n"
         with _stats_lock:
-            with open( stats_path, 'a', encoding='UTF-8' ) as fout:
+            with open( path, 'a', encoding='UTF-8' ) as fout:
                 fout.write( line )
     except Exception as err:
-        get_logger().warning( "failed to write stats record: %s"%(err) )
+        get_logger().warning( "failed to write %s: %s"%( what, err ) )
 
 
 # Historical name, kept so older tooling keeps resolving.
