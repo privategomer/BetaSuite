@@ -72,6 +72,15 @@ Clone the repository into the folder that will hold `resources/` and
 `output/`, then run the script for your platform. Every step checks
 before it acts, so it's safe to re-run to repair or update an install.
 
+A clone starts on `main`, which can hold changes that aren't released
+yet. The script's first step fetches the release tags and offers to
+switch the checkout to the newest release (`vX.Y.Z`), then carries on
+from that release's own copy of the script. Answer no, or pass
+`--no-release-check` (`-NoReleaseCheck` on Windows), to install `main`
+as it is. If you prefer no git at all, download the source zip from the
+[latest release](https://github.com/privategomer/Betasuite/releases/latest)
+instead of cloning; setup works the same from it.
+
 ### Linux
 
 ```bash
@@ -93,22 +102,32 @@ cd Betasuite
 Or double-click `setup.cmd` in Explorer. It launches `setup.ps1` with
 the execution policy bypassed for that one run only.
 
+### Updating
+
+Run the setup script again. It fetches tags, offers to move to a newer
+release if there is one, and brings the environment in line with that
+release's requirements. Switching to a release tag leaves git in
+"detached HEAD" state, which is normal for an install you don't edit.
+To go back to development, `git switch main`.
+
 ### What the script does
 
-1. Detects an NVIDIA GPU with `nvidia-smi` and asks whether to install
+1. In a git checkout, offers to switch to the latest release tag (and
+   restarts from that release's script if you say yes)
+2. Detects an NVIDIA GPU with `nvidia-smi` and asks whether to install
    the GPU or CPU build (suggesting GPU when one is found)
-2. Checks for ffmpeg/ffprobe and offers to install them (`apt`, `dnf`,
+3. Checks for ffmpeg/ffprobe and offers to install them (`apt`, `dnf`,
    `pacman`, `zypper` or `brew` on Linux, `winget` on Windows)
-3. Installs [uv](https://docs.astral.sh/uv/) if it's missing, then uses
+4. Installs [uv](https://docs.astral.sh/uv/) if it's missing, then uses
    it to install the pinned Python version and create `.venv/` (no admin
    rights needed, and it doesn't touch your system Python)
-4. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
-5. Creates the `resources/` and `output/` folders beside the repository
-6. Downloads the 320n model, checks any models already present, and
+5. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
+6. Creates the `resources/` and `output/` folders beside the repository
+7. Downloads the 320n model, checks any models already present, and
    lists the two optional ones you download yourself (see
    [Models](#6-models))
-7. Offers to set `gpu_enabled` in `betaconfig.py` to match the build
-8. Runs `tools/setup/verify_env.py` and, optionally, the unit tests
+8. Offers to set `gpu_enabled` in `betaconfig.py` to match the build
+9. Runs `tools/setup/verify_env.py` and, optionally, the unit tests
 
 Everything goes to `setup.log` in the repository at every log level.
 The console shows `info` and above unless you pass a different level.
@@ -123,6 +142,7 @@ The console shows `info` and above unless you pass a different level.
 | `--tests` / `--no-tests` | `-Tests` / `-NoTests` | run the unit tests at the end, or don't |
 | `--yes` | `-Yes` | take the default answer to every question (unattended) |
 | `--log-level debug` | `-LogLevel debug` | console verbosity; `setup.log` always gets everything |
+| `--no-release-check` | `-NoReleaseCheck` | stay on the current branch or commit instead of offering the latest release |
 | `--no-uv` | | Linux only: use an existing `python3.12` and `python -m venv` instead of uv |
 
 Example unattended GPU install that also runs the tests:
@@ -153,6 +173,21 @@ python3 betatv.py --preview on --preview-seconds 20    # Windows: python, not py
 
 The same steps the script takes. Run everything from inside the
 repository folder.
+
+### 0. Use the latest release
+
+Skip this if you downloaded a release zip. In a clone, move to the
+newest release tag:
+
+```bash
+git fetch --tags
+git checkout "$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- - | head -n1)"
+```
+
+```powershell
+git fetch --tags
+git checkout (git tag --list 'v[0-9]*' --sort=-v:refname | Where-Object { $_ -notmatch '-' } | Select-Object -First 1)
+```
 
 ### 1. NVIDIA driver (GPU only)
 

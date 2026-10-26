@@ -123,10 +123,13 @@ def get_label_settings( label, backend_name=None ):
     Returns:
         A dict with every key the pipeline reads for this label. Keys
         whose feature is off are present and None, so the censor cache
-        key hashes a stable shape rather than a varying one.
+        key hashes a stable shape rather than a varying one. The one
+        exception is confirm_score, present only while set: it arrived
+        after a library had been rendered, and keying it while off would
+        have re-rendered all of it for no change.
     """
     override = bu_detector.get_item_overrides( label, backend_name )
-    return {
+    settings = {
         # confidence
         'min_prob':           override.get( 'min_prob', betaconfig.default_min_prob ),
         'min_prob_continue':  override.get( 'min_prob_continue',
@@ -170,6 +173,12 @@ def get_label_settings( label, backend_name=None ):
                                             getattr( betaconfig, 'default_geometry_action',
                                                      _geometry_action_default() ) ),
     }
+    # Present only while set, so adding the setting left every existing
+    # render's censor key, and so every finished output, valid.
+    confirm_score = override.get( 'confirm_score', getattr( betaconfig, 'default_confirm_score', None ) )
+    if confirm_score is not None:
+        settings['confirm_score'] = confirm_score
+    return settings
 
 
 def _geometry_action_default():
@@ -329,6 +338,7 @@ VALID_PIXEL_PATTERNS = { 'square', 'mosaic', 'hex' }
 # betautils_censor.py.
 VALID_MERGE_STRATEGIES = { 'none', 'single-pass', 'span' }
 VALID_ENCODE_PRESETS = { 'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow' }
+NVENC_PRESETS = frozenset( 'p%d'%( number, ) for number in range( 1, 8 ) )
 
 # keys every style dict may carry, plus keys specific to each 'type'
 # 'shape' is optional and overrides the item's default censor_shape for
@@ -594,6 +604,20 @@ def _validate_class_suppression( errors, valid_classes ):
                     errors.append( "%s is missing required key 'min_iou'"%(where) )
                 elif not isinstance( rule['min_iou'], (int, float) ):
                     errors.append( "%s['min_iou'] must be a number, got %r"%(where, rule['min_iou']) )
+
+        where = "detector_backend[%r]['class_suppression_refused']"%( backend_name, )
+        refused = bu_detector.resolve_backend_setting(
+            'class_suppression_refused', backend_name, None )
+        if refused is None:
+            continue
+        if not isinstance( refused, ( list, tuple ) ):
+            errors.append( "%s must be a list of 'label<-suppressor' strings, got %r"%( where, refused ) )
+            continue
+        for pair in refused:
+            # Without an arrow the suppressor comes out empty, so it fails the class check.
+            label, _sep, suppressor = pair.partition( '<-' ) if isinstance( pair, str ) else ( '', '', '' )
+            if label not in valid_classes or suppressor not in valid_classes:
+                errors.append( "%s: %r is not 'label<-suppressor' with two known classes"%( where, pair ) )
 
 
 def _is_fraction( value ):
@@ -1053,6 +1077,14 @@ def _check_item_override_values( override, where, errors ):
                     getattr( betaconfig, 'video_censor_fps', 9 ),
                     min_track_hits / max( getattr( betaconfig, 'video_censor_fps', 9 ), 1 ) ) )
 
+    if override.get( 'confirm_score' ) is not None:
+        confirm_score = override['confirm_score']
+        if ( not isinstance( confirm_score, ( int, float ) ) or isinstance( confirm_score, bool )
+                or not ( 0 < confirm_score <= 1 ) ):
+            errors.append( "%s['confirm_score'] must be None or a score above 0 and at most 1 (a track "
+                "short of min_track_hits renders once one of its detections scores this much), got %r"%(
+                    where, confirm_score ) )
+
     # --- geometry sanity filter ---
     for area_key in ( 'min_area_fraction', 'max_area_fraction' ):
         if area_key in override and override[area_key] is not None:
@@ -1432,6 +1464,19 @@ def _validate_blur_approximation( errors ):
     motion = getattr( betaconfig, 'render_motion_interpolation', True )
     if not isinstance( motion, bool ):
         errors.append( "render_motion_interpolation must be True/False, got %r"%(motion,) )
+    burst_window = getattr( betaconfig, 'shot_cut_burst_window', 0.0 )
+    if ( not isinstance( burst_window, (int, float) ) or isinstance( burst_window, bool )
+         or burst_window < 0 ):
+        errors.append( "shot_cut_burst_window must be a number of seconds >= 0 (0 turns burst "
+                       "merging off), got %r"%(burst_window,) )
+    burst_span = getattr( betaconfig, 'shot_cut_burst_max_span', None )
+    if burst_span is not None and ( not isinstance( burst_span, (int, float) )
+                                    or isinstance( burst_span, bool ) or burst_span <= 0 ):
+        errors.append( "shot_cut_burst_max_span must be a positive number of seconds or None "
+                       "(merge a burst of any length), got %r"%(burst_span,) )
+    burst_keep = getattr( betaconfig, 'shot_cut_burst_keep', 'first' )
+    if burst_keep not in ( 'first', 'last' ):
+        errors.append( "shot_cut_burst_keep must be 'first' or 'last', got %r"%(burst_keep,) )
     span = getattr( betaconfig, 'render_motion_max_span_seconds', None )
     if span is not None and ( not isinstance( span, (int, float) )
                               or isinstance( span, bool ) or span <= 0 ):
@@ -1506,11 +1551,29 @@ def _validate_input_delete_probability_range( errors ):
         errors.append( "input_delete_probability must be between 0 and 1, got %r"%(betaconfig.input_delete_probability) )
 
 
+def valid_encode_presets( codec ):
+    """
+    The preset names an encode with `codec` accepts.
+
+    x264's names always, since bu_render.encoder_options translates them
+    for NVENC; NVENC's own p1 (fastest) to p7 (best) as well when the
+    codec is an NVENC one. Checking only x264's names rejected the
+    'p5' that `betabench encode` recommends for h264_nvenc.
+    """
+    import betautils_render as bu_render   # deferred: bu_render's imports reach back here
+    if codec in bu_render.NVENC_CODECS:
+        return VALID_ENCODE_PRESETS | NVENC_PRESETS
+    return VALID_ENCODE_PRESETS
+
+
 def _validate_encode_preset( errors ):
-    """Check that encode_preset is a known x264 preset name."""
+    """Check that encode_preset is a preset name encode_video_codec accepts."""
+    codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
     encode_preset = getattr( betaconfig, 'encode_preset', 'slow' )
-    if encode_preset not in VALID_ENCODE_PRESETS:
-        errors.append( "encode_preset = '%s' is not a known x264 preset (valid: %s)"%(encode_preset, sorted(VALID_ENCODE_PRESETS)) )
+    valid = valid_encode_presets( codec )
+    if encode_preset not in valid:
+        errors.append( "encode_preset = '%s' is not a known preset for %s (valid: %s)"%(
+            encode_preset, codec, sorted( valid ) ) )
 
 
 def _validate_preview_settings( errors ):
@@ -1526,8 +1589,11 @@ def _validate_preview_settings( errors ):
     if not isinstance( preview_max_seconds, (int, float) ) or preview_max_seconds <= 0:
         errors.append( "preview_max_seconds must be a positive number, got %r"%(preview_max_seconds) )
     preview_encode_preset = getattr( betaconfig, 'preview_encode_preset', 'ultrafast' )
-    if preview_encode_preset not in VALID_ENCODE_PRESETS:
-        errors.append( "preview_encode_preset = '%s' is not a known x264 preset (valid: %s)"%(preview_encode_preset, sorted(VALID_ENCODE_PRESETS)) )
+    codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
+    valid = valid_encode_presets( codec )
+    if preview_encode_preset not in valid:
+        errors.append( "preview_encode_preset = '%s' is not a known preset for %s (valid: %s)"%(
+            preview_encode_preset, codec, sorted( valid ) ) )
     preview_start_seconds = getattr( betaconfig, 'preview_start_seconds', None )
     if preview_start_seconds is not None and ( not isinstance( preview_start_seconds, (int, float) ) or preview_start_seconds < 0 ):
         errors.append( "preview_start_seconds must be None or a non-negative number, got %r"%(preview_start_seconds) )

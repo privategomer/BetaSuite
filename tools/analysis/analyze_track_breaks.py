@@ -82,6 +82,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path, fmt_stats )
 
@@ -92,6 +93,9 @@ VID_HASH_DIR = bu_cache.VID_HASH_DIR
 _match_events = []
 _new_track_events = []
 _contention_events = []
+# The cuts tracking stops at in the video being replayed, as smooth_boxes
+# sees them (bursts merged per the config).
+_cut_times = []
 
 
 def _reset_events():
@@ -118,7 +122,8 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
     # trustworthy, not a separate guess.
     cx = b['x'] + b['w']/2
     cy = b['y'] + b['h']/2
-    best = None  # (dist, gap, threshold, max_gap) for the nearest-in-time-and-space live track
+    box_t = b.get( 't', b['start'] )
+    best = None  # (dist, gap, threshold, max_gap, across a cut) for the nearest live track
     for prev in tracks:
         if prev is tracks[ti]:
             continue
@@ -128,12 +133,18 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
         dist = ( (cx-pcx)**2 + (cy-pcy)**2 ) ** 0.5
         threshold = match_distance_multiplier * max( prev['w'], prev['h'], b['w'], b['h'] )
         if best is None or dist < best[0]:
-            best = ( dist, gap, threshold, max_gap )
+            best = ( dist, gap, threshold, max_gap,
+                     bu_track.cut_separates( _cut_times, prev.get( 't', prev['end'] ), box_t ) )
 
     if best is None:
         reason = 'no-nearby-track'  # genuinely nothing else live for this label
+    elif best[4]:
+        # The tracker never continues a track across a shot cut, however
+        # close, so this is a new shot's first detection, not a reset.
+        # Neither threshold can (or should) bridge it.
+        reason = 'after-cut'
     else:
-        dist, gap, threshold, mg = best
+        dist, gap, threshold, mg, _across = best
         dist_blocked = dist >= threshold
         gap_blocked = gap > mg
         if dist_blocked and gap_blocked:
@@ -143,7 +154,7 @@ def _record_new_track_event( label, tracks, ti, b, max_gap, match_distance_multi
         elif gap_blocked:
             reason = 'gap-blocked'
         else:
-            reason = 'unexplained'  # shouldn't happen - would mean the real code should have matched this
+            reason = 'unexplained'  # qualified on both, so another box claimed this track first
             # (known, disclosed gap: the real algorithm does global greedy
             # assignment across every box/track in the frame - a detection
             # can also fail to match because a DIFFERENT box claimed the
@@ -304,11 +315,29 @@ def _swept_overrides( backend_name, labels, match_mult, gap_mult ):
         label_block['track_max_gap'] = _real_baseline_track_max_gap( label, backend_name ) * gap_mult
         swept[label] = label_block
     backend_setting['item_overrides'] = swept
+    # Structure profiles override these keys per label for every file
+    # that runs them, so a sweep of the backend tier alone left those
+    # files at their profile value: the replay now runs under each
+    # file's profile, and the profile's own value is scaled the same way.
+    saved_profiles = copy.deepcopy( backend_setting.get( 'profiles' ) )
+    for variant in ( ( backend_setting.get( 'profiles' ) or {} ).get( 'variants' ) or {} ).values():
+        for label in labels:
+            block = ( variant.get( 'item_overrides' ) or {} ).get( label )
+            if not block:
+                continue
+            if 'match_distance_multiplier' in block:
+                block['match_distance_multiplier'] = block['match_distance_multiplier'] * match_mult
+            if 'track_max_gap' in block:
+                block['track_max_gap'] = block['track_max_gap'] * gap_mult
     bu_config.invalidate_config_caches()
     try:
         yield
     finally:
         backend_setting['item_overrides'] = saved
+        if saved_profiles is None:
+            backend_setting.pop( 'profiles', None )
+        else:
+            backend_setting['profiles'] = saved_profiles
         bu_config.invalidate_config_caches()
 
 
@@ -359,22 +388,18 @@ def run_one_combo( match_mult, gap_mult, videos, hash_to_path, ns, labels_filter
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn(
-                raw_copy,
-                bu_detector.get_class_suppression( backend_name ),
-                bu_config.get_parts_to_blur( backend_name ) )
-
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and ( not labels_filter or res['label'] in labels_filter ):
-                    boxes.append( res )
+            boxes, tracking = bu_tuning.replay_tracking_inputs(
+                file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h,
+                backend_name, labels_filter )
             if not boxes:
                 continue
 
+            _cut_times[:] = bu_track.tracking_cut_times( tracking['shot_cut_times'] )
             with bu_track.tracking_observer( ns['observer'] ):
-                smooth_boxes_fn( boxes, backend_name=backend_name )
+                smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
+                                 backend_name=backend_name, profile_name=tracking['profile_name'],
+                                 sample_fps=tracking['sample_fps'],
+                                 logger=bu_tuning._QUIET_LOGGER )
 
     match_dists_by_label = {}
     for ev in _match_events:
@@ -516,7 +541,10 @@ def main():
         print( "loosening match_distance_multiplier alone would fix these. 'gap-blocked' is the reverse - close enough in space but too much time " )
         print( "passed - raising track_max_gap (or video_censor_fps) would fix these. 'both-blocked' needs both loosened together. " )
         print( "'no-nearby-track' means there was nothing else live for this label at all - a genuinely fresh appearance (or the model missed " )
-        print( "several consecutive frames badly), not something either threshold can fix." )
+        print( "several consecutive frames badly), not something either threshold can fix. 'after-cut' means the nearest track ended before a " )
+        print( "shot cut: the tracker never continues a track across one, so that is a new shot starting, not a reset. 'unexplained' is what " )
+        print( "is left: the nearest track qualified on both distance and time, and another box in the same frame claimed it first (see " )
+        print( "contention below). Until 2026-10-18 this tool ignored cuts and counted every post-cut start as 'unexplained'." )
         print()
         print( "reading contention: this is the real evidence for whether loosening match_distance_multiplier's default is safe. A contention " )
         print( "event means 2+ different boxes in one frame both qualified as candidates for the same existing track - the greedy assignment picks " )

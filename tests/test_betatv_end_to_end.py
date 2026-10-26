@@ -23,6 +23,7 @@ ALSO COVERED HERE
     the next one.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -495,6 +496,48 @@ class TestInterruptHandling( BetaTvHarness ):
 
         with mock.patch.object( betatv, 'detect_boxes_for_video', failing_detect ):
             self.assertEqual( self.run_one(), 'failed' )
+
+    def test_a_failed_file_is_recorded_beside_the_stats_not_in_them( self ):
+        # A failed file used to leave no record outside betasuite.log, so
+        # summarize_run showed it as absent from the run rather than broken.
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+
+        def failing_detect( *args, **kwargs ):
+            raise RuntimeError( 'a bad file, not a user interrupt' )
+
+        with mock.patch.object( betatv, 'detect_boxes_for_video', failing_detect ):
+            self.assertEqual( self.run_one(), 'failed' )
+        stats_path = betaconfig.stats_path
+        self.assertFalse( os.path.exists( stats_path ), "a failure must not write a stats row" )
+        with open( bu_log.failures_path_for( stats_path ), encoding='UTF-8' ) as handle:
+            records = [ json.loads( line ) for line in handle ]
+        self.assertEqual( len( records ), 1 )
+        self.assertEqual( records[0]['file'], 'clip.mp4' )
+        self.assertEqual( records[0]['error'],
+                          repr( RuntimeError( 'a bad file, not a user interrupt' ) ) )
+        self.assertFalse( records[0]['preview_mode'] )
+
+    def test_a_processed_file_writes_no_failure_record( self ):
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+        self.assertEqual( self.run_one(), 'processed' )
+        self.assertTrue( os.path.exists( betaconfig.stats_path ) )
+        self.assertFalse( os.path.exists( bu_log.failures_path_for( betaconfig.stats_path ) ) )
+
+    def test_a_broken_failure_record_does_not_stop_the_run( self ):
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+
+        def failing_detect( *args, **kwargs ):
+            raise RuntimeError( 'a bad file, not a user interrupt' )
+
+        def broken_record( *args, **kwargs ):
+            raise ValueError( 'record could not be built' )
+
+        with mock.patch.object( betatv, 'detect_boxes_for_video', failing_detect ), \
+             mock.patch.object( betatv, '_failure_record', broken_record ):
+            with self.assertLogs( self.logger, level='WARNING' ) as logged:
+                self.assertEqual( self.run_one(), 'failed' )
+        self.assertTrue( any( 'could not record the failure of clip.mp4' in record.getMessage()
+                              for record in logged.records ) )
 
     def test_detection_checkpoints_before_stopping( self ):
         # A stop must always be clean: whatever was detected so far is

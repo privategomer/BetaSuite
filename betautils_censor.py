@@ -27,6 +27,7 @@ never shrank back.
 The shape-mask cache and the sticker cache are both safe to share.
 """
 
+import collections
 import functools
 import glob
 import math
@@ -872,6 +873,75 @@ def _load_stickers( style ):
         return loaded_images
 
 
+# Resized, cropped and feathered sticker planes, keyed by everything that
+# shapes them. A box's size holds steady across consecutive frames (the
+# render stabilises each track's size over a window), so the same planes
+# are asked for again and again. Rebuilding them was most of a sticker's
+# cost: on a 400px box with feather 0.25 the Gaussian alone took 14 of
+# 19 ms. Bounded by bytes, not entries, because one plane can be 16 MB.
+_PROCESSED_STICKER_BUDGET_BYTES = 192 * 1024 * 1024
+_processed_stickers = collections.OrderedDict()
+_processed_stickers_bytes = 0
+_processed_stickers_lock = threading.Lock()
+
+
+def clear_processed_sticker_cache():
+    """Empty the processed-sticker cache. For benchmarks timing the cold cost."""
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        _processed_stickers.clear()
+        _processed_stickers_bytes = 0
+
+
+def _processed_sticker( sticker, key, target_w, target_h, crop, feather ):
+    """
+    (premultiplied colour, 1 - alpha) for one sticker at one size and crop.
+
+    Exactly the arithmetic sticker_image used to do on every frame, done
+    once: the blend then computes premultiplied + (1 - alpha)*frame,
+    which is the same float32 operations in the same order as
+    alpha*colour + (1 - alpha)*frame, so the output is byte-identical.
+    Both planes are read-only, since threads share them.
+    """
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        cached = _processed_stickers.get( key )
+        if cached is not None:
+            _processed_stickers.move_to_end( key )
+            return cached
+
+    src_x0, src_y0, composite_w, composite_h = crop
+    resized_sticker = cv2.resize( sticker, ( target_w, target_h ), interpolation=cv2.INTER_AREA )
+    # cv2.imread always returns BGR(A) whatever the source PNG's own
+    # channel order, and the frame buffer is BGR too, so no reversal is
+    # needed here. A previous version assumed RGB and reversed, which
+    # rendered every yellow-toned emoji blue.
+    sticker_rgb = resized_sticker[ src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, :3 ]
+    sticker_alpha = resized_sticker[
+        src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, 3:4 ].astype( np.float32 ) / 255.0
+    if feather:
+        feathered = feather_mask( ( sticker_alpha[ :, :, 0 ]*255 ).astype( np.uint8 ),
+                                  feather, composite_w, composite_h )
+        sticker_alpha = ( feathered.astype( np.float32 )/255.0 )[ :, :, None ]
+    premultiplied = sticker_alpha*sticker_rgb.astype( np.float32 )
+    inverse_alpha = 1 - sticker_alpha
+    premultiplied.flags.writeable = False
+    inverse_alpha.flags.writeable = False
+    planes = ( premultiplied, inverse_alpha )
+
+    size = premultiplied.nbytes + inverse_alpha.nbytes
+    if size > _PROCESSED_STICKER_BUDGET_BYTES // 4:
+        return planes
+    with _processed_stickers_lock:
+        if key not in _processed_stickers:
+            _processed_stickers[key] = planes
+            _processed_stickers_bytes += size
+            while _processed_stickers_bytes > _PROCESSED_STICKER_BUDGET_BYTES:
+                _old_key, ( old_premultiplied, old_inverse ) = _processed_stickers.popitem( last=False )
+                _processed_stickers_bytes -= old_premultiplied.nbytes + old_inverse.nbytes
+    return planes
+
+
 def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_seed=None ):
     """
     Apply a 'sticker' censor style: composite a PNG over the box.
@@ -909,8 +979,6 @@ def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_see
     scale = style.get( 'scale', 1.0 )
     target_w = max( 1, round( w * scale ) )
     target_h = max( 1, round( h * scale ) )
-    resized_sticker = cv2.resize( sticker, ( target_w, target_h ), interpolation=cv2.INTER_AREA )
-
     origin_x = x + w//2 - target_w//2
     origin_y = y + h//2 - target_h//2
     img_h, img_w = image.shape[:2]
@@ -922,20 +990,14 @@ def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_see
     if composite_w <= 0 or composite_h <= 0:
         return image
 
-    # cv2.imread always returns BGR(A) whatever the source PNG's own
-    # channel order, and the frame buffer is BGR too, so no reversal is
-    # needed here. A previous version assumed RGB and reversed, which
-    # rendered every yellow-toned emoji blue.
-    sticker_rgb = resized_sticker[ src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, :3 ]
-    sticker_alpha = resized_sticker[
-        src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, 3:4 ].astype( np.float32 ) / 255.0
-    if feather:
-        feathered = feather_mask( ( sticker_alpha[ :, :, 0 ]*255 ).astype( np.uint8 ),
-                                  feather, composite_w, composite_h )
-        sticker_alpha = ( feathered.astype( np.float32 )/255.0 )[ :, :, None ]
+    crop = ( src_x0, src_y0, composite_w, composite_h )
+    key = ( style.get( 'dir' ) or tuple( style.get( 'images', [] ) ), sticker_index,
+            target_w, target_h, crop, feather )
+    premultiplied, inverse_alpha = _processed_sticker( sticker, key, target_w, target_h, crop,
+                                                       feather )
 
     destination = image[ dst_y0:dst_y1, dst_x0:dst_x1 ].astype( np.float32 )
-    blended = sticker_alpha*sticker_rgb.astype( np.float32 ) + ( 1 - sticker_alpha )*destination
+    blended = premultiplied + inverse_alpha*destination
     image[ dst_y0:dst_y1, dst_x0:dst_x1 ] = blended.astype( image.dtype )
     return image
 
@@ -967,6 +1029,10 @@ def debug_image( image, box ):
     cv2.putText( image, box['label'],         ( x+10, y+60 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     cv2.putText( image, '%.2f %.1f %.1f'%( box['score'], box['start'], box['end'] ),
                  ( x+10, y+80 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
+    if box.get( 'debug_note' ):
+        # A tool's own annotation, e.g. which suppression rule made the difference.
+        cv2.putText( image, str( box['debug_note'] ), ( x+10, y+100 ),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     return image
 
 

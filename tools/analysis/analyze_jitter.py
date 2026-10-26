@@ -96,6 +96,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path, fmt_stats )
 
@@ -105,6 +106,9 @@ VID_HASH_DIR = bu_cache.VID_HASH_DIR
 # ---- module-level event buffers the instrumentation hooks write to ----
 _match_events = []
 _new_track_events = []
+# The cuts tracking stops at in the video being replayed, as smooth_boxes
+# sees them (bursts merged per the config).
+_cut_times = []
 
 def _reset_events():
     _match_events.clear()
@@ -131,9 +135,17 @@ def _record_new_track_event( label, tracks, ti, b ):
     # match/reset than a genuinely fresh appearance. This does NOT change
     # or re-run the real matching decision, which already happened before
     # this hook fires - it only flags the new track for the report.
+    #
+    # A track the box is separated from by a shot cut never counts: the
+    # tracker does not continue across a cut however close the boxes
+    # are, so a new shot's first detection beside where the last shot's
+    # track ended is not a reset. Until 2026-10-18 this counted them,
+    # and on cut-dense compilations they were most of the "resets".
     cx = b['x'] + b['w']/2
     cy = b['y'] + b['h']/2
+    box_t = b.get( 't', b['start'] )
     nearest = None
+    after_cut = False
     for other_ti, prev in enumerate( tracks ):
         if other_ti == ti:
             continue
@@ -141,9 +153,15 @@ def _record_new_track_event( label, tracks, ti, b ):
         pcy = prev['y'] + prev['h']/2
         d = ( (cx-pcx)**2 + (cy-pcy)**2 ) ** 0.5
         loose_threshold = 1.5 * max( prev['w'], prev['h'], b['w'], b['h'] )
-        if d < loose_threshold and ( nearest is None or d < nearest ):
+        if d >= loose_threshold:
+            continue
+        if bu_track.cut_separates( _cut_times, prev.get( 't', prev['end'] ), box_t ):
+            after_cut = True
+            continue
+        if nearest is None or d < nearest:
             nearest = d
-    _new_track_events.append( { 'label': label, 'near_miss_dist': nearest } )
+    _new_track_events.append( { 'label': label, 'near_miss_dist': nearest,
+                                'after_cut': after_cut and nearest is None } )
 
 
 class _JitterObserver( bu_track.TrackingObserver ):
@@ -236,8 +254,6 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
     under another backend's smoothing config.
     """
     labels_to_sweep = labels_filter or set( betaconfig.items_to_censor )
-    suppression_rules = bu_detector.get_class_suppression( backend_name )
-    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     _reset_events()
     frame_deltas_by_label = {}
     dims_missing = []
@@ -263,19 +279,18 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn( raw_copy, suppression_rules, parts_to_blur )
-
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and ( not labels_filter or res['label'] in labels_filter ):
-                    boxes.append( res )
+            boxes, tracking = bu_tuning.replay_tracking_inputs(
+                file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h,
+                backend_name, labels_filter )
             if not boxes:
                 continue
 
+            _cut_times[:] = bu_track.tracking_cut_times( tracking['shot_cut_times'] )
             with bu_track.tracking_observer( _JitterObserver() ):
-                tracked_boxes, _smoothing_stats = smooth_boxes_fn( boxes, backend_name=backend_name )
+                tracked_boxes, _smoothing_stats = smooth_boxes_fn(
+                    boxes, shot_cut_times=tracking['shot_cut_times'], backend_name=backend_name,
+                    profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'],
+                                 logger=bu_tuning._QUIET_LOGGER )
 
             # group the ORIGINAL (non-interpolated) boxes by the track id
             # the instrumentation hooks tagged them with, then measure
@@ -306,16 +321,20 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
 
     new_track_by_label = {}
     near_miss_by_label = {}
+    after_cut_by_label = {}
     for ev in _new_track_events:
         new_track_by_label[ ev['label'] ] = new_track_by_label.get( ev['label'], 0 ) + 1
         if ev['near_miss_dist'] is not None:
             near_miss_by_label[ ev['label'] ] = near_miss_by_label.get( ev['label'], 0 ) + 1
+        if ev.get( 'after_cut' ):
+            after_cut_by_label[ ev['label'] ] = after_cut_by_label.get( ev['label'], 0 ) + 1
 
     return {
         'frame_deltas_by_label': frame_deltas_by_label,
         'match_dists_by_label': match_dists_by_label,
         'new_track_by_label': new_track_by_label,
         'near_miss_by_label': near_miss_by_label,
+        'after_cut_by_label': after_cut_by_label,
         'dims_missing': dims_missing,
     }
 
@@ -340,8 +359,11 @@ def print_alpha_result( alpha, result, labels ):
                 matches, total_decisions, 100*matches/total_decisions,
                 new_tracks, total_decisions, 100*new_tracks/total_decisions ) )
         if new_tracks:
-            print( "    of new tracks, likely resets (another track was nearby but missed threshold): %d/%d (%.0f%%)"%(
-                near_misses, new_tracks, 100*near_misses/new_tracks ) )
+            after_cut = result.get( 'after_cut_by_label', {} ).get( label, 0 )
+            print( "    of new tracks, likely resets (another track in the same shot was nearby but missed threshold): "
+                   "%d/%d (%.0f%%)"%( near_misses, new_tracks, 100*near_misses/new_tracks ) )
+            print( "    of new tracks, a new shot starting beside where the last shot's track ended (never a reset: "
+                   "tracking stops at every cut): %d/%d (%.0f%%)"%( after_cut, new_tracks, 100*after_cut/new_tracks ) )
     print()
 
 

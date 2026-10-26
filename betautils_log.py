@@ -76,6 +76,84 @@ class _BetaLogger( logging.Logger ):
             self._log( TRACE, msg, args, **kwargs )
 
 
+FILE_FORMAT = '%(asctime)s [%(levelname)-5s] %(message)s'
+CONSOLE_FORMAT = '%(message)s'
+
+
+def _trace_capable( name ):
+    """
+    logging.getLogger( name ) as a _BetaLogger, whoever created it first.
+
+    Pipeline code calls logger.trace(). A tool that built its own plain
+    logging.Logger and handed it to the render path got AttributeError on
+    every chunk (suppression_ab, 2026-10-10), so every logger in the
+    project comes from here.
+    """
+    logger = logging.getLogger( name )
+    if not isinstance( logger, _BetaLogger ):
+        # A subclass adding one method: retyping in place keeps every
+        # reference, handler and level the logger already had.
+        logger.__class__ = _BetaLogger
+    return logger
+
+
+def _as_level( level ):
+    return level if isinstance( level, int ) else resolve_level( level )
+
+
+def tool_logger( name, log_path=None, file_level='info', console_level='info', file_mode='a',
+                 file_format=FILE_FORMAT, console_format=CONSOLE_FORMAT, console_stream=None ):
+    """
+    A tool's own logger: everything at file_level to log_path, and a view
+    filtered at console_level to the terminal. Trace-capable, so it can
+    be handed to any pipeline function.
+
+    Args:
+        name: Logger name, usually the tool's.
+        log_path: The log file, or None for none.
+        file_level, console_level: Level names ('trace'..'error') or
+            logging ints. console_level None means no terminal output.
+        file_mode: 'a' to append, 'w' to start the file fresh.
+        file_format, console_format: logging format strings.
+        console_stream: Where the terminal view goes; stdout by default.
+
+    Returns:
+        The logger. Building it again replaces its handlers.
+    """
+    logger = _trace_capable( name )
+    logger.propagate = False
+    logger.setLevel( TRACE )
+    for handler in list( logger.handlers ):
+        logger.removeHandler( handler )
+        try:
+            handler.close()
+        except Exception:
+            pass
+    if log_path:
+        log_dir = os.path.dirname( log_path )
+        if log_dir:
+            os.makedirs( log_dir, exist_ok=True )
+        file_handler = logging.FileHandler( log_path, mode=file_mode, encoding='UTF-8' )
+        file_handler.setLevel( _as_level( file_level ) )
+        file_handler.setFormatter( logging.Formatter( file_format ) )
+        logger.addHandler( file_handler )
+    if console_level is not None:
+        console_handler = logging.StreamHandler( console_stream or sys.stdout )
+        console_handler.setLevel( _as_level( console_level ) )
+        console_handler.setFormatter( logging.Formatter( console_format ) )
+        logger.addHandler( console_handler )
+    return logger
+
+
+def silent_logger( name ):
+    """A trace-capable logger that discards everything, for replays and workers."""
+    logger = _trace_capable( name )
+    logger.propagate = False
+    if not logger.handlers:
+        logger.addHandler( logging.NullHandler() )
+    return logger
+
+
 def _build_configured_logger():
     """
     Construct the 'betasuite' logger from betaconfig's current settings.
@@ -92,9 +170,7 @@ def _build_configured_logger():
     Returns:
         A configured logging.Logger (uncached - go through get_logger()).
     """
-    logging.setLoggerClass( _BetaLogger )
-    logger = logging.getLogger( 'betasuite' )
-    logging.setLoggerClass( logging.Logger )
+    logger = _trace_capable( 'betasuite' )
     logger.propagate = False
 
     if logger.handlers:
@@ -114,13 +190,12 @@ def _build_configured_logger():
             os.makedirs( log_dir, exist_ok=True )
         file_handler = logging.FileHandler( log_path, encoding='UTF-8' )
         file_handler.setLevel( file_level )
-        file_handler.setFormatter( logging.Formatter(
-            '%(asctime)s [%(levelname)-5s] %(message)s' ) )
+        file_handler.setFormatter( logging.Formatter( FILE_FORMAT ) )
         logger.addHandler( file_handler )
 
     console_handler = logging.StreamHandler( sys.stdout )
     console_handler.setLevel( console_level )
-    console_handler.setFormatter( logging.Formatter( '%(message)s' ) )
+    console_handler.setFormatter( logging.Formatter( CONSOLE_FORMAT ) )
     logger.addHandler( console_handler )
 
     return logger
@@ -286,20 +361,55 @@ def write_stats( record ):
     """
     if not getattr( betaconfig, 'stats_enabled', False ):
         return
+    _append_record( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH, record,
+                    'stats record' )
 
+
+def failures_path_for( stats_path ):
+    """
+    The failures file that sits beside a stats file:
+    betasuite_stats.jsonl -> betasuite_stats.failures.jsonl.
+
+    Derived rather than configured, so a tool pointed at any stats file
+    (summarize_run --stats-path) finds that run's failures with it.
+    """
+    stem, extension = os.path.splitext( stats_path )
+    return stem + '.failures' + ( extension or '.jsonl' )
+
+
+def write_failure( record ):
+    """
+    Append one JSON-Lines record for a file that failed to process.
+
+    A separate file, not a row in the stats file: five tools read every
+    stats row as a finished render (timings, label counts, encode
+    estimates), and a failure row among them would quietly skew all of
+    them. Before this existed a failed file left no trace outside
+    betasuite.log, so summarize_run showed it as simply absent; on
+    2026-10-24 two render failures read as "missing from the run".
+
+    Same switch and same swallow-and-log behaviour as write_stats.
+    """
+    if not getattr( betaconfig, 'stats_enabled', False ):
+        return
     stats_path = getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH
+    _append_record( failures_path_for( stats_path ), record, 'failure record' )
+
+
+def _append_record( path, record, what ):
+    """Append record as one JSON line to path; log and swallow any failure."""
     payload = dict( record )
     payload.setdefault( 'timestamp', time.time() )
     try:
-        stats_dir = os.path.dirname( stats_path )
-        if stats_dir:
-            os.makedirs( stats_dir, exist_ok=True )
+        directory = os.path.dirname( path )
+        if directory:
+            os.makedirs( directory, exist_ok=True )
         line = json.dumps( payload, default=str ) + "\n"
         with _stats_lock:
-            with open( stats_path, 'a', encoding='UTF-8' ) as fout:
+            with open( path, 'a', encoding='UTF-8' ) as fout:
                 fout.write( line )
     except Exception as err:
-        get_logger().warning( "failed to write stats record: %s"%(err) )
+        get_logger().warning( "failed to write %s: %s"%( what, err ) )
 
 
 # Historical name, kept so older tooling keeps resolving.

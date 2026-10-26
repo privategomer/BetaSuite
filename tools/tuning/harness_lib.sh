@@ -41,6 +41,12 @@
 #       below). Logs the prompt and the answer either way. Returns 0 for
 #       yes, 1 for no/timeout/non-interactive.
 #
+#   choose_option "question" default_number option ...
+#       numbered menu; sets CHOSEN_OPTION (the default when unattended)
+#   wait_for_enter "what to do first"
+#       waits for Enter (0) or q (1) while a person does something
+#       outside the script; returns 1 at once when unattended
+#
 #       IMPORTANT: a harness that might run via `nohup ... &` (the normal
 #       way to background a long harness) has no terminal to prompt on if
 #       it reaches a wait_for_confirmation call. Design harnesses so any
@@ -99,6 +105,55 @@ log_debug() { _log debug "$@"; }
 log_info()  { _log info  "$@"; }
 log_warn()  { _log warn  "$@"; }
 log_error() { _log error "$@"; }
+
+# choose_option "question" default_number option1 option2 ...
+#   Numbered menu at the terminal; sets CHOSEN_OPTION to the chosen
+#   option's text. Without a terminal it logs a warning and takes the
+#   default, so an unattended run never hangs on it.
+choose_option() {
+    local prompt="$1" default="$2"; shift 2
+    local options=( "$@" )
+    CHOSEN_OPTION="${options[$(( default - 1 ))]}"
+    if [ ! -t 0 ]; then
+        log_warn "AWAITING INPUT skipped: '$prompt' - stdin isn't a terminal, using the default: $CHOSEN_OPTION"
+        return 0
+    fi
+    log_info "AWAITING INPUT: $prompt"
+    local number=1 option
+    for option in "${options[@]}"; do
+        log_info "  $number) $option"
+        number=$(( number + 1 ))
+    done
+    local reply
+    read -r -p "$prompt [1-${#options[@]}, Enter for $default] " reply
+    reply="${reply:-$default}"
+    log_info "input received: $reply"
+    if [[ "$reply" =~ ^[0-9]+$ ]] && [ "$reply" -ge 1 ] && [ "$reply" -le "${#options[@]}" ]; then
+        CHOSEN_OPTION="${options[$(( reply - 1 ))]}"
+    else
+        log_warn "'$reply' is not one of the numbers; using the default: $CHOSEN_OPTION"
+    fi
+}
+
+# wait_for_enter "what to do first"
+#   Blocks until Enter (returns 0) or q (returns 1) at the terminal, for
+#   a phase where a person does something outside the script first.
+#   Without a terminal it returns 1 straight away, logged.
+wait_for_enter() {
+    local prompt="$1"
+    if [ ! -t 0 ]; then
+        log_warn "AWAITING INPUT skipped: '$prompt' - stdin isn't a terminal, stopping here"
+        return 1
+    fi
+    log_info "AWAITING INPUT: $prompt"
+    local reply
+    read -r -p "Press Enter when done, or q then Enter to stop here: " reply
+    log_info "input received: ${reply:-<Enter>}"
+    case "$reply" in
+        [qQ]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
 
 run_logged() {
     local desc="$1"; shift

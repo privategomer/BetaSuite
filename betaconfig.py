@@ -116,19 +116,24 @@ detector_backend = {
         # See CONFIG_REFERENCE.md -> "Re-deriving suppression rules".
         'class_suppression': {
             'exposed_breast': [
-                { 'suppressed_by': 'face_femme',       'margin': 0.105, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_belly',    'margin': 0.069, 'min_iou': 0.010 },
                 { 'suppressed_by': 'exposed_buttocks', 'margin': 0.119, 'min_iou': 0.010 },
-                { 'suppressed_by': 'covered_breast',   'margin': 0.045, 'min_iou': 0.029 },
+                { 'suppressed_by': 'covered_breast',   'margin': 0.081, 'min_iou': 0.425 },
             ],
             'exposed_vulva': [
                 { 'suppressed_by': 'face_femme',    'margin': 0.255, 'min_iou': 0.010 },
                 { 'suppressed_by': 'exposed_breast','margin': 0.231, 'min_iou': 0.022 },
                 { 'suppressed_by': 'exposed_belly', 'margin': 0.293, 'min_iou': 0.015 },
                 { 'suppressed_by': 'covered_breast','margin': 0.295, 'min_iou': 0.016 },
-                { 'suppressed_by': 'exposed_anus',  'margin': 0.113, 'min_iou': 0.080 },
+                { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 },
             ],
         },
+
+        # Pairs never to propose as new suppression rules.
+        'class_suppression_refused': [
+            'exposed_vulva<-exposed_penis',
+            'exposed_vulva<-exposed_buttocks',
+            'exposed_vulva<-exposed_feet',
+        ],
 
         # Detection- and tracking-sensitive per-label settings
         'item_overrides': {
@@ -141,7 +146,8 @@ detector_backend = {
                 'track_max_gap': 43.2,  # set by auto_tune 2026-09-19
                 'position_smoothing': 0.75,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
+                'confirm_score': 0.5,
                 'match_distance_multiplier': 3,  # set by auto_tune 2026-09-18
             },
             'exposed_breast': {
@@ -153,7 +159,8 @@ detector_backend = {
                 'track_max_gap': 0.17,
                 'paired_style': True,
                 'paired_style_max_age': 0.8,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
+                'confirm_score': 0.5,
                 'position_smoothing': 0.60,
                 'match_distance_multiplier': 2.0,  # set by auto_tune 2026-09-30
             },
@@ -165,7 +172,7 @@ detector_backend = {
                 'interpolation_max_gap': 3.6,
                 'track_max_gap': 43.2,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
                 'match_distance_multiplier': 3,
                 'position_smoothing': 0.75,
             },
@@ -216,7 +223,7 @@ detector_backend = {
                 'interpolation_max_gap': 0.5,
                 'track_max_gap': 13.5,
                 'paired_style': True,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-18
+                'min_track_hits': 2,
             },
         },
     },
@@ -320,6 +327,10 @@ cross_size_dedup = {
 shot_cut_detection_enabled = True
 shot_cut_threshold = 0.40   # Bhattacharyya distance 0-1; higher = less sensitive
 
+shot_cut_burst_window = 0.35
+shot_cut_burst_max_span = None
+shot_cut_burst_keep = 'first'
+
 # --- Resumability and rendering -----------------------------------------
 
 detection_checkpoint_frames = 500
@@ -332,9 +343,9 @@ ffmpeg_retry_backoff_seconds = 5
 
 # --- Encoding -----------------------------------------------------------
 
-encode_video_codec = 'libx264'
-encode_crf = 17
-encode_preset = 'fast'
+encode_video_codec = 'h264_nvenc'
+encode_preset = 'p5'
+encode_crf = 21
 
 # --- Source folder convention: folder -> structure profile --------------
 

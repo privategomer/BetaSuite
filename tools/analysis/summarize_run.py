@@ -14,6 +14,11 @@ batch size. Rows from different configurations are never pooled: the
 whole point of a two-backend run is the comparison between the groups,
 and averaging them together destroys exactly the number you ran it for.
 
+Files that failed have no row there. They are listed at the end from
+betasuite_stats.failures.jsonl, the file beside it, each marked with
+whether a later run rendered it, so a failure never reads as a file
+that was simply not in the run.
+
 WHAT THE STAGES MEAN
 
   detection  Sampling frames and running the model. Scales with
@@ -82,6 +87,63 @@ def load_rows( stats_path ):
             except Exception:
                 skipped += 1
     return rows, skipped
+
+
+def failures_to_report( failures, all_rows, include_preview, since_timestamp=None,
+                        window_start_timestamp=None ):
+    """
+    The failed files worth showing, each paired with when it later
+    rendered, if it did.
+
+    A failed file writes no stats row, so without this section it is
+    simply absent from every number above, which reads as "not in the
+    run" rather than "broke". The same filters as the rows apply: preview
+    failures only with --include-preview, nothing before --since, and
+    with --last nothing older than the oldest row kept.
+
+    Args:
+        failures: Failure records (betautils_log.write_failure).
+        all_rows: Every stats row, unfiltered, to find later successes.
+        include_preview: Keep preview-mode failures.
+        since_timestamp: Drop failures before this, or None.
+        window_start_timestamp: Drop failures before this, or None.
+
+    Returns:
+        A list of ( failure, rendered_later_timestamp_or_None ), oldest first.
+    """
+    kept = []
+    for failure in failures:
+        failed_at = failure.get( 'timestamp' ) or 0
+        if failure.get( 'preview_mode' ) and not include_preview:
+            continue
+        if since_timestamp is not None and failed_at < since_timestamp:
+            continue
+        if window_start_timestamp is not None and failed_at < window_start_timestamp:
+            continue
+        later = [ row.get( 'timestamp' ) or 0 for row in all_rows
+                  if row.get( 'file' ) == failure.get( 'file' )
+                  and bool( row.get( 'preview_mode' ) ) == bool( failure.get( 'preview_mode' ) )
+                  and ( row.get( 'timestamp' ) or 0 ) > failed_at ]
+        kept.append( ( failure, min( later ) if later else None ) )
+    kept.sort( key=lambda entry: entry[0].get( 'timestamp' ) or 0 )
+    return kept
+
+
+def print_failures( entries, failures_path ):
+    """The failed-files section; prints nothing when there are none."""
+    if not entries:
+        return
+    still_failing = sum( 1 for _failure, later in entries if later is None )
+    print( "FAILED FILES: %d failure(s), %d not rendered since (from %s)"%(
+        len( entries ), still_failing, failures_path ) )
+    print( "  a failed file has no stats row, so it is missing from every number above" )
+    for failure, later in entries:
+        stamp = datetime.datetime.fromtimestamp( failure.get( 'timestamp' ) or 0 )
+        status = ( "rendered later, %s"%( datetime.datetime.fromtimestamp( later ).strftime(
+                       '%Y-%m-%d %H:%M' ), ) if later is not None else "not rendered since" )
+        print( "  %s  %s  [%s]"%( stamp.strftime( '%Y-%m-%d %H:%M' ), failure.get( 'file' ), status ) )
+        print( "      %s"%( failure.get( 'error' ), ) )
+    print()
 
 
 def group_key( row ):
@@ -306,6 +368,17 @@ def main():
 
     stats_path = args.stats_path or getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH
     rows, skipped = load_rows( stats_path )
+    failures_path = bu_log.failures_path_for( stats_path )
+    failures, _failures_skipped = load_rows( failures_path )
+    all_rows = rows
+
+    cutoff = None
+    if args.since:
+        try:
+            cutoff = datetime.datetime.fromisoformat( args.since ).timestamp()
+        except ValueError:
+            print( "could not parse --since %r - expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"%(args.since) )
+            sys.exit( 2 )
 
     if not rows:
         # Not an error. "No run has written stats here yet" is a normal
@@ -315,27 +388,34 @@ def main():
         print( "no stats rows found at %s - nothing to summarise yet."%(stats_path) )
         print( "stats_enabled is %r in betaconfig.py; a run only writes rows when it is true."%(
             getattr( betaconfig, 'stats_enabled', None ) ) )
+        # A run where every file failed writes failures and no rows, and
+        # is exactly the run whose failures most need showing.
+        print()
+        print_failures( failures_to_report( failures, all_rows, args.include_preview, cutoff ),
+                        failures_path )
         sys.exit( 0 )
     if skipped:
         print( "(%d unparseable line(s) skipped - usually a row truncated by an interrupted run)"%(skipped) )
 
-    if args.since:
-        try:
-            cutoff = datetime.datetime.fromisoformat( args.since ).timestamp()
-        except ValueError:
-            print( "could not parse --since %r - expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"%(args.since) )
-            sys.exit( 2 )
+    if cutoff is not None:
         rows = [ row for row in rows if ( row.get( 'timestamp' ) or 0 ) >= cutoff ]
 
     if not args.include_preview:
         rows = [ row for row in rows if not row.get( 'preview_mode' ) ]
 
+    window_start = None
     if args.last:
         rows = rows[-args.last:]
+        if rows:
+            window_start = min( ( row.get( 'timestamp' ) or 0 ) for row in rows )
 
     if not rows:
         print( "no rows left after filtering. Drop --since/--last, or pass --include-preview if "
                "the run you are looking for was a preview run." )
+        # A --since window in which every file failed lands here too.
+        print()
+        print_failures( failures_to_report( failures, all_rows, args.include_preview, cutoff ),
+                        failures_path )
         sys.exit( 1 )
 
     groups = {}
@@ -356,8 +436,11 @@ def main():
     if len( groups ) > 1:
         print_comparison( groups )
 
+    print_failures( failures_to_report( failures, all_rows, args.include_preview, cutoff,
+                                        window_start ), failures_path )
+
     print( "next steps, in the order that usually pays off:" )
-    print( "  1. tools/bench/betabench.py all --yes      derive suppression/hysteresis/geometry/dedup" )
+    print( "  1. tools/bench/betabench.py cache --yes    derive suppression/hysteresis/geometry/dedup" )
     print( "     values from these same caches (add --sizes N to read a size this backend is no" )
     print( "     longer configured for)" )
     print( "  2. tools/analysis/run_all_analysis.sh      tracking and style diagnostics per backend" )
