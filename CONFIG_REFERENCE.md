@@ -3162,12 +3162,40 @@ initialise, onnxruntime falls back to CPU with a warning buried in
 stderr and the run simply becomes far slower with nothing to say why.
 The provider list in the stats row makes that answerable after the fact.
 
+A file that fails writes no stats row. It writes one line to
+`betasuite_stats.failures.jsonl` beside `stats_path` instead (the file,
+the error as the warning logged it, the backend and variant, the
+video's size and rate), under the same `stats_enabled` switch.
+`summarize_run.py` lists those failures after its numbers, each marked
+with whether a later run rendered the file. They are kept out of the
+stats file because five tools read every stats row as a finished
+render, and a failure among them would skew all of them without a
+sign. Before this a failed file left nothing outside `betasuite.log`,
+and on 2026-10-24 two render failures read as files missing from the
+run.
+
+### ffmpeg's own output
+
+Every ffmpeg the render starts (chunk encode, chunk concat, final mux)
+has its stderr captured into the log file at debug, and a failure's
+reason carries ffmpeg's exit code and the line that names the encoder.
+Before this, ffmpeg wrote to the terminal only, and an encoder that
+quit mid-chunk was reported as `BrokenPipeError` with no reason: two
+4K files on 2026-10-23/24 lost a chunk each that way. A successful
+ffmpeg that still printed something at `-loglevel error` is a warning.
+Only the first 10 and last 30 lines of each ffmpeg are kept.
+
 ### `debug_mode`
 
 `0` off, `1` draws labelled debug boxes for **every** class instead of
 censoring, `3` additionally saves debug output. Useful for eyeballing
 detection quality without touching `items_to_censor`. It is part of the
 censor cache key, so debug output never overwrites a real render.
+
+With bit 1 set, render ffmpeg also runs at its normal log level
+instead of `-loglevel error`. That output goes to the log file at
+debug when each ffmpeg exits, no longer live to the terminal; pass
+`--console-level debug` to see it there.
 
 ---
 

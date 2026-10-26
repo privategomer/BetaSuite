@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 
@@ -127,6 +128,113 @@ class TestMalformedInput( unittest.TestCase ):
         rows, skipped = summarize_run.load_rows( '/nonexistent/stats.jsonl' )
         self.assertEqual( rows, [] )
         self.assertEqual( skipped, 0 )
+
+
+def _failure( name='a.mkv', at=1_700_000_100, preview=False ):
+    return { 'file': name, 'error': "RenderError('chunk 5 failed')", 'preview_mode': preview,
+             'timestamp': at }
+
+
+def _row_for( name, at, preview=False ):
+    row = _row( preview=preview )
+    row.update( { 'file': name, 'timestamp': at } )
+    return row
+
+
+class TestFailuresToReport( unittest.TestCase ):
+
+    def test_a_failure_with_no_later_render_is_reported_as_such( self ):
+        entries = summarize_run.failures_to_report( [ _failure() ], [], include_preview=False )
+        self.assertEqual( entries, [ ( _failure(), None ) ] )
+
+    def test_a_later_render_of_the_same_file_is_named_with_its_time( self ):
+        rows = [ _row_for( 'a.mkv', 1_700_000_050 ),    # before the failure: not a fix
+                 _row_for( 'a.mkv', 1_700_000_300 ),
+                 _row_for( 'a.mkv', 1_700_000_200 ),
+                 _row_for( 'b.mkv', 1_700_000_150 ) ]
+        entries = summarize_run.failures_to_report( [ _failure() ], rows, include_preview=False )
+        self.assertEqual( entries[0][1], 1_700_000_200, "the EARLIEST later render" )
+
+    def test_a_render_at_exactly_the_failure_time_is_not_later( self ):
+        rows = [ _row_for( 'a.mkv', 1_700_000_100 ) ]
+        entries = summarize_run.failures_to_report( [ _failure() ], rows, include_preview=False )
+        self.assertIsNone( entries[0][1] )
+
+    def test_a_preview_render_does_not_clear_a_full_run_failure( self ):
+        rows = [ _row_for( 'a.mkv', 1_700_000_200, preview=True ) ]
+        entries = summarize_run.failures_to_report( [ _failure() ], rows, include_preview=True )
+        self.assertIsNone( entries[0][1] )
+
+    def test_preview_failures_follow_include_preview( self ):
+        failures = [ _failure( preview=True ) ]
+        self.assertEqual( summarize_run.failures_to_report( failures, [], include_preview=False ), [] )
+        self.assertEqual( len( summarize_run.failures_to_report( failures, [], include_preview=True ) ), 1 )
+
+    def test_since_and_the_last_window_drop_older_failures( self ):
+        failures = [ _failure( 'old.mkv', at=100 ), _failure( 'on.mkv', at=200 ),
+                     _failure( 'new.mkv', at=300 ) ]
+        by_since = summarize_run.failures_to_report( failures, [], False, since_timestamp=200 )
+        by_window = summarize_run.failures_to_report( failures, [], False, window_start_timestamp=300 )
+        self.assertEqual( [ failure['file'] for failure, _later in by_since ], [ 'on.mkv', 'new.mkv' ],
+            "--since keeps rows AT the cutoff, so failures at it stay too" )
+        self.assertEqual( [ failure['file'] for failure, _later in by_window ], [ 'new.mkv' ],
+            "a failure AT the window start is inside it" )
+
+    def test_oldest_first( self ):
+        failures = [ _failure( 'second.mkv', at=300 ), _failure( 'first.mkv', at=100 ) ]
+        entries = summarize_run.failures_to_report( failures, [], False )
+        self.assertEqual( [ failure['file'] for failure, _later in entries ],
+                          [ 'first.mkv', 'second.mkv' ] )
+
+
+class TestFailuresInTheReport( unittest.TestCase ):
+    """main() end to end, reading a stats file and the failures file beside it."""
+
+    def _report( self, rows, failures, *args ):
+        import contextlib
+        import io
+        import betautils_log as bu_log
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_path = os.path.join( tmp, 'betasuite_stats.jsonl' )
+            for path, records in ( ( stats_path, rows ),
+                                   ( bu_log.failures_path_for( stats_path ), failures ) ):
+                if records:
+                    with open( path, 'w', encoding='UTF-8' ) as fout:
+                        for record in records:
+                            fout.write( json.dumps( record ) + "\n" )
+            output = io.StringIO()
+            argv = [ 'summarize_run.py', '--stats-path', stats_path ] + list( args )
+            with mock.patch.object( sys, 'argv', argv ), contextlib.redirect_stdout( output ):
+                try:
+                    summarize_run.main()
+                except SystemExit:
+                    pass
+            return output.getvalue()
+
+    def test_failed_files_are_listed_after_the_numbers( self ):
+        text = self._report( [ _row_for( 'b.mkv', 1_700_000_000 ) ],
+                             [ _failure( 'a.mkv', at=1_700_000_100 ) ] )
+        self.assertIn( "FAILED FILES: 1 failure(s), 1 not rendered since", text )
+        self.assertIn( "a.mkv  [not rendered since]", text )
+        self.assertIn( "RenderError('chunk 5 failed')", text )
+        self.assertLess( text.index( "FAILED FILES" ), text.index( "next steps" ) )
+
+    def test_no_failures_no_section( self ):
+        text = self._report( [ _row_for( 'b.mkv', 1_700_000_000 ) ], [] )
+        self.assertNotIn( "FAILED FILES", text )
+
+    def test_a_run_where_every_file_failed_still_shows_its_failures( self ):
+        text = self._report( [], [ _failure( 'a.mkv' ) ] )
+        self.assertIn( "no stats rows found", text )
+        self.assertIn( "a.mkv  [not rendered since]", text )
+
+    def test_last_keeps_only_failures_inside_the_rows_it_kept( self ):
+        rows = [ _row_for( 'x.mkv', 1_700_000_000 ), _row_for( 'y.mkv', 1_700_000_500 ) ]
+        failures = [ _failure( 'early.mkv', at=1_700_000_100 ),
+                     _failure( 'late.mkv', at=1_700_000_600 ) ]
+        text = self._report( rows, failures, '--last', '1' )
+        self.assertIn( "late.mkv", text )
+        self.assertNotIn( "early.mkv", text )
 
 
 if __name__ == '__main__':

@@ -2557,18 +2557,9 @@ def _ffmpeg_lists_encoder( name ):
     return any( line.split()[1:2] == [ name ] for line in listing.splitlines() if line.strip() )
 
 
-def ffmpeg_error_line( text, codec ):
-    """
-    The line of ffmpeg's stderr that says what went wrong: the first one
-    naming the encoder, else the first line. ffmpeg's LAST line is
-    usually a generic consequence ("Nothing was written into output
-    file") rather than the cause ("Cannot load libcuda.so.1").
-    """
-    lines = [ line.strip() for line in text.strip().splitlines() if line.strip() ]
-    for line in lines:
-        if codec.lower() in line.lower():
-            return line
-    return lines[0] if lines else None
+# Moved to betautils_render, which needs it for real renders too; this
+# name stays so the encode bench and its tests read the same function.
+ffmpeg_error_line = bu_render.ffmpeg_error_line
 
 
 def probe_nvenc_sessions( wanted ):

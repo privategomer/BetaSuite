@@ -652,9 +652,40 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
     except Exception as err:
         logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
         logger.debug( "failure detail", exc_info=True )
+        # Recording the failure must never turn one bad file into a
+        # stopped run, so a problem building the record is logged here.
+        try:
+            bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
+                                                   time.perf_counter() - started_at ) )
+        except Exception as record_err:
+            logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
         return 'failed'
     finally:
         source.release()
+
+
+def _failure_record( fname, preview_mode_enabled, source, err, elapsed_seconds ):
+    """
+    The JSON-Lines failures row for one file that did not finish.
+
+    Only what is known however early the failure came: the file, the
+    reason exactly as the warning logged it, and the run identity
+    summarize_run groups by. Detection keys and track stats may not
+    exist yet, so they are not here.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    return {
+        'file': fname,
+        'error': repr( err ),
+        'preview_mode': preview_mode_enabled,
+        'elapsed_seconds': round( elapsed_seconds, 3 ),
+        'betasuite_version': bu_version.get_version(),
+        'detector_backend': backend_name,
+        'detector_variant': bu_detector.selected_variant_name( backend_name ),
+        'video_width': source.width,
+        'video_height': source.height,
+        'video_fps': round( source.vid_fps, 4 ) if source.vid_fps else None,
+    }
 
 
 def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
