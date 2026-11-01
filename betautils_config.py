@@ -1527,6 +1527,16 @@ def _validate_render_settings( errors ):
         errors.append( "render_workers must be a non-negative integer (0 = auto-detect from CPU count), "
             "got %r"%(workers,) )
 
+    per_megapixel = getattr( betaconfig, 'render_worker_mb_per_megapixel', 200 )
+    if per_megapixel is not None and ( not isinstance( per_megapixel, (int, float) )
+                                       or isinstance( per_megapixel, bool ) or per_megapixel <= 0 ):
+        errors.append( "render_worker_mb_per_megapixel must be a positive number of MB, or None to turn "
+            "the memory cap on render workers off, got %r"%(per_megapixel,) )
+
+    reserve = getattr( betaconfig, 'render_memory_reserve_mb', 2048 )
+    if not isinstance( reserve, (int, float) ) or isinstance( reserve, bool ) or reserve < 0:
+        errors.append( "render_memory_reserve_mb must be a non-negative number of MB, got %r"%(reserve,) )
+
     container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
     if container not in ( 'mkv', 'mp4' ):
         errors.append( "render_chunk_container must be 'mkv' or 'mp4', got %r - these are the two the "

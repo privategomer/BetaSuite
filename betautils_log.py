@@ -412,5 +412,200 @@ def _append_record( path, record, what ):
         get_logger().warning( "failed to write %s: %s"%( what, err ) )
 
 
+# --- Unfinished-run detection -------------------------------------------------
+
+def run_marker_path_for( stats_path ):
+    """The run marker that sits beside a stats file: betasuite_stats.jsonl -> betasuite_stats.running.json."""
+    stem, _extension = os.path.splitext( stats_path )
+    return stem + '.running.json'
+
+
+def current_boot_id( path='/proc/sys/kernel/random/boot_id' ):
+    """This boot's id on Linux, so a marker from before a reboot is never mistaken for a live run."""
+    try:
+        with open( path, 'r', encoding='ascii' ) as handle:
+            return handle.read().strip() or None
+    except OSError:
+        return None
+
+
+def betatv_process_running( pid, proc_root='/proc' ):
+    """
+    True if pid is a running betatv, False if it is not, None where this
+    platform cannot tell.
+
+    os.kill( pid, 0 ) only asks whether a pid exists, on POSIX. On
+    Windows os.kill with any other signal TERMINATES the process, so it
+    is never called there. A pid that exists but whose command line has
+    no 'betatv' in it was reused by something else after the run died.
+    """
+    if os.name != 'posix' or not isinstance( pid, int ) or pid <= 0:
+        return None
+    try:
+        os.kill( pid, 0 )
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    except OSError:
+        return None
+    try:
+        with open( os.path.join( proc_root, str( pid ), 'cmdline' ), 'rb' ) as handle:
+            command_line = handle.read()
+    except OSError:
+        return True
+    return b'betatv' in command_line
+
+
+class RunMarker:
+    """
+    A small file that exists exactly while a betatv run is running,
+    naming the file it is on.
+
+    WHY. A process killed with SIGKILL (the kernel's out-of-memory
+    killer, systemd-oomd), a native crash inside a library, or a power
+    loss ends the run without a single line in betasuite.log: no
+    "failed", no "run finished", nothing the failures file or
+    summarize_run could ever show. On 2026-10-26 two runs died that way
+    on a 4K file and the only trace was the shell printing "Killed". The
+    marker is removed by every ending the run can still act on (finish,
+    Ctrl-C, an exception), so one found at startup means the last run
+    ended in a way it could not report, and this run says so and records
+    the file it was on as a failure.
+
+    Args:
+        path: run_marker_path_for( stats_path ).
+        logger: The shared logger.
+        clock: Returns epoch seconds; injected for tests.
+        pid: This process's id.
+        boot_id: current_boot_id(), or None where unknown.
+        is_running: pid -> True/False/None, see betatv_process_running.
+    """
+
+    def __init__( self, path, logger, clock=time.time, pid=None, boot_id=None,
+                  is_running=betatv_process_running ):
+        self.path = path
+        self.logger = logger
+        self.clock = clock
+        self.pid = os.getpid() if pid is None else pid
+        self.boot_id = boot_id
+        self.is_running = is_running
+        self.record = None
+
+    def read( self ):
+        """The marker on disk, or None if there is none or it cannot be read."""
+        try:
+            with open( self.path, 'r', encoding='UTF-8' ) as handle:
+                record = json.load( handle )
+        except FileNotFoundError:
+            return None
+        except ( OSError, ValueError ) as err:
+            self.logger.debug( "unreadable run marker %s ignored: %s"%( self.path, err ) )
+            return None
+        return record if isinstance( record, dict ) else None
+
+    def previous_run_state( self, previous ):
+        """
+        'running', 'ended' or 'unknown' for a marker found at startup.
+        A different boot id settles it before asking about the pid,
+        because pids are reused across reboots.
+        """
+        if previous.get( 'boot_id' ) and self.boot_id and previous['boot_id'] != self.boot_id:
+            return 'ended'
+        running = self.is_running( previous.get( 'pid' ) )
+        if running is None:
+            return 'unknown'
+        return 'running' if running else 'ended'
+
+    def report_previous( self ):
+        """
+        Say what a leftover marker means and, when the earlier run died
+        on a file, record that file as failed so summarize_run lists it.
+
+        Returns:
+            'none', 'running', 'ended' or 'unknown'.
+        """
+        previous = self.read()
+        if previous is None:
+            return 'none'
+        state = self.previous_run_state( previous )
+        started = _clock_text( previous.get( 'started_at' ) )
+        if state == 'running':
+            self.logger.warning( "another betatv run (pid %s, started %s) is still running; two runs "
+                                 "over the same folders write the same outputs"%(
+                                     previous.get( 'pid' ), started ) )
+            return state
+        fname = previous.get( 'file' )
+        where = ( "while processing %s (since %s)"%( fname, _clock_text( previous.get( 'file_started_at' ) ) )
+                  if fname else "between files" )
+        caveat = ( " (this platform cannot check whether it is still running)"
+                   if state == 'unknown' else "" )
+        self.logger.warning(
+            "the previous run (pid %s, started %s) ended without finishing %s%s. A run that is killed "
+            "(out of memory), crashes inside a library or loses power cannot log why; on Linux "
+            "`journalctl -k | grep -i oom` around that time shows an out-of-memory kill"%(
+                previous.get( 'pid' ), started, where, caveat ) )
+        if fname:
+            write_failure( {
+                'file': fname,
+                'error': "the run ended while processing this file without logging why: killed "
+                         "(out of memory), crashed, or lost power",
+                'preview_mode': bool( previous.get( 'preview_mode' ) ),
+                'timestamp': previous.get( 'file_started_at' ) or previous.get( 'started_at' ),
+                'unfinished_run_pid': previous.get( 'pid' ),
+            } )
+        return state
+
+    def start( self ):
+        """Write this run's marker."""
+        self.record = { 'pid': self.pid, 'boot_id': self.boot_id, 'started_at': self.clock(),
+                        'file': None, 'file_started_at': None, 'preview_mode': None }
+        self._write()
+
+    def now_processing( self, fname, preview_mode ):
+        """Name the file the run is about to work on."""
+        if self.record is None:
+            return
+        self.record.update( { 'file': fname, 'file_started_at': self.clock(),
+                              'preview_mode': bool( preview_mode ) } )
+        self._write()
+
+    def finish( self ):
+        """Remove the marker, but only this run's: never another run's that replaced it."""
+        if self.record is None:
+            return
+        self.record = None
+        on_disk = self.read()
+        if on_disk is not None and on_disk.get( 'pid' ) != self.pid:
+            return
+        try:
+            os.remove( self.path )
+        except FileNotFoundError:
+            pass
+        except OSError as err:
+            self.logger.warning( "could not remove the run marker %s: %s"%( self.path, err ) )
+
+    def _write( self ):
+        # Written whole and renamed into place, so a run killed mid-write
+        # leaves the previous marker rather than half a JSON file.
+        temporary = self.path + '.tmp'
+        try:
+            directory = os.path.dirname( self.path )
+            if directory:
+                os.makedirs( directory, exist_ok=True )
+            with open( temporary, 'w', encoding='UTF-8' ) as handle:
+                json.dump( self.record, handle )
+            os.replace( temporary, self.path )
+        except OSError as err:
+            self.logger.warning( "could not write the run marker %s: %s"%( self.path, err ) )
+
+
+def _clock_text( epoch_seconds ):
+    """Local time for a marker timestamp, or 'an unknown time'."""
+    if not isinstance( epoch_seconds, (int, float) ):
+        return "an unknown time"
+    return time.strftime( '%Y-%m-%d %H:%M:%S', time.localtime( epoch_seconds ) )
+
+
 # Historical name, kept so older tooling keeps resolving.
 _format_duration = format_duration

@@ -517,6 +517,62 @@ class TestInterruptHandling( BetaTvHarness ):
                           repr( RuntimeError( 'a bad file, not a user interrupt' ) ) )
         self.assertFalse( records[0]['preview_mode'] )
 
+    def _run_main( self ):
+        with mock.patch.object( betatv, '_startup', return_value=self.logger ):
+            return betatv.main()
+
+    def test_main_reports_a_run_that_died_and_leaves_no_marker_of_its_own( self ):
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+        marker_path = bu_log.run_marker_path_for( betaconfig.stats_path )
+        with open( marker_path, 'w', encoding='UTF-8' ) as handle:
+            json.dump( { 'pid': 999, 'boot_id': 'a-boot-before-this-one', 'started_at': 1_600_000_000,
+                         'file': 'clip.mp4', 'file_started_at': 1_600_000_100,
+                         'preview_mode': False }, handle )
+        with self.assertLogs( self.logger, level='WARNING' ) as logged:
+            self.assertEqual( self._run_main(), 0 )
+        self.assertTrue( any( "ended without finishing while processing clip.mp4" in record.getMessage()
+                              for record in logged.records ) )
+        with open( bu_log.failures_path_for( betaconfig.stats_path ), encoding='UTF-8' ) as handle:
+            records = [ json.loads( line ) for line in handle ]
+        self.assertEqual( [ record['file'] for record in records ], [ 'clip.mp4' ] )
+        self.assertTrue( os.path.exists( betaconfig.stats_path ), "the file then rendered normally" )
+        self.assertFalse( os.path.exists( marker_path ) )
+
+    def test_main_names_each_file_in_the_marker_while_it_works_on_it( self ):
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+        marker_path = bu_log.run_marker_path_for( betaconfig.stats_path )
+        seen = []
+
+        def record_marker( root, fname, *args, **kwargs ):
+            with open( marker_path, encoding='UTF-8' ) as handle:
+                seen.append( json.load( handle )['file'] )
+            return 'processed'
+
+        with mock.patch.object( betatv, 'process_one_video', record_marker ):
+            self._run_main()
+        self.assertEqual( seen, [ 'clip.mp4' ] )
+
+    def test_an_ordinary_failure_is_not_mistaken_for_a_dead_run( self ):
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
+
+        def failing_detect( *args, **kwargs ):
+            raise RuntimeError( 'a bad file, not a user interrupt' )
+
+        with mock.patch.object( betatv, 'detect_boxes_for_video', failing_detect ):
+            self._run_main()
+        self.assertFalse( os.path.exists( bu_log.run_marker_path_for( betaconfig.stats_path ) ),
+            "the run finished, so its marker is gone and the next run reports nothing" )
+
+    def test_a_model_that_fails_to_load_still_removes_the_marker( self ):
+        class BrokenDetector:
+            def get_session( self ):
+                raise RuntimeError( 'model would not load' )
+
+        with mock.patch.object( betatv.bu_detector, 'get_detector', return_value=BrokenDetector() ):
+            with self.assertRaises( RuntimeError ):
+                self._run_main()
+        self.assertFalse( os.path.exists( bu_log.run_marker_path_for( betaconfig.stats_path ) ) )
+
     def test_a_processed_file_writes_no_failure_record( self ):
         _build_clip( os.path.join( self.uncensored, 'clip.mp4' ) )
         self.assertEqual( self.run_one(), 'processed' )

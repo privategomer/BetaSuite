@@ -762,13 +762,21 @@ def main():
     preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
     active_encode_preset = _resolve_active_encode_preset()
 
-    session = bu_detector.get_detector().get_session()
+    run_marker = bu_log.RunMarker(
+        bu_log.run_marker_path_for( getattr( betaconfig, 'stats_path', None )
+                                    or bu_log.DEFAULT_STATS_PATH ),
+        logger, boot_id=bu_log.current_boot_id() )
+    run_marker.report_previous()
+    run_marker.start()
 
     counts = { 'processed': 0, 'skipped': 0, 'failed': 0 }
     exit_code = 0
     run_started_at = time.perf_counter()
 
     try:
+        # Inside the try, so a model that fails to load (or a Ctrl-C
+        # while it loads) still removes the run marker on the way out.
+        session = bu_detector.get_detector().get_session()
         for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
             censored_folder = root.replace(
                 betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
@@ -777,6 +785,7 @@ def main():
 
             for file_index, fname in enumerate( sorted( file_names ) ):
                 bu_signals.check()
+                run_marker.now_processing( fname, preview_mode_enabled )
                 outcome = process_one_video(
                     root, fname, censored_folder, file_index, len( file_names ), session,
                     preview_mode_enabled, preview_max_seconds, active_encode_preset, logger )
@@ -787,6 +796,9 @@ def main():
         exit_code = 130
     finally:
         bu_hash.flush_file_hash_memo()
+        # Every ending this process can still act on removes the marker,
+        # so one left behind means the run died without a chance to log.
+        run_marker.finish()
 
     logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(
         bu_log.format_duration( time.perf_counter() - run_started_at ),

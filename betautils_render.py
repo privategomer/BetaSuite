@@ -42,6 +42,7 @@ import math
 import bisect
 import os
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -216,6 +217,99 @@ def resolve_worker_count( chunk_count ):
         return max( 1, min( int( configured ), chunk_count ) )
     cpu_count = os.cpu_count() or 1
     return max( 1, min( cpu_count // 2 or 1, 8, chunk_count ) )
+
+
+def available_memory_bytes( meminfo_path='/proc/meminfo' ):
+    """
+    Memory a new process can have without swapping (Linux MemAvailable),
+    or None where that cannot be read (other platforms, or a kernel
+    without the field). Swap is deliberately not counted: a render
+    pushed into swap crawls, and 4 GiB of swap did not stop the
+    2026-10-26 out-of-memory kills anyway.
+    """
+    try:
+        with open( meminfo_path, 'r', encoding='ascii' ) as handle:
+            for line in handle:
+                if line.startswith( 'MemAvailable:' ):
+                    return int( line.split()[1] ) * 1024
+    except ( OSError, ValueError, IndexError ):
+        return None
+    return None
+
+
+def memory_worker_cap( frame_width, frame_height, available_bytes ):
+    """
+    ( cap, per_worker_bytes ): how many render workers fit in memory at
+    this frame size, or ( None, None ) when the cap does not apply.
+
+    WHY THIS EXISTS. Worker count came from CPU count alone. A 16-CPU
+    laptop with 15 GiB of RAM got 8 workers for a 4096x2160 file on
+    2026-10-26, and the kernel's out-of-memory killer killed betatv
+    twice, about 25 frames per worker into the render (python held 5.4
+    and 4.2 GB; the GPU driver also failed an allocation and one chunk
+    encoder segfaulted). The 1080p file before it rendered fine with
+    the same 8. Every worker holds its own decoder, frames in flight
+    and ffmpeg encoder, all of which grow with the pixel count.
+
+    The cost model is render_worker_mb_per_megapixel times the frame's
+    megapixels per worker, plus render_memory_reserve_mb kept free for
+    everything else on the machine. UNCERTAIN: the shipped 200 MB per
+    megapixel is a lower bound read off those two kills (8 workers at
+    8.85 MP exhausted roughly 14 GiB, so at least ~1.75 GiB each), not a
+    measurement of one worker. Raise it if a render is still killed;
+    a run's stats row records what the cap saw so it can be tuned.
+
+    Option not taken: watching free memory and starting workers one at
+    a time. It adapts to any encoder, but free memory moves for reasons
+    that have nothing to do with the render, and a gate that guesses
+    wrong stalls or overcommits silently. A fixed per-pixel cost is
+    wrong in a way the log states.
+
+    Args:
+        frame_width, frame_height: The source frame size in pixels.
+        available_bytes: available_memory_bytes(), or None if unknown.
+    """
+    mb_per_megapixel = getattr( betaconfig, 'render_worker_mb_per_megapixel', 200 )
+    if not mb_per_megapixel or available_bytes is None or not ( frame_width and frame_height ):
+        return None, None
+    reserve_bytes = getattr( betaconfig, 'render_memory_reserve_mb', 2048 ) * 1024 * 1024
+    megapixels = frame_width * frame_height / 1e6
+    per_worker_bytes = int( mb_per_megapixel * megapixels * 1024 * 1024 )
+    usable_bytes = available_bytes - reserve_bytes
+    return max( 1, usable_bytes // max( 1, per_worker_bytes ) ), per_worker_bytes
+
+
+def plan_worker_count( chunk_count, frame_width, frame_height, available_bytes, logger ):
+    """
+    The render's worker count: the CPU-based count from
+    resolve_worker_count, lowered to what memory holds at this frame
+    size. The cap applies to an explicit render_workers too, with a
+    warning, because the alternative is a SIGKILL that leaves nothing
+    in the log.
+
+    Returns:
+        ( worker_count, memory_cap_or_None ).
+    """
+    by_cpu = resolve_worker_count( chunk_count )
+    cap, per_worker_bytes = memory_worker_cap( frame_width, frame_height, available_bytes )
+    if cap is None:
+        logger.debug( "render: no memory cap on workers (%s)"%(
+            "MemAvailable unknown on this platform" if available_bytes is None
+            else "render_worker_mb_per_megapixel is off" ) )
+        return by_cpu, None
+    detail = ( "%.1f GiB available, %.1f GiB kept in reserve, about %.1f GiB per worker at %dx%d"%(
+        available_bytes / 2**30, getattr( betaconfig, 'render_memory_reserve_mb', 2048 ) / 1024,
+        per_worker_bytes / 2**30, frame_width, frame_height ) )
+    if cap >= by_cpu:
+        logger.debug( "render: memory allows %d worker(s), more than the %d used (%s)"%(
+            cap, by_cpu, detail ) )
+        return by_cpu, cap
+    if getattr( betaconfig, 'render_workers', 0 ):
+        logger.warning( "render: render_workers asks for %d but memory holds %d; using %d (%s)"%(
+            by_cpu, cap, cap, detail ) )
+    else:
+        logger.info( "render: memory caps workers at %d of %d (%s)"%( cap, by_cpu, detail ) )
+    return cap, cap
 
 
 def _encoder_threads( worker_count ):
@@ -719,10 +813,37 @@ class FfmpegStderr:
         return ffmpeg_error_line( '\n'.join( self._head + list( self._tail ) ), keyword )
 
 
+_CRASH_SIGNALS = frozenset( getattr( signal, name ) for name in
+                            ( 'SIGSEGV', 'SIGBUS', 'SIGILL', 'SIGFPE', 'SIGABRT' )
+                            if hasattr( signal, name ) )
+
+
+def describe_exit_status( returncode ):
+    """
+    How a process ended, in words: 'exited 1', 'crashed (SIGSEGV)',
+    'was killed (SIGKILL)'.
+
+    A negative returncode is a signal, and printing it as "exited -11"
+    hid the one fact that mattered on 2026-10-26: a 4K chunk encoder
+    segfaulted when the GPU driver ran out of host memory, and ffmpeg
+    prints nothing when it segfaults, so the signal is the whole story.
+    """
+    if returncode is not None and returncode < 0:
+        number = -returncode
+        try:
+            name = signal.Signals( number ).name
+        except ValueError:
+            name = "signal %d"%( number, )
+        if number in _CRASH_SIGNALS:
+            return "crashed (%s)"%( name, )
+        return "was killed (%s)"%( name, )
+    return "exited %d"%( returncode, )
+
+
 def describe_ffmpeg_failure( returncode, captured_stderr, keyword=None ):
-    """'ffmpeg exited N: <the line that says why>', or just the exit when ffmpeg said nothing."""
+    """'ffmpeg exited N: <the line that says why>', or just how it ended when ffmpeg said nothing."""
     line = captured_stderr.error_line( keyword ) if captured_stderr is not None else None
-    reason = "ffmpeg exited %d"%( returncode, )
+    reason = "ffmpeg %s"%( describe_exit_status( returncode ), )
     return "%s: %s"%( reason, line ) if line else reason
 
 
@@ -966,7 +1087,8 @@ def chunk_failure_reason( returncode, frames_written, write_error, captured_stde
         codec: The encoder the command asked for, to find its own line.
     """
     if returncode not in ( None, 0 ):
-        reason = "ffmpeg exited %d after %d frame(s) written"%( returncode, frames_written )
+        reason = "ffmpeg %s after %d frame(s) written"%( describe_exit_status( returncode ),
+                                                          frames_written )
         line = captured_stderr.error_line( codec ) if captured_stderr is not None else None
         if line:
             reason += ": " + line
@@ -1351,7 +1473,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
 
     Returns:
         A stats dict with 'chunks', 'chunks_rendered', 'chunks_reused',
-        'frames_written' and 'render_workers'.
+        'frames_written', 'render_workers', 'memory_available_mb' and
+        'memory_worker_cap' (None when no cap applied).
 
     Raises:
         RenderError: the render could not be completed.
@@ -1364,7 +1487,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
     if os.path.exists( final_path ) and bu_video.probe_video_ok( final_path ):
         logger.info( "final output already present and valid, nothing to render: %s"%(final_path) )
         return { 'chunks': 0, 'chunks_rendered': 0, 'chunks_reused': 0,
-                 'frames_written': 0, 'render_workers': 0 }
+                 'frames_written': 0, 'render_workers': 0,
+                 'memory_available_mb': None, 'memory_worker_cap': None }
 
     plans = plan_chunks( intermediate_path, source.vid_fps, source.num_frames,
                          preview_mode_enabled, preview_window_unlimited,
@@ -1377,7 +1501,9 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         if reused:
             logger.info( "render: reusing %d of %d chunk(s) from a previous run"%(reused, len( plans )) )
 
-        worker_count = resolve_worker_count( max( 1, len( outstanding ) ) )
+        memory_available = available_memory_bytes()
+        worker_count, memory_cap = plan_worker_count(
+            max( 1, len( outstanding ) ), source.width, source.height, memory_available, logger )
         encoder_threads = _encoder_threads( worker_count )
         total_frames = sum( plan.expected_frames for plan in outstanding )
 
@@ -1426,6 +1552,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         reused = len( plans )
         worker_count = 0
         frames_written = 0
+        memory_available = None
+        memory_cap = None
 
     mux_audio( intermediate_path, source.original_path, final_path,
                max_retries, retry_backoff, logger,
@@ -1437,4 +1565,9 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         'chunks_reused': reused,
         'frames_written': frames_written,
         'render_workers': worker_count,
+        # What the memory cap saw, so the per-megapixel estimate can be
+        # checked against runs that did and did not run out.
+        'memory_available_mb': ( round( memory_available / 2**20 )
+                                 if memory_available is not None else None ),
+        'memory_worker_cap': memory_cap,
     }
