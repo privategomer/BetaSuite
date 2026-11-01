@@ -2959,6 +2959,44 @@ happening. "1 worker x5 file(s), 2 worker(s) x2 file(s)" means the
 parallel renderer is idle, and no `render_workers` value fixes that,
 the chunk size is what decides how many chunks exist to hand out.
 
+**Memory caps it too (Linux).** Every worker holds its own decoder,
+frames in flight and ffmpeg encoder, and all of them grow with the
+frame's pixel count. On 2026-10-26 a 16-CPU laptop with 15 GiB of RAM
+got 8 workers for a 4096x2160 file and the kernel's out-of-memory
+killer killed betatv twice, about 25 frames per worker into the render;
+the 1080p file before it rendered fine with the same 8. So the CPU
+count is now lowered to what fits in `MemAvailable` at the start of
+each render:
+
+    workers <= ( MemAvailable - render_memory_reserve_mb )
+               / ( render_worker_mb_per_megapixel x frame megapixels )
+
+never below 1, and logged with the numbers it used. It applies to an
+explicit `render_workers` as well, with a warning, because the
+alternative is a SIGKILL that leaves nothing in the log. Swap is not
+counted. Chunk sizes are still planned from the CPU count, so changing
+these never invalidates chunks a killed run already finished. Off on
+platforms without `/proc/meminfo`, where the count is CPU-only as
+before.
+
+### `render_worker_mb_per_megapixel`
+
+Memory one render worker is assumed to need per megapixel of frame.
+**200**. `None` turns the memory cap off.
+
+**Uncertain, and a lower bound.** 200 is read off the two 2026-10-26
+kills, not a measurement of one worker: 8 workers at 8.85 MP exhausted
+roughly 14 GiB, so at least ~1.75 GiB each. At 200, 10 GiB available
+holds 4 workers at 4096x2160 and 19 at 1080p. If a render is still
+killed, raise it. Each stats row records `render_memory_available_mb`
+and `render_memory_worker_cap`, so runs that did and did not run out
+can be compared.
+
+### `render_memory_reserve_mb`
+
+Memory left out of the cap's arithmetic for everything else on the
+machine (desktop, browser, the detector's own session). **2048**.
+
 ### `render_chunk_seconds`
 
 Seconds of video per render chunk. **180**. `0` disables chunking.
@@ -3174,11 +3212,28 @@ sign. Before this a failed file left nothing outside `betasuite.log`,
 and on 2026-10-24 two render failures read as files missing from the
 run.
 
+A run that is SIGKILLed (the kernel's out-of-memory killer,
+systemd-oomd), crashes inside a native library, or loses power cannot
+log anything at all. While betatv runs, `betasuite_stats.running.json`
+beside `stats_path` names the run (pid, boot id) and the file it is on;
+every ending the run can still act on removes it. One found at the next
+start means the last run died silently: betatv warns, naming the file
+and pointing at `journalctl -k | grep -i oom`, and records that file in
+the failures file, so `summarize_run.py` lists it. A marker from before
+a reboot is always treated as dead; on Linux a live pid whose command
+line is not betatv is treated as reused. On platforms that cannot check
+a pid, the warning says so.
+
 ### ffmpeg's own output
 
 Every ffmpeg the render starts (chunk encode, chunk concat, final mux)
 has its stderr captured into the log file at debug, and a failure's
-reason carries ffmpeg's exit code and the line that names the encoder.
+reason carries how ffmpeg ended and the line that names the encoder.
+A signal is named rather than printed as a negative exit code:
+`crashed (SIGSEGV)`, `was killed (SIGKILL)`. On 2026-10-26 a 4K chunk
+encoder segfaulted when the GPU driver ran out of host memory, and
+ffmpeg prints nothing when it segfaults, so the signal is the only
+reason there is.
 Before this, ffmpeg wrote to the terminal only, and an encoder that
 quit mid-chunk was reported as `BrokenPipeError` with no reason: two
 4K files on 2026-10-23/24 lost a chunk each that way. A successful

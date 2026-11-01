@@ -336,6 +336,8 @@ shot_cut_burst_keep = 'first'
 detection_checkpoint_frames = 500
 render_chunk_seconds = 180
 render_workers = 0          # 0 = auto (CPU count / 2, capped at 8)
+render_worker_mb_per_megapixel = 200   # memory per worker per megapixel; None = no memory cap
+render_memory_reserve_mb = 2048        # left free for everything else
 render_chunk_container = 'mkv'
 render_verify_frame_counts = True
 ffmpeg_max_retries = 2

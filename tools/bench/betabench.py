@@ -2884,7 +2884,10 @@ def bench_encode( args, logger ):
     if not ( width and height and total_frames ):
         raise RuntimeError( "cannot read %s"%( video_path, ) )
 
-    workers = args.workers or bu_render.resolve_worker_count( 1 << 30 )
+    # The real render's count at this frame size, memory cap included,
+    # or the bench would run more 4K workers than a render ever does.
+    workers = args.workers or bu_render.plan_worker_count(
+        1 << 30, width, height, bu_render.available_memory_bytes(), logger )[0]
     threads = bu_render._encoder_threads( workers )
     segments = encode_segments( total_frames, fps, args.seconds, workers )
     stride = max( 1, args.quality_stride )
@@ -3432,7 +3435,10 @@ def bench_reverse( args, logger ):
     del frames
 
     # --- Part 2 ---
-    workers = args.workers or bu_render.resolve_worker_count( 1 << 30 )
+    # The real render's count at this frame size, memory cap included,
+    # or the bench would run more 4K workers than a render ever does.
+    workers = args.workers or bu_render.plan_worker_count(
+        1 << 30, width, height, bu_render.available_memory_bytes(), logger )[0]
     threads = bu_render._encoder_threads( workers )
     segments = encode_segments( total_frames, fps, args.seconds, workers )
     encoder = _baseline_encoder()

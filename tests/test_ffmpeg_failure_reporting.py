@@ -111,9 +111,39 @@ class TestChunkFailureReason( unittest.TestCase ):
         self.assertEqual( bu_render.chunk_failure_reason( 1, 0, None, None, None ),
                           "ffmpeg exited 1 after 0 frame(s) written" )
 
-    def test_killed_by_a_signal_counts_as_a_failure( self ):
-        self.assertTrue( bu_render.chunk_failure_reason( -9, 5, None, None, 'libx264' )
-                         .startswith( "ffmpeg exited -9" ) )
+    def test_a_crash_or_kill_is_named_by_its_signal( self ):
+        # 2026-10-26: a 4K chunk encoder segfaulted when the GPU driver ran
+        # out of host memory. ffmpeg prints nothing then; the signal is it.
+        self.assertEqual( bu_render.chunk_failure_reason( -11, 186, BrokenPipeError( 32, 'x' ),
+                                                          _captured( b'' ), 'h264_nvenc' ),
+                          "ffmpeg crashed (SIGSEGV) after 186 frame(s) written" )
+        self.assertEqual( bu_render.chunk_failure_reason( -9, 5, None, None, 'libx264' ),
+                          "ffmpeg was killed (SIGKILL) after 5 frame(s) written" )
+
+
+class TestDescribeExitStatus( unittest.TestCase ):
+
+    def test_ordinary_exits_keep_their_code( self ):
+        self.assertEqual( bu_render.describe_exit_status( 1 ), "exited 1" )
+        self.assertEqual( bu_render.describe_exit_status( 0 ), "exited 0" )
+        self.assertEqual( bu_render.describe_exit_status( 234 ), "exited 234" )
+
+    def test_crash_signals_read_as_crashes( self ):
+        for number, name in ( ( 11, 'SIGSEGV' ), ( 6, 'SIGABRT' ), ( 7, 'SIGBUS' ),
+                              ( 4, 'SIGILL' ), ( 8, 'SIGFPE' ) ):
+            with self.subTest( signal=name ):
+                self.assertEqual( bu_render.describe_exit_status( -number ), "crashed (%s)"%( name, ) )
+
+    def test_other_signals_read_as_kills( self ):
+        self.assertEqual( bu_render.describe_exit_status( -9 ), "was killed (SIGKILL)" )
+        self.assertEqual( bu_render.describe_exit_status( -15 ), "was killed (SIGTERM)" )
+        self.assertEqual( bu_render.describe_exit_status( -200 ), "was killed (signal 200)" )
+
+    def test_a_mux_or_concat_failure_uses_the_same_words( self ):
+        self.assertEqual( bu_render.describe_ffmpeg_failure( -9, _captured( b'' ) ),
+                          "ffmpeg was killed (SIGKILL)" )
+        self.assertEqual( bu_render.describe_ffmpeg_failure( 1, _captured( b'bad input\n' ) ),
+                          "ffmpeg exited 1: bad input" )
 
     def test_a_frame_loop_error_with_a_healthy_encoder_is_reported_as_itself( self ):
         error = RuntimeError( 'decoder fell over' )

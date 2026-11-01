@@ -355,6 +355,26 @@ class TestRenderAndEncodeValidation( ConfigHarness ):
         self.set_config( 'render_workers', 0 )
         self.assert_no_errors()
 
+    def test_a_bad_memory_cost_per_megapixel_is_an_error( self ):
+        for bad in ( 0, -5, 'lots', True ):
+            with self.subTest( value=bad ):
+                self.set_config( 'render_worker_mb_per_megapixel', bad )
+                self.assert_error_mentioning( 'render_worker_mb_per_megapixel' )
+
+    def test_none_turns_the_memory_cap_off_and_validates( self ):
+        for good in ( None, 200, 150.5 ):
+            with self.subTest( value=good ):
+                self.set_config( 'render_worker_mb_per_megapixel', good )
+                self.assert_no_errors()
+
+    def test_a_bad_memory_reserve_is_an_error( self ):
+        for bad in ( -1, 'some', None, False ):
+            with self.subTest( value=bad ):
+                self.set_config( 'render_memory_reserve_mb', bad )
+                self.assert_error_mentioning( 'render_memory_reserve_mb' )
+        self.set_config( 'render_memory_reserve_mb', 0 )
+        self.assert_no_errors()
+
     def test_an_unsupported_chunk_container_is_an_error( self ):
         self.set_config( 'render_chunk_container', 'avi' )
         self.assert_error_mentioning( 'render_chunk_container' )
