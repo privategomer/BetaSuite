@@ -1101,7 +1101,7 @@ def chunk_failure_reason( returncode, frames_written, write_error, captured_stde
 
 
 def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
-                      retry_backoff, progress, logger, motion_timelines=None ):
+                      retry_backoff, progress, logger, motion_timelines=None, reverse=None ):
     """
     Render one chunk to its own file, retrying on failure.
 
@@ -1122,6 +1122,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             the whole video, shared read-only across workers. None means
             build it here, which every worker would then do redundantly
             over the same box list - correct, just wasteful.
+        reverse: A betautils_reverse.ReverseRender for a reverse-mode
+            video, or None for normal mode. Read-only, shared.
 
     Returns:
         The number of frames written.
@@ -1193,7 +1195,15 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                                     live_boxes, motion_timelines, current_time, motion_max_span,
                                     motion_collapse_growth, motion_size_window )
                                 if motion_enabled else live_boxes )
-                frame = bu_censor.censor_img_for_boxes( frame, frame_boxes )
+                if reverse is None:
+                    frame = bu_censor.censor_img_for_boxes( frame, frame_boxes )
+                else:
+                    frame_alpha = reverse.frame_alpha( current_time )
+                    # Person windows only matter where the frame style is on.
+                    window_mask = ( reverse.window_mask( current_time, frame.shape[1], frame.shape[0] )
+                                    if frame_alpha > 0 else None )
+                    frame = bu_censor.censor_img_reverse(
+                        frame, frame_boxes, frame_alpha, reverse.frame_style, window_mask )
                 # memoryview avoids copying the whole frame just to hand
                 # its bytes to the pipe. Frames from cv2 are contiguous.
                 process.stdin.write( memoryview( frame ) if frame.flags['C_CONTIGUOUS']
@@ -1453,7 +1463,7 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
 
 def render_video( source, boxes, intermediate_path, final_path, preset,
                   preview_mode_enabled, preview_window_unlimited,
-                  preview_offset_seconds, preview_max_seconds, logger=None ):
+                  preview_offset_seconds, preview_max_seconds, logger=None, reverse=None ):
     """
     Render, concatenate and mux one video, resuming whatever a previous
     run already finished.
@@ -1470,6 +1480,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         preview_offset_seconds: Where the preview slice starts.
         preview_max_seconds: Preview window length.
         logger: Optional logger.
+        reverse: A betautils_reverse.ReverseRender, or None for normal
+            mode.
 
     Returns:
         A stats dict with 'chunks', 'chunks_rendered', 'chunks_reused',
@@ -1527,7 +1539,7 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
                 try:
                     return render_one_chunk( plan, source, boxes, preset, encoder_threads,
                                              max_retries, retry_backoff, progress, logger,
-                                             motion_timelines=shared_timelines )
+                                             motion_timelines=shared_timelines, reverse=reverse )
                 except Exception as err:
                     with failures_lock:
                         failures.append( err )

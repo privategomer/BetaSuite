@@ -46,6 +46,7 @@ import betautils_censor as bu_censor
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_log as bu_log
+import betautils_reverse as bu_reverse
 
 
 # ---------------------------------------------------------------------------
@@ -771,6 +772,17 @@ class _LabelSettings:
         # footage is cut. See betautils_detector.get_profiles.
         overrides.update(
             bu_detector.get_profile_item_overrides( profile_name, label, backend_name ) )
+        # Reverse mode's own keys (a window entry, a censored label's
+        # overrides) win over the profile too: they are reverse-specific
+        # tuning (a window wants precision where the normal censor wants
+        # recall), and a profile written for normal mode must not quietly
+        # undo them.
+        window = bu_reverse.window_entry( label )
+        if window is not None:
+            overrides.update( { key: value for key, value in window.items()
+                                if key not in bu_reverse.LOOK_KEYS } )
+        else:
+            overrides.update( bu_reverse.censor_override( label ) or {} )
         self.profile_name = profile_name
 
         # The UNRESOLVED censor_style (the weighted list), kept so a shot
@@ -786,8 +798,14 @@ class _LabelSettings:
             'style_min_dwell_seconds',
             getattr( betaconfig, 'default_style_min_dwell_seconds', 0.0 ) )
 
-        self.unresolved_censor_style = betaconfig.item_overrides.get(
-            label, {} ).get( 'censor_style', betaconfig.default_censor_style )
+        # Read from the resolved overrides rather than the shared block
+        # directly: in normal mode that is the same value (no lower tier
+        # may set a look key), and in reverse mode it is the window's
+        # style, or a censored label's override. Reading the shared block
+        # re-rolled a window into the label's normal-mode look at every
+        # shot cut.
+        self.unresolved_censor_style = overrides.get(
+            'censor_style', betaconfig.default_censor_style )
 
         self.alpha = overrides.get(
             'position_smoothing', betaconfig.default_position_smoothing )
@@ -1575,23 +1593,33 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
     return output_boxes, stats
 
 
-def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=None ):
+def filter_raw_detections( raw_boxes, vid_w, vid_h, labels, backend_name=None, logger=None,
+                           parts_to_blur=None ):
     """
-    Everything prepare_boxes_for_render does before tracking.
-
     Cross-size dedup, class promotion, the geometry filter, the relevance
-    filter, class suppression and conversion to censorable boxes, in
-    production order. Split out so the replay analysers feed tracking
-    exactly what a real run feeds it; they used to rebuild this sequence
-    by hand and had silently lost promotion and the geometry filter.
+    filter and class suppression, in production order.
+
+    One sequence for every consumer: tracking (via
+    prepare_tracking_inputs) and reverse mode's trigger
+    (trigger_detection_times) both read detections that went through
+    exactly these stages, so a stage added here reaches both.
+
+    Args:
+        raw_boxes: Raw detections. Not mutated: every stage returns new
+            lists, and promotion and clamping copy the boxes they change.
+        vid_w, vid_h: Frame size in pixels.
+        labels: The labels the caller reads afterwards. With every
+            suppressor, they are what the relevance filter keeps.
+        backend_name: Backend whose settings apply.
+        logger: Optional logger, for the promotion summary lines.
+        parts_to_blur: Optional resolved settings, only for suppression's
+            renderable counts.
 
     Returns:
-        A (boxes, stats) pair: censorable boxes ready for smooth_boxes,
-        and the per-stage counts prepare_boxes_for_render reports.
+        A (surviving_raw_boxes, stats) pair.
     """
     logger = logger or bu_log.get_logger()
     backend_name = backend_name or bu_detector.selected_backend_name()
-    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     suppression_rules = bu_detector.get_class_suppression( backend_name )
 
     stats = { 'raw_detections': len( raw_boxes ) }
@@ -1621,7 +1649,7 @@ def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=
     # suppression comparison. A label that is neither censored nor a
     # suppressor is invisible to every later stage, so this is a pure
     # speedup with no behavioural change.
-    relevant = relevant_labels_for_suppression( suppression_rules, parts_to_blur.keys() )
+    relevant = relevant_labels_for_suppression( suppression_rules, labels )
     before_relevance = len( raw_boxes )
     raw_boxes = [ raw for raw in raw_boxes if raw['class_id'] in relevant ]
     stats['irrelevant_labels_dropped'] = before_relevance - len( raw_boxes )
@@ -1630,6 +1658,28 @@ def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=
         raw_boxes, suppression_rules, parts_to_blur )
     stats['suppression_counts'] = suppression_counts
     stats['after_suppression'] = len( raw_boxes )
+    return raw_boxes, stats
+
+
+def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=None ):
+    """
+    Everything prepare_boxes_for_render does before tracking.
+
+    filter_raw_detections (dedup, promotion, geometry, relevance,
+    suppression), then conversion to censorable boxes, in production
+    order. Split out so the replay analysers feed tracking exactly what a
+    real run feeds it; they used to rebuild this sequence by hand and had
+    silently lost promotion and the geometry filter.
+
+    Returns:
+        A (boxes, stats) pair: censorable boxes ready for smooth_boxes,
+        and the per-stage counts prepare_boxes_for_render reports.
+    """
+    logger = logger or bu_log.get_logger()
+    backend_name = backend_name or bu_detector.selected_backend_name()
+    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
+    raw_boxes, stats = filter_raw_detections( raw_boxes, vid_w, vid_h, parts_to_blur.keys(),
+                                              backend_name, logger, parts_to_blur )
 
     label_counts = {}
     for raw in raw_boxes:
@@ -1645,9 +1695,36 @@ def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=
     return boxes, stats
 
 
+def trigger_detection_times( raw_boxes, vid_w, vid_h, backend_name=None ):
+    """
+    When reverse mode's trigger fires: the time of every detection of a
+    trigger label scoring above the trigger's min_prob, after the same
+    dedup, promotion, geometry and suppression stages tracking sees.
+
+    Deliberately NOT after each label's own min_prob or tracking: the
+    trigger wants recall (a miss leaves the whole frame clear) while a
+    window wants precision, so the trigger reads detections a strict
+    window rejects. Tracking observers are switched off for this pass, so
+    an analysis tool watching suppression does not count every rule
+    twice.
+
+    Returns:
+        A sorted list of times in seconds.
+    """
+    labels = bu_reverse.trigger_labels()
+    if not labels:
+        return []
+    min_prob = bu_reverse.settings()['trigger']['min_prob']
+    with tracking_observer( None ):
+        survivors, _stats = filter_raw_detections( raw_boxes, vid_w, vid_h, labels, backend_name,
+                                                   bu_log.silent_logger( 'betasuite.reverse_trigger' ) )
+    return sorted( raw['t'] for raw in survivors
+                   if raw['class_id'] in labels and raw['score'] > min_prob )
+
+
 def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
                              backend_name=None, logger=None, profile_name=None,
-                             sample_fps=None, cut_bursts=None ):
+                             sample_fps=None, cut_bursts=None, style_seed=None ):
     """
     The whole detection -> renderable-boxes pipeline, in one call.
 
@@ -1667,12 +1744,37 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
             global video_censor_fps.
         cut_bursts: How bursts of cuts merge before tracking; see
             tracking_cut_times. None follows the config.
+        style_seed: Seeds every style roll and sticker choice, so the
+            same video and settings always get the same looks. betatv
+            passes the file hash: a render resumed from chunks a
+            previous run finished then matches them, where an unseeded
+            re-roll could switch a track's style at the chunk boundary.
+            None leaves the rolls unseeded (the replay tools).
 
     Returns:
         A (boxes, stats) pair. boxes is sorted by 'start' ascending,
         ready for the renderer. stats carries per-stage counts for the
         run's stats line.
     """
+    if style_seed is None:
+        return _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name,
+                                          logger, profile_name, sample_fps, cut_bursts )
+    # The rolls draw from the random module (bu_censor.resolve_censor_style,
+    # sticker seeds), so seed it for this call and put it back after.
+    # Nothing else in the process draws from it while this runs: the
+    # shot-cut scan has finished, and the person pass and render never
+    # touch it.
+    state = random.getstate()
+    random.seed( 'betasuite-styles:%s'%( style_seed, ) )
+    try:
+        return _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name,
+                                          logger, profile_name, sample_fps, cut_bursts )
+    finally:
+        random.setstate( state )
+
+
+def _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name, logger,
+                               profile_name, sample_fps, cut_bursts ):
     logger = logger or bu_log.get_logger()
     backend_name = backend_name or bu_detector.selected_backend_name()
     boxes, stats = prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name, logger )

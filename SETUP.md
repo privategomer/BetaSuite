@@ -123,8 +123,9 @@ To go back to development, `git switch main`.
    rights needed, and it doesn't touch your system Python)
 5. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
 6. Creates the `resources/` and `output/` folders beside the repository
-7. Downloads the 320n model, checks any models already present, and
-   lists the two optional ones you download yourself (see
+7. Downloads the 320n model, exports the three YOLO11-seg person models
+   (reverse mode's person windows), checks any models already present,
+   and lists the two optional ones you download yourself (see
    [Models](#6-models))
 8. Offers to set `gpu_enabled` in `betaconfig.py` to match the build
 9. Runs `tools/setup/verify_env.py` and, optionally, the unit tests
@@ -318,6 +319,7 @@ detector adapters look for these names, so rename the downloads.
 | 320n (default, required) | `nudenet_v3` | automatic: `python3 tools/setup/fetch_models.py` | `v3.4-320n.onnx` |
 | 640m (optional) | `nudenet_v3`, `--variant 640m` | [640m.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.onnx) | `v3.4-640m.onnx` |
 | RetinaNet (optional) | `retinanet_v2` | [detector_v2_default_checkpoint.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint.onnx) | `detector_v2_default_checkpoint.onnx` |
+| YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | automatic: exported by `fetch_models.py` | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
 
 **320n** is bundled in the [`nudenet` package on PyPI](https://pypi.org/project/nudenet/3.4.2/#files),
 so setup downloads it for you and checks it against a pinned hash. By
@@ -341,6 +343,17 @@ you can skip the browser:
 gh release download v3.4-weights -R notAI-tech/NudeNet -p 640m.onnx -O ../resources/model/v3.4-640m.onnx
 gh release download v0 -R notAI-tech/NudeNet -p detector_v2_default_checkpoint.onnx -D ../resources/model/
 ```
+
+**The YOLO11-seg person models are exported, not downloaded as ONNX.**
+Ultralytics publishes them (AGPL-3.0, the same license as BetaSuite) as
+PyTorch `.pt` files. Setup downloads each one, checks it against a pinned
+hash, and exports it to ONNX in a throwaway environment (ultralytics plus
+CPU-only PyTorch, a few hundred MB, fetched once into uv's cache) that is
+deleted afterwards. BetaSuite's own `.venv` never gets PyTorch: the
+models run through onnxruntime like the detectors. `--no-export` skips
+it; reverse mode with `person_windows` on then refuses to start until the
+model is there. The export takes about a minute once the packages are
+downloaded.
 
 A logged-out download saves GitHub's sign-in page under the `.onnx` name,
 which then fails to load with `INVALID_PROTOBUF`. `fetch_models.py`

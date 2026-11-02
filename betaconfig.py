@@ -380,6 +380,66 @@ items_to_censor = [
     # 'face_masc',
 ]
 
+# --- Reverse mode: obscure the frame except detected windows -----------
+
+reverse = {
+    'enabled': False,
+    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 20 },
+    # 'passthrough' | 'obscure'
+    'empty_frame': 'passthrough',
+    'fade_seconds': 0.25,
+    'trigger': {
+        # None = every censored label
+        'labels': None,
+        'min_prob': 0.30,
+        'hold_seconds': 0.5,
+    },
+    # Censored inside a triggered frame, each with its normal-mode look
+    'censor': {
+        # None = items_to_censor
+        'labels': None,
+        # {label: reverse-only item_overrides keys}
+        'overrides': {},
+    },
+    # Never censored
+    'windows': {
+        'face_femme': {},
+        'face_masc': {},
+        'exposed_chest': {},
+        'exposed_penis': {},
+    },
+    # Whole male bodies, from person_backend masks
+    'person_windows': {
+        'enabled': True,
+        'male_labels': [ 'face_masc', 'exposed_penis', 'exposed_chest' ],
+        'female_labels': [ 'face_femme', 'exposed_breast', 'exposed_vulva' ],
+        'evidence_min_prob': 0.40,
+        'track_iou': 0.30,
+        'track_max_gap_seconds': 1.0,
+        # Fraction of the person's shorter side trimmed off the mask edge
+        'shrink': 0.02,
+    },
+}
+
+# --- Person segmentation (reverse mode's person_windows) ---------------
+
+person_backend = {
+    # 'yolo11_seg' | 'rf_detr_seg' (not implemented yet)
+    'selected': 'yolo11_seg',
+    'yolo11_seg': {
+        # 'n' | 's' | 'm'
+        'model_variant': 's',
+        'picture_size': 640,
+        'min_prob': 0.35,
+        'nms_iou': 0.5,
+        'batch_size': 4,
+    },
+    'rf_detr_seg': {
+        # 'nano' | 'small' | 'medium'
+        'model_variant': 'small',
+    },
+}
+
 # --- Confidence and safety defaults -------------------------------------
 
 default_min_prob = 0.55

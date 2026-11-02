@@ -18,8 +18,9 @@
 #
 #   ./tools/analysis/run_all_analysis.sh --with-encode     # encoder speed/quality (~1 h)
 #   ./tools/analysis/run_all_analysis.sh --with-reverse    # reverse-mode render cost (~25 min)
+#   ./tools/analysis/run_all_analysis.sh --with-persons    # person-model speed and masks (~5 min)
 #   ./tools/analysis/run_all_analysis.sh --with-hardware   # decode/detect/render timing
-#   ./tools/analysis/run_all_analysis.sh --with-timing     # all three
+#   ./tools/analysis/run_all_analysis.sh --with-timing     # all four
 #
 # These measure the machine, not the run: their answer changes when the
 # hardware, drivers or encoder settings do, not after every batch of
@@ -100,6 +101,9 @@
 #                               (--with-encode).
 #      betabench.py reverse     What reverse mode would cost to render,
 #                               from this run's caches (--with-reverse).
+#      betabench.py persons     Each person-segmentation size's speed and
+#                               mask previews, for reverse mode's person
+#                               windows (--with-persons).
 #
 #   8. auto_tune.py             A dry run of the staged tuner: what it
 #                               would change and why, writing nothing.
@@ -131,6 +135,7 @@ QUICK=0
 WITH_HARDWARE=0
 WITH_ENCODE=0
 WITH_REVERSE=0
+WITH_PERSONS=0
 ALPHA_SWEEP="0.15 0.25 0.35 0.50 0.70"
 declare -a PASSTHROUGH=()
 VARIANTS=""
@@ -150,7 +155,8 @@ while [ "$#" -gt 0 ]; do
         --with-hardware) WITH_HARDWARE=1; shift ;;
         --with-encode)   WITH_ENCODE=1; shift ;;
         --with-reverse)  WITH_REVERSE=1; shift ;;
-        --with-timing)   WITH_HARDWARE=1; WITH_ENCODE=1; WITH_REVERSE=1; shift ;;
+        --with-persons)  WITH_PERSONS=1; shift ;;
+        --with-timing)   WITH_HARDWARE=1; WITH_ENCODE=1; WITH_REVERSE=1; WITH_PERSONS=1; shift ;;
         --variants)      shift; VARIANTS=""
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              VARIANTS="$VARIANTS $1"; shift
@@ -184,7 +190,8 @@ TIMING_ON=""
 [ "$WITH_HARDWARE" -eq 1 ] && TIMING_ON="$TIMING_ON hardware"
 [ "$WITH_ENCODE" -eq 1 ] && TIMING_ON="$TIMING_ON encode"
 [ "$WITH_REVERSE" -eq 1 ] && TIMING_ON="$TIMING_ON reverse"
-echo "timing steps:${TIMING_ON:- none (--with-encode, --with-reverse, --with-hardware or --with-timing)}"
+[ "$WITH_PERSONS" -eq 1 ] && TIMING_ON="$TIMING_ON persons"
+echo "timing steps:${TIMING_ON:- none (--with-encode, --with-reverse, --with-persons, --with-hardware or --with-timing)}"
 echo
 echo "Configurations this run will cover (read from the cache, not from config):"
 "$PYTHON_BIN" - <<'PYEOF'
@@ -242,6 +249,9 @@ if [ "$WITH_ENCODE" -eq 1 ]; then
 fi
 if [ "$WITH_REVERSE" -eq 1 ]; then
     TIMING_STEPS+=("betabench_reverse|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py reverse --yes --out-dir $LOG_DIR/betabench_reverse --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_PERSONS" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_persons|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py persons --yes --out-dir $LOG_DIR/betabench_persons --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 fi
 
 declare -a RESULTS=()
@@ -370,6 +380,7 @@ where "near-duplicate videos:" "$LOG_DIR/analyze_label_content.log"
 where "cut-burst merge, best variant:" "$LOG_DIR/analyze_cut_bursts.json"
 where "encoder speed and quality:" "$LOG_DIR/betabench_encode/results.json"
 where "reverse-mode cost:" "$LOG_DIR/betabench_reverse/results.json"
+where "person models (speed, masks):" "$LOG_DIR/betabench_persons/results.json"
 where "decode/detect/render timing:" "$LOG_DIR/betabench_hardware/results.json"
 echo "  every step's full output:           $LOG_DIR/<step>.log"
 echo

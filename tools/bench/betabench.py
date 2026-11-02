@@ -52,6 +52,10 @@ from YOUR hardware and YOUR footage, and prints the setting it suggests.
                  and without a triggered frame layer, and weights the
                  difference by how much of each file's runtime a trigger
                  would hold on. Not part of 'all'.
+    persons      Each person-segmentation model and size (reverse mode's
+                 person windows) on real frames: ms per frame per batch
+                 size, people found, and preview images with the masks
+                 drawn. Not part of 'all'.
     cache        The cache-only ones: structure, geometry, hysteresis,
                  suppression, dedup. No model, no timing; what the
                  analysis hub runs every time.
@@ -66,6 +70,7 @@ RUNNING IT
     python3 tools/bench/betabench.py suppression --backend nudenet_v3
     python3 tools/bench/betabench.py encode --seconds 30
     python3 tools/bench/betabench.py reverse --seconds 10
+    python3 tools/bench/betabench.py persons --person-variants n s m
     python3 tools/bench/betabench.py structure --videos-per-folder 1
     python3 tools/bench/betabench.py structure-scan --first-videos 3
 
@@ -3596,6 +3601,136 @@ def _log_reverse_summary( logger, result, width, height ):
     logger.info( REVERSE_SUMMARY_END )
 
 
+# ---------------------------------------------------------------------------
+# persons: person-segmentation models for reverse mode's person windows
+# ---------------------------------------------------------------------------
+
+PERSON_PREVIEW_FRAMES = 4
+
+
+def _person_preview( frame, people ):
+    """The frame with each person's mask tinted and its box and score drawn."""
+    import cv2
+    import numpy as np
+    out = frame.copy()
+    for person in people:
+        mx, my, mw, mh = ( int( round( v ) ) for v in person['mask_box'] )
+        x0, y0 = max( 0, mx ), max( 0, my )
+        x1, y1 = min( out.shape[1], mx + mw ), min( out.shape[0], my + mh )
+        if x1 <= x0 or y1 <= y0:
+            continue
+        mask = cv2.resize( person['mask'], ( mw, mh ), interpolation=cv2.INTER_LINEAR )
+        inside = mask[ y0 - my:y1 - my, x0 - mx:x1 - mx ] >= 128
+        region = out[ y0:y1, x0:x1 ]
+        tint = np.zeros_like( region )
+        tint[:] = ( 0, 200, 0 )
+        region[inside] = ( 0.5 * region[inside] + 0.5 * tint[inside] ).astype( np.uint8 )
+        x, y, w, h = ( int( round( person[key] ) ) for key in ( 'x', 'y', 'w', 'h' ) )
+        cv2.rectangle( out, ( x, y ), ( x + w, y + h ), ( 0, 255, 255 ), 2 )
+        cv2.putText( out, '%.2f'%( person['score'], ), ( x + 4, y + 24 ), cv2.FONT_HERSHEY_SIMPLEX,
+                     0.8, ( 0, 255, 255 ), 2 )
+    return out
+
+
+def bench_persons( args, logger ):
+    """
+    Each person-segmentation model and size on real frames: speed per
+    frame at each batch size, people found, and preview images with the
+    masks drawn, so a size is chosen on this machine and this footage.
+
+    Every registered backend is listed; one whose decoder is not written
+    yet (rf_detr_seg) is reported as skipped, and a variant whose model
+    file is missing is skipped with the setup step that creates it.
+    """
+    import cv2
+    import betautils_person as bu_person
+
+    videos = selected_source_videos( args, logger )
+    if args.video:
+        videos = [ { 'path': args.video } ]
+    if not videos:
+        logger.warning( "no source videos found; pass --video" )
+        return {}
+    videos = videos[ :( args.max_videos or 3 ) ]
+    per_video = max( 1, min( 40, args.max_frames // len( videos ) ) )
+    frames = []
+    for source in videos:
+        frames.extend( _sample_frames( source['path'], per_video ) )
+    if not frames:
+        raise RuntimeError( "decoded no frames from %s"%( [ v['path'] for v in videos ], ) )
+    logger.info( "persons: %d frame(s) from %d video(s), %d trial(s) per batch size"%(
+        len( frames ), len( videos ), args.trials ) )
+
+    preview_dir = os.path.join( args.run_dir, 'person_previews' )
+    batch_sizes = args.batch_sizes or [ 1, 4 ]
+    rows = []
+    for backend in ( args.person_backends or bu_person.registered_backend_names() ):
+        if not bu_person.is_implemented( backend ):
+            logger.info( "  %-12s skipped: not implemented yet"%( backend, ) )
+            rows.append( { 'backend': backend, 'skipped': 'not implemented' } )
+            continue
+        segmenter = bu_person.get_segmenter( backend )
+        for variant in ( args.person_variants or bu_person.variant_names( backend ) ):
+            previous = os.environ.get( bu_person.VARIANT_OVERRIDE_ENV_VAR )
+            os.environ[ bu_person.VARIANT_OVERRIDE_ENV_VAR ] = variant
+            try:
+                config = bu_person.get_backend_config( backend )
+                resolved = segmenter.resolve_config( config )
+                if not os.path.exists( resolved['model_path'] ):
+                    logger.warning( "  %s %s skipped: %s is missing (setup exports it: "
+                                    "tools/setup/fetch_models.py)"%( backend, variant, resolved['model_path'] ) )
+                    rows.append( { 'backend': backend, 'variant': variant, 'skipped': 'model missing' } )
+                    continue
+                session = segmenter.get_session( config, logger )
+                provider = bu_detector.session_provider_summary( session )
+                segmenter.persons_for_imgs( frames[:1], session, [ 0.0 ], config )   # warm-up
+                for batch in batch_sizes:
+                    trials = []
+                    found = 0
+                    for _trial in range( args.trials ):
+                        found = 0
+                        started = time.perf_counter()
+                        for start in range( 0, len( frames ), batch ):
+                            chunk = frames[ start:start + batch ]
+                            found += len( segmenter.persons_for_imgs(
+                                chunk, session, [ 0.0 ] * len( chunk ), config ) )
+                        trials.append( ( time.perf_counter() - started ) * 1000.0 / len( frames ) )
+                    row = { 'backend': backend, 'variant': variant, 'batch_size': batch,
+                            'provider': provider, 'ms_per_frame': statistics.median( trials ),
+                            'ms_min': min( trials ), 'ms_max': max( trials ),
+                            'people': found, 'frames': len( frames ) }
+                    rows.append( row )
+                    logger.info( "  %-12s %-3s batch %-2d %8.2f ms/frame (%.2f-%.2f)  %4d people  [%s]"%(
+                        backend, variant, batch, row['ms_per_frame'], row['ms_min'], row['ms_max'],
+                        found, provider ) )
+                out_dir = os.path.join( preview_dir, '%s-%s'%( backend, variant ) )
+                os.makedirs( out_dir, exist_ok=True )
+                step = max( 1, len( frames ) // PERSON_PREVIEW_FRAMES )
+                for index in range( 0, len( frames ), step )[ :PERSON_PREVIEW_FRAMES ]:
+                    people = segmenter.persons_for_imgs( [ frames[index] ], session, [ 0.0 ], config )
+                    cv2.imwrite( os.path.join( out_dir, 'frame%03d.jpg'%( index, ) ),
+                                 _person_preview( frames[index], people ) )
+            finally:
+                if previous is None:
+                    os.environ.pop( bu_person.VARIANT_OVERRIDE_ENV_VAR, None )
+                else:
+                    os.environ[ bu_person.VARIANT_OVERRIDE_ENV_VAR ] = previous
+
+    timed = [ row for row in rows if 'ms_per_frame' in row ]
+    logger.info( "" )
+    logger.info( "=== person models: summary ===" )
+    sample_fps = args.sample_fps or betaconfig.video_censor_fps
+    for row in timed:
+        logger.info( "%-12s %-3s batch %-2d %7.2f ms/frame = %5.1f s per hour of video at %g fps"%(
+            row['backend'], row['variant'], row['batch_size'], row['ms_per_frame'],
+            row['ms_per_frame'] * sample_fps * 3.6, sample_fps ) )
+    if timed:
+        logger.info( "mask previews: %s (compare sizes on the same frames)"%( preview_dir, ) )
+    logger.info( "=== end of person models summary ===" )
+    return { 'persons': { 'rows': rows, 'preview_dir': preview_dir if timed else None } }
+
+
+
 SUBCOMMANDS = {
     'decode': bench_decode,
     'detect': bench_detect,
@@ -3609,6 +3744,7 @@ SUBCOMMANDS = {
     'concurrency': bench_concurrency,
     'encode': bench_encode,
     'reverse': bench_reverse,
+    'persons': bench_persons,
 }
 
 # Everything 'all' runs, in a sensible order: cheap cache reads first,
@@ -3714,6 +3850,12 @@ def build_parser():
              "trigger would hold on (default: 0.30, the plan's proposal)" )
     parser.add_argument( '--trigger-hold', type=float, default=0.5,
         help="reverse only: seconds the trigger holds after its last firing (default: 0.5)" )
+    parser.add_argument( '--person-backends', nargs='+', default=None,
+        help="persons only: person backends to measure (default: every registered one; "
+             "unimplemented ones are listed as skipped)" )
+    parser.add_argument( '--person-variants', nargs='+', default=None,
+        help="persons only: model sizes to measure, e.g. n s m (default: every one the "
+             "backend declares)" )
     parser.add_argument( '--no-blur-approximation', action='store_true',
         help="force blur_fast_approximation off for this measurement" )
 
@@ -3736,6 +3878,7 @@ def main():
     run_dir = args.out_dir or os.path.join(
         betaconst.benchmark_dir, time.strftime( '%Y%m%d_%H%M%S' ) )
     logger = build_logger( run_dir, args.log_level, args.console_level )
+    args.run_dir = run_dir
 
     if args.no_blur_approximation:
         betaconfig.blur_fast_approximation = False

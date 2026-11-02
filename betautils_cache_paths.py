@@ -64,6 +64,7 @@ import betaconst
 import betaconfig
 import betautils_hash as bu_hash
 import betautils_detector as bu_detector
+import betautils_reverse as bu_reverse
 
 
 # Legacy aliases, kept because tools import them by name.
@@ -115,7 +116,7 @@ def record_run_key( kind, key, identity ):
     a run. Costs one small file write the first time each key is seen.
 
     Args:
-        kind: 'detection' | 'censor' | 'encode'.
+        kind: 'detection' | 'censor' | 'encode' | 'person'.
         key: The short hex key as it appears in filenames.
         identity: The dict the key was hashed from.
     """
@@ -310,6 +311,17 @@ def censor_identity( backend_name=None ):
     cut_bursts = bu_track.cut_burst_settings()
     if cut_bursts:
         identity['shot_cut_bursts'] = cut_bursts
+    # Reverse mode: the whole block (frame style, trigger, fade, empty
+    # frames, every window entry). Each window's RESOLVED settings are
+    # already in 'labels', since get_parts_to_blur follows the windows
+    # while reverse is on. Keyed only while it is on, for the same reason
+    # as cut bursts: existing renders keep their names.
+    reverse = bu_reverse.identity()
+    if reverse is not None:
+        identity['reverse'] = reverse
+        if bu_reverse.person_windows_enabled():
+            import betautils_person as bu_person   # deferred: keeps cv2 out of this import graph
+            identity['person_model'] = bu_person.identity()
     return identity
 
 
@@ -397,6 +409,19 @@ def box_hash_path_for( file_hash, size, fps, min_prob, backend_name,
     return os.path.join( VID_HASH_DIR, '%s-%s-%s-%d-%g-%.3f-d%s%s.gz'%(
         file_hash, backend_name, betaconst.picture_saved_box_version,
         size, fps, min_prob, det_key, preview_suffix ) )
+
+
+def person_cache_path_for( file_hash, fps, backend_name, person_identity, preview_suffix='' ):
+    """
+    Person-mask cache path for one (file, sample rate, person model).
+
+    Beside the detection caches, keyed separately: the person pass and
+    detection are independent, so retuning either leaves the other's
+    cache valid.
+    """
+    key = _keyed( 'person', person_identity, betaconst.detection_key_len )
+    return os.path.join( VID_HASH_DIR, '%s-person-%s-%g-p%s%s.npz'%(
+        file_hash, backend_name, fps, key, preview_suffix ) )
 
 
 def pic_hash_path_for( image_hash, size, min_prob, backend_name, det_key=None ):
@@ -518,13 +543,24 @@ def transcode_path_for( file_hash ):
 # Output paths
 # ---------------------------------------------------------------------------
 
+def output_mode_marker():
+    """
+    '-reverse' for a reverse-mode render, '' otherwise. The censor key
+    already keeps the two apart; this is so a person can tell them apart
+    in a directory listing.
+    """
+    return '-reverse' if bu_reverse.enabled() else ''
+
+
 def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
-                           enc_key, preview_suffix='', output_label='' ):
+                           enc_key, preview_suffix='', output_label='', mode_marker='' ):
     """
     Build the identifying stem of a censored video's filename.
 
     Format:
-        <stem>-<file_hash>-<sizes>-<fps>-d<det>-c<cen>-e<enc><preview><label>
+        <stem>-<file_hash>-<sizes>-<fps>-d<det>-c<cen>-e<enc><preview><mode><label>
+
+    <mode> is output_mode_marker(): '-reverse' for reverse mode.
 
     Reading one of these tells you: which source file (hash), at what
     detection sizes and sample rate, under which detection settings
@@ -544,8 +580,8 @@ def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
     filename: anything outside [A-Za-z0-9._-] becomes '-'.
     """
     sizes_text = "+".join( str( size ) for size in sizes )
-    base = '%s-%s-%s-%g-d%s-c%s-e%s%s'%(
-        stem, file_hash, sizes_text, fps, det_key, cen_key, enc_key, preview_suffix )
+    base = '%s-%s-%s-%g-d%s-c%s-e%s%s%s'%(
+        stem, file_hash, sizes_text, fps, det_key, cen_key, enc_key, preview_suffix, mode_marker )
     return base + sanitise_output_label( output_label )
 
 
@@ -568,7 +604,7 @@ def sanitise_output_label( label ):
 
 def video_output_paths( censored_folder, stem, file_hash, sizes, fps,
                         det_key, cen_key, enc_key, preview_suffix='',
-                        chunk_container='mkv', output_label='' ):
+                        chunk_container='mkv', output_label='', mode_marker='' ):
     """
     Final and intermediate paths for one censored video.
 
@@ -579,14 +615,14 @@ def video_output_paths( censored_folder, stem, file_hash, sizes, fps,
         censored_folder.
     """
     base = video_output_basename( stem, file_hash, sizes, fps, det_key,
-                                  cen_key, enc_key, preview_suffix, output_label )
+                                  cen_key, enc_key, preview_suffix, output_label, mode_marker )
     final_path = os.path.join( censored_folder, base + '.mp4' )
     intermediate_path = os.path.join( censored_folder, base + '.video.' + chunk_container )
     return final_path, intermediate_path
 
 
 def picture_output_path( censored_folder, stem, suffix, image_hash, sizes,
-                         det_key, cen_key ):
+                         det_key, cen_key, mode_marker='' ):
     """
     Output path for one censored still image (betastare.py).
 
@@ -594,8 +630,8 @@ def picture_output_path( censored_folder, stem, suffix, image_hash, sizes,
     codec settings.
     """
     sizes_text = "+".join( str( size ) for size in sizes )
-    return os.path.join( censored_folder, '%s-%s-%s-d%s-c%s%s'%(
-        stem, image_hash, sizes_text, det_key, cen_key, suffix ) )
+    return os.path.join( censored_folder, '%s-%s-%s-d%s-c%s%s%s'%(
+        stem, image_hash, sizes_text, det_key, cen_key, mode_marker, suffix ) )
 
 
 def chunk_path_for( intermediate_path, chunk_index ):

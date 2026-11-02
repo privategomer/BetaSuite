@@ -32,6 +32,8 @@ Orchestration for the main entry point, validate_config():
             -> _validate_nn_batch_size
             -> _validate_min_prob_floor_consistency
             -> _validate_checkpoint_and_chunk_settings
+            -> ... (render, backend checks)
+            -> _validate_reverse
         -> prints warnings (if any), then prints + raises SystemExit(1) if
            _collect_validation_errors returned anything, otherwise returns
            None
@@ -53,6 +55,7 @@ import threading
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+import betautils_reverse as bu_reverse
 
 
 # ---------------------------------------------------------------------------
@@ -187,13 +190,24 @@ def _geometry_action_default():
     return bu_track.DEFAULT_GEOMETRY_ACTION
 
 
+def rendered_labels():
+    """
+    The labels this run renders: reverse mode's windows and censored
+    labels while it is on (censored labels default to items_to_censor),
+    otherwise items_to_censor.
+    """
+    if bu_reverse.enabled():
+        return bu_reverse.rendered_labels()
+    return list( betaconfig.items_to_censor )
+
+
 def get_parts_to_blur( backend_name=None ):
     """
     The per-label settings table the render pipeline actually uses.
 
-    One entry per betaconfig.items_to_censor label, resolved against
-    that label's item_overrides with betaconfig's defaults filling in
-    the rest.
+    One entry per rendered label (rendered_labels: items_to_censor, or
+    reverse mode's windows), resolved against that label's
+    item_overrides with betaconfig's defaults filling in the rest.
 
     When betaconfig.debug_mode's bit 0 is set, every known class also
     gets a synthetic 'debug' entry, so detection quality can be eyeballed
@@ -217,7 +231,7 @@ def get_parts_to_blur( backend_name=None ):
         return cached
 
     parts_to_blur = {}
-    for item in betaconfig.items_to_censor:
+    for item in rendered_labels():
         parts_to_blur[item] = get_label_settings( item, backend_name )
 
     if betaconfig.debug_mode & 1:
@@ -507,6 +521,340 @@ def _check_censor_style( style, where, errors ):
         _check_one_style_dict( style, where, errors )
 
 
+# --- Reverse mode -------------------------------------------------------------
+
+REVERSE_KEYS = frozenset( bu_reverse.DEFAULTS )
+REVERSE_TRIGGER_KEYS = frozenset( bu_reverse.DEFAULTS['trigger'] )
+REVERSE_CENSOR_KEYS = frozenset( bu_reverse.DEFAULTS['censor'] )
+REVERSE_PERSON_WINDOW_KEYS = frozenset( bu_reverse.DEFAULTS['person_windows'] )
+REVERSE_FRAME_STYLE_TYPES = frozenset( { 'blur', 'pixel', 'bar' } )
+# Measured on the developer's machine (betabench reverse, 2026-10-11, 3840x2160,
+# one core): gaussian 4,765 ms and hex 930 ms per frame, against 78 ms
+# for triple_box and 11 ms for mosaic. Whole-frame, those two would make
+# every triggered frame cost seconds. With blur_edge_margin on, the
+# gaussian method also skips the downscale approximation, which is why
+# it is that slow.
+REVERSE_FRAME_STYLES_TOO_SLOW = frozenset( { ( 'blur', 'gaussian' ), ( 'pixel', 'hex' ) } )
+SHOW_STYLE_KEYS = frozenset( { 'type', 'feather', 'weight', 'shape',
+                               'width_area_safety', 'height_area_safety' } )
+
+
+def _check_window_style( style, where, errors ):
+    """
+    A reverse window's censor_style: {'type': 'show'} (the original
+    pixels) with its optional keys, alone or in a weighted list. A window
+    is uncensored by definition, so any other style is an error.
+    """
+    if isinstance( style, list ):
+        if not style:
+            errors.append( "%s is an empty list - needs at least one style dict"%( where, ) )
+        entries = [ ( "%s[%d]"%( where, index ), one ) for index, one in enumerate( style ) ]
+    else:
+        entries = [ ( where, style ) ]
+    for entry_where, one in entries:
+        if isinstance( one, dict ) and one.get( 'type' ) == 'show':
+            unknown = set( one ) - SHOW_STYLE_KEYS
+            if unknown:
+                errors.append( "%s has unrecognized key(s) %s for type 'show' (valid keys: %s)"%(
+                    entry_where, sorted( unknown ), sorted( SHOW_STYLE_KEYS ) ) )
+            known = { key: value for key, value in one.items() if key in SHOW_STYLE_KEYS }
+            _check_style_common_fields( known, 'show', entry_where, errors )
+        else:
+            errors.append( "%s is %r, but a window is always uncensored: its style can only be "
+                           "{'type': 'show', ...}. To censor this label in reverse mode, add it to "
+                           "reverse['censor'] instead"%( entry_where, one ) )
+
+
+def _check_reverse_frame_style( frame_style, errors ):
+    where = "reverse['frame_style']"
+    if not isinstance( frame_style, dict ):
+        errors.append( "%s must be one style dict like {'type': 'blur', ...}, got %r"%(
+            where, frame_style ) )
+        return
+    style_type = frame_style.get( 'type' )
+    if style_type not in REVERSE_FRAME_STYLE_TYPES:
+        errors.append( "%s['type'] = %r can't be a frame style (valid: %s); stickers, 'show' and "
+                       "'debug' only make sense on a window"%(
+                           where, style_type, sorted( REVERSE_FRAME_STYLE_TYPES ) ) )
+        return
+    variant = frame_style.get( 'method' ) or frame_style.get( 'pattern' )
+    if ( style_type, variant ) in REVERSE_FRAME_STYLES_TOO_SLOW:
+        errors.append( "%s %s/%s is too slow over a whole frame (measured 0.9 to 4.8 s per 4K frame "
+                       "on one core); use blur 'triple_box' or 'box', or pixel 'mosaic'"%(
+                           where, style_type, variant ) )
+    _check_one_style_dict( frame_style, where, errors )
+
+
+def _check_reverse_trigger( trigger, valid_classes, errors ):
+    where = "reverse['trigger']"
+    if not isinstance( trigger, dict ):
+        errors.append( "%s must be a dict, got %r"%( where, trigger ) )
+        return
+    unknown = set( trigger ) - REVERSE_TRIGGER_KEYS
+    if unknown:
+        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_TRIGGER_KEYS ) ) )
+    labels = trigger.get( 'labels' )
+    if labels is not None:
+        if not isinstance( labels, ( list, tuple ) ) or not labels:
+            errors.append( "%s['labels'] must be None (every censored label) or a non-empty list of "
+                           "class names, got %r"%( where, labels ) )
+        else:
+            for label in labels:
+                if label not in valid_classes:
+                    errors.append( "%s['labels'] contains unknown class %r"%( where, label ) )
+    if 'min_prob' in trigger:
+        min_prob = trigger['min_prob']
+        global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+        if ( not isinstance( min_prob, ( int, float ) ) or isinstance( min_prob, bool )
+                or not ( 0 <= min_prob < 1 ) ):
+            errors.append( "%s['min_prob'] must be a number from 0 up to (not including) 1, got %r"%(
+                where, min_prob ) )
+        elif isinstance( global_min_prob, ( int, float ) ) and min_prob < global_min_prob:
+            errors.append( "%s['min_prob'] (%r) is below global_min_prob (%r). Detections under the "
+                           "floor are never stored, so the trigger would silently use the floor; set "
+                           "it at or above global_min_prob"%( where, min_prob, global_min_prob ) )
+    if 'hold_seconds' in trigger:
+        hold = trigger['hold_seconds']
+        if not isinstance( hold, ( int, float ) ) or isinstance( hold, bool ) or hold < 0:
+            errors.append( "%s['hold_seconds'] must be a number of seconds >= 0, got %r"%(
+                where, hold ) )
+
+
+def _check_reverse_censor( censor, windows, valid_classes, errors ):
+    where = "reverse['censor']"
+    if not isinstance( censor, dict ):
+        errors.append( "%s must be a dict like {'labels': None, 'overrides': {}}, got %r"%(
+            where, censor ) )
+        return
+    unknown = set( censor ) - REVERSE_CENSOR_KEYS
+    if unknown:
+        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_CENSOR_KEYS ) ) )
+    labels = censor.get( 'labels' )
+    if labels is None:
+        labels = list( getattr( betaconfig, 'items_to_censor', [] ) )
+    elif not isinstance( labels, ( list, tuple ) ):
+        errors.append( "%s['labels'] must be None (items_to_censor) or a list of class names, "
+                       "got %r"%( where, labels ) )
+        labels = []
+    else:
+        for label in labels:
+            if label not in valid_classes:
+                errors.append( "%s['labels'] contains unknown class %r"%( where, label ) )
+    if isinstance( windows, dict ):
+        both = sorted( set( labels ) & set( windows ) )
+        if both:
+            errors.append( "%s %s: a label can't be both a window (shown) and censored. Remove it "
+                           "from reverse['windows'] or from the censored labels%s"%(
+                               'label' if len( both ) == 1 else 'labels', both,
+                               " (None means items_to_censor)" if censor.get( 'labels' ) is None else '' ) )
+    overrides = censor.get( 'overrides', {} )
+    if not isinstance( overrides, dict ):
+        errors.append( "%s['overrides'] must be a dict of {label: settings}, got %r"%( where, overrides ) )
+        return
+    allowed = bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS | bu_reverse.LOOK_KEYS
+    for label, entry in overrides.items():
+        entry_where = "%s['overrides']['%s']"%( where, label )
+        if label not in labels:
+            errors.append( "%s: '%s' is not a censored label, so this override would never apply "
+                           "(censored: %s)"%( entry_where, label, sorted( labels ) ) )
+            continue
+        if not isinstance( entry, dict ):
+            errors.append( "%s must be a dict, got %r"%( entry_where, entry ) )
+            continue
+        unknown = set( entry ) - allowed
+        if unknown:
+            errors.append( "%s has unrecognized key(s) %s (valid: censor_style, censor_shape and "
+                           "the backend-tunable keys %s)"%(
+                               entry_where, sorted( unknown ),
+                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) )
+        _check_item_override_values( { key: value for key, value in entry.items() if key in allowed },
+                                     entry_where, errors )
+
+
+def _check_reverse_person_windows( person_windows, valid_classes, errors ):
+    where = "reverse['person_windows']"
+    if not isinstance( person_windows, dict ):
+        errors.append( "%s must be a dict, got %r"%( where, person_windows ) )
+        return
+    unknown = set( person_windows ) - REVERSE_PERSON_WINDOW_KEYS
+    if unknown:
+        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_PERSON_WINDOW_KEYS ) ) )
+    if 'enabled' in person_windows and not isinstance( person_windows['enabled'], bool ):
+        errors.append( "%s['enabled'] must be True/False, got %r"%( where, person_windows['enabled'] ) )
+    label_sets = {}
+    for key in ( 'male_labels', 'female_labels' ):
+        labels = person_windows.get( key, bu_reverse.DEFAULTS['person_windows'][key] )
+        if key not in person_windows:
+            label_sets[key] = set( labels )
+            continue
+        if not isinstance( labels, ( list, tuple ) ) or not labels:
+            errors.append( "%s['%s'] must be a non-empty list of class names, got %r"%( where, key, labels ) )
+            continue
+        label_sets[key] = set( labels )
+        for label in labels:
+            if label not in valid_classes:
+                errors.append( "%s['%s'] contains unknown class %r"%( where, key, label ) )
+    both = label_sets.get( 'male_labels', set() ) & label_sets.get( 'female_labels', set() )
+    if both:
+        errors.append( "%s: %s can't be male and female evidence at once"%( where, sorted( both ) ) )
+    # key: (low, low allowed, high, high allowed); None = no bound
+    ranges = { 'evidence_min_prob': ( 0, True, 1, False ), 'track_iou': ( 0, False, 1, True ),
+               'track_max_gap_seconds': ( 0, True, None, True ), 'shrink': ( 0, True, 0.5, False ) }
+    for key, ( low, low_ok, high, high_ok ) in ranges.items():
+        if key not in person_windows:
+            continue
+        value = person_windows[key]
+        if not isinstance( value, ( int, float ) ) or isinstance( value, bool ):
+            errors.append( "%s['%s'] must be a number, got %r"%( where, key, value ) )
+            continue
+        too_low = value < low or ( value == low and not low_ok )
+        too_high = high is not None and ( value > high or ( value == high and not high_ok ) )
+        if too_low or too_high:
+            errors.append( "%s['%s'] = %r is out of range (%s%s to %s%s)"%(
+                where, key, value, low, '' if low_ok else ' exclusive',
+                'any' if high is None else high, '' if high_ok or high is None else ' exclusive' ) )
+    global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    floor = person_windows.get( 'evidence_min_prob' )
+    if ( isinstance( floor, ( int, float ) ) and isinstance( global_min_prob, ( int, float ) )
+            and floor < global_min_prob ):
+        errors.append( "%s['evidence_min_prob'] (%r) is below global_min_prob (%r): detections under the "
+                       "floor are never stored"%( where, floor, global_min_prob ) )
+
+
+def _validate_person_backend( errors ):
+    """
+    person_backend, when there is one, and (while reverse mode's person
+    windows are on) that the selected model is implemented and on disk.
+    """
+    import betautils_person as bu_person   # deferred: keeps cv2 out of this import graph
+    block = getattr( betaconfig, 'person_backend', None )
+    if block is not None:
+        if not isinstance( block, dict ):
+            errors.append( "person_backend must be a dict, got %r"%( block, ) )
+            return
+        for key, entry in block.items():
+            if key == 'selected':
+                continue
+            if key not in bu_person.registered_backend_names():
+                errors.append( "person_backend has unknown backend %r (valid: %s)"%(
+                    key, bu_person.registered_backend_names() ) )
+            elif not isinstance( entry, dict ):
+                errors.append( "person_backend[%r] must be a dict, got %r"%( key, entry ) )
+    selected = bu_person.selected_backend_name()
+    try:
+        segmenter = bu_person.get_segmenter( selected )
+    except ValueError as err:
+        errors.append( str( err ) )
+        return
+    if not bu_reverse.person_windows_enabled():
+        return
+    segmenter.validate_config( bu_person.get_backend_config( selected ), errors )
+    if not bu_person.is_implemented( selected ):
+        return
+    try:
+        model_path = bu_person.resolve_config( selected )['model_path']
+    except ValueError:
+        return
+    if not os.path.exists( model_path ):
+        errors.append( "reverse['person_windows'] is on but the person model %s is missing. Run setup "
+                       "again (tools/setup/fetch_models.py exports it), or set "
+                       "reverse['person_windows']['enabled'] = False"%( model_path, ) )
+
+
+def _check_reverse_windows( windows, valid_classes, errors ):
+    where_base = "reverse['windows']"
+    if not isinstance( windows, dict ):
+        errors.append( "%s must be a dict of {label: window settings}, got %r"%( where_base, windows ) )
+        return
+    allowed = bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS | bu_reverse.LOOK_KEYS
+    for label, entry in windows.items():
+        where = "%s['%s']"%( where_base, label )
+        if label not in valid_classes:
+            errors.append( "%s: '%s' is not a known class"%( where_base, label ) )
+            continue
+        if not isinstance( entry, dict ):
+            errors.append( "%s must be a dict ({} inherits every tuning key), got %r"%( where, entry ) )
+            continue
+        unknown = set( entry ) - allowed
+        if unknown:
+            errors.append( "%s has unrecognized key(s) %s (valid: censor_style (show only), "
+                           "censor_shape and the backend-tunable keys %s)"%(
+                               where, sorted( unknown ),
+                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) )
+        if 'censor_style' in entry:
+            _check_window_style( entry['censor_style'], "%s['censor_style']"%( where, ), errors )
+        tuning = { key: value for key, value in entry.items() if key not in bu_reverse.LOOK_KEYS }
+        if 'censor_shape' in entry:
+            tuning['censor_shape'] = entry['censor_shape']
+        _check_item_override_values( tuning, where, errors )
+
+
+def _validate_reverse( errors, valid_classes ):
+    """
+    The reverse block, when there is one. Checked whether or not it is
+    enabled, so a mistake surfaces when it is written rather than on the
+    first reverse run.
+    """
+    block = getattr( betaconfig, 'reverse', None )
+    if block is None:
+        return
+    if not isinstance( block, dict ):
+        errors.append( "reverse must be a dict, got %r"%( block, ) )
+        return
+    unknown = set( block ) - REVERSE_KEYS
+    if unknown:
+        errors.append( "reverse has unrecognized key(s) %s (valid: %s)"%(
+            sorted( unknown ), sorted( REVERSE_KEYS ) ) )
+    if 'enabled' in block and not isinstance( block['enabled'], bool ):
+        errors.append( "reverse['enabled'] must be True/False, got %r"%( block['enabled'], ) )
+    if 'frame_style' in block:
+        _check_reverse_frame_style( block['frame_style'], errors )
+    if 'empty_frame' in block and block['empty_frame'] not in bu_reverse.EMPTY_FRAME_POLICIES:
+        errors.append( "reverse['empty_frame'] = %r is not one of %s"%(
+            block['empty_frame'], list( bu_reverse.EMPTY_FRAME_POLICIES ) ) )
+    if 'fade_seconds' in block:
+        fade = block['fade_seconds']
+        if not isinstance( fade, ( int, float ) ) or isinstance( fade, bool ) or fade < 0:
+            errors.append( "reverse['fade_seconds'] must be a number of seconds >= 0, got %r"%( fade, ) )
+    if 'trigger' in block:
+        _check_reverse_trigger( block['trigger'], valid_classes, errors )
+    if 'windows' in block:
+        _check_reverse_windows( block['windows'], valid_classes, errors )
+    if 'censor' in block:
+        _check_reverse_censor( block['censor'], block.get( 'windows', {} ), valid_classes, errors )
+    if 'person_windows' in block:
+        _check_reverse_person_windows( block['person_windows'], valid_classes, errors )
+
+
+def _warn_reverse( warnings ):
+    """Reverse mode set up so that it reveals or does nothing."""
+    if not bu_reverse.enabled():
+        return
+    if not bu_reverse.trigger_labels():
+        warnings.append( "reverse mode is on but nothing can trigger it (no censored labels and "
+                         "trigger labels None): every frame passes through clear" )
+    if not bu_reverse.window_labels():
+        warnings.append( "reverse mode is on with no windows: a triggered frame is obscured "
+                         "everywhere but its censored labels" )
+    for label in bu_reverse.censor_labels():
+        style = bu_detector.get_item_overrides( label ).get( 'censor_style' )
+        for one in ( style if isinstance( style, list ) else [ style ] ):
+            if not isinstance( one, dict ):
+                continue
+            see_through = ( one.get( 'type' ) == 'sticker'
+                            or ( one.get( 'type' ) == 'bar' and one.get( 'thickness', 1.0 ) < 1.0 ) )
+            if see_through:
+                warnings.append( "reverse mode's censored %s has a %s style: its see-through parts "
+                                 "show the ORIGINAL pixels, not the frame style (known limitation). "
+                                 "If that reveals too much, give it a reverse-only censor_style "
+                                 "without one in reverse['censor']['overrides']['%s']"%(
+                                     label, one['type'], label ) )
+                break
+
+
 # --- Top-level betaconfig.py section validators -----------------------------
 
 def _validate_items_to_censor( errors, valid_classes ):
@@ -634,12 +982,15 @@ def _validate_class_promotion( errors, valid_classes ):
     promotes every detection of the source label. Both fail open, in the
     direction of censoring things the author never meant to.
 
-    A target that is not in items_to_censor is also an error: the rule
-    would relabel boxes into a label nothing renders, which DELETES the
-    source detection's censor if the source label was being censored.
+    A target that is not rendered (items_to_censor, or reverse mode's
+    windows and censored labels while it is on) is also an error: the rule would relabel
+    boxes into a label nothing renders, which DELETES the source
+    detection's censor if the source label was being censored.
     """
     import betautils_track as bu_track  # deferred: bu_track imports this module
-    censored = set( getattr( betaconfig, 'items_to_censor', [] ) )
+    censored = set( rendered_labels() )
+    censored_name = ( "reverse mode's windows and censored labels" if bu_reverse.enabled()
+                      else 'items_to_censor' )
 
     for backend_name in bu_detector.registered_backend_names():
         promotion = bu_detector.get_class_promotion( backend_name )
@@ -652,9 +1003,9 @@ def _validate_class_promotion( errors, valid_classes ):
             if target not in valid_classes:
                 errors.append( "%s: '%s' is not a known class"%( where_base, target ) )
             elif target not in censored:
-                errors.append( "%s: '%s' is not in items_to_censor, so promoted boxes would "
+                errors.append( "%s: '%s' is not in %s, so promoted boxes would "
                                "never be rendered - and a censored source label would lose its "
-                               "censor"%( where_base, target ) )
+                               "censor"%( where_base, target, censored_name ) )
             rule_list = rules if isinstance( rules, list ) else [ rules ]
             for index, rule in enumerate( rule_list ):
                 where = "%s[%d]"%( where_base, index ) if isinstance( rules, list ) else where_base
@@ -980,6 +1331,7 @@ def _collect_validation_warnings():
     valid_classes = _valid_class_names()
     _validate_class_suppression_zero_margin( warnings, valid_classes )
     _warn_promotion_evidence_also_suppresses( warnings )
+    _warn_reverse( warnings )
     return warnings
 
 
@@ -1194,6 +1546,22 @@ def _validate_item_overrides( errors, valid_classes ):
     return item_overrides
 
 
+def _check_resolved_item_override( label, resolved, where, errors ):
+    """
+    One label's fully resolved settings (shared, backend and variant
+    tiers merged), checked as _check_item_override_values does.
+
+    While reverse mode is on, a window label's censor_style comes only
+    from its reverse['windows'] entry, or defaults to 'show', never from
+    these tiers. _validate_reverse already checks it there under the
+    window rules ('show' is valid only in a window), so it is left out
+    here rather than rejected as an unknown normal style.
+    """
+    if bu_reverse.window_entry( label ) is not None:
+        resolved = { key: value for key, value in resolved.items() if key != 'censor_style' }
+    _check_item_override_values( resolved, where, errors )
+
+
 def _validate_backend_item_overrides( errors, valid_classes ):
     """
     Check every registered backend's per-backend item_overrides block
@@ -1249,7 +1617,7 @@ def _validate_backend_item_overrides( errors, valid_classes ):
         for label in all_labels:
             resolved = bu_detector.get_item_overrides( label, backend_name )
             where = "detector_backend[%r]'s resolved item_overrides['%s']"%(backend_name, label)
-            _check_item_override_values( resolved, where, errors )
+            _check_resolved_item_override( label, resolved, where, errors )
 
         _validate_variant_item_overrides( errors, valid_classes, backend_name, all_labels )
 
@@ -1317,7 +1685,7 @@ def _validate_variant_item_overrides( errors, valid_classes, backend_name, share
         for label in shared_labels | set( variant_item_overrides.keys() ):
             resolved = bu_detector.get_item_overrides( label, backend_name, variant_name )
             where = "%s's resolved item_overrides['%s']"%(where_variant, label)
-            _check_item_override_values( resolved, where, errors )
+            _check_resolved_item_override( label, resolved, where, errors )
 
 
 def _validate_default_censor_style( errors ):
@@ -1816,6 +2184,8 @@ def _collect_validation_errors():
     _validate_cross_size_dedup( errors )
     _validate_render_settings( errors )
     _validate_detector_backend( errors )
+    _validate_reverse( errors, valid_classes )
+    _validate_person_backend( errors )
 
     return errors
 

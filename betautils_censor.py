@@ -1419,3 +1419,145 @@ def censor_img_for_boxes( image, boxes ):
             image = censor_image( image, collapsed_box )
 
     return watermark_image( image )
+
+
+# ---------------------------------------------------------------------------
+# Reverse mode compositor
+# ---------------------------------------------------------------------------
+#
+# Layers, bottom to top: the frame style over the whole frame (blended by
+# frame_alpha), show windows (the original pixels back through each
+# window's shape and feather), censored windows (the window's style,
+# computed from the ORIGINAL pixels, placed in through the window's alpha
+# once), then the watermark. Censor wins overlaps because censored windows
+# go on last. Normal mode never comes through here: censor_img_for_boxes
+# is untouched, so its output stays byte-identical.
+
+def _clamped_rect( box, img_w, img_h ):
+    """A box's (x, y, w, h) clamped inside the frame, as censor_image does."""
+    x = max( 0, min( int( box['x'] ), img_w - 1 ) )
+    y = max( 0, min( int( box['y'] ), img_h - 1 ) )
+    w = max( 1, min( int( box['w'] ), img_w - x ) )
+    h = max( 1, min( int( box['h'] ), img_h - y ) )
+    return x, y, w, h
+
+
+def _blend_window( out, source, rect, shape, feather ):
+    """
+    Blend source into out over one window rectangle through the window's
+    alpha. source is the original frame (a show window) or the original
+    with this window's style rendered into it (a censored window).
+    """
+    x, y, w, h = rect
+    if shape == 'box' and not feather:
+        out[ y:y+h, x:x+w ] = source[ y:y+h, x:x+w ]
+        return
+    alpha = _alpha_for( shape, w, h, feather )
+    under = out[ y:y+h, x:x+w ].astype( np.float32 )
+    over = source[ y:y+h, x:x+w ].astype( np.float32 )
+    out[ y:y+h, x:x+w ] = ( alpha*over + ( 1.0 - alpha )*under ).astype( out.dtype )
+
+
+def _censored_windows( boxes, img_w, img_h ):
+    """Censored (non-show) windows, grouped and merged exactly as normal mode does."""
+    ordered = sorted( boxes, key=lambda box: (
+        box['label'], censor_style_sort( box['censor_style'] ) ) )
+    grouped_pieces = []
+    for box in ordered:
+        previous = grouped_pieces[-1][0] if grouped_pieces else None
+        if ( previous is not None
+                and previous['label'] == box['label']
+                and censor_style_key( previous['censor_style'] ) == censor_style_key( box['censor_style'] ) ):
+            grouped_pieces[-1].append( box )
+        else:
+            grouped_pieces.append( [ box ] )
+    windows = []
+    for piece in grouped_pieces:
+        windows.extend( collapse_boxes_for_style( piece, img_w, img_h ) )
+    return windows
+
+
+def obscure_full_frame( image, frame_style ):
+    """Render frame_style over the whole of image, in place, and return it."""
+    img_h, img_w = image.shape[:2]
+    frame_box = { 'x': 0, 'y': 0, 'w': img_w, 'h': img_h,
+                  'censor_style': dict( frame_style, feather=0 ), 'censor_shape': 'box',
+                  'censor_sticker_seed': 0.5, 'label': 'reverse_frame' }
+    return censor_image( image, frame_box )
+
+
+def censor_img_reverse( image, boxes, frame_alpha, frame_style, window_mask=None ):
+    """
+    Render one reverse-mode frame.
+
+    Args:
+        image: The frame. Mutated in place and returned.
+        boxes: This frame's windows, each with a resolved censor_style
+            ('show' or any normal style) and censor_shape. NOT mutated:
+            render workers share one box list.
+        frame_alpha: The frame style's opacity for this frame, 0 to 1,
+            from the trigger timeline.
+        frame_style: The frame style dict.
+        window_mask: Person windows, (x, y, w, h, alpha) with alpha a
+            uint8 0/255 array over that rectangle, or None. Shown like a
+            show window; censored windows still win where they overlap.
+
+    Returns:
+        The rendered frame.
+    """
+    import betautils_reverse as bu_reverse  # deferred: keeps this module's import graph as it was
+    censored = [ box for box in boxes if not bu_reverse.is_show_style( box['censor_style'] ) ]
+    if frame_alpha <= 0:
+        # Untriggered under passthrough: the frame stays clear, so show
+        # windows have nothing to undo and censored windows are exactly
+        # normal mode's boxes.
+        return censor_img_for_boxes( image, censored )
+
+    img_h, img_w = image.shape[:2]
+    original = image.copy()
+    obscure_full_frame( image, frame_style )
+    if frame_alpha < 1:
+        cv2.addWeighted( image, frame_alpha, original, 1.0 - frame_alpha, 0, dst=image )
+
+    if window_mask is not None:
+        x, y, w, h, alpha = window_mask
+        np.copyto( image[ y:y+h, x:x+w ], original[ y:y+h, x:x+w ], where=alpha[ :, :, None ] > 0 )
+
+    for box in boxes:
+        style = box['censor_style']
+        if bu_reverse.is_show_style( style ):
+            _blend_window( image, original, _clamped_rect( box, img_w, img_h ),
+                           box.get( 'censor_shape', 'box' ), style.get( 'feather', 0 ) )
+
+    # Each censored window's style is rendered into a fresh copy of the
+    # original with no shape and no feather of its own, then blended into
+    # the frame once through the window's alpha.
+    #   - Once: rendering it with its own feather and then blending again
+    #     applied the alpha twice and left a ring of clear original at a
+    #     feathered edge, which in reverse mode is a reveal.
+    #   - Except a sticker's feather, which softens the sticker's own
+    #     silhouette rather than a region mask (the sticker renderer
+    #     ignores shape). Kept, so inside the window's shape a sticker
+    #     looks exactly as it does in normal mode, like every other style.
+    #   - From the original: rendering from the frame (pixels over blur)
+    #     would censor the blur instead of the subject.
+    #   - A fresh copy per window, not a restored region: stickers with
+    #     scale > 1 and bars with thickness > 1 draw past their box, and
+    #     the next window would read those pixels as the original.
+    # The blend covers the window only, so a sticker or bar that reaches
+    # past it is clipped to the window; outside it is the frame style.
+    windows = _censored_windows( censored, img_w, img_h )
+    scratch = np.empty_like( original ) if windows else None
+    for box in windows:
+        np.copyto( scratch, original )
+        rect = _clamped_rect( box, img_w, img_h )
+        x, y, w, h = rect
+        style = box['censor_style']
+        own_feather = style.get( 'feather', 0 ) if style.get( 'type' ) == 'sticker' else 0
+        flat = dict( box, x=x, y=y, w=w, h=h, censor_shape='box',
+                     censor_style=dict( style, feather=own_feather ) )
+        censor_image( scratch, flat )
+        _blend_window( image, scratch, rect, box.get( 'censor_shape', 'box' ),
+                       style.get( 'feather', 0 ) )
+
+    return watermark_image( image )

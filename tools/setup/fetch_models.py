@@ -9,15 +9,21 @@ repository root.
   640m       manual: GitHub only serves NudeNet's release files to
   RetinaNet  signed-in users, so download them yourself (links below and
              in SETUP.md) and save them under the names shown
+  yolo11*-seg  person masks for reverse mode (n, s, m): Ultralytics' .pt
+             releases (pinned by hash) exported to ONNX in a throwaway
+             environment (ultralytics + CPU-only PyTorch) that is deleted
+             afterwards, so the runtime .venv never gets PyTorch
 
 Anything already present is checked. A file that isn't a real ONNX model
 (for example a GitHub sign-in page saved under a .onnx name) is moved
 aside to <name>.bad instead of being trusted.
 
-    python tools/setup/fetch_models.py           # fetch 320n if missing, check all
+    python tools/setup/fetch_models.py           # fetch/export what is missing, check all
     python tools/setup/fetch_models.py --no-download   # check only
+    python tools/setup/fetch_models.py --no-export     # skip the person-model export
 
-Exit status is 1 if 320n is missing or any model present is unusable.
+Exit status is 1 if 320n is missing, a person-model export failed, or any
+model present is unusable.
 """
 
 import argparse
@@ -26,7 +32,9 @@ import io
 import logging
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 
@@ -56,6 +64,19 @@ LEVELS = { 'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO,
            'warn': logging.WARNING, 'error': logging.ERROR }
 
 NUDENET_RELEASES = 'https://github.com/notAI-tech/NudeNet/releases'
+ULTRALYTICS_ASSETS = 'https://github.com/ultralytics/assets/releases/download/v8.3.0/'
+
+# The throwaway export environment. CPU-only PyTorch: export needs no GPU,
+# and the CPU wheels are a fraction of the CUDA ones. The environment
+# variable points it at a mirror.
+EXPORT_TORCH_INDEX = os.environ.get( 'BETASUITE_EXPORT_TORCH_INDEX', 'https://download.pytorch.org/whl/cpu' )
+EXPORT_PACKAGES = [ 'ultralytics==8.4.198', 'onnx', 'onnxslim' ]
+EXPORT_SCRIPT = (
+    "import shutil, sys\n"
+    "from ultralytics import YOLO\n"
+    "pt, out, size = sys.argv[1], sys.argv[2], int( sys.argv[3] )\n"
+    "exported = YOLO( pt ).export( format='onnx', imgsz=size, dynamic=True, simplify=True )\n"
+    "shutil.move( exported, out )\n" )
 
 MODELS = {
     '320n': {
@@ -75,6 +96,24 @@ MODELS = {
         'file': 'detector_v2_default_checkpoint.onnx',
         'desc': 'NudeNet v2 RetinaNet (optional, retinanet_v2 backend)',
         'manual_url': NUDENET_RELEASES + '/download/v0/detector_v2_default_checkpoint.onnx',
+    },
+    'yolo11n-seg': {
+        'file': 'yolo11n-seg.onnx',
+        'desc': 'YOLO11n-seg person masks (reverse mode person windows)',
+        'export': { 'pt_url': ULTRALYTICS_ASSETS + 'yolo11n-seg.pt', 'imgsz': 640,
+                    'pt_sha256': '55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152' },
+    },
+    'yolo11s-seg': {
+        'file': 'yolo11s-seg.onnx',
+        'desc': 'YOLO11s-seg person masks (reverse mode person windows, default)',
+        'export': { 'pt_url': ULTRALYTICS_ASSETS + 'yolo11s-seg.pt', 'imgsz': 640,
+                    'pt_sha256': '1caa81c0195412efa411b632bcfb8c184939dddb6ae41f6a80c41b211ff257c3' },
+    },
+    'yolo11m-seg': {
+        'file': 'yolo11m-seg.onnx',
+        'desc': 'YOLO11m-seg person masks (reverse mode person windows)',
+        'export': { 'pt_url': ULTRALYTICS_ASSETS + 'yolo11m-seg.pt', 'imgsz': 640,
+                    'pt_sha256': 'eb9a06f63e2206c35d68d839b08c362429ebecf933ad54c1ad68b2fd001c17cf' },
     },
 }
 
@@ -135,10 +174,124 @@ def fetch_320n( log ):
     return data
 
 
+def download_checked( url, sha256, dest, log ):
+    """Download url to dest, refusing it unless its sha256 matches."""
+    log.debug( 'GET %s'%( url ) )
+    req = urllib.request.Request( url, headers={ 'User-Agent': 'BetaSuite-setup' } )
+    with urllib.request.urlopen( req, timeout=300 ) as resp:
+        data = resp.read()
+    if sha256_of( data ) != sha256:
+        raise NotAModel( '%s checksum mismatch'%( os.path.basename( dest ) ) )
+    with open( dest, 'wb' ) as f:
+        f.write( data )
+
+
+def find_uv( explicit=None ):
+    """uv from --uv, PATH or its usual install folders, else None."""
+    candidates = [ explicit ] if explicit else []
+    candidates += [ shutil.which( 'uv' ),
+                    os.path.join( os.path.expanduser( '~' ), '.local', 'bin', 'uv' ),
+                    os.path.join( os.path.expanduser( '~' ), '.cargo', 'bin', 'uv' ),
+                    os.path.join( os.path.expanduser( '~' ), '.local', 'bin', 'uv.exe' ),
+                    os.path.join( os.path.expanduser( '~' ), '.cargo', 'bin', 'uv.exe' ) ]
+    for candidate in candidates:
+        if candidate and os.path.isfile( candidate ):
+            return candidate
+    return None
+
+
+def run_logged( description, command, log ):
+    """Run a command, its output to the log at debug; raise on failure."""
+    log.info( '=== starting: %s ==='%( description ) )
+    log.debug( 'command: %s'%( ' '.join( command ) ) )
+    result = subprocess.run( command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             errors='replace' )
+    for line in result.stdout.splitlines():
+        log.debug( '  %s'%( line ) )
+    if result.returncode != 0:
+        for line in result.stdout.splitlines()[-15:]:
+            log.error( '  %s'%( line ) )
+        raise RuntimeError( '%s failed (exit %d)'%( description, result.returncode ) )
+    log.info( '=== finished: %s ==='%( description ) )
+
+
+def build_export_env( workdir, uv, log ):
+    """A throwaway venv with ultralytics and CPU-only PyTorch. Returns its python."""
+    venv = os.path.join( workdir, 'export-venv' )
+    version = '%d.%d'%( sys.version_info[0], sys.version_info[1] )
+    if uv:
+        run_logged( 'create export environment', [ uv, 'venv', '--python', version, venv ], log )
+    else:
+        run_logged( 'create export environment', [ sys.executable, '-m', 'venv', venv ], log )
+    python = os.path.join( venv, 'Scripts', 'python.exe' ) if os.name == 'nt' else os.path.join( venv, 'bin', 'python' )
+    if uv:
+        install = [ uv, 'pip', 'install', '--python', python ]
+    else:
+        install = [ python, '-m', 'pip', 'install', '--disable-pip-version-check' ]
+    run_logged( 'install CPU-only PyTorch (export only)',
+                install + [ '--index-url', EXPORT_TORCH_INDEX, 'torch', 'torchvision' ], log )
+    run_logged( 'install ultralytics (export only)', install + EXPORT_PACKAGES, log )
+    return python
+
+
+def export_person_models( missing, log, uv=None ):
+    """
+    Export each missing person model to ONNX. One throwaway environment
+    for all of them, removed whatever happens.
+
+    Args:
+        missing: [(spec, dest), ...] for specs with an 'export' entry.
+
+    Returns:
+        The number of models that failed.
+    """
+    workdir = tempfile.mkdtemp( prefix='betasuite-export-' )
+    failures = 0
+    try:
+        try:
+            python = build_export_env( workdir, uv, log )
+        except Exception as e:
+            log.error( 'could not build the export environment: %s'%( e ) )
+            return len( missing )
+        env = dict( os.environ, YOLO_OFFLINE='1' )
+        for spec, dest in missing:
+            export = spec['export']
+            pt = os.path.join( workdir, os.path.basename( export['pt_url'] ) )
+            out = os.path.join( workdir, spec['file'] )
+            try:
+                download_checked( export['pt_url'], export['pt_sha256'], pt, log )
+                log.info( '=== starting: export %s ==='%( spec['file'] ) )
+                result = subprocess.run( [ python, '-c', EXPORT_SCRIPT, pt, out, str( export['imgsz'] ) ],
+                                         cwd=workdir, env=env, stdout=subprocess.PIPE,
+                                         stderr=subprocess.STDOUT, text=True, errors='replace' )
+                for line in result.stdout.splitlines():
+                    log.debug( '  %s'%( line ) )
+                if result.returncode != 0:
+                    for line in result.stdout.splitlines()[-15:]:
+                        log.error( '  %s'%( line ) )
+                    raise RuntimeError( 'export exited %d'%( result.returncode ) )
+                problem = onnx_problem( out )
+                if problem:
+                    raise NotAModel( problem )
+                shutil.move( out, dest )
+                log.info( '=== finished: export %s (%.1f MB) ==='%(
+                    spec['file'], os.path.getsize( dest ) / 1e6 ) )
+            except Exception as e:
+                failures += 1
+                log.error( 'could not export %s: %s'%( spec['file'], e ) )
+    finally:
+        shutil.rmtree( workdir, ignore_errors=True )
+        log.info( 'removed the export environment' )
+    return failures
+
+
 def main():
     relaunch_in_venv()
     parser = argparse.ArgumentParser( description=__doc__.split( '\n\n' )[0] )
     parser.add_argument( '--no-download', action='store_true', help='only check what is already there' )
+    parser.add_argument( '--no-export', action='store_true',
+                         help='skip exporting the person models (reverse mode person windows)' )
+    parser.add_argument( '--uv', help='path to uv, for the throwaway export environment' )
     parser.add_argument( '--log-level', default='info', choices=list( LEVELS ) )
     parser.add_argument( '--log-file', default=os.path.join( REPO_ROOT, 'fetch_models.log' ) )
     args = parser.parse_args()
@@ -147,6 +300,7 @@ def main():
     os.makedirs( MODEL_DIR, exist_ok=True )
     failures = 0
     manual_missing = []
+    export_missing = []
 
     for key, spec in MODELS.items():
         dest = os.path.join( MODEL_DIR, spec['file'] )
@@ -160,6 +314,13 @@ def main():
 
         if 'manual_url' in spec:
             manual_missing.append( ( spec, dest ) )
+            continue
+        if 'export' in spec:
+            if args.no_download or args.no_export:
+                log.warning( '%s is missing (person windows need it; run without --no-export '
+                             'to create it)'%( spec['file'] ) )
+            else:
+                export_missing.append( ( spec, dest ) )
             continue
         if args.no_download:
             failures += 1
@@ -178,6 +339,11 @@ def main():
             f.write( data )
         os.replace( tmp, dest )
         log.info( '=== finished: fetch %s (%.1f MB) ==='%( spec['file'], len( data ) / 1e6 ) )
+
+    if export_missing:
+        log.info( 'exporting %d person model(s): %s'%(
+            len( export_missing ), ', '.join( spec['file'] for spec, _dest in export_missing ) ) )
+        failures += export_person_models( export_missing, log, find_uv( args.uv ) )
 
     if manual_missing:
         log.info( 'optional models not installed (download them yourself, signed in to GitHub):' )

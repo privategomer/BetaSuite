@@ -272,9 +272,12 @@ done
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). fetch_models.py checks whatever is there
-# and moves bad files (e.g. a saved sign-in page) aside.
-"$VENV_PY" tools/setup/fetch_models.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
+# serves them to signed-in users). The YOLO11-seg person models are exported
+# to ONNX in a throwaway environment that is deleted afterwards. fetch_models.py
+# checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
+FETCH_ARGS=( --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" )
+if [ "$USE_UV" = 1 ] && [ -n "${UV:-}" ]; then FETCH_ARGS+=( --uv "$UV" ); fi
+"$VENV_PY" tools/setup/fetch_models.py "${FETCH_ARGS[@]}" \
     || log_warn "model check reported a problem; see the messages above"
 
 # ---------------------------------------------------------------- betaconfig.gpu_enabled

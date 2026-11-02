@@ -55,7 +55,9 @@ import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
+import betautils_person as bu_person
 import betautils_render as bu_render
+import betautils_reverse as bu_reverse
 import betautils_signals as bu_signals
 import betautils_track as bu_track
 import betautils_video as bu_video
@@ -122,6 +124,26 @@ def _log_run_banner( logger ):
         betaconfig.video_censor_fps,
         bu_detector.get_nn_batch_size( backend ),
         getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ) ) )
+
+    if bu_reverse.enabled():
+        reverse = bu_reverse.settings()
+        logger.info( "REVERSE MODE: frame style %s while triggered (labels %s above min_prob %s, "
+                     "hold %ss, and wherever a censored box is on screen; fade %ss, empty frames %s); "
+                     "windows (uncensored) %s; censored with their own styles %s."%(
+            reverse['frame_style'], sorted( bu_reverse.trigger_labels() ),
+            reverse['trigger']['min_prob'], reverse['trigger']['hold_seconds'],
+            reverse['fade_seconds'], reverse['empty_frame'], bu_reverse.window_labels(),
+            bu_reverse.censor_labels() ) )
+        if bu_reverse.person_windows_enabled():
+            logger.info( "REVERSE MODE: male bodies windowed from person masks (%s %s); male "
+                         "evidence %s, female evidence %s, at min_prob %s"%(
+                bu_person.selected_backend_name(), bu_person.resolve_config().get( 'model_variant' ),
+                reverse['person_windows']['male_labels'], reverse['person_windows']['female_labels'],
+                reverse['person_windows']['evidence_min_prob'] ) )
+        for label in bu_reverse.rendered_labels():
+            logger.debug( "reverse %s %s resolves to: %s"%(
+                'window' if bu_reverse.window_entry( label ) is not None else 'censored label',
+                label, bu_config.get_label_settings( label ) ) )
 
     if getattr( betaconfig, 'preview_mode_enabled', False ):
         preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
@@ -218,7 +240,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     final_path, intermediate_path = bu_cache.video_output_paths(
         censored_folder, stem, file_hash, picture_sizes, sample_fps,
         detection_key, censor_key, encode_key, preview_suffix, container,
-        output_label )
+        output_label, bu_cache.output_mode_marker() )
 
     return {
         'final': final_path,
@@ -492,6 +514,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         return 'skipped'
 
     started_at = time.perf_counter()
+    person_pass = None
     try:
         preview_offset_seconds, preview_window_unlimited = _resolve_preview_slice(
             fname, source, preview_mode_enabled, preview_max_seconds, logger )
@@ -598,6 +621,13 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
                 return 'skipped'
 
+        # Reverse mode's person masks: same frames as detection, in a
+        # thread alongside it, so its decode and model time overlap.
+        if bu_reverse.person_windows_enabled():
+            person_pass = bu_person.BackgroundPersonPass(
+                source, fname, file_hash, paths['preview_suffix'], preview_offset_seconds,
+                effective_preview_seconds, logger, sample_fps )
+
         raw_boxes = detect_boxes_for_video(
             source, fname, session, file_hash, picture_sizes, paths['preview_suffix'],
             preview_offset_seconds, effective_preview_seconds, logger, sample_fps )
@@ -611,7 +641,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         boxes, track_stats = bu_track.prepare_boxes_for_render(
             raw_boxes, source.width, source.height,
             bu_video.absolute_cut_times( shot_cut_times, preview_offset_seconds ),
-            logger=logger, profile_name=profile_name, sample_fps=sample_fps )
+            logger=logger, profile_name=profile_name, sample_fps=sample_fps, style_seed=file_hash )
         track_stats['structure_profile'] = profile_name
         track_stats['cuts_per_min'] = ( round( signals.cuts_per_min, 2 )
                                         if signals.cuts_per_min is not None else None )
@@ -620,12 +650,37 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         track_stats['short_shot_fraction'] = ( round( signals.short_shot_fraction, 4 )
                                               if signals.short_shot_fraction is not None else None )
 
+        reverse = None
+        if bu_reverse.enabled():
+            trigger_times = bu_track.trigger_detection_times(
+                raw_boxes, source.width, source.height )
+            reverse = bu_reverse.render_plan_for_detections( trigger_times, sample_fps, boxes )
+            triggered_seconds = reverse.timeline.triggered_seconds()
+            censored_spans = len( bu_reverse.censored_box_spans( boxes ) )
+            track_stats['reverse_trigger_detections'] = len( trigger_times )
+            track_stats['reverse_censored_boxes'] = censored_spans
+            track_stats['reverse_trigger_intervals'] = len( reverse.timeline.intervals )
+            track_stats['reverse_triggered_seconds'] = round( triggered_seconds, 2 )
+            logger.info( "reverse: trigger on for %.1fs in %d interval(s) from %d detection(s) and %d "
+                         "censored box(es)%s"%(
+                triggered_seconds, len( reverse.timeline.intervals ), len( trigger_times ),
+                censored_spans, ' (empty frames obscured too)' if reverse.timeline.always_on else '' ) )
+            if person_pass is not None:
+                sample_times, people = person_pass.result()
+                reverse.window_masks = bu_person.window_masks_for_video(
+                    sample_times, people, raw_boxes, source.width, source.height, sample_fps )
+                windowed = reverse.window_masks.windowed_samples()
+                track_stats['reverse_person_masks'] = len( people )
+                track_stats['reverse_male_person_samples'] = windowed
+                logger.info( "reverse: %d person mask(s) over %d sample(s); male bodies windowed in "
+                             "%d sample(s)"%( len( people ), len( sample_times ), windowed ) )
+
         detection_finished_at = time.perf_counter()
 
         render_stats = bu_render.render_video(
             source, boxes, paths['intermediate'], paths['final'], active_encode_preset,
             preview_mode_enabled, preview_window_unlimited,
-            preview_offset_seconds, preview_max_seconds, logger )
+            preview_offset_seconds, preview_max_seconds, logger, reverse=reverse )
 
         finished_at = time.perf_counter()
 
@@ -661,6 +716,10 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
         return 'failed'
     finally:
+        # On a failure or Ctrl-C, the person pass checkpoints before the
+        # run moves on or exits; after a normal finish this returns at once.
+        if person_pass is not None:
+            person_pass.stop()
         source.release()
 
 
