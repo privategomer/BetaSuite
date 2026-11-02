@@ -20,6 +20,8 @@ where the reasoning lives.
 - [Track confirmation](#track-confirmation)
 - [Shot-cut detection](#shot-cut-detection)
 - [Censor styles](#censor-styles)
+- [Reverse mode](#reverse-mode)
+- [Person segmentation](#person-segmentation)
 - [Area safety and time safety](#area-safety-and-time-safety)
 - [Rendering and encoding](#rendering-and-encoding)
 - [Preview mode](#preview-mode)
@@ -2630,6 +2632,268 @@ the safe direction.
 the real `blur_image` uses, rather than recomputing the arithmetic. An
 earlier version of that file recomputed it, agreed with itself, and
 passed cheerfully with the bug put back.
+
+---
+
+## Reverse mode
+
+Normal mode spot-paints the few patches you want gone. Reverse mode
+spray-paints the whole wall: while a **trigger** is live, a **frame
+style** obscures the whole frame, with masking tape over the **windows**
+(labels left uncensored, such as faces) and the **censored labels**
+painted separately in their own styles (a breast keeps its normal-mode
+mosaic/hex list instead of turning into the frame blur).
+
+Off by default. Turn it on in the block or for one run:
+
+```bash
+python3 betatv.py --reverse on --preview on --preview-seconds 20
+```
+
+### Layers, bottom to top
+
+1. **Frame layer**: `frame_style` over the whole frame, faded in and
+   out by the trigger
+2. **Windows**: the original pixels back through the window's shape and
+   feather
+3. **Censored labels**: each label's style computed from the original
+   pixels, then blended into the frame once through its shape and
+   feather. A censored label wins where it overlaps a window
+4. Watermark
+
+Normal mode never runs through this compositor, so its output is
+unchanged byte for byte.
+
+### Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `reverse['enabled']` | `False` | the switch. `--reverse on/off` overrides it for one run |
+| `reverse['frame_style']` | blur `triple_box`, strength 20 | one style dict: `blur` (`triple_box` or `box`), `pixel` (`mosaic`, `square`) or `bar`. Strength is a percent of the frame's shorter side, so 20 is about a 216 px kernel at 1080p |
+| `reverse['empty_frame']` | `'passthrough'` | `'passthrough'`: untriggered frames are left clear. `'obscure'`: every frame gets the frame style |
+| `reverse['fade_seconds']` | `0.25` | fade between clear and obscured. 0 is a hard switch |
+| `reverse['trigger']['labels']` | `None` | labels whose detections switch the frame style on. `None` means every censored label, so a window (a face) never triggers by itself |
+| `reverse['trigger']['min_prob']` | `0.30` | a detection triggers when its score is above this. At or above `global_min_prob`, since nothing below the floor is stored |
+| `reverse['trigger']['hold_seconds']` | `0.5` | how long the frame stays obscured after each trigger detection |
+| `reverse['censor']['labels']` | `None` | labels censored inside a triggered frame, each with its own style. `None` means `items_to_censor` |
+| `reverse['censor']['overrides']` | `{}` | `{label: keys}` for reverse mode only: any `item_overrides` key, look keys included, e.g. a different style list while the frame is blurred |
+| `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis` | `{label: entry}`, never censored. `{}` inherits every tuning key |
+| `reverse['person_windows']['enabled']` | `True` (shipped; `False` when the key is absent) | whole male bodies left uncensored, from [person masks](#person-segmentation) |
+| `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_penis`, `exposed_chest` | detections that make a person male |
+| `reverse['person_windows']['female_labels']` | `face_femme`, `exposed_breast`, `exposed_vulva` | detections that count against it |
+| `reverse['person_windows']['evidence_min_prob']` | `0.40` | how sure a detection must be to count as evidence |
+| `reverse['person_windows']['track_iou']` | `0.30` | box overlap that links a person to the same person in the next sample |
+| `reverse['person_windows']['track_max_gap_seconds']` | `1.0` | how long a person can go undetected and still be the same track |
+| `reverse['person_windows']['shrink']` | `0.02` | fraction of the person's shorter side trimmed off the mask edge |
+
+A label is a window or censored, never both (validation error). A window
+entry takes `censor_shape`, any backend-tunable key (`min_prob`,
+`time_safety`, `width_area_safety`, tracking and smoothing keys), and a
+`censor_style` that can only be `{'type': 'show'}`, with optional
+`feather`, `shape`, `weight` and area safety keys (a weighted list of
+show variants works). Any other style in a window is an error: censor the
+label through `reverse['censor']` instead.
+
+### Person windows: whole male bodies
+
+The nudity detectors report parts, not people, so a `face_masc` window
+leaves the rest of the man under the frame style. Person windows add a
+second model ([person segmentation](#person-segmentation)) that outlines
+every person in each sampled frame, and leave a person's whole outline
+uncensored when the detections inside it say he is a man.
+
+- **Who counts as male.** A detection (at or above `evidence_min_prob`,
+  after the same dedup, promotion, geometry and suppression stages
+  tracking uses) votes for the one person whose outline holds its
+  centre: their outline, not just their box. One inside two overlapping
+  outlines votes for neither, since it can't say whose it is. People are
+  linked from sample to sample by box overlap, so a man whose face is
+  visible in one sample stays a man while he turns away. A track is male
+  with at least one male vote and more male votes than female ones
+- **Overlap: whoever isn't a man is cut out of the men.** Every outline
+  that isn't shown (a woman's, or anyone not attributed) is cut out of
+  the shown ones, so where a woman overlaps a man she stays under the
+  frame style and he stays clear around her. `shrink` trims shown
+  outlines and grows cut-out ones, so the boundary between them goes to
+  the frame style. Censored labels still win wherever they overlap
+- **Two bodies in one outline.** When the model returns two overlapping
+  people as one outline, there is nothing separate to cut out. A female
+  detection inside a man's outline that no separate non-male outline
+  accounts for means that: he is not shown at that sample
+- **Between samples** a window is the overlap of the two samples'
+  outlines, so a moving body loses its leading and trailing edges to the
+  frame style rather than dragging a clear patch over what it left. Past
+  the last sample, or across a gap of more than 1.5 sample intervals,
+  nothing is shown
+- **Anyone not attributed stays obscured**: no evidence, no window
+
+The pass runs in a thread alongside detection, over the same sampled
+frames, and is cached beside the detection caches
+(`<hash>-person-<backend>-<fps>-p<key>.npz`), so a re-render or a
+retuned attribution setting never re-runs it. It resumes the way
+detection does: a checkpoint every `detection_checkpoint_frames` samples
+and one on Ctrl-C (or when the file fails), so a re-run picks up where
+it stopped. The checkpoint shares the cache's key, so a changed person
+model starts over rather than mixing two models' outlines. The person model is part
+of the censor key while person windows are on. With person windows on
+and the model missing, the run refuses to start and says to run setup.
+
+### What each kind inherits
+
+- **Tuning keys** (confidence, padding, tracking, smoothing, paired
+  style, geometry) come from wherever they are set, for both kinds: the
+  shared `item_overrides`, the backend tier, the variant tier, then the
+  structure profile
+- **Look keys** (`censor_style`, `censor_shape`): a **censored label
+  keeps them**, which is the point; a **window never inherits them**
+  (with no `censor_shape` of its own a window is `default_censor_shape`)
+- **Reverse-mode keys apply last**, a window entry or a censored label's
+  override, over the profile too, and for reverse mode only. Normal mode
+  is untouched by anything in the block
+
+A censored label draws exactly what normal mode draws inside its shape.
+What differs is around it: the feather ring and the corners outside the
+shape fade into the frame style instead of the original, a sticker is
+clipped to the label's shape (normal mode draws the whole sticker), and a
+style's negative area safety (the vertical bar variants) leaves the rest
+of the detection under the frame style instead of clear.
+
+`time_safety` is inherited, which keeps a window open briefly after the
+target leaves. Override it in the window if that shows too much.
+
+### When the trigger fires
+
+Two sources, merged:
+
+- **Trigger detections**: detections of a trigger label scoring above
+  `trigger['min_prob']`, read **after** cross-size dedup, promotion, the
+  geometry filter and suppression, but **before** each label's own
+  `min_prob` and before tracking. Each one at time `t` holds the frame
+  obscured over `[t - one sample interval, t + hold_seconds]`. The lead
+  exists because detection looks only every 1/fps seconds: the target
+  can be on screen for up to one interval before the first detection
+  that sees it. Consecutive samples always join into one interval
+- **Censored boxes**: wherever a censored label's box is on screen, the
+  frame is obscured too, over the box's own span. A box can be there
+  with no trigger detection (it scored between its own `min_prob` and
+  the trigger's, or tracking held it through a gap longer than
+  `hold_seconds`), and a censored object in a clear frame is what reverse
+  mode exists to prevent
+
+The fade **looks ahead**: betatv renders offline, so the fade-in
+finishes by the start of the obscured interval and the fade-out starts
+after it ends. Fades only ever add obscuring outside an interval, never
+remove it inside one.
+
+betastare has no time axis: a still is obscured when any raw detection
+of a trigger label scores above the trigger's `min_prob`, or when any
+censored label has a box.
+
+### Error economics
+
+| outcome | effect | direction |
+|---|---|---|
+| trigger misses (target on screen, no trigger detection, no censored box) | **whole frame clear** | largest reveal |
+| trigger fires falsely | frame obscured needlessly | fails closed |
+| censored label misses (frame triggered) | target under the frame style | fails closed |
+| window false positive (a breast detected as `exposed_chest`) | that patch shown clear | small reveal |
+| window padding | more surroundings shown | small reveal |
+
+The trigger wants recall (low `min_prob`, generous hold) and windows want
+precision (higher `min_prob`, tight or negative padding). Censored boxes
+holding the trigger on cover the gap between a censored label's
+`min_prob` and the trigger's. A window that overlaps a censored label
+loses the overlap, but the rest of the window (a penis window around a
+vulva box) is shown.
+
+### Cost
+
+Measured on Aaron's machine (`betabench reverse`, 2026-10-11, 3840x2160,
+one core per value, x264 at the time):
+
+| frame style | ms per frame |
+|---|---|
+| `pixel` `mosaic` s4 | 11 |
+| `blur` `box` s20 | 31 |
+| `bar` | 45 |
+| `blur` `triple_box` s20 | 78 |
+| `pixel` `hex` s4 | 930 (rejected by validation) |
+| `blur` `gaussian` s20 | 4,765 (rejected by validation) |
+
+Whole pipeline with every frame triggered: 7.1 to 6.2 fr/s (+14%
+render), output 0.48x the size. 63% of the library's runtime would be
+triggered, so passthrough saves less than it might. NVENC has since made
+encoding cheaper, so the frame style is a larger share of render time
+than these numbers suggest; re-run `betabench reverse` (the hub's
+`--with-reverse`) for current figures. `box` or `mosaic` is the lever if
+`triple_box` costs too much.
+
+### Limitations
+
+- **See-through styles show the original.** A censored label's style is
+  drawn over the original before it goes into the frame, so a sticker's
+  transparent areas, and a bar thinner than its box (`thickness` < 1),
+  show the original pixels there, not the frame style. Validation warns
+  per label, and the shipped censored labels both include stickers, so it
+  warns on every run with reverse on. Give the label a reverse-only
+  `censor_style` without them in `reverse['censor']['overrides']` if
+  they show too much. A future option could draw them over the frame
+  style instead
+- **A sticker or bar that reaches past its box** (`scale` or `thickness`
+  above 1) is clipped to the box; past it is the frame style
+- **Person windows need evidence.** A man with no male detection inside
+  his outline anywhere in his track stays obscured, and the two models
+  can disagree about where a body ends. Outlines are coarse: the model's
+  own mask is 160 cells along the frame's longer side at `picture_size`
+  640 (24 px per cell at 4K), smoothed when scaled up
+- **Overlapping bodies.** A woman is cut out of a man only when the
+  model outlines her separately. When it merges them and none of her
+  `female_labels` is detected inside the merged outline at that sample,
+  her unlabeled skin inside it is shown with him
+- **betavision refuses to run** with reverse mode on. Its live loop would
+  draw the censored labels and leave the rest of the screen clear
+- **Fades are not merged across short gaps.** Two intervals closer than
+  twice `fade_seconds` dip toward clear between them; raise
+  `hold_seconds` to bridge gaps instead
+
+## Person segmentation
+
+`person_backend` picks the model behind
+[person windows](#person-windows-whole-male-bodies). It is shaped like
+`detector_backend`: `'selected'`, one block per backend, a
+`model_variant` per backend, and environment overrides for sweeps
+(`BETASUITE_PERSON_BACKEND_OVERRIDE`, `BETASUITE_PERSON_VARIANT_OVERRIDE`).
+Adapters live in `segmenters/`, beside the detectors in `detectors/`.
+
+| Backend | Variants | Status |
+|---|---|---|
+| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0, like BetaSuite. Exported to ONNX by setup |
+| `rf_detr_seg` | `nano`, `small`, `medium` | registered, decoder not written yet: selecting it is a validation error. Apache-2.0 |
+
+| Setting (`person_backend['yolo11_seg']`) | Default | What it does |
+|---|---|---|
+| `model_variant` | `'s'` | which size; `model_path` overrides the file |
+| `picture_size` | `640` | the longer side of the model input. The shorter side is padded only to the next multiple of 32, so a 16:9 frame runs at 640x384 |
+| `min_prob` | `0.35` | person score floor |
+| `nms_iou` | `0.5` | overlap at which two candidates are one person |
+| `batch_size` | `4` | frames per model call |
+
+**Runtime.** The models run through onnxruntime like the detectors, so
+the runtime environment has no PyTorch. Setup exports them once from
+Ultralytics' pinned `.pt` releases in a throwaway environment
+(see SETUP.md, Models). The decoder was checked against Ultralytics' own
+predictor on its sample images: the same people, the same scores, box
+IoU 1.00 and mask IoU 0.98 to 0.997.
+
+**Cost.** One more model pass per sampled frame, overlapped with
+detection. `betabench persons` (or the analysis hub's `--with-persons`)
+times every size on your footage and writes preview images with the
+outlines drawn, for choosing a size on this machine. Published figures
+put n at about 2 ms, s at 3 to 4 ms and m at about 7 ms per 640 px frame
+on a 3070-class GPU; at 9 fps sampling, an hour of video is about 32,000
+frames.
+
+---
 
 ## Render-time motion interpolation
 

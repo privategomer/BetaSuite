@@ -366,6 +366,22 @@ Every label BetaSuite understands is listed in `betaconst.classes`.
 Some (`exposed_anus`, `exposed_armpits`, `exposed_chest`) exist purely
 as suppression signals and are not meant to be censored directly.
 
+### Reverse mode
+
+| Setting | Default | What it does |
+|---|---|---|
+| `reverse['enabled']` | `False` | obscure the whole frame while a trigger is live, except windows (left uncensored) and censored labels (each in its own style) |
+| `reverse['frame_style']` | blur `triple_box`, 20 | the style over the whole frame (`gaussian` and `hex` are rejected as too slow) |
+| `reverse['empty_frame']` | `'passthrough'` | frames with no trigger stay clear, or `'obscure'` every frame |
+| `reverse['fade_seconds']` | `0.25` | fade in and out; the fade-in finishes before the target appears |
+| `reverse['trigger']` | every censored label, `min_prob` 0.30, hold 0.5 s | what switches the frame style on. A censored box on screen holds it on too |
+| `reverse['censor']` | `items_to_censor`, no overrides | labels censored inside a triggered frame, keeping their normal-mode styles; `overrides` changes any key for reverse mode only |
+| `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis` | never censored. Tuning keys are inherited from every tier; look keys never are |
+| `reverse['person_windows']` | on | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
+| `person_backend` | `yolo11_seg`, size `s` | the person model (`n`/`s`/`m`; `rf_detr_seg` is registered but not written yet). Exported to ONNX by setup |
+
+Reference: [Reverse mode](CONFIG_REFERENCE.md#reverse-mode), [Person segmentation](CONFIG_REFERENCE.md#person-segmentation)
+
 ### Censor styles
 
 | Setting | Default | What it does |
@@ -494,6 +510,7 @@ and committed, not flipped per invocation.
 | `--preview-random {on,off}` | `preview_random_slice` |
 | `--preview-preset PRESET` | `preview_encode_preset` |
 | `--encode-preset PRESET` | `encode_preset` |
+| `--reverse {on,off}` | `reverse['enabled']` |
 
 ```bash
 # a pinned 10-second slice, so repeated runs compare the same footage
@@ -662,6 +679,7 @@ python3 tools/bench/betabench.py --help
 | `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure-scan --workers` |
 | `encode` | render encode speed and quality (SSIM, PSNR) per encoder: current x264 settings, faster x264 presets, NVENC at several cq values; real worker count, real chunk command; not part of `all` | `encode_video_codec`, `encode_preset`, `encode_crf`, and `render_workers` if NVENC caps sessions |
 | `reverse` | what reverse mode would cost to render here, before it is built: each frame style and window blend on real frames, the real pipeline with and without a triggered frame layer, and the share of each file's runtime a trigger would hold on | the reverse-mode frame-style default, and whether it is affordable |
+| `persons` | each person-segmentation model and size on real frames: ms per frame per batch size, people found, preview images with the outlines drawn | `person_backend`'s `model_variant` and `batch_size` |
 
 **Measuring a subset.** `--first-videos N` (the first N files by name,
 case-insensitive, across every folder and both source trees) or
@@ -730,7 +748,8 @@ python3 tools/tuning/auto_tune.py         # same, for the tuner
 
 `run_all_analysis.sh` reads caches only by default. The steps that
 measure the machine rather than the run are opt-in: `--with-encode`,
-`--with-reverse`, `--with-hardware`, or `--with-timing` for all three.
+`--with-reverse`, `--with-persons`, `--with-hardware`, or `--with-timing`
+for all four.
 They run one at a time after the parallel analysis steps have finished,
 never alongside them. The run ends with a list of where each
 recommendation was written.
@@ -955,6 +974,17 @@ tests against reference implementations.
   than re-encoding them would be a large further win. Parked pending
   real measurements from a few full runs.
 - **Pixelation patterns beyond square/mosaic/hex** are not implemented.
+- **Reverse mode: see-through censor styles show the original.** A
+  sticker's transparent areas, and a bar thinner than its box, show the
+  original pixels rather than the frame style. Validation warns.
+- **Reverse mode's person windows need evidence.** A man is left
+  uncensored only when a male detection lands inside his outline
+  somewhere in his track. A woman overlapping him is cut out of his
+  window when the model outlines her separately; when it merges the two
+  into one outline and none of her labels is detected inside it, her
+  unlabeled skin there is shown with him.
+- **Reverse mode is not available in betavision**, which refuses to start
+  with it on.
 
 ---
 

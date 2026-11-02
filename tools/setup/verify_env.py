@@ -51,6 +51,9 @@ MODELS = {
     'nudenet_v3 / 320n': '../resources/model/v3.4-320n.onnx',
     'nudenet_v3 / 640m': '../resources/model/v3.4-640m.onnx',
     'retinanet_v2':      '../resources/model/detector_v2_default_checkpoint.onnx',
+    'person yolo11_seg / n': '../resources/model/yolo11n-seg.onnx',
+    'person yolo11_seg / s': '../resources/model/yolo11s-seg.onnx',
+    'person yolo11_seg / m': '../resources/model/yolo11m-seg.onnx',
 }
 
 DIRS = [

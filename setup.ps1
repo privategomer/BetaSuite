@@ -290,9 +290,10 @@ foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncens
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). fetch_models.py checks whatever is there
-# and moves bad files (e.g. a saved sign-in page) aside.
-& $VenvPy 'tools\setup\fetch_models.py' '--log-level' $LogLevel '--log-file' $LogFile
+# serves them to signed-in users). The YOLO11-seg person models are exported
+# to ONNX in a throwaway environment that is deleted afterwards. fetch_models.py
+# checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
+& $VenvPy 'tools\setup\fetch_models.py' '--log-level' $LogLevel '--log-file' $LogFile '--uv' $Uv
 if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
 
 # ---------------------------------------------------------------- betaconfig.gpu_enabled

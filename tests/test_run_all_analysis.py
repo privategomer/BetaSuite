@@ -4,7 +4,7 @@ test_run_all_analysis.py - the one-click post-run suite's ordering.
 The suite runs its middle steps several at a time. That is fine for
 steps that only read caches, and wrong for steps that MEASURE time: a
 timing step running beside three CPU-bound analyses reports their load
-as its own cost. encode, reverse and hardware are timing steps, so they
+as its own cost. encode, reverse, persons and hardware are timing steps, so they
 must start only after every parallel step has finished, run one at a
 time, and finish before auto_tune. They are off unless asked for. These tests run the real script against a
 stand-in Python that records when each step started and ended.
@@ -74,7 +74,8 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
             return 'betabench ' + argv[1]
         return script
 
-    TIMING = ( 'betabench encode', 'betabench reverse', 'betabench hardware', 'betabench render' )
+    TIMING = ( 'betabench encode', 'betabench reverse', 'betabench persons', 'betabench hardware',
+               'betabench render' )
 
     def test_timing_steps_run_alone_after_the_parallel_batch( self ):
         steps = self.run_suite( '--with-timing' )
@@ -127,6 +128,7 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
     def test_each_timing_step_has_its_own_switch( self ):
         for flag, wanted in ( ( '--with-encode', { 'betabench encode' } ),
                               ( '--with-reverse', { 'betabench reverse' } ),
+                              ( '--with-persons', { 'betabench persons' } ),
                               ( '--with-hardware', { 'betabench hardware', 'betabench render' } ) ):
             names = set( step['name'] for step in self.run_suite( flag ) )
             self.assertEqual( names & set( self.TIMING ), wanted, flag )
