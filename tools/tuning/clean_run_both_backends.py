@@ -94,7 +94,6 @@ Usage (from BetaSuite-env/core/, i.e. same place you run betatv.py from):
 import argparse
 import datetime
 import glob
-import logging
 import os
 import shutil
 import subprocess
@@ -104,6 +103,7 @@ import sys as _sys, os as _os
 _sys.path.insert( 0, _os.path.dirname( _os.path.dirname( _os.path.dirname( _os.path.abspath( __file__ ) ) ) ) )  # so 'import betaconst'/'betaconfig'/etc still resolve after this script moved into tools/analysis or tools/tuning
 
 import betautils_detector as bu_detector
+import betautils_log as bu_log
 
 _BACKEND_OVERRIDE_ENV_VAR = 'BETASUITE_DETECTOR_BACKEND_OVERRIDE'
 _VARIANT_OVERRIDE_ENV_VAR = 'BETASUITE_DETECTOR_VARIANT_OVERRIDE'
@@ -137,8 +137,7 @@ _CLEAR_FILES = [
     '../output/cache/file_hashes.json',
 ]
 
-_LEVEL_NAMES = { 'trace': 5, 'debug': logging.DEBUG, 'info': logging.INFO, 'warn': logging.WARNING, 'error': logging.ERROR }
-logging.addLevelName( 5, 'TRACE' )
+_LEVEL_NAMES = bu_log.LEVEL_NAMES
 
 
 def _build_logger( log_dir, log_level_name, console_level_name ):
@@ -149,22 +148,10 @@ def _build_logger( log_dir, log_level_name, console_level_name ):
     detail always in the log file, console kept readable/filterable
     separately.
     """
-    logger = logging.getLogger( 'clean_run_both_backends' )
-    logger.setLevel( 5 )  # let handlers do the actual filtering
-    logger.handlers.clear()
-
-    fmt = logging.Formatter( '%(asctime)s [%(levelname)s] %(message)s' )
-
     log_path = os.path.join( log_dir, 'clean_run_both_backends.log' )
-    file_handler = logging.FileHandler( log_path )
-    file_handler.setLevel( _LEVEL_NAMES[log_level_name] )
-    file_handler.setFormatter( fmt )
-    logger.addHandler( file_handler )
-
-    console_handler = logging.StreamHandler( sys.stdout )
-    console_handler.setLevel( _LEVEL_NAMES[console_level_name] )
-    console_handler.setFormatter( fmt )
-    logger.addHandler( console_handler )
+    fmt = '%(asctime)s [%(levelname)s] %(message)s'
+    logger = bu_log.tool_logger( 'clean_run_both_backends', log_path, _LEVEL_NAMES[log_level_name],
+                                 _LEVEL_NAMES[console_level_name], file_format=fmt, console_format=fmt )
 
     return logger, log_path
 

@@ -58,6 +58,7 @@ import os
 
 import betaconfig
 import betaconst
+import betautils_reverse as bu_reverse
 
 
 # Process-scoped backend override, read from the environment rather than
@@ -352,6 +353,22 @@ def get_class_suppression( backend_name=None ):
     return {}
 
 
+def get_class_suppression_refused( backend_name=None ):
+    """
+    Suppression pairs ('label<-suppressor') a person has decided against.
+
+    The bench suggests a rule for every pair whose overlaps form a
+    same-spot cluster, and it cannot tell a mislabel from two body parts
+    that genuinely share a spot (exposed_vulva<-exposed_penis during
+    penetration). A pair named here is never proposed as an addition
+    again, so a decision made once stays made. It changes nothing a run
+    renders.
+
+    Resolution: backend block -> detector_backend['defaults'] -> [].
+    """
+    return list( resolve_backend_setting( 'class_suppression_refused', backend_name, None ) or [] )
+
+
 def get_class_promotion( backend_name=None ):
     """
     The class_promotion ruleset for a backend: suppression's inverse.
@@ -417,7 +434,7 @@ ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS = {
     # tracking / smoothing
     'position_smoothing', 'size_smoothing', 'style_min_dwell_seconds',
     'interpolation_enabled', 'interpolation_max_gap',
-    'track_max_gap', 'match_distance_multiplier', 'min_track_hits',
+    'track_max_gap', 'match_distance_multiplier', 'min_track_hits', 'confirm_score',
     # paired style
     'paired_style', 'paired_style_max_distance', 'paired_style_tiebreak_margin',
     'paired_style_max_age',
@@ -495,6 +512,18 @@ def get_item_overrides( label, backend_name=None, variant_name=None ):
     name = backend_name or selected_backend_name()
     resolved = dict( getattr( betaconfig, 'item_overrides', {} ).get( label, {} ) )
 
+    # Reverse mode: a window inherits every tuning key from every tier
+    # but never a look key, then its own entry applies last. Without the
+    # strip, a label censored with a sticker list in normal mode would
+    # render that list in its window, where the original is meant to be
+    # shown. A censored label keeps everything, look keys included (its
+    # normal-mode style is the point), and its reverse-only overrides
+    # apply last. See betautils_reverse.LOOK_KEYS.
+    window = bu_reverse.window_entry( label )
+    if window is not None:
+        resolved = { key: value for key, value in resolved.items()
+                     if key not in bu_reverse.LOOK_KEYS }
+
     for block in ( get_backend_config( name ), get_variant_config( name, variant_name ) ):
         tier = block.get( 'item_overrides', {} )
         if not isinstance( tier, dict ):
@@ -502,6 +531,12 @@ def get_item_overrides( label, backend_name=None, variant_name=None ):
         for key, value in tier.get( label, {} ).items():
             if key in ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS:
                 resolved[key] = value
+
+    if window is not None:
+        resolved.update( window )
+        resolved.setdefault( 'censor_style', dict( bu_reverse.SHOW_STYLE ) )
+    else:
+        resolved.update( bu_reverse.censor_override( label ) or {} )
     return resolved
 
 

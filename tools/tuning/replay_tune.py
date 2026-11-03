@@ -17,11 +17,10 @@ class_suppression/min_prob/time_safety/area_safety can be replayed against
 a detection cache that's ALREADY been computed once, near-instantly, for
 as many candidate values as you want - no GPU time, no waiting.
 
-This uses the REAL smooth_boxes/apply_class_suppression functions from
-betatv.py (extracted from its actual source at runtime, not
-reimplemented - see _load_real_pipeline_functions below) and the real
-process_raw_box from betautils_censor.py, so results match what betatv.py
-would actually do, not an approximation of it.
+This replays the production pipeline (bu_track.prepare_boxes_for_render,
+via bu_tuning.replay_rendered) with the structure profile, shot cuts and
+sample rate a real run would use, so results match what betatv.py would
+actually do, not an approximation of it.
 
 What it can and can't tell you: it gives you exact counts (how many raw
 detections survived suppression, how many tracked boxes came out, how
@@ -95,29 +94,8 @@ import betautils_hash as bu_hash
 import betautils_censor as bu_censor
 import betautils_video as bu_video
 import betautils_cache_paths as bu_cache
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import load_cached_raw_boxes
-
-
-def _load_real_pipeline_functions():
-    """
-    The real tracking and suppression functions, imported directly.
-
-    Until 2.1 these lived inside betatv.py, which this tool could not
-    import (betatv had side effects at import time), so it read betatv's
-    SOURCE TEXT, regex-matched the two function bodies plus the import
-    block they depended on, and exec'd them. That worked, and it was
-    fragile in exactly the way this project keeps getting bitten by: the
-    extraction silently depended on those two functions staying adjacent
-    and on the regex anchor below them never moving.
-
-    They are a module now, so this is an import.
-
-    Returns:
-        A (smooth_boxes, apply_class_suppression) pair - the same
-        objects betatv.py itself calls.
-    """
-    import betautils_track as bu_track
-    return bu_track.smooth_boxes, bu_track.apply_class_suppression
 
 
 # box_hash_path_for/load_cached_raw_boxes moved to betautils_cache_paths.py
@@ -134,107 +112,50 @@ def box_hash_path_for( file_hash, size, fps, min_prob, cache_suffix ):
         file_hash, size, fps, min_prob, bu_detector.selected_backend_name(), cache_suffix )
 
 
-def deep_merge_item_overrides( base_overrides, patch ):
-    merged = copy.deepcopy( base_overrides )
-    for label, keys in patch.items():
-        merged.setdefault( label, {} )
-        merged[label] = dict( merged[label] )
-        merged[label].update( keys )
-    return( merged )
+def run_variant( flat_raw, vid_w, vid_h, file_hash, video_path, cache_paths,
+                 item_overrides_patch=None, class_suppression_patch=None, replay=None ):
+    """
+    One variant's counts through the production pipeline.
 
-
-def run_variant( flat_raw, vid_w, vid_h, smooth_boxes_fn, apply_suppression_fn,
-                  item_overrides_patch=None, class_suppression_patch=None ):
-    # monkeypatches betaconfig IN MEMORY for the duration of this one
-    # variant, then always restores it in the finally block - never writes
-    # to betaconfig.py, and a crash mid-variant can't leave the real
-    # config mutated for whatever runs next.
-    #
-    # class_suppression is patched into the CURRENTLY SELECTED backend's
-    # own detector_backend[<name>]['class_suppression'] block, not the
-    # flat top-level betaconfig.class_suppression - apply_class_suppression
-    # resolves per-backend now (see betautils_detector.get_class_suppression),
-    # checking that block FIRST, so patching only the top-level attribute
-    # would be silently ignored for any backend that has its own block set
-    # (both registered backends do, even nudenet_v3's deliberately-empty
-    # one) - same fix shape as betautils_cli.py's --nn-batch-size override.
-    orig_item_overrides = betaconfig.item_overrides
+    Patches betaconfig IN MEMORY for this variant only and always
+    restores it; betaconfig.py is never written. item_overrides land on
+    whichever tier would otherwise shadow them (bu_tuning.
+    item_overrides_in_effect): patching only the shared tier, as this
+    tool used to, was overridden by every backend, variant or profile
+    value for the same key, so those variants replayed the baseline.
+    class_suppression replaces each listed label's rule list.
+    """
+    replay = replay or bu_tuning.replay_rendered
     backend_name = bu_detector.selected_backend_name()
-    backend_setting = getattr( betaconfig, 'detector_backend', None )
-    orig_backend_suppression = None
-    had_backend_suppression_key = False
-    if backend_setting is not None and backend_name in backend_setting:
-        had_backend_suppression_key = 'class_suppression' in backend_setting[ backend_name ]
-        orig_backend_suppression = backend_setting[ backend_name ].get( 'class_suppression' )
-    else:
-        # No block for this backend. A class_suppression patch cannot be
-        # applied at all in that state (see the raise below); these are
-        # kept only so the finally block has defined names.
-        orig_flat_suppression = None
-        had_flat_suppression_attr = False
-    try:
-        if item_overrides_patch:
-            betaconfig.item_overrides = deep_merge_item_overrides( orig_item_overrides, item_overrides_patch )
-        if class_suppression_patch:
-            base_suppression = bu_detector.get_class_suppression( backend_name )
-            merged_suppression = copy.deepcopy( base_suppression )
-            merged_suppression.update( class_suppression_patch )
-            if backend_setting is not None and backend_name in backend_setting:
-                backend_setting[ backend_name ][ 'class_suppression' ] = merged_suppression
-            else:
-                # The flat betaconfig.class_suppression fallback was removed,
-                # so writing it here would patch nothing and every
-                # variant would silently replay identical results. Fail
-                # loudly instead of reporting a meaningless comparison.
-                raise RuntimeError(
-                    "cannot apply a class_suppression patch: betaconfig.detector_backend has no "
-                    "block for backend %r. Suppression rules are per-backend, so there "
-                    "is nowhere to put the patch."%( backend_name, ) )
-
-        # Memoised views of betaconfig are stale the moment this
-        # function patches it, and process_raw_box reads one of them.
-        import betautils_config as bu_config
-        bu_config.invalidate_config_caches()
-
-        raw_copy = copy.deepcopy( flat_raw )
-        surviving, suppression_counts = apply_suppression_fn( raw_copy )
-        # apply_class_suppression reports {'total', 'renderable'} per rule
-        # now; this report compares totals.
-        suppression_counts = { rule: entry['total'] if isinstance( entry, dict ) else entry
-                               for rule, entry in suppression_counts.items() }
-
-        label_counts = {}
-        for r in surviving:
-            lbl = r['class_id']
-            label_counts[lbl] = label_counts.get( lbl, 0 ) + 1
-
-        boxes = []
-        for r in surviving:
-            res = bu_censor.process_raw_box( r, vid_w, vid_h )
-            if res:
-                boxes.append( res )
-
-        tracked_boxes, smoothing_stats = smooth_boxes_fn( boxes )
-
-        return( {
-            'raw_detections': len( flat_raw ),
-            'surviving_after_suppression': len( surviving ),
-            'suppression_counts': suppression_counts,
-            'label_counts': label_counts,
-            'tracked_boxes': len( tracked_boxes ),
-            'interpolated_boxes': smoothing_stats['interpolated'],
-        } )
-    finally:
-        betaconfig.item_overrides = orig_item_overrides
-        import betautils_config as bu_config
-        bu_config.invalidate_config_caches()
-        if backend_setting is not None and backend_name in backend_setting:
-            if had_backend_suppression_key:
-                backend_setting[ backend_name ][ 'class_suppression' ] = orig_backend_suppression
-            else:
-                backend_setting[ backend_name ].pop( 'class_suppression', None )
-        # No flat-attribute branch to unwind: a patch without a backend
-        # block raises above rather than writing betaconfig directly.
+    if class_suppression_patch and backend_name not in getattr( betaconfig, 'detector_backend', {} ):
+        # Suppression rules are per-backend; without a block there is
+        # nowhere to put the patch, and every variant would replay the
+        # baseline while claiming otherwise.
+        raise RuntimeError(
+            "cannot apply a class_suppression patch: betaconfig.detector_backend has no "
+            "block for backend %r"%( backend_name, ) )
+    tracking = bu_tuning.replay_tracking_context( file_hash, video_path, cache_paths, backend_name )
+    suppression = copy.deepcopy( bu_detector.get_class_suppression( backend_name ) )
+    suppression.update( copy.deepcopy( class_suppression_patch or {} ) )
+    with bu_tuning.item_overrides_in_effect( backend_name, item_overrides_patch,
+                                             tracking['profile_name'] ), \
+         bu_tuning.class_suppression_in_effect( backend_name, suppression ):
+        rendered, stats, _tracking = replay(
+            file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h,
+            backend_name, tracking=tracking )
+    # apply_class_suppression reports {'total', 'renderable'} per rule;
+    # this report compares totals.
+    suppression_counts = { rule: entry['total'] if isinstance( entry, dict ) else entry
+                           for rule, entry in ( stats.get( 'suppression_counts' ) or {} ).items() }
+    return {
+        'raw_detections': len( flat_raw ),
+        'surviving_after_suppression': stats.get( 'after_suppression', 0 ),
+        'suppression_counts': suppression_counts,
+        'label_counts': stats.get( 'label_counts', {} ),
+        'tracked_boxes': len( rendered ),
+        'interpolated_boxes': stats.get( 'interpolated', 0 ),
+        'profile': tracking['profile_name'],
+    }
 
 
 def print_result( label, result ):
@@ -287,15 +208,17 @@ def main():
              "the env var itself, before any backend-dependent code runs)." )
     args = parser.parse_args()
 
+    # The override first: picture sizes resolved before it were the
+    # selected backend's, not --backend's.
+    if args.backend:
+        os.environ[ 'BETASUITE_DETECTOR_BACKEND_OVERRIDE' ] = args.backend
+
     # Resolve per backend rather than from the shared betaconfig list:
     # a backend can declare its own picture_sizes, or inherit
     # its model's native sizes, so the shared list is frequently not the
     # size anything was actually detected at.
     args.picture_sizes = bu_cache.resolve_picture_sizes(
         args.picture_sizes, bu_detector.selected_backend_name() )
-
-    if args.backend:
-        os.environ[ 'BETASUITE_DETECTOR_BACKEND_OVERRIDE' ] = args.backend
 
     # printed unconditionally (not just when --backend is passed) since
     # this was the actual source of confusion that motivated adding
@@ -354,9 +277,10 @@ def main():
         len(flat_raw), args.video, args.picture_sizes, args.video_censor_fps, args.preview_start_seconds ) )
     print()
 
-    smooth_boxes_fn, apply_suppression_fn = _load_real_pipeline_functions()
-
-    baseline = run_variant( flat_raw, vid_w, vid_h, smooth_boxes_fn, apply_suppression_fn )
+    cache_paths = [ box_hash_path_for( file_hash, size, args.video_censor_fps, global_min_prob,
+                                       cache_suffix ) for size in args.picture_sizes ]
+    baseline = run_variant( flat_raw, vid_w, vid_h, file_hash, video_path, cache_paths )
+    print( "structure profile for this replay: %s"%( baseline['profile'], ) )
     print( "=== baseline (current betaconfig.py, unmodified) ===" )
     print_result( "baseline", baseline )
 
@@ -371,7 +295,7 @@ def main():
     for v in variants:
         name = v.get( 'name', '(unnamed variant)' )
         result = run_variant(
-            flat_raw, vid_w, vid_h, smooth_boxes_fn, apply_suppression_fn,
+            flat_raw, vid_w, vid_h, file_hash, video_path, cache_paths,
             item_overrides_patch=v.get( 'item_overrides' ),
             class_suppression_patch=v.get( 'class_suppression' ),
         )

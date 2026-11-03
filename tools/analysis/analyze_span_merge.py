@@ -75,24 +75,8 @@ import betautils_video as bu_video
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import load_cached_raw_boxes
-
-
-def _load_real_pipeline_functions():
-    """
-    The real tracking and suppression functions, imported.
-
-    This used to regex the functions out of betatv.py's source text and
-    exec them. That coupled the tool to another file's line-by-line
-    layout, so a refactor - which only moved those functions
-    into betautils_track.py - broke it with a RuntimeError at startup.
-    Importing them means the tool replays exactly the code the real run
-    used, and a future move is a rename, not a breakage.
-
-    Returns:
-        (smooth_boxes, apply_class_suppression).
-    """
-    return bu_track.smooth_boxes, bu_track.apply_class_suppression
 
 
 # box_hash_path_for/load_cached_raw_boxes moved to betautils_cache_paths.py
@@ -200,23 +184,17 @@ def main():
     print( "loaded %d cached raw detections (picture_sizes=%s fps=%s preview_start=%s)"%(
         len(flat_raw), args.picture_sizes, args.video_censor_fps, args.preview_start_seconds) )
 
-    smooth_boxes_fn, apply_suppression_fn = _load_real_pipeline_functions()
-
     backend_name = bu_detector.selected_backend_name()
-    raw_copy = copy.deepcopy( flat_raw )
-    surviving, _ = apply_suppression_fn(
-        raw_copy,
-        bu_detector.get_class_suppression( backend_name ),
-        bu_config.get_parts_to_blur( backend_name ) )
-    boxes = []
-    for r in surviving:
-        res = bu_censor.process_raw_box( r, vid_w, vid_h )
-        if res:
-            boxes.append( res )
-    # smooth_boxes returns a NEW list: it adds interpolated boxes and
-    # drops unconfirmed tracks, so the input list is not the result.
-    boxes, _smoothing_stats = smooth_boxes_fn( boxes, backend_name=backend_name )
-    print( "%d tracked/interpolated boxes total across all labels"%(len(boxes)) )
+    # The production pipeline with this video's profile, cuts and sample
+    # rate. Rebuilt by hand here it had lost promotion, the geometry
+    # filter, the cuts and every profile override.
+    cache_paths = [ bu_cache.box_hash_path_for( file_hash, size, args.video_censor_fps,
+                                                global_min_prob, backend_name, cache_suffix )
+                    for size in args.picture_sizes ]
+    boxes, _stats, tracking = bu_tuning.replay_rendered(
+        file_hash, video_path, cache_paths, copy.deepcopy( flat_raw ), vid_w, vid_h, backend_name )
+    print( "%d tracked/interpolated boxes total across all labels (profile %s, %d shot cut(s))"%(
+        len( boxes ), tracking['profile_name'], len( tracking['shot_cut_times'] or [] ) ) )
     print()
 
     if preview_window_unlimited:

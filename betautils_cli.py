@@ -142,6 +142,11 @@ def _add_always_available_flags( parser ):
              "can identify, so automatic selection never picks it). An explicit --profile also "
              "overrides default_profile_enabled=False, and can name a profile marked manual_only. "
              "An unknown name is rejected by validation rather than silently falling back" )
+    parser.add_argument( '--reverse', choices=['on', 'off'],
+        help="turn reverse mode on or off for this run only (betaconfig.reverse['enabled']): obscure "
+             "the whole frame while a trigger detection is live and keep windows over the "
+             "reverse['windows'] labels, shown or censored. Everything else about reverse mode "
+             "comes from the reverse block" )
     parser.add_argument( '--motion-size-window', type=float, metavar='SECONDS',
         help="override betaconfig.py's render_motion_size_window_seconds for this run only (hold each "
              "track's box at the largest size it was sampled at within this many seconds either side; "
@@ -305,6 +310,17 @@ def apply_cli_overrides( betaconfig, args ):
         backend_setting.setdefault( backend_name, {} )[ backend_key ] = cli_value
         applied_overrides.append( "detector_backend[%r][%r]=%r"%(
             backend_name, backend_key, cli_value ) )
+
+    # --reverse writes the block's 'enabled' key, the only switch the rest
+    # of reverse mode reads. A new dict rather than an edit in place, so
+    # the module's own block is left as betaconfig.py wrote it.
+    reverse_cli_value = getattr( args, 'reverse', None )
+    if reverse_cli_value is not None:
+        reverse_setting = getattr( betaconfig, 'reverse', None )
+        reverse_setting = dict( reverse_setting ) if isinstance( reverse_setting, dict ) else {}
+        reverse_setting['enabled'] = _on_off_to_bool( reverse_cli_value )
+        setattr( betaconfig, 'reverse', reverse_setting )
+        applied_overrides.append( "reverse['enabled']=%r"%( reverse_setting['enabled'], ) )
 
     for argparse_dest, betaconfig_attr, to_config_value in _overrides_to_apply():
         cli_value = getattr( args, argparse_dest, None )

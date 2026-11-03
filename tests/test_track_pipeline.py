@@ -452,7 +452,8 @@ class TestRelevantLabels( unittest.TestCase ):
 
 class _ConfirmationPinnedMixin:
     """
-    Pin min_track_hits to 1 for tests that are not about confirmation.
+    Pin min_track_hits to 1 and confirm_score off for tests that are not
+    about confirmation.
 
     These fixtures are one or two boxes in one or two frames. The
     shipped config sets min_track_hits: 2, which drops any track with
@@ -475,6 +476,9 @@ class _ConfirmationPinnedMixin:
             for label_overrides in block.get( 'item_overrides', {} ).values():
                 if isinstance( label_overrides, dict ):
                     label_overrides.pop( 'min_track_hits', None )
+                    # Off too, so a tuned confirm_score cannot confirm
+                    # what a test means to drop.
+                    label_overrides.pop( 'confirm_score', None )
         bu_config.invalidate_config_caches()
 
     def tearDown( self ):
@@ -546,12 +550,8 @@ class TestScoreHysteresis( _ConfirmationPinnedMixin, unittest.TestCase ):
             raw_box( 'exposed_breast', 1.0, score=0.2 ), 1920, 1080, parts ) )
 
 
-class TestTrackConfirmation( _ConfirmationPinnedMixin, unittest.TestCase ):
-    """
-    min_track_hits removes a track that never accumulated enough real
-    detections - the single-frame false positive that would otherwise
-    paint a censor blob for time_safety seconds.
-    """
+class _ConfirmationCase( _ConfirmationPinnedMixin, unittest.TestCase ):
+    """Per-label confirmation settings set on a copy of the config."""
 
     def setUp( self ):
         # The mixin pins min_track_hits to 1 so the "default renders
@@ -573,6 +573,14 @@ class TestTrackConfirmation( _ConfirmationPinnedMixin, unittest.TestCase ):
         betaconfig.detector_backend[backend].setdefault(
             'item_overrides', {} ).setdefault( label, {} )['min_track_hits'] = value
         bu_config.invalidate_config_caches()
+
+
+class TestTrackConfirmation( _ConfirmationCase ):
+    """
+    min_track_hits removes a track that never accumulated enough real
+    detections - the single-frame false positive that would otherwise
+    paint a censor blob for time_safety seconds.
+    """
 
     def test_default_of_one_renders_every_track( self ):
         boxes = [ censorable_box( 'exposed_breast', 1.0 ) ]
@@ -604,6 +612,121 @@ class TestTrackConfirmation( _ConfirmationPinnedMixin, unittest.TestCase ):
         rendered, _stats = bu_track.smooth_boxes( boxes )
         self.assertEqual( rendered, [],
             "an unconfirmed track must not leave synthetic boxes behind" )
+
+    def test_each_label_logs_its_own_drop_count_to_the_given_logger( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set_min_track_hits( 'exposed_vulva', 2 )
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100 ),
+                  censorable_box( 'exposed_breast', 5.0, x=900 ),
+                  censorable_box( 'exposed_vulva', 1.0, x=100 ) ]
+        lines = []
+
+        class _Capture:
+            def debug( self, message, *args ):
+                lines.append( message )
+            info = warning = error = debug
+
+        _rendered, stats = bu_track.smooth_boxes( boxes, logger=_Capture() )
+        self.assertEqual( stats['dropped_unconfirmed'], 3 )
+        dropped = sorted( line for line in lines if 'unconfirmed tracks' in line )
+        self.assertEqual( dropped, [
+            'exposed_breast: min_track_hits=2 dropped 2 box(es) from unconfirmed tracks',
+            'exposed_vulva: min_track_hits=2 dropped 1 box(es) from unconfirmed tracks' ] )
+
+
+class TestConfirmScore( _ConfirmationCase ):
+    """
+    confirm_score: a track short of min_track_hits still renders once one
+    of its real detections scores at least that. It can only add boxes
+    to what min_track_hits keeps.
+    """
+
+    def _set( self, label, key, value ):
+        backend = betaconfig.detector_backend['selected']
+        betaconfig.detector_backend = copy.deepcopy( betaconfig.detector_backend )
+        betaconfig.detector_backend[backend].setdefault(
+            'item_overrides', {} ).setdefault( label, {} )[key] = value
+        bu_config.invalidate_config_caches()
+
+    def test_a_one_hit_track_at_the_score_renders( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set( 'exposed_breast', 'confirm_score', 0.6 )
+        rendered, stats = bu_track.smooth_boxes( [ censorable_box( 'exposed_breast', 1.0, score=0.6 ) ] )
+        self.assertEqual( len( rendered ), 1, "the score itself is enough" )
+        self.assertEqual( stats['confirmed_by_score'], 1 )
+        self.assertEqual( stats['dropped_unconfirmed'], 0 )
+
+    def test_a_one_hit_track_below_the_score_is_still_dropped( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set( 'exposed_breast', 'confirm_score', 0.6 )
+        rendered, stats = bu_track.smooth_boxes( [ censorable_box( 'exposed_breast', 1.0, score=0.59 ) ] )
+        self.assertEqual( rendered, [] )
+        self.assertEqual( stats['confirmed_by_score'], 0 )
+        self.assertEqual( stats['dropped_unconfirmed'], 1 )
+
+    def test_unset_leaves_min_track_hits_alone( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        rendered, stats = bu_track.smooth_boxes( [ censorable_box( 'exposed_breast', 1.0, score=0.99 ) ] )
+        self.assertEqual( rendered, [] )
+        self.assertEqual( stats['confirmed_by_score'], 0 )
+
+    def test_the_best_hit_of_a_short_track_counts_not_the_first( self ):
+        self._set_min_track_hits( 'exposed_breast', 3 )
+        self._set( 'exposed_breast', 'confirm_score', 0.7 )
+        step = 1.0 / betaconfig.video_censor_fps
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100, score=0.3 ),
+                  censorable_box( 'exposed_breast', 1.0 + step, x=101, score=0.8 ) ]
+        rendered, stats = bu_track.smooth_boxes( boxes )
+        self.assertEqual( len( [ b for b in rendered if not b.get( 'interpolated' ) ] ), 2 )
+        self.assertEqual( stats['confirmed_by_score'], 1 )
+
+    def test_a_strong_first_hit_is_not_forgotten_by_a_weak_second( self ):
+        self._set_min_track_hits( 'exposed_breast', 3 )
+        self._set( 'exposed_breast', 'confirm_score', 0.7 )
+        step = 1.0 / betaconfig.video_censor_fps
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100, score=0.8 ),
+                  censorable_box( 'exposed_breast', 1.0 + step, x=101, score=0.3 ) ]
+        _rendered, stats = bu_track.smooth_boxes( boxes )
+        self.assertEqual( stats['confirmed_by_score'], 1 )
+
+    def test_a_provisional_hit_never_confirms( self ):
+        self._set_min_track_hits( 'exposed_breast', 3 )
+        self._set( 'exposed_breast', 'confirm_score', 0.7 )
+        step = 1.0 / betaconfig.video_censor_fps
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100, score=0.5 ),
+                  censorable_box( 'exposed_breast', 1.0 + step, x=101, score=0.9, provisional=True ) ]
+        rendered, stats = bu_track.smooth_boxes( boxes )
+        self.assertEqual( rendered, [] )
+        self.assertEqual( stats['confirmed_by_score'], 0 )
+
+    def test_a_confirmed_track_is_not_counted_as_score_confirmed( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set( 'exposed_breast', 'confirm_score', 0.5 )
+        step = 1.0 / betaconfig.video_censor_fps
+        boxes = [ censorable_box( 'exposed_breast', 1.0, x=100 ),
+                  censorable_box( 'exposed_breast', 1.0 + step, x=101 ) ]
+        _rendered, stats = bu_track.smooth_boxes( boxes )
+        self.assertEqual( stats['confirmed_by_score'], 0 )
+        self.assertEqual( stats['tracks'], 1 )
+
+    def test_each_label_reads_its_own( self ):
+        self._set_min_track_hits( 'exposed_breast', 2 )
+        self._set_min_track_hits( 'exposed_vulva', 2 )
+        self._set( 'exposed_breast', 'confirm_score', 0.5 )
+        boxes = [ censorable_box( 'exposed_breast', 1.0, score=0.9 ),
+                  censorable_box( 'exposed_vulva', 1.0, score=0.9 ) ]
+        rendered, _stats = bu_track.smooth_boxes( boxes )
+        self.assertEqual( [ box['label'] for box in rendered ], [ 'exposed_breast' ] )
+
+    def test_the_censor_key_moves_only_once_it_is_set( self ):
+        import betautils_cache_paths as bu_cache
+        self.assertNotIn( 'confirm_score', bu_config.get_label_settings( 'exposed_breast' ),
+                          "unset, it is absent, so every render made before it existed keeps its key" )
+        before = bu_cache.censor_key()
+        self._set( 'exposed_breast', 'confirm_score', None )
+        self.assertEqual( bu_cache.censor_key(), before, "None is the absence of the setting" )
+        self._set( 'exposed_breast', 'confirm_score', 0.5 )
+        self.assertNotEqual( bu_cache.censor_key(), before )
 
 
 class TestTrackPruningIsBehaviourPreserving( unittest.TestCase ):

@@ -90,6 +90,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path )
 
@@ -391,38 +392,36 @@ def main():
                 dims_missing.append( file_hash )
                 continue
 
-            flat_raw = []
-            for path in cache_paths:
-                if os.path.exists( path ):
-                    flat_raw.extend( bu_hash.read_json( path ) )
+            # Parsed once per process and kept compact; each pass gets
+            # fresh dicts, which the replay mutates. Every sweep value
+            # used to re-parse every cache, deep-copy it and reopen the
+            # video for its size.
+            flat_raw = bu_tuning._read_raw_boxes( cache_paths )
             if not flat_raw:
                 continue
 
-            cap = cv2.VideoCapture( video_path )
-            vid_w = int( cap.get( cv2.CAP_PROP_FRAME_WIDTH ) )
-            vid_h = int( cap.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
-            cap.release()
+            vid_w, vid_h = bu_tuning.frame_size_for_video( video_path )
             if not vid_w or not vid_h:
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn(
-                raw_copy,
-                bu_detector.get_class_suppression( backend_name ),
-                bu_config.get_parts_to_blur( backend_name ) )
+            # Seeded with the file hash, as betatv seeds the real render:
+            # the replay rolls the styles the render rolled, and since a
+            # style's padding moves box geometry, unseeded rolls made two
+            # runs of this tool disagree.
+            with bu_track.seeded_styles( file_hash ):
+                boxes, tracking = bu_tuning.replay_tracking_inputs(
+                    file_hash, video_path, cache_paths, flat_raw, vid_w, vid_h,
+                    backend_name, labels )
+                if not boxes:
+                    continue
 
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and res['label'] in labels:
-                    boxes.append( res )
-            if not boxes:
-                continue
-
-            _current_video = os.path.basename( video_path )
-            with bu_track.tracking_observer( ns['observer'] ):
-                smooth_boxes_fn( boxes, backend_name=backend_name )
+                _current_video = os.path.basename( video_path )
+                with bu_track.tracking_observer( ns['observer'] ):
+                    smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
+                                     backend_name=backend_name, profile_name=tracking['profile_name'],
+                                     sample_fps=tracking['sample_fps'],
+                                     logger=bu_tuning._QUIET_LOGGER )
 
         if dims_missing:
             print( "  (skipped %d video(s) - source file no longer found)"%(len(dims_missing)) )

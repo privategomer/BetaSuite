@@ -54,6 +54,7 @@ distribution, and no action setting makes that a good bound.
 """
 
 import argparse
+from array import array
 import os
 import sys
 
@@ -98,28 +99,38 @@ def frame_size_for( boxes ):
 
 
 def collect( include_preview, labels_filter ):
-    """{configuration: {label: [ (area_fraction, aspect, w, h) ]}}"""
+    """
+    ( {configuration: {label: {'area': array, 'aspect': array}}}, files read ).
+
+    One cache file at a time, keeping only the two values per detection
+    the report reads (8 bytes each). It used to list every file's parsed
+    detections first, about 500 bytes a detection, which on a library of
+    millions was gigabytes before the first percentile.
+    """
     per_configuration = {}
-    sources = list( bu_cache.iter_cache_files( VID_HASH_DIR, include_preview ) )
-    sources += list( bu_cache.iter_cache_files( PIC_HASH_DIR, include_preview ) )
-    for name, boxes in sources:
-        if not boxes:
-            continue
-        configuration = bu_cache.configuration_label_of_cache_filename( name )
-        frame_w, frame_h = frame_size_for( boxes )
-        frame_area = frame_w * frame_h
-        bucket = per_configuration.setdefault( configuration, {} )
-        for box in boxes:
-            label = box['class_id']
-            if labels_filter and label not in labels_filter:
+    source_count = 0
+    for directory in ( VID_HASH_DIR, PIC_HASH_DIR ):
+        for name, boxes in bu_cache.iter_cache_files( directory, include_preview ):
+            source_count += 1
+            if not boxes:
                 continue
-            if not box['h']:
-                continue
-            bucket.setdefault( label, [] ).append( (
-                ( box['w'] * box['h'] ) / frame_area,
-                box['w'] / box['h'],
-                box['w'], box['h'] ) )
-    return per_configuration, len( sources )
+            configuration = bu_cache.configuration_label_of_cache_filename( name )
+            frame_w, frame_h = frame_size_for( boxes )
+            frame_area = frame_w * frame_h
+            bucket = per_configuration.setdefault( configuration, {} )
+            for box in boxes:
+                label = box['class_id']
+                if labels_filter and label not in labels_filter:
+                    continue
+                if not box['h']:
+                    continue
+                entry = bucket.get( label )
+                if entry is None:
+                    entry = bucket[label] = { 'area': array( 'd' ), 'aspect': array( 'd' ) }
+                entry['area'].append( ( box['w'] * box['h'] ) / frame_area )
+                entry['aspect'].append( box['w'] / box['h'] )
+            del boxes
+    return per_configuration, source_count
 
 
 def report_bound( logger, label, rows, bound_name, values, candidates ):
@@ -222,8 +233,8 @@ def main():
         logger.info( "=" * 74 )
         for label in sorted( per_configuration[configuration] ):
             rows = per_configuration[configuration][label]
-            areas = [ row[0] for row in rows ]
-            aspects = [ row[1] for row in rows ]
+            areas = rows['area']
+            aspects = rows['aspect']
             for bound_name, values in ( ( 'max_area_fraction', areas ),
                                         ( 'max_aspect_ratio', aspects ) ):
                 ordered = sorted( values )

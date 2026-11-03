@@ -20,6 +20,8 @@ where the reasoning lives.
 - [Track confirmation](#track-confirmation)
 - [Shot-cut detection](#shot-cut-detection)
 - [Censor styles](#censor-styles)
+- [Reverse mode](#reverse-mode)
+- [Person segmentation](#person-segmentation)
 - [Area safety and time safety](#area-safety-and-time-safety)
 - [Rendering and encoding](#rendering-and-encoding)
 - [Preview mode](#preview-mode)
@@ -117,6 +119,95 @@ changes rendered output, add it to `censor_identity()` and to that file.
 > outputs get new filenames on the next run. Nothing is lost, the old
 > files remain, under their old names, but a full re-render is a real
 > cost, so expect it rather than being surprised by it.
+
+---
+
+## Machine config: this computer's hardware settings
+
+`betaconfig.py` describes what to censor and how. A few of its settings
+describe the computer instead: which encoder its GPU has, how many
+render workers its memory holds, the detection batch its GPU likes.
+Those have no value that suits every machine, and while they lived only
+in `betaconfig.py` one machine's tuning (NVENC at cq 21) became every
+checkout's default, and pulling a branch could undo a machine's tuning.
+
+So they can also be set in **`../resources/betaconfig_machine.py`**,
+beside the models and footage, which the repo never touches. A setting
+there replaces the same setting in `betaconfig.py` on that machine only;
+anything it leaves out uses `betaconfig.py`'s value. Precedence, lowest
+first:
+
+    betaconfig.py  <  ../resources/betaconfig_machine.py  <  command-line flags
+
+**What it may set.** Hardware settings only: `gpu_enabled`,
+`cuda_device_id`, `nn_batch_size` per backend (`detector_backend =
+{ 'nudenet_v3': { 'nn_batch_size': 8 } }`, `'defaults'` for every
+backend), the person backend's `batch_size` the same way,
+`detection_prefetch_frames`, `render_workers`, `render_decode_threads`,
+`render_worker_mb_per_megapixel`, `render_memory_reserve_mb`,
+`render_chunk_seconds`, `encode_video_codec`, `encode_preset`,
+`encode_crf`, `preview_encode_preset`, `structure_scan_workers`, and the
+BetaVision screen region (`vision_cap_*`). Anything else is refused by
+name. That is deliberate: a detection setting that differs per machine
+makes two machines' output, and every A/B comparison between them,
+disagree for a reason no log explains.
+
+**Format.** Plain `name = value` lines in Python syntax, read with
+`ast.literal_eval` and never executed. A line that is not allowed, or a
+file that does not parse, is skipped and printed when anything imports
+`betaconfig`, and stops `betatv.py` at validation with the file's name
+and line. Every validated run logs one line naming the file and what it
+set.
+
+**Working with it.**
+
+```
+python tools/setup/machine_config.py              every hardware setting, its value, and where it comes from
+python tools/setup/machine_config.py init         a new file, every setting commented out at betaconfig.py's value
+python tools/setup/machine_config.py set encode_video_codec=h264_nvenc encode_preset=p5 encode_crf=21
+python tools/setup/machine_config.py set detector_backend.nudenet_v3.nn_batch_size=8
+python tools/setup/machine_config.py unset encode_crf
+tools/bench/tune_machine.sh                        measure this machine, then offer to write the results
+```
+
+`set` checks a change the way `betatv.py` would and writes nothing if it
+would fail; edits keep your own lines and comments. Setup creates the
+file and sets `gpu_enabled` in it to match the install.
+
+**Moving an encoder.** NVENC's quality scale is not x264's, so a machine
+config that switches between them should set `encode_crf` too, or the
+repo's x264 CRF is read as NVENC's cq. Validation warns when it does not.
+
+`BETASUITE_MACHINE_CONFIG` points at another file, or `none` to ignore
+it. The test suite sets `none`, so tests see the repo's own defaults on
+every machine.
+
+### `tools/bench/tune_machine.sh`
+
+One command that measures what this machine's hardware settings should
+be, on your own footage, and asks before writing them. About 15 to 30
+minutes; close anything heavy first. It asks before starting if a betatv
+run, the load average or the GPU says the machine is busy.
+
+| stage | what it times | proposes |
+|---|---|---|
+| inventory | nothing: CPU, memory, GPU and driver, hardware encoders, onnxruntime providers, OpenCV's decoders, the settings in effect | |
+| detect | ms per frame at batch 1, 2, 4, 8, 16 on the same frames, and whether the detections stay the same | `nn_batch_size` |
+| prefetch | the real detection loop with 0, 1, 2 and 4 batches decoded ahead | `detection_prefetch_frames` |
+| render | decode + the real chunk encode at several worker counts, each with OpenCV's decoder threads and with the cores shared out, memory sampled | `render_workers`, `render_decode_threads`, `render_worker_mb_per_megapixel` |
+| encode | `betabench encode` | `encode_*` |
+| scan | `betabench concurrency`'s scan workers | `structure_scan_workers` |
+
+A value is proposed only when it beats the current one by more than 3%
+(below that it is run-to-run noise), and a near tie goes to the cheaper
+setting: fewer workers, a smaller batch, less memory. A batch size that
+changes the detections is never proposed. The render stage measures on
+the source with the most pixels, the hardest one to render, skips any
+worker count the memory it has measured says will not fit, and proposes
+the worst per-worker memory it saw plus 25% for the censoring the bench
+leaves out. Output in `../output/benchmarks/tune_machine_<time>/`:
+`results.json`, `proposal.json` (with the reason for each value) and the
+logs.
 
 ---
 
@@ -335,9 +426,31 @@ sample:  ●         ●         ●         ●         ●         ●
                          run through the model
 ```
 
-Frames between samples are skipped with `grab()`, which does not decode
-their contents, so raising `video_censor_fps` costs inference time, not
-decode time.
+Frames between samples are skipped with `grab()`, which still decodes
+them (a compressed frame can only be decoded in order) but skips the
+colour conversion and the copy into a numpy array. So the decode cost is
+the video's own frame rate and resolution, whatever `video_censor_fps`
+is, and raising `video_censor_fps` costs inference time, not decode
+time.
+
+### `detection_prefetch_frames`
+
+Frames decoded ahead of the model, on a second thread. **8**; 0 decodes
+and detects in turn.
+
+Without it, detection decoded a batch, ran the model on it, and decoded
+the next: the GPU waited on the decoder and the decoder waited on the
+GPU, so each sampled frame cost decode plus inference. OpenCV's decode
+and onnxruntime's run both release Python's GIL, so with a decoder
+thread keeping frames ready a sampled frame costs the slower of the two.
+The frames, their order and the detections are exactly the plain path's;
+a test holds them to it. The person-segmentation pass uses it too.
+
+Each frame held costs its size in memory: 8 at 4096x2160 is about 210
+MB. One batch ahead is the least that hides the decode; more only
+smooths out uneven decode times. `tune_machine.sh` measures 0, 1, 2 and
+4 batches. Measured so far only with CPU work standing in for the
+model, on a 2-core box where the two compete for cores: 16% less time.
 
 ### `global_min_prob`
 
@@ -660,8 +773,201 @@ python3 tools/bench/betabench.py suppression
 ```
 
 reports the per-pair IoU and score-margin distributions and proposes
-both thresholds. Add one pair at a time and look at the output: a
-suppression rule removes real detections when it is wrong.
+both thresholds: `min_iou` at the valley between the side-by-side and
+same-spot clusters, and `margin` as the median lead the suppressor holds
+on the same spot. A pair with no same-spot cluster gets no suggestion,
+because a rule there would mostly remove real detections. It then runs
+every configured rule through the production suppression function, as
+configured and as suggested, and prints how many renderable detections
+each removes and what share of those removals sat side by side (IoU
+under 0.20) with the detection that removed them. Below those, each
+same-spot pair that has no rule yet is listed as `not configured`, with
+how many renderable detections adding the suggested rule would remove.
+Add one pair at a time and look at the output: a suppression rule
+removes real detections when it is wrong.
+
+### `class_suppression_refused` (per backend)
+
+```python
+detector_backend['nudenet_v3']['class_suppression_refused'] = [
+    'exposed_vulva<-exposed_penis',
+]
+```
+
+Pairs, written `'label<-suppressor'`, that you have decided should never
+get a rule. **Empty** by default. The bench suggests a rule wherever a
+pair's overlaps form a same-spot cluster, and it cannot tell a mislabel
+from two body parts that really do share a spot: `exposed_vulva` and
+`exposed_penis` overlap on the same spot during penetration, and a rule
+there removes the vulva censor exactly when it is needed. A pair listed
+here is never proposed as an addition by the suppression A/B and is
+marked "refused" in the bench report. It changes nothing a run renders,
+so it is not part of the censor key. `ab_compare.sh decide` prints this
+line with every addition your verdicts turned down added to it.
+
+> **In the config since 2026-10-19: the 2026-09-19 decisions.** `exposed_vulva<-exposed_penis`
+> (the penetrative case: removing that rule fixed a miss),
+> `exposed_vulva<-exposed_buttocks` (about 90% of vulva detections would
+> sit behind the gate: anatomy, not a competing claim about one object)
+> and `exposed_vulva<-exposed_feet` (the same shape, smaller). Listing
+> them keeps them out of every later round.
+
+**Looking at the output** is what `tools/tuning/ab_compare.sh` is for
+(`suppression_ab.sh` is the same tool with the suppression experiment
+picked). It puts the config as it is beside one proposed change on your
+own footage. What changes is an *experiment*:
+
+| experiment | the proposed side |
+|---|---|
+| `suppression` | `betabench suppression`'s suggestions: each configured pair retuned where there is a same-spot cluster, dropped where the bench measured none, kept where there were too few overlaps to measure; plus each same-spot pair with no rule yet, added at its suggested values, unless it is in `class_suppression_refused` or its suppressor wins under 20% of those overlaps (`AB_ADDITIONS=0` turns additions off) |
+| `min_track_hits` | the values auto_tune flagged "worth judging by eye" in the newest analysis run |
+| `confirm_score` | auto_tune's flagged `confirm_score` values, or 0.5 for every censored label when it flagged none |
+| `match_distance` | auto_tune's tightening candidate (see `match_distance_multiplier`) |
+| `cut_bursts` | the shot-cut burst merge, from `analyze_cut_bursts`' best variant |
+| `tracking` | any per-label setting, named in `AB_SET` (`exposed_breast.match_distance_multiplier=0.75`) |
+
+One command runs a whole round: `bash tools/tuning/ab_compare.sh`. It
+asks which experiment, replays every cached video both ways, ranks the
+videos by box-seconds censored on one side and not the other, and
+renders the top two (`AB_VIDEOS`) at the windows where they differ most:
+
+| file | what it shows |
+|---|---|
+| `*_diff.mp4` | outlines, no censoring: grey where both sides censor, orange where only the config does, magenta where only the change does |
+| `*_ab.mp4` | the real censor on each side, the config on the LEFT, the change on the RIGHT |
+
+**Judging it one change at a time.** A clip can show several changes at
+once, so the tool works out which one made each difference (for
+suppression, the observer reports which rule dropped each detection;
+for a per-label setting, the label's own change) and writes it down:
+
+- `clips.md`: for each clip, one row per moment (one label, one
+  stretch of time) with what differs, the cause, and what the proposal
+  does to it. What differs is one of three things: RIGHT censors and
+  LEFT is bare, LEFT censors and RIGHT is bare, or both censor with
+  boxes in different places or sizes (`both differ`: pick the side
+  whose box covers the body part). A box the other side covers with an
+  overlapping but different box counts as `both differ`, never as one
+  side bare. In a suppression run the change column describes the rule:
+  `dropped` means the proposal deletes that rule from the config. A
+  `RIGHT only` row with cause `exposed_breast<-face_femme` and change
+  `dropped` is a breast censor the current rule removes near a face,
+  which the proposal would draw. A rule marked `added` only ever shows
+  as `LEFT only` rows: the censors it would take away, so the question
+  each row asks is whether that censor was on the right thing.
+  "tracking" means no single change: a knock-on effect nearby
+- `feedback.csv`: one row per moment, with a `verdict` column:
+  `right` (the RIGHT side looks right there), `left` (the LEFT side
+  does), `same`, or blank. Row ids (`v1c3.2`) also work in chat.
+  Running `explain` again replaces a `feedback.csv` with no verdicts
+  yet, and leaves one with verdicts alone (writing
+  `feedback_template.csv` beside it)
+
+Once the clips are rendered the round asks what next: judge the clips
+now, render the two chosen videos whole on both sides first (hours), or
+stop. Judging comes before the whole-video renders, so a terminal that
+closes during those hours costs no verdicts. Judging waits while you
+watch the clips and fill in verdicts (and waits again if `feedback.csv`
+still has none), then decides: each change takes the side its verdicts
+favour (a tie or no verdict keeps the config), `chosen.json` is written,
+and the config lines to paste are printed. It then offers to delete the
+round's renders (its ranking, `clips.md`, `feedback.csv` and
+`chosen.json` stay; `tools/maintenance/cleanup_output.sh` does the same
+for older rounds), and then a **confirm
+round**: the chosen side against the config on videos you have not
+judged yet, like an eye exam narrowing in. Every round's folder is
+`../output/benchmarks/ab_<experiment>_<timestamp>/`.
+
+**Picking a round up again.** `bash tools/tuning/ab_compare.sh resume`
+(the newest round, or name its folder) reads how far the round got from
+its folder and carries on from the first unfinished step: explain,
+clips, the judge-or-render choice, deciding, the confirm offer. Every
+finished file is kept, a half-rendered whole video resumes from its
+finished chunks, and a video whose files are all there is not replayed
+at all. Ranking is the one step it cannot resume; a folder without
+`ranking.json` needs a new round.
+
+The pieces also run on their own, on the newest run or a named one:
+`ab_compare.sh explain`, `decide` and `confirm`. A confirm round keeps
+the earlier round's focus unless `AB_FOCUS` names another, and it only
+re-tests the changes that won: a rule the verdicts kept as configured
+needs a fresh round, not a confirm round, to be seen again. `AB_FOCUS=exposed_vulva`
+ranks videos and picks windows by that label's differences only, which
+is how a breast-heavy library still gets a vulva round
+(`analyze_label_content.py` lists which videos show which label).
+`AB_PROPOSED=side.json` tests any other proposal; `AB_FULL=1` also
+renders the chosen videos whole. A round never spends two of its videos
+on the same footage: a video whose runtime and labelled seconds match
+one it already picked (or one an earlier round showed) is skipped with a
+log line, since a library can hold one compilation under two names
+(`analyze_label_content.py` lists those pairs). Unattended, a round stops after the
+clip renders (the whole videos too with `AB_FULL=1`); run `resume` when
+you are back. Every sample
+rate's caches are ranked, so quick-cut videos detected at 18 fps are
+included. Nothing touches `betaconfig.py`.
+
+> **Before 2026-10-10 the suggestions were wrong.** Pairs were formed by
+> timestamp alone, so every video's boxes at t=12.0s were compared with
+> every other video's, and `min_iou` was the 25th percentile of all
+> overlaps, which sits inside the side-by-side cluster by construction.
+> On the 2026-10-09 caches that was 6.3M "overlaps" for
+> `exposed_breast<-face_femme` against 49k real ones. The `nudenet_v3`
+> rules derived on 2026-09-19 ("used unmodified", below) came from that
+> output. Re-run the bench before trusting any of them; the 2026-10-09
+> run removed 16,780 renderable breast detections for overlapping a
+> face, 16,812 for overlapping a belly and 22,860 for overlapping a
+> covered breast, and `analyze_suppression_pairs.py` puts the bulk of
+> the face and belly overlaps at IoU 0.01 to 0.05.
+
+> **Decided (2026-10-23): breast rules, by eye.** One suppression round
+> (`ab_suppression_20261019_100748`, no focus, cut-burst merge on) on
+> the two most-changed videos, Compilation for big bouncing boobs
+> lovers and oo Gooner Heaven, 12 clips, 128 moments judged:
+>
+> | rule | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_breast<-face_femme` | 40 | 1 | 13 | **dropped** |
+> | `exposed_breast<-exposed_belly` | 2 | 0 | 3 | **dropped** |
+> | `exposed_breast<-covered_breast` | 3 | 0 | 0 | **retuned** to `min_iou 0.425`, `margin 0.081` |
+> | `exposed_vulva<-exposed_breast` | 0 | 2 | 2 | kept |
+> | `exposed_vulva<-exposed_belly` | 0 | 2 | 0 | kept |
+> | `exposed_vulva<-exposed_anus` | 0 | 1 | 2 | kept |
+> | `exposed_breast<-exposed_chest` (addition) | 0 | 0 | 1 | not added, not refused |
+>
+> RIGHT was the proposal. The face and belly rules were the two the
+> 2026-10-18 bench measured removing 16,780 and 14,295 renderable breast
+> detections, 99% of them with the face or belly beside the breast
+> rather than on it; on screen those were real breasts left bare beside
+> a face. `exposed_breast<-exposed_buttocks`'s retune, the vulva rules'
+> drops and the `exposed_vulva<-covered_vulva` addition had no rows, so
+> they stay as configured until a vulva-focused round
+> (`AB_EXPERIMENT=suppression AB_FOCUS=exposed_vulva`) puts them on
+> screen; the vulva evidence above is 1 to 4 rows a rule. 56 "tracking"
+> rows (33 right, 5 left, 18 same) were knock-on effects and decide
+> nothing. Applied to `betaconfig.py` on 2026-10-23. The censor key
+> moved, so the next run re-renders.
+
+> **Decided (2026-10-23): vulva rules, by eye.** A vulva-focused round
+> (`ab_suppression_20261023_100129`, `AB_FOCUS=exposed_vulva`) on Gooner
+> shit and AssGoonEdge2, 12 clips, 83 moments judged:
+>
+> | rule | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_vulva<-covered_vulva` (addition, `min_iou 0.425`, `margin 0.065`) | 12 | 0 | 1 | **added** |
+> | `exposed_vulva<-exposed_anus` | 1 | 0 | 24 | **dropped** |
+>
+> The addition removes a vulva censor where the model reads the same
+> spot as covered and is more sure of it. The anus drop rests on one
+> moment by eye, 24 alike; the bench agrees (on 2026-10-18 the rule
+> removed 1,833 renderable vulva detections, 73% with the anus beside
+> the vulva rather than on it), and dropping a rule can only add
+> censors. 45 "tracking" rows (10 right, 35 same) decide nothing.
+> `exposed_vulva<-face_femme`, `<-exposed_breast`, `<-exposed_belly`
+> and `<-covered_breast` had no rows: together they removed about 1,165
+> renderable vulva detections library-wide on 2026-10-18, 98% to 100% of
+> them side by side, too rare to land in two videos' clips. They stay as
+> configured. `exposed_breast<-exposed_buttocks`'s retune and the
+> `exposed_breast<-exposed_chest` addition had no rows either.
 
 `margin` semantics validation enforces:
 
@@ -1184,6 +1490,18 @@ measured price was low: `nudenet_v3` `exposed_breast` 2.0 and
 pulls it back to 0.8 / 1.0, because there two subjects at similar
 positions in neighbouring panes are different people.
 
+**Tighter is a judgement by eye.** auto_tune's match_distance stage
+accepts only values that cut track resets, so a tighter value can never
+win there. On 2026-10-11, 0.75 for `exposed_breast` cut ambiguous track
+decisions (two candidates within 25% of each other's distance) from
+13,884 to 4,375 for 6,631 more resets (+9.6%), with no coverage lost.
+A reset shows as a box snapping to a new spot; an ambiguous decision
+can be a box following the wrong person. Which looks worse is not in
+the numbers, so auto_tune now flags such a value as "worth judging by
+eye" (at least one fewer ambiguous decision per reset added, no
+coverage loss) and `AB_EXPERIMENT=match_distance bash
+tools/tuning/ab_compare.sh` puts it on screen.
+
 ### `paired_style`, `default_paired_style_max_distance`, `default_paired_style_tiebreak_margin`
 
 When on, a newly-resolving box that has one unambiguously-nearest other
@@ -1249,12 +1567,114 @@ only if single-frame noise is a visible problem. Drop the boxes of an
 unconfirmed track and its interpolated boxes go with it, a track that
 never confirmed contributes nothing at all.
 
+> **Decided (2026-10-10): 2, set by hand.** Every label is at 2. The
+> 2026-09-30 auto_tune run raised all three `nudenet_v3` labels and
+> `retinanet_v2`'s `exposed_breast` to 3, undoing the hand tuning
+> described below; at 3 the 2026-10-09 run withheld 23,311 breast and
+> 11,405 vulva boxes that 1 would have drawn (10,569 and 7,140 against
+> 2). That stage scored every dropped box as noise removed, and a
+> brief real exposure drops exactly like noise.
+>
+> `auto_tune.py`'s stage now asks a different question: how many
+> **confident** detections (score at least `--confident-score`, 0.5)
+> each value leaves uncensored. It tries 1 to 4 with no cap and
+> recommends the strictest value that leaves no more than
+> `--max-confident-loss` (0.1%) of the label's confident detections
+> uncensored beyond the fewest any value leaves: as strict as possible,
+> as long as what it drops is the low-confidence noise. It can come out
+> above or below 2. The share is of confident detections rather than of
+> censored area because area hides the loss: the 23,311 boxes were 1.2%
+> of rendered boxes and under 0.1% of area. A recommendation is a
+> report; nothing is written without `--apply` and a yes.
+
+> **2026-10-11: auto_tune recommends 1, the config stays at 2.** With
+> no cap, the stage picked 1 for both labels: 7,022 fewer confident
+> breast detections uncensored (of 1.10M) for 12,742 more boxes, and
+> 1,568 fewer vulva (of 189k) for 4,265 more. The confident-score
+> metric cannot see a misfire scoring above 0.5, which is the case 2
+> exists to stop, so the stage marks every change it recommends as
+> "worth judging by eye". `AB_EXPERIMENT=min_track_hits bash
+> tools/tuning/ab_compare.sh` shows the extra boxes, which are mostly
+> one-sample flashes, side by side with the config.
+
 > **Changed.** Both `nudenet_v3` labels moved from 3 back to 2.
 > At 3, a track needs a third of a second of continuous detection at
 > `video_censor_fps = 9` before rendering anything, which looks exactly
 > like a missed detection on brief or partially-occluded content, and is
 > easy to misdiagnose as a threshold problem. This is a recall-side
 > change: expect slightly more short-lived false positives in exchange.
+
+> **2026-10-18, with the cut-burst merge on: the case for 1 shrank.**
+> auto_tune still picks 1, but for 2,356 fewer confident breast
+> detections uncensored (was 7,022) and 653 vulva (was 1,568). The
+> merge already rescued most of the shots that were splitting tracks.
+> Every box 1 adds is a one-detection track (tracks and boxes both rise
+> by exactly 6,420 for breast, interpolation unchanged), and only 37%
+> of them come from a detection scoring 0.5 or more (vulva 26%). The
+> rest are single low-score hits, the shape of a false positive.
+> `confirm_score` below draws the confident ones and none of the rest.
+
+> **2026-10-24, with `confirm_score` 0.5: the stage went blind.**
+> `confirm_score` at or below `--confident-score` draws every track
+> holding a confident detection, so every `min_track_hits` value left
+> the same confident detections uncensored (1,403 breast, 161 vulva)
+> and the stage recommended 4 for both, at 0.35% and 1.71% of coverage.
+> It now skips itself when `confirm_score` hides it on every file,
+> keeps the current value when every value ties, and rejects a value
+> costing more than `--max-coverage-loss`. What `min_track_hits` still
+> decides with `confirm_score` on, short tracks made only of
+> detections under 0.5, takes eyes: `AB_EXPERIMENT=min_track_hits`.
+
+### `default_confirm_score` (per-label: `confirm_score`)
+
+A track short of `min_track_hits` still renders once one of its real
+detections scores at least this. **None** (off): the hit count alone
+decides.
+
+**The analogy.** The second opinion `min_track_hits` waits for is worth
+waiting for when the first witness was unsure. When the first witness is
+certain, waiting only means missing the moment.
+
+**What you see.** In quick-cut footage a brief exposure can be a single
+sample: one detection, then the shot changes. `min_track_hits: 2` drops
+it whatever it scored. With `confirm_score: 0.5`, a one-detection track
+scoring 0.5 or more is drawn; one scoring 0.3 is still dropped. It can
+only add boxes to what `min_track_hits` keeps, never remove one. A
+provisional detection (between `min_prob_continue` and `min_prob`)
+never confirms a track. It has no effect where `min_track_hits` is 1.
+
+**How to pick.** auto_tune's `confirm_score` stage tries 0.5, 0.6 and
+0.7 against off and recommends the strictest (highest) value that
+leaves no more than `--max-confident-loss` (0.1%) of the label's
+confident detections uncensored beyond the fewest any value leaves, the
+same rule as `min_track_hits`. A misfire scoring above the value looks
+like a real detection to that metric, so every change it recommends is
+marked "worth judging by eye":
+`AB_EXPERIMENT=confirm_score bash tools/tuning/ab_compare.sh` (0.5 for
+every censored label when auto_tune has not flagged a value yet). It is
+in the censor key only while set, so adding the setting re-rendered
+nothing.
+
+> **Decided (2026-10-23): 0.5 for both labels, by eye.** The 2026-10-23
+> hub run (both suppression rounds applied, moves.sh run) had auto_tune
+> at breast 0.7 and vulva 0.5. Breast 0.7 sat inside the 0.1% tolerance
+> by 4 detections, and 0.5 covers 1,095 more confident breast detections
+> for 1,105 more boxes, about one for one, so the round tested 0.5 for
+> both (`ab_confirm_score_20261023_141041`, GOONER Blowjob and NOFAP
+> Therapy; the ranking skipped "hour a half long goon fest", the same
+> footage as GOONER):
+>
+> | label | right | left | same | decision |
+> |---|---|---|---|---|
+> | `exposed_breast` | 8 | 3 | 40 | **0.5** |
+> | `exposed_vulva` | 1 | 0 | 26 | **0.5** |
+>
+> Against `min_track_hits: 1` it covers more for less: breast 2,985
+> fewer confident detections left uncensored for 3,010 more boxes, where
+> 1 manages 2,026 for 6,208; vulva 879 for 935, where 1 manages 558 for
+> 2,605. The five quick_cut files set `min_track_hits` in their profile,
+> so a backend `min_track_hits` change never reaches them, and
+> `confirm_score` does. `min_track_hits` stays at 2.
 
 ---
 
@@ -1286,9 +1706,65 @@ and gap setting, because all of those assume continuous single-scene
 footage.
 
 **Tuning.** Lower catches subtler transitions at higher false-positive
-risk. A slow dissolve legitimately produces a short cluster of
-consecutive cut timestamps rather than one; that is fine, a track
-spanning the cluster is correctly reset either way.
+risk. A slow dissolve or a white flash produces a short burst of
+consecutive cut timestamps rather than one (10.0, 10.1, 10.2, 10.3).
+Each cut ends every live track, and the slivers between them are too
+short for a new track to reach `min_track_hits`, so the censor can
+blink off for the length of the burst plus a confirmation.
+
+**Merging cut bursts: `shot_cut_burst_window`, `shot_cut_burst_max_span`,
+`shot_cut_burst_keep`.** Off unless `shot_cut_burst_window` is above 0.
+Cuts each less than that many seconds after the one before form a
+burst; a burst spanning at most `shot_cut_burst_max_span` seconds
+(`None`: any length) collapses to one cut, its first (`'first'`, new
+tracks start confirming during the transition) or its last (`'last'`,
+old tracks carry through it). Only tracking reads the merged cuts; the
+structure profile is still chosen from the cuts as scanned.
+
+```python
+shot_cut_burst_window = 0.35
+shot_cut_burst_max_span = None
+shot_cut_burst_keep = 'first'
+```
+
+Those are the best variant of the 2026-10-11 analysis over 56 videos:
+5,223 more confident detections (score at least 0.5) censored for 841
+more risky track assignments (about one per six), 10,568 fewer track
+resets, coverage unchanged, and no profile worse. A max span of 0.6s
+recovered about 2,100. Measured under the suppression rules of that
+day, so re-run the analysis after changing those.
+
+`tools/analysis/analyze_cut_bursts.py` (a `run_all_analysis.sh` step)
+measures every variant against the cuts as scanned, whatever the config
+says, and writes the best one to `analyze_cut_bursts.json`.
+`AB_EXPERIMENT=cut_bursts bash tools/tuning/ab_compare.sh` shows it on
+your footage before you turn it on. The settings join the censor key
+only while the merge is on, so adding them left every finished render
+valid; turning it on, or changing it, re-renders (detections are reused).
+
+> **Decided (2026-10-18): on, at 0.35 s, any span, keep first.** Two
+> rounds of `ab_compare.sh` judged by eye, one verdict per moment:
+>
+> | round | videos | merge better | config better | same |
+> |---|---|---|---|---|
+> | first | "hour a half long goon fest pt.2", "GOONER Blowjob Doggy Cowgirl" | 94 | 31 | 18 |
+> | confirm | "NOFAP Therapy", "Hypno edge addict 8" (not seen before) | 53 | 32 | 19 |
+> | both | four files, three distinct footages | 147 (70%) | 63 | 37 |
+>
+> The first round's two files are near-identical copies of one
+> compilation, so it carries the weight of one video; the confirm
+> round, on footage not judged before, still favoured the merge,
+> with each of its two videos and both labels coming out the merge's
+> way. Every moment was the merge drawing a censor the config did not
+> (139) or both drawing one in different places (108); none was the
+> merge removing one, as expected, since merging only ever takes cuts
+> away. The config's 63 wins are moments where the merge's extra or
+> moved box was the wrong one. The likely cause is a track carried
+> across a real cut onto the wrong spot, the cost
+> `shot_cut_burst_max_span` exists to cap. A refinement worth testing
+> once the merge is in
+> betaconfig: `AB_EXPERIMENT=cut_bursts AB_SET="shot_cut_burst_max_span=0.6"`
+> puts a capped merge beside the uncapped one.
 
 Turn it off entirely if your material never has cuts: the scan is then
 skipped completely, cache read included.
@@ -1825,8 +2301,11 @@ It runs three phases, logs everything to
 1. **`betabench structure-scan`**: a whole-file shot-cut scan of every
    source file in `uncensored_vids/` and `source/` that lacks one, on the
    CPU, files in parallel (one worker per core, at most 4; 2 workers ran
-   1.36x faster than 1 on a 2-core box). The scans land in the cache
-   betatv's full run reads, so the real run reuses them
+   1.36x faster than 1 on a 2-core box). `structure_scan_workers` sets
+   the count for this machine (in its machine config; `betabench
+   concurrency` and `tune_machine.sh` measure it), since the cap of 4 is
+   for spinning disks. The scans land in the cache betatv's full run
+   reads, so the real run reuses them
 2. **geometry slices**: detection, no render, on 3 slices of 20s spread
    through each file at 25%, 50% and 75%, never at the start. Needs the
    GPU. This is the only thing split-screen is recognised from. It asks
@@ -2268,6 +2747,268 @@ the real `blur_image` uses, rather than recomputing the arithmetic. An
 earlier version of that file recomputed it, agreed with itself, and
 passed cheerfully with the bug put back.
 
+---
+
+## Reverse mode
+
+Normal mode spot-paints the few patches you want gone. Reverse mode
+spray-paints the whole wall: while a **trigger** is live, a **frame
+style** obscures the whole frame, with masking tape over the **windows**
+(labels left uncensored, such as faces) and the **censored labels**
+painted separately in their own styles (a breast keeps its normal-mode
+mosaic/hex list instead of turning into the frame blur).
+
+Off by default. Turn it on in the block or for one run:
+
+```bash
+python3 betatv.py --reverse on --preview on --preview-seconds 20
+```
+
+### Layers, bottom to top
+
+1. **Frame layer**: `frame_style` over the whole frame, faded in and
+   out by the trigger
+2. **Windows**: the original pixels back through the window's shape and
+   feather
+3. **Censored labels**: each label's style computed from the original
+   pixels, then blended into the frame once through its shape and
+   feather. A censored label wins where it overlaps a window
+4. Watermark
+
+Normal mode never runs through this compositor, so its output is
+unchanged byte for byte.
+
+### Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `reverse['enabled']` | `False` | the switch. `--reverse on/off` overrides it for one run |
+| `reverse['frame_style']` | blur `triple_box`, strength 20 | one style dict: `blur` (`triple_box` or `box`), `pixel` (`mosaic`, `square`) or `bar`. Strength is a percent of the frame's shorter side, so 20 is about a 216 px kernel at 1080p |
+| `reverse['empty_frame']` | `'passthrough'` | `'passthrough'`: untriggered frames are left clear. `'obscure'`: every frame gets the frame style |
+| `reverse['fade_seconds']` | `0.25` | fade between clear and obscured. 0 is a hard switch |
+| `reverse['trigger']['labels']` | `None` | labels whose detections switch the frame style on. `None` means every censored label, so a window (a face) never triggers by itself |
+| `reverse['trigger']['min_prob']` | `0.30` | a detection triggers when its score is above this. At or above `global_min_prob`, since nothing below the floor is stored |
+| `reverse['trigger']['hold_seconds']` | `0.5` | how long the frame stays obscured after each trigger detection |
+| `reverse['censor']['labels']` | `None` | labels censored inside a triggered frame, each with its own style. `None` means `items_to_censor` |
+| `reverse['censor']['overrides']` | `{}` | `{label: keys}` for reverse mode only: any `item_overrides` key, look keys included, e.g. a different style list while the frame is blurred |
+| `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis` | `{label: entry}`, never censored. `{}` inherits every tuning key |
+| `reverse['person_windows']['enabled']` | `True` (shipped; `False` when the key is absent) | whole male bodies left uncensored, from [person masks](#person-segmentation) |
+| `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_penis`, `exposed_chest` | detections that make a person male |
+| `reverse['person_windows']['female_labels']` | `face_femme`, `exposed_breast`, `exposed_vulva` | detections that count against it |
+| `reverse['person_windows']['evidence_min_prob']` | `0.40` | how sure a detection must be to count as evidence |
+| `reverse['person_windows']['track_iou']` | `0.30` | box overlap that links a person to the same person in the next sample |
+| `reverse['person_windows']['track_max_gap_seconds']` | `1.0` | how long a person can go undetected and still be the same track |
+| `reverse['person_windows']['shrink']` | `0.02` | fraction of the person's shorter side trimmed off the mask edge |
+
+A label is a window or censored, never both (validation error). A window
+entry takes `censor_shape`, any backend-tunable key (`min_prob`,
+`time_safety`, `width_area_safety`, tracking and smoothing keys), and a
+`censor_style` that can only be `{'type': 'show'}`, with optional
+`feather`, `shape`, `weight` and area safety keys (a weighted list of
+show variants works). Any other style in a window is an error: censor the
+label through `reverse['censor']` instead.
+
+### Person windows: whole male bodies
+
+The nudity detectors report parts, not people, so a `face_masc` window
+leaves the rest of the man under the frame style. Person windows add a
+second model ([person segmentation](#person-segmentation)) that outlines
+every person in each sampled frame, and leave a person's whole outline
+uncensored when the detections inside it say he is a man.
+
+- **Who counts as male.** A detection (at or above `evidence_min_prob`,
+  after the same dedup, promotion, geometry and suppression stages
+  tracking uses) votes for the one person whose outline holds its
+  centre: their outline, not just their box. One inside two overlapping
+  outlines votes for neither, since it can't say whose it is. People are
+  linked from sample to sample by box overlap, so a man whose face is
+  visible in one sample stays a man while he turns away. A track is male
+  with at least one male vote and more male votes than female ones
+- **Overlap: whoever isn't a man is cut out of the men.** Every outline
+  that isn't shown (a woman's, or anyone not attributed) is cut out of
+  the shown ones, so where a woman overlaps a man she stays under the
+  frame style and he stays clear around her. `shrink` trims shown
+  outlines and grows cut-out ones, so the boundary between them goes to
+  the frame style. Censored labels still win wherever they overlap
+- **Two bodies in one outline.** When the model returns two overlapping
+  people as one outline, there is nothing separate to cut out. A female
+  detection inside a man's outline that no separate non-male outline
+  accounts for means that: he is not shown at that sample
+- **Between samples** a window is the overlap of the two samples'
+  outlines, so a moving body loses its leading and trailing edges to the
+  frame style rather than dragging a clear patch over what it left. Past
+  the last sample, or across a gap of more than 1.5 sample intervals,
+  nothing is shown
+- **Anyone not attributed stays obscured**: no evidence, no window
+
+The pass runs in a thread alongside detection, over the same sampled
+frames, and is cached beside the detection caches
+(`<hash>-person-<backend>-<fps>-p<key>.npz`), so a re-render or a
+retuned attribution setting never re-runs it. It resumes the way
+detection does: a checkpoint every `detection_checkpoint_frames` samples
+and one on Ctrl-C (or when the file fails), so a re-run picks up where
+it stopped. The checkpoint shares the cache's key, so a changed person
+model starts over rather than mixing two models' outlines. The person model is part
+of the censor key while person windows are on. With person windows on
+and the model missing, the run refuses to start and says to run setup.
+
+### What each kind inherits
+
+- **Tuning keys** (confidence, padding, tracking, smoothing, paired
+  style, geometry) come from wherever they are set, for both kinds: the
+  shared `item_overrides`, the backend tier, the variant tier, then the
+  structure profile
+- **Look keys** (`censor_style`, `censor_shape`): a **censored label
+  keeps them**, which is the point; a **window never inherits them**
+  (with no `censor_shape` of its own a window is `default_censor_shape`)
+- **Reverse-mode keys apply last**, a window entry or a censored label's
+  override, over the profile too, and for reverse mode only. Normal mode
+  is untouched by anything in the block
+
+A censored label draws exactly what normal mode draws inside its shape.
+What differs is around it: the feather ring and the corners outside the
+shape fade into the frame style instead of the original, a sticker is
+clipped to the label's shape (normal mode draws the whole sticker), and a
+style's negative area safety (the vertical bar variants) leaves the rest
+of the detection under the frame style instead of clear.
+
+`time_safety` is inherited, which keeps a window open briefly after the
+target leaves. Override it in the window if that shows too much.
+
+### When the trigger fires
+
+Two sources, merged:
+
+- **Trigger detections**: detections of a trigger label scoring above
+  `trigger['min_prob']`, read **after** cross-size dedup, promotion, the
+  geometry filter and suppression, but **before** each label's own
+  `min_prob` and before tracking. Each one at time `t` holds the frame
+  obscured over `[t - one sample interval, t + hold_seconds]`. The lead
+  exists because detection looks only every 1/fps seconds: the target
+  can be on screen for up to one interval before the first detection
+  that sees it. Consecutive samples always join into one interval
+- **Censored boxes**: wherever a censored label's box is on screen, the
+  frame is obscured too, over the box's own span. A box can be there
+  with no trigger detection (it scored between its own `min_prob` and
+  the trigger's, or tracking held it through a gap longer than
+  `hold_seconds`), and a censored object in a clear frame is what reverse
+  mode exists to prevent
+
+The fade **looks ahead**: betatv renders offline, so the fade-in
+finishes by the start of the obscured interval and the fade-out starts
+after it ends. Fades only ever add obscuring outside an interval, never
+remove it inside one.
+
+betastare has no time axis: a still is obscured when any raw detection
+of a trigger label scores above the trigger's `min_prob`, or when any
+censored label has a box.
+
+### Error economics
+
+| outcome | effect | direction |
+|---|---|---|
+| trigger misses (target on screen, no trigger detection, no censored box) | **whole frame clear** | largest reveal |
+| trigger fires falsely | frame obscured needlessly | fails closed |
+| censored label misses (frame triggered) | target under the frame style | fails closed |
+| window false positive (a breast detected as `exposed_chest`) | that patch shown clear | small reveal |
+| window padding | more surroundings shown | small reveal |
+
+The trigger wants recall (low `min_prob`, generous hold) and windows want
+precision (higher `min_prob`, tight or negative padding). Censored boxes
+holding the trigger on cover the gap between a censored label's
+`min_prob` and the trigger's. A window that overlaps a censored label
+loses the overlap, but the rest of the window (a penis window around a
+vulva box) is shown.
+
+### Cost
+
+Measured on Aaron's machine (`betabench reverse`, 2026-10-11, 3840x2160,
+one core per value, x264 at the time):
+
+| frame style | ms per frame |
+|---|---|
+| `pixel` `mosaic` s4 | 11 |
+| `blur` `box` s20 | 31 |
+| `bar` | 45 |
+| `blur` `triple_box` s20 | 78 |
+| `pixel` `hex` s4 | 930 (rejected by validation) |
+| `blur` `gaussian` s20 | 4,765 (rejected by validation) |
+
+Whole pipeline with every frame triggered: 7.1 to 6.2 fr/s (+14%
+render), output 0.48x the size. 63% of the library's runtime would be
+triggered, so passthrough saves less than it might. NVENC has since made
+encoding cheaper, so the frame style is a larger share of render time
+than these numbers suggest; re-run `betabench reverse` (the hub's
+`--with-reverse`) for current figures. `box` or `mosaic` is the lever if
+`triple_box` costs too much.
+
+### Limitations
+
+- **See-through styles show the original.** A censored label's style is
+  drawn over the original before it goes into the frame, so a sticker's
+  transparent areas, and a bar thinner than its box (`thickness` < 1),
+  show the original pixels there, not the frame style. Validation warns
+  per label, and the shipped censored labels both include stickers, so it
+  warns on every run with reverse on. Give the label a reverse-only
+  `censor_style` without them in `reverse['censor']['overrides']` if
+  they show too much. A future option could draw them over the frame
+  style instead
+- **A sticker or bar that reaches past its box** (`scale` or `thickness`
+  above 1) is clipped to the box; past it is the frame style
+- **Person windows need evidence.** A man with no male detection inside
+  his outline anywhere in his track stays obscured, and the two models
+  can disagree about where a body ends. Outlines are coarse: the model's
+  own mask is 160 cells along the frame's longer side at `picture_size`
+  640 (24 px per cell at 4K), smoothed when scaled up
+- **Overlapping bodies.** A woman is cut out of a man only when the
+  model outlines her separately. When it merges them and none of her
+  `female_labels` is detected inside the merged outline at that sample,
+  her unlabeled skin inside it is shown with him
+- **betavision refuses to run** with reverse mode on. Its live loop would
+  draw the censored labels and leave the rest of the screen clear
+- **Fades are not merged across short gaps.** Two intervals closer than
+  twice `fade_seconds` dip toward clear between them; raise
+  `hold_seconds` to bridge gaps instead
+
+## Person segmentation
+
+`person_backend` picks the model behind
+[person windows](#person-windows-whole-male-bodies). It is shaped like
+`detector_backend`: `'selected'`, one block per backend, a
+`model_variant` per backend, and environment overrides for sweeps
+(`BETASUITE_PERSON_BACKEND_OVERRIDE`, `BETASUITE_PERSON_VARIANT_OVERRIDE`).
+Adapters live in `segmenters/`, beside the detectors in `detectors/`.
+
+| Backend | Variants | Status |
+|---|---|---|
+| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0, like BetaSuite. Exported to ONNX by setup |
+| `rf_detr_seg` | `nano`, `small`, `medium` | registered, decoder not written yet: selecting it is a validation error. Apache-2.0 |
+
+| Setting (`person_backend['yolo11_seg']`) | Default | What it does |
+|---|---|---|
+| `model_variant` | `'s'` | which size; `model_path` overrides the file |
+| `picture_size` | `640` | the longer side of the model input. The shorter side is padded only to the next multiple of 32, so a 16:9 frame runs at 640x384 |
+| `min_prob` | `0.35` | person score floor |
+| `nms_iou` | `0.5` | overlap at which two candidates are one person |
+| `batch_size` | `4` | frames per model call |
+
+**Runtime.** The models run through onnxruntime like the detectors, so
+the runtime environment has no PyTorch. Setup exports them once from
+Ultralytics' pinned `.pt` releases in a throwaway environment
+(see SETUP.md, Models). The decoder was checked against Ultralytics' own
+predictor on its sample images: the same people, the same scores, box
+IoU 1.00 and mask IoU 0.98 to 0.997.
+
+**Cost.** One more model pass per sampled frame, overlapped with
+detection. `betabench persons` (or the analysis hub's `--with-persons`)
+times every size on your footage and writes preview images with the
+outlines drawn, for choosing a size on this machine. Published figures
+put n at about 2 ms, s at 3 to 4 ms and m at about 7 ms per 640 px frame
+on a 3070-class GPU; at 9 fps sampling, an hour of video is about 32,000
+frames.
+
+---
+
 ## Render-time motion interpolation
 
 ### The flicker that no blur setting could fix
@@ -2596,6 +3337,69 @@ happening. "1 worker x5 file(s), 2 worker(s) x2 file(s)" means the
 parallel renderer is idle, and no `render_workers` value fixes that,
 the chunk size is what decides how many chunks exist to hand out.
 
+**Memory caps it too (Linux).** Every worker holds its own decoder,
+frames in flight and ffmpeg encoder, and all of them grow with the
+frame's pixel count. On 2026-10-26 a 16-CPU laptop with 15 GiB of RAM
+got 8 workers for a 4096x2160 file and the kernel's out-of-memory
+killer killed betatv twice, about 25 frames per worker into the render;
+the 1080p file before it rendered fine with the same 8. So the CPU
+count is now lowered to what fits in `MemAvailable` at the start of
+each render:
+
+    workers <= ( MemAvailable - render_memory_reserve_mb )
+               / ( render_worker_mb_per_megapixel x frame megapixels )
+
+never below 1, and logged with the numbers it used. It applies to an
+explicit `render_workers` as well, with a warning, because the
+alternative is a SIGKILL that leaves nothing in the log. Swap is not
+counted. Chunk sizes are still planned from the CPU count, so changing
+these never invalidates chunks a killed run already finished. Off on
+platforms without `/proc/meminfo`, where the count is CPU-only as
+before.
+
+### `render_worker_mb_per_megapixel`
+
+Memory one render worker is assumed to need per megapixel of frame.
+**200**. `None` turns the memory cap off.
+
+**Uncertain, and a lower bound.** 200 is read off the two 2026-10-26
+kills, not a measurement of one worker: 8 workers at 8.85 MP exhausted
+roughly 14 GiB, so at least ~1.75 GiB each. At 200, 10 GiB available
+holds 4 workers at 4096x2160 and 19 at 1080p. If a render is still
+killed, raise it. Each stats row records `render_memory_available_mb`
+and `render_memory_worker_cap`, so runs that did and did not run out
+can be compared.
+
+`tools/bench/tune_machine.sh` measures it: the render's decode and
+encode at several worker counts with the process tree's memory sampled,
+the worst per-worker figure plus 25% for the censoring the bench leaves
+out. It depends on `render_decode_threads`, so the two are measured
+together.
+
+### `render_memory_reserve_mb`
+
+Memory left out of the cap's arithmetic for everything else on the
+machine (desktop, browser, the detector's own session). **2048**.
+
+### `render_decode_threads`
+
+Decoder threads per render worker. **None** keeps OpenCV's own choice,
+one per core for every worker; **0** shares the cores out (cores /
+workers); a number sets it.
+
+OpenCV's FFmpeg backend gives each capture one decoder thread per core,
+and frame threading keeps a decoded frame in flight per thread. For one
+capture that is the fastest choice. A render opens one capture per
+worker, so 8 workers on a 16-core machine ran 128 decoder threads and
+held up to 128 frames in flight, competing for the same 16 cores: memory
+grows with the worker count while throughput does not. Sharing the
+cores out bounds both, which can let the memory cap allow more workers
+at 4K. None stays the default until measurements across machines say
+otherwise; `tune_machine.sh` measures both on yours and proposes 0 only
+when it is clearly faster, or as fast and clearly lighter. An OpenCV
+older than 4.6 cannot set it and decodes as before. Output frames are
+identical either way.
+
 ### `render_chunk_seconds`
 
 Seconds of video per render chunk. **180**. `0` disables chunking.
@@ -2635,12 +3439,26 @@ cost of more concat work. Preview runs always use one chunk.
 > output. The container check cannot see this; only the count can.
 
 The final chunk is allowed to come up short, because container metadata
-over-reports the frame count on some files. That is logged rather than
-failed.
+over-reports the frame count on some files. OpenCV derives an MKV's
+frame count from its duration, and the duration includes the stream's
+start offset, so an MKV starting at 0.067s plans two frames that do not
+exist. Reproduced on a synthetic file: estimate 1201, real 1199, every
+seek frame-exact. On the 2026-10-06 run, all four MKVs came up 2 or 3
+frames short and both MP4s matched exactly.
+
+A shortfall of up to one second of frames is routine and goes to the
+log file at debug. A bigger one is a warning, because a decoder that
+died near the end of the file looks the same from inside the render.
+Either way the chunk is accepted and the verdict is recorded beside it,
+so a resume reuses the chunk instead of re-rendering it to reach the
+same verdict, which every resume did before.
 
 ### `encode_video_codec`, `encode_crf`, `encode_preset`, `render_chunk_container`
 
-`'libx264'`, **17**, `'fast'`, `'mkv'`.
+`'libx264'`, **17**, `'fast'`, `'mkv'`. These work on any machine; a
+machine with a faster encoder sets its own in its machine config (see
+"Machine config"), which is where `betabench encode` and
+`tune_machine.sh` put a recommendation.
 
 CRF is quality: lower is better and larger, 17 is visually lossless for
 most material, 0 is truly lossless, 51 is worst. Preset is the
@@ -2657,6 +3475,34 @@ bigger files at faster presets.
 If the source's audio codec cannot live in an MP4 (Vorbis or Opus in a
 Matroska source), the copy fails and the mux retries with AAC. That is
 logged, because re-encoding audio is a real quality decision.
+
+**NVENC.** `encode_video_codec = 'h264_nvenc'` (or `hevc_nvenc`)
+encodes on the GPU's dedicated encoder instead of the CPU. NVENC has no
+CRF, and handed `-crf` it ignores it without an error and encodes at
+its default bitrate, which is what this setting used to do. It now
+passes `encode_crf` to NVENC as constant quality (`-cq`, with
+`-b:v 0`), and translates x264 preset names to NVENC's `p1` (fastest)
+to `p7` (best), so `preview_encode_preset = 'ultrafast'` becomes `p1`
+rather than an error. `p1` to `p7` can also be set directly whenever
+the codec is an NVENC one. Until 2026-10-18 validation knew only x264's
+names and rejected the `p5` that `betabench encode` recommends, so a
+config switched to NVENC failed `validate_config`; it now checks the
+preset against the codec, and `p5` with `libx264` is still an error.
+
+The cq and crf scales do not match number for number, so do not carry
+17 across and assume the same quality. `betabench encode` times the
+current encoder, two faster x264 presets and NVENC at cq 17, 19, 21 and
+23 through the real chunk command with the real worker count, scores
+each against the source (SSIM and PSNR on luma), and names the fastest
+one within 0.25 dB of the current quality on both, with the settings
+to paste. Consumer drivers cap how many NVENC encodes run at once; the
+bench opens as many as the render would and says if `render_workers`
+has to come down.
+
+Measured on 2026-10-06's real renders, render speed tracks pixel count
+(38 to 75 million pixels a second), so 1080p renders at about 18 frames
+a second and spends two thirds of its time rendering. That is the case
+an encoder change is for.
 
 ### `detection_checkpoint_frames`
 
@@ -2760,12 +3606,57 @@ initialise, onnxruntime falls back to CPU with a warning buried in
 stderr and the run simply becomes far slower with nothing to say why.
 The provider list in the stats row makes that answerable after the fact.
 
+A file that fails writes no stats row. It writes one line to
+`betasuite_stats.failures.jsonl` beside `stats_path` instead (the file,
+the error as the warning logged it, the backend and variant, the
+video's size and rate), under the same `stats_enabled` switch.
+`summarize_run.py` lists those failures after its numbers, each marked
+with whether a later run rendered the file. They are kept out of the
+stats file because five tools read every stats row as a finished
+render, and a failure among them would skew all of them without a
+sign. Before this a failed file left nothing outside `betasuite.log`,
+and on 2026-10-24 two render failures read as files missing from the
+run.
+
+A run that is SIGKILLed (the kernel's out-of-memory killer,
+systemd-oomd), crashes inside a native library, or loses power cannot
+log anything at all. While betatv runs, `betasuite_stats.running.json`
+beside `stats_path` names the run (pid, boot id) and the file it is on;
+every ending the run can still act on removes it. One found at the next
+start means the last run died silently: betatv warns, naming the file
+and pointing at `journalctl -k | grep -i oom`, and records that file in
+the failures file, so `summarize_run.py` lists it. A marker from before
+a reboot is always treated as dead; on Linux a live pid whose command
+line is not betatv is treated as reused. On platforms that cannot check
+a pid, the warning says so.
+
+### ffmpeg's own output
+
+Every ffmpeg the render starts (chunk encode, chunk concat, final mux)
+has its stderr captured into the log file at debug, and a failure's
+reason carries how ffmpeg ended and the line that names the encoder.
+A signal is named rather than printed as a negative exit code:
+`crashed (SIGSEGV)`, `was killed (SIGKILL)`. On 2026-10-26 a 4K chunk
+encoder segfaulted when the GPU driver ran out of host memory, and
+ffmpeg prints nothing when it segfaults, so the signal is the only
+reason there is.
+Before this, ffmpeg wrote to the terminal only, and an encoder that
+quit mid-chunk was reported as `BrokenPipeError` with no reason: two
+4K files on 2026-10-23/24 lost a chunk each that way. A successful
+ffmpeg that still printed something at `-loglevel error` is a warning.
+Only the first 10 and last 30 lines of each ffmpeg are kept.
+
 ### `debug_mode`
 
 `0` off, `1` draws labelled debug boxes for **every** class instead of
 censoring, `3` additionally saves debug output. Useful for eyeballing
 detection quality without touching `items_to_censor`. It is part of the
 censor cache key, so debug output never overwrites a real render.
+
+With bit 1 set, render ffmpeg also runs at its normal log level
+instead of `-loglevel error`. That output goes to the log file at
+debug when each ffmpeg exits, no longer live to the terminal; pass
+`--console-level debug` to see it there.
 
 ---
 

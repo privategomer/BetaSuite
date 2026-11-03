@@ -12,8 +12,20 @@
 #   ./tools/analysis/run_all_analysis.sh
 #   ./tools/analysis/run_all_analysis.sh --labels exposed_vulva exposed_breast
 #   ./tools/analysis/run_all_analysis.sh --include-preview
-#   ./tools/analysis/run_all_analysis.sh --quick        # skip the slow steps
 #   ./tools/analysis/run_all_analysis.sh --log-level trace --console-level warn
+#
+# TIMING STEPS ARE OPT-IN
+#
+#   ./tools/analysis/run_all_analysis.sh --with-encode     # encoder speed/quality (~1 h)
+#   ./tools/analysis/run_all_analysis.sh --with-reverse    # reverse-mode render cost (~25 min)
+#   ./tools/analysis/run_all_analysis.sh --with-persons    # person-model speed and masks (~5 min)
+#   ./tools/analysis/run_all_analysis.sh --with-hardware   # decode/detect/render timing
+#   ./tools/analysis/run_all_analysis.sh --with-timing     # all four
+#
+# These measure the machine, not the run: their answer changes when the
+# hardware, drivers or encoder settings do, not after every batch of
+# footage. A default run reads caches only. --quick is accepted and does
+# nothing, since that is now the default.
 #
 # NARROWING TO ONE VARIANT
 #
@@ -41,6 +53,24 @@
 # with respect to everything else. Use --no-parallel when debugging a
 # single step and you want its output live.
 #
+# MEMORY
+#
+#   ./tools/analysis/run_all_analysis.sh --memory-budget 8000   # MB
+#
+# Every step runs under tools/lib/step_meter.py, which records its wall
+# time and peak memory to <step>.meter.json in the run's folder; the
+# summary prints both, and a step the system killed for memory (exit
+# 137) is named as that, with the memory it had reached.
+#
+# A parallel step only starts when its expected peak fits beside the
+# steps already running, within a budget of 85% of the memory free when
+# the batch starts (or --memory-budget / BETASUITE_ANALYSIS_MEMORY_MB).
+# Expected peak is what that step reached in the newest earlier run that
+# recorded one, plus 25%; with no history yet, an estimate from the size
+# of the detection caches on disk. A step too big for the budget runs
+# alone rather than not at all. Where the system does not report free
+# memory (macOS, native Windows) only --jobs limits the batch.
+#
 # WHAT IT RUNS, AND WHY IN THIS ORDER
 #
 #   1. summarize_run.py         Where the wall clock actually went, per
@@ -50,11 +80,15 @@
 #                               that took 16% of a run caps the saving
 #                               at 16%, whatever the tuning output says.
 #
-#   2. betabench.py all         Derives suppression / hysteresis / structure /
+#   2. betabench.py cache       Derives suppression / hysteresis / structure /
 #                               geometry / dedup values from the same
-#                               caches, and times decode, detect and
-#                               render on this hardware. Every variant
-#                               of every backend, at its native size.
+#                               caches. Every variant of every backend, at
+#                               its native size. Writes moves.sh, the
+#                               reviewable source-folder moves the
+#                               structure survey recommends.
+#   2b. analyze_label_content.py      Which videos show which censored label,
+#                                     and which mix them: where to judge a
+#                                     per-label setting (AB_FOCUS).
 #
 #   3. analyze_suppression_pairs.py   Cross-label confusion signatures.
 #   3b. analyze_geometry_impact.py    What a candidate geometry bound would
@@ -68,6 +102,26 @@
 #                                     nothing about where to go.
 #   6. analyze_track_breaks.py $VARIANT_FLAG        match_distance / track_max_gap sweeps.
 #   7. analyze_style_flicker.py $VARIANT_FLAG       paired_style gate diagnostics.
+#   7b. analyze_cut_bursts.py $VARIANT_FLAG         Whether merging bursts of shot cuts
+#                                     (fades, flashes) would recover censoring,
+#                                     replayed per profile. Nothing is wired in
+#                                     until its numbers say so.
+#
+#   T. (opt-in, see above) TIMING steps, one at a time after the
+#      parallel batch, so no other step's CPU use is measured with them:
+#      betabench.py hardware    decode / detect / render timing, plus
+#                               render without the blur approximation
+#                               (--with-hardware)
+#      betabench.py encode      Render encode speed and quality per
+#                               encoder on this machine, through the
+#                               real chunk command and worker count.
+#                               Informs encode_video_codec / preset / crf
+#                               (--with-encode).
+#      betabench.py reverse     What reverse mode would cost to render,
+#                               from this run's caches (--with-reverse).
+#      betabench.py persons     Each person-segmentation size's speed and
+#                               mask previews, for reverse mode's person
+#                               windows (--with-persons).
 #
 #   8. auto_tune.py             A dry run of the staged tuner: what it
 #                               would change and why, writing nothing.
@@ -96,6 +150,10 @@ fi
 LOG_LEVEL="debug"
 CONSOLE_LEVEL="info"
 QUICK=0
+WITH_HARDWARE=0
+WITH_ENCODE=0
+WITH_REVERSE=0
+WITH_PERSONS=0
 ALPHA_SWEEP="0.15 0.25 0.35 0.50 0.70"
 declare -a PASSTHROUGH=()
 VARIANTS=""
@@ -106,23 +164,33 @@ VARIANTS=""
 # it with --jobs N, or set --no-parallel to get the old strictly
 # sequential behaviour back when debugging a single step.
 JOBS="${BETASUITE_ANALYSIS_JOBS:-3}"
+# MB the parallel batch may use at once; empty means 85% of what is
+# free when the batch starts (see MEMORY above).
+MEMORY_BUDGET_MB="${BETASUITE_ANALYSIS_MEMORY_MB:-}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --log-level)     LOG_LEVEL="$2"; shift 2 ;;
         --console-level) CONSOLE_LEVEL="$2"; shift 2 ;;
         --quick)         QUICK=1; shift ;;
+        --with-hardware) WITH_HARDWARE=1; shift ;;
+        --with-encode)   WITH_ENCODE=1; shift ;;
+        --with-reverse)  WITH_REVERSE=1; shift ;;
+        --with-persons)  WITH_PERSONS=1; shift ;;
+        --with-timing)   WITH_HARDWARE=1; WITH_ENCODE=1; WITH_REVERSE=1; WITH_PERSONS=1; shift ;;
         --variants)      shift; VARIANTS=""
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              VARIANTS="$VARIANTS $1"; shift
                          done ;;
         --jobs)          JOBS="$2"; shift 2 ;;
         --no-parallel)   JOBS=1; shift ;;
+        --memory-budget) MEMORY_BUDGET_MB="$2"; shift 2 ;;
         --sweep-alpha)   shift; ALPHA_SWEEP=""
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              ALPHA_SWEEP="$ALPHA_SWEEP $1"; shift
                          done ;;
-        --help|-h)       sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h)       awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" \
+                             | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)               PASSTHROUGH+=("$1"); shift ;;
     esac
 done
@@ -138,8 +206,14 @@ if [ "${#PASSTHROUGH[@]}" -gt 0 ]; then
     echo "extra args (passed to every tool that accepts them): ${PASSTHROUGH[*]}"
 fi
 if [ "$QUICK" -eq 1 ]; then
-    echo "--quick: skipping the steps that load models or time rendering"
+    echo "--quick: nothing to skip, timing steps are already opt-in (--with-timing to run them)"
 fi
+TIMING_ON=""
+[ "$WITH_HARDWARE" -eq 1 ] && TIMING_ON="$TIMING_ON hardware"
+[ "$WITH_ENCODE" -eq 1 ] && TIMING_ON="$TIMING_ON encode"
+[ "$WITH_REVERSE" -eq 1 ] && TIMING_ON="$TIMING_ON reverse"
+[ "$WITH_PERSONS" -eq 1 ] && TIMING_ON="$TIMING_ON persons"
+echo "timing steps:${TIMING_ON:- none (--with-encode, --with-reverse, --with-persons, --with-hardware or --with-timing)}"
 echo
 echo "Configurations this run will cover (read from the cache, not from config):"
 "$PYTHON_BIN" - <<'PYEOF'
@@ -167,15 +241,13 @@ declare -a STEPS=()
 
 STEPS+=("summarize_run|${PYTHON_BIN} $SCRIPT_DIR/summarize_run.py")
 
-if [ "$QUICK" -eq 0 ]; then
-    STEPS+=("betabench_all|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py all --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-else
-    # structure is cache-only and the profile question depends on it,
-    # so --quick keeps it alongside geometry.
-    STEPS+=("betabench_cache_only|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py geometry --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-    STEPS+=("betabench_structure|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py structure --yes $VARIANT_FLAG --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
-fi
+# Every betabench step gets its own --out-dir under this run's folder.
+# Without one, betabench names its folder after the current second, and
+# two steps launched together in the parallel batch landed in the SAME
+# folder: one results.json overwrote the other and both wrote one
+# interleaved betabench.log.
+STEPS+=("betabench_cache|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py cache --yes $VARIANT_FLAG --write-move-script $LOG_DIR/moves.sh --out-dir $LOG_DIR/betabench_cache --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+STEPS+=("analyze_label_content|${PYTHON_BIN} $SCRIPT_DIR/analyze_label_content.py $VARIANT_FLAG --json $LOG_DIR/label_content.json")
 
 STEPS+=("analyze_suppression_pairs|${PYTHON_BIN} $SCRIPT_DIR/analyze_suppression_pairs.py")
 STEPS+=("analyze_geometry_impact|${PYTHON_BIN} $SCRIPT_DIR/analyze_geometry_impact.py ${PASSTHROUGH[*]:-}")
@@ -183,10 +255,29 @@ STEPS+=("analyze_score_distribution|${PYTHON_BIN} $SCRIPT_DIR/analyze_score_dist
 STEPS+=("analyze_jitter|${PYTHON_BIN} $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLAG --sweep-alpha $ALPHA_SWEEP ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
+STEPS+=("analyze_cut_bursts|${PYTHON_BIN} $SCRIPT_DIR/analyze_cut_bursts.py $VARIANT_FLAG --json $LOG_DIR/analyze_cut_bursts.json")
 STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
+# Timing steps: run one at a time, after the parallel batch and before
+# auto_tune. They measure wall clock and throughput, so anything running
+# beside them would be measured with them.
+declare -a TIMING_STEPS=()
+if [ "$WITH_HARDWARE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_hardware|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py hardware --yes $VARIANT_FLAG --out-dir $LOG_DIR/betabench_hardware --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+    TIMING_STEPS+=("betabench_render_noapprox|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py render --yes --no-blur-approximation --out-dir $LOG_DIR/betabench_render_noapprox --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_ENCODE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_encode|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py encode --yes --out-dir $LOG_DIR/betabench_encode --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_REVERSE" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_reverse|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py reverse --yes --out-dir $LOG_DIR/betabench_reverse --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+if [ "$WITH_PERSONS" -eq 1 ]; then
+    TIMING_STEPS+=("betabench_persons|${PYTHON_BIN} $CORE_DIR/tools/bench/betabench.py persons --yes --out-dir $LOG_DIR/betabench_persons --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
+fi
+
 declare -a RESULTS=()
-TOTAL=${#STEPS[@]}
+TOTAL=$(( ${#STEPS[@]} + ${#TIMING_STEPS[@]} ))
 
 # WHY SOME STEPS RUN IN PARALLEL AND SOME DO NOT
 #
@@ -209,37 +300,147 @@ TOTAL=${#STEPS[@]}
 #
 # --no-parallel restores strict sequencing for debugging one step.
 
+METER="$CORE_DIR/tools/lib/step_meter.py"
+RUNS_DIR="$CORE_DIR/../output/logs/analysis_runs"
+
 run_one_step() {
-    # $1 label, $2 command. Output to the step's log only.
+    # $1 label, $2 command. Output to the step's log only; wall time and
+    # peak memory to the step's meter record.
     local label="$1" command="$2"
     local log_file="$LOG_DIR/${label}.log"
     # shellcheck disable=SC2086
-    $command > "$log_file" 2>&1
+    "$PYTHON_BIN" "$METER" --record "$LOG_DIR/${label}.meter.json" -- $command > "$log_file" 2>&1
     echo "$?" > "$LOG_DIR/.${label}.status"
+}
+
+meter_field() {
+    # meter_field FILE KEY: a numeric field of a meter record, or nothing
+    # when the file or the value (null) is missing.
+    [ -f "$1" ] || return 0
+    sed -n "s/.*\"$2\": \([0-9.][0-9.]*\).*/\1/p" "$1" | head -n 1
 }
 
 replay_step_log() {
     local label="$1" index="$2"
     local log_file="$LOG_DIR/${label}.log"
-    local status=1
+    local meter="$LOG_DIR/${label}.meter.json"
+    local status=1 wall peak usage=""
     [ -f "$LOG_DIR/.${label}.status" ] && status="$(cat "$LOG_DIR/.${label}.status")"
     rm -f "$LOG_DIR/.${label}.status"
+    wall="$(meter_field "$meter" wall_seconds)"
+    peak="$(meter_field "$meter" peak_rss_mb)"
+    [ -n "$wall" ] && usage="${wall%.*}s"
+    [ -n "$peak" ] && usage="${usage:+$usage, }peak ${peak%.*} MB"
 
     echo "=== [$index/$TOTAL] $label ==="
     [ -f "$log_file" ] && cat "$log_file"
+    [ -n "$usage" ] && echo "--- $label: $usage"
 
     if [ "$status" -eq 0 ]; then
-        RESULTS+=("OK   $label")
+        RESULTS+=("OK   $label${usage:+  ($usage)}")
     else
-        RESULTS+=("FAIL $label (exit $status) - see $log_file")
-        echo "WARNING: $label exited with status $status - continuing with the rest of the suite, check $log_file"
+        local why="exit $status"
+        if [ "$status" -eq 137 ]; then
+            why="exit 137: killed by the system, almost always for running out of memory${peak:+; it had reached ${peak%.*} MB}"
+        fi
+        RESULTS+=("FAIL $label ($why) - see $log_file")
+        echo "WARNING: $label failed ($why) - continuing with the rest of the suite, check $log_file"
     fi
     echo
 }
 
+# ---- memory-aware admission for the parallel batch (see MEMORY above) ----
+
+mem_available_mb() {
+    # What the kernel says could be used without swapping, in MB; nothing
+    # where it does not say (macOS, native Windows).
+    [ -r /proc/meminfo ] || return 0
+    awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo
+}
+
+# With no history, a step is assumed to need STEP_BASE_MB plus
+# CACHE_FACTOR times the detection caches' size on disk: about 1.5 times
+# the largest step measured. On a 7.3-million-detection library (141 MB
+# of caches) the largest step peaked at 995 MB; before the cache-reading
+# tools streamed, steps peaked at 4.1 to 4.8 GB, about 32 times the
+# caches' size.
+STEP_BASE_MB=300
+CACHE_FACTOR=8
+
+cache_size_mb() {
+    local kb=0 dir size
+    for dir in "$CORE_DIR/../output/cache/vid_hashes" "$CORE_DIR/../output/cache/pic_hashes"; do
+        [ -d "$dir" ] || continue
+        size="$(du -sk "$dir" 2>/dev/null | awk '{ print $1 }')"
+        kb=$(( kb + ${size:-0} ))
+    done
+    echo $(( kb / 1024 ))
+}
+
+STEP_ESTIMATE_MB=0
+STEP_ESTIMATE_SOURCE=""
+estimate_step() {
+    # estimate_step LABEL: sets STEP_ESTIMATE_MB (expected peak) and
+    # STEP_ESTIMATE_SOURCE (where that number came from).
+    local label="$1" dirs index peak
+    dirs=( "$RUNS_DIR"/*/ )
+    for (( index=${#dirs[@]}-1; index>=0; index-- )); do
+        [ -d "${dirs[$index]}" ] || continue
+        [ "${dirs[$index]%/}" = "$LOG_DIR" ] && continue
+        peak="$(meter_field "${dirs[$index]}${label}.meter.json" peak_rss_mb)"
+        if [ -n "$peak" ]; then
+            STEP_ESTIMATE_MB=$(( ${peak%.*} * 5 / 4 + 1 ))
+            STEP_ESTIMATE_SOURCE="run $(basename "${dirs[$index]}") peaked at ${peak%.*} MB, plus 25%"
+            return 0
+        fi
+    done
+    STEP_ESTIMATE_MB=$(( STEP_BASE_MB + CACHE_FACTOR * CACHE_MB ))
+    STEP_ESTIMATE_SOURCE="no earlier run recorded it: ${STEP_BASE_MB} MB + ${CACHE_FACTOR} x ${CACHE_MB} MB of caches"
+}
+
+declare -a RUN_PIDS=()
+declare -a RUN_NEEDS=()
+admit() {
+    # admit LABEL NEED: return once NEED MB fits beside the steps still
+    # running, within the budget and --jobs. A step bigger than the
+    # whole budget waits until nothing else runs, then runs alone.
+    local label="$1" need="$2" held=0
+    while :; do
+        local reserved=0 index
+        local -a alive_pids=() alive_needs=()
+        if [ "${#RUN_PIDS[@]}" -gt 0 ]; then
+            for index in "${!RUN_PIDS[@]}"; do
+                if kill -0 "${RUN_PIDS[$index]}" 2>/dev/null; then
+                    alive_pids+=("${RUN_PIDS[$index]}")
+                    alive_needs+=("${RUN_NEEDS[$index]}")
+                    reserved=$(( reserved + RUN_NEEDS[index] ))
+                fi
+            done
+        fi
+        RUN_PIDS=( ${alive_pids[@]+"${alive_pids[@]}"} )
+        RUN_NEEDS=( ${alive_needs[@]+"${alive_needs[@]}"} )
+        local running="${#RUN_PIDS[@]}"
+        [ "$running" -eq 0 ] && return 0
+        if [ "$running" -lt "$JOBS" ]; then
+            if [ -z "$MEMORY_BUDGET_MB" ] || [ $(( reserved + need )) -le "$MEMORY_BUDGET_MB" ]; then
+                return 0
+            fi
+            if [ "$held" -eq 0 ]; then
+                echo "holding $label until memory frees: it needs about ${need} MB and ${reserved} MB of the ${MEMORY_BUDGET_MB} MB budget is taken by ${running} running step(s)" | tee -a "$ADMISSION_LOG"
+                held=1
+            fi
+        fi
+        # wait -n returns when any background step ends; where it does not
+        # exist (bash 3.2) or nothing is left to wait for, poll instead.
+        wait -n 2>/dev/null || sleep 1
+    done
+}
+
 # Split the steps: first and last stay pinned, the middle can batch.
+# LAST_INDEX indexes STEPS, so it is counted from STEPS alone: TOTAL also
+# counts the timing steps, which are a separate list.
 FIRST_LABEL="${STEPS[0]%%|*}"
-LAST_INDEX=$(( TOTAL - 1 ))
+LAST_INDEX=$(( ${#STEPS[@]} - 1 ))
 LAST_LABEL="${STEPS[$LAST_INDEX]%%|*}"
 
 STEP=1
@@ -251,7 +452,22 @@ if [ "$JOBS" -gt 1 ] && [ "$TOTAL" -gt 2 ]; then
     echo
 fi
 
-running=0
+ADMISSION_LOG="$LOG_DIR/admission.log"
+if [ "$JOBS" -gt 1 ]; then
+    if [ -z "$MEMORY_BUDGET_MB" ]; then
+        available="$(mem_available_mb)"
+        [ -n "$available" ] && MEMORY_BUDGET_MB=$(( available * 85 / 100 ))
+    fi
+    CACHE_MB="$(cache_size_mb)"
+    if [ -n "$MEMORY_BUDGET_MB" ]; then
+        echo "memory budget for the parallel steps: ${MEMORY_BUDGET_MB} MB (detection caches: ${CACHE_MB} MB on disk); decisions in $ADMISSION_LOG"
+    else
+        echo "free memory is not reported on this system, so only --jobs ${JOBS} limits the parallel steps"
+    fi
+    echo "budget ${MEMORY_BUDGET_MB:-none} MB, jobs ${JOBS}, caches ${CACHE_MB} MB" > "$ADMISSION_LOG"
+    echo
+fi
+
 declare -a BATCH=()
 for (( i=1; i<LAST_INDEX; i++ )); do
     entry="${STEPS[$i]}"
@@ -259,12 +475,17 @@ for (( i=1; i<LAST_INDEX; i++ )); do
     command="${entry#*|}"
     BATCH+=("$label")
     if [ "$JOBS" -gt 1 ]; then
-        run_one_step "$label" "$command" &
-        running=$(( running + 1 ))
-        if [ "$running" -ge "$JOBS" ]; then
-            wait -n 2>/dev/null || wait
-            running=$(( running - 1 ))
+        estimate_step "$label"
+        need="$STEP_ESTIMATE_MB"
+        echo "$label: expect about ${need} MB ($STEP_ESTIMATE_SOURCE)" >> "$ADMISSION_LOG"
+        if [ -n "$MEMORY_BUDGET_MB" ] && [ "$need" -gt "$MEMORY_BUDGET_MB" ]; then
+            echo "$label may need about ${need} MB, more than the ${MEMORY_BUDGET_MB} MB budget: it will run alone" | tee -a "$ADMISSION_LOG"
         fi
+        admit "$label" "$need"
+        echo "$(date +%H:%M:%S) start $label" >> "$ADMISSION_LOG"
+        run_one_step "$label" "$command" &
+        RUN_PIDS+=("$!")
+        RUN_NEEDS+=("$need")
     else
         run_one_step "$label" "$command"
     fi
@@ -272,6 +493,13 @@ done
 wait
 
 for label in "${BATCH[@]}"; do
+    STEP=$(( STEP + 1 ))
+    replay_step_log "$label" "$STEP"
+done
+
+for entry in ${TIMING_STEPS[@]+"${TIMING_STEPS[@]}"}; do
+    label="${entry%%|*}"
+    run_one_step "$label" "${entry#*|}"
     STEP=$(( STEP + 1 ))
     replay_step_log "$label" "$STEP"
 done
@@ -288,8 +516,27 @@ done
 echo
 echo "full logs: $LOG_DIR"
 echo
-echo "Next: the tuner above ran as a DRY RUN and wrote nothing. When you agree with what"
-echo "it proposed, apply it with:"
+echo "--- where the recommendations are ---"
+where() {   # where LABEL PATH: print the line only when the file was written
+    [ -e "$2" ] && printf "  %-34s %s\n" "$1" "$2"
+    return 0
+}
+where "tuner proposals (auto_tune):" "$LOG_DIR/auto_tune/decisions.json"
+where "suppression/hysteresis/geometry:" "$LOG_DIR/betabench_cache/results.json"
+where "structure: source-folder moves" "$LOG_DIR/moves.sh"
+where "structure: per-file table" "$LOG_DIR/betabench_cache.log"
+where "which videos show which label:" "$LOG_DIR/label_content.json"
+where "near-duplicate videos:" "$LOG_DIR/analyze_label_content.log"
+where "cut-burst merge, best variant:" "$LOG_DIR/analyze_cut_bursts.json"
+where "encoder speed and quality:" "$LOG_DIR/betabench_encode/results.json"
+where "reverse-mode cost:" "$LOG_DIR/betabench_reverse/results.json"
+where "person models (speed, masks):" "$LOG_DIR/betabench_persons/results.json"
+where "decode/detect/render timing:" "$LOG_DIR/betabench_hardware/results.json"
+echo "  every step's full output:           $LOG_DIR/<step>.log"
+echo
+echo "Next: the tuner above ran as a DRY RUN and wrote nothing. Values it marked 'worth"
+echo "judging by eye' go through the A/B first: bash tools/tuning/ab_compare.sh"
+echo "When you agree with the rest, apply it with:"
 echo "    ${PYTHON_BIN} tools/tuning/auto_tune.py --apply"
 echo "It backs betaconfig.py up before every write and verifies each value took effect."
 

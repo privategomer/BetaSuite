@@ -35,7 +35,6 @@ detection loop did it anyway. Both now go through
 iter_sampled_frames().
 """
 
-import logging
 import math
 import os
 import shutil
@@ -609,14 +608,17 @@ class VideoSource:
         self.height = height
         self.transcoded = transcoded
 
-    def open_capture( self ):
+    def open_capture( self, threads=None ):
         """
         A fresh, independent cv2.VideoCapture on decode_path.
 
         Used by anything that needs its own read position - the
         shot-cut scan, and each worker in a parallel render.
+
+        threads, when given, is the decoder's thread count; None leaves
+        OpenCV's own choice (one per core). See open_capture_with_threads.
         """
-        return cv2.VideoCapture( self.decode_path )
+        return open_capture_with_threads( self.decode_path, threads )
 
     def release( self ):
         """Release the primary capture."""
@@ -633,6 +635,162 @@ class VideoSource:
 
 class VideoOpenError( RuntimeError ):
     """Raised when no decode strategy can produce a frame from a file."""
+
+
+def capture_threads_supported():
+    """Whether this OpenCV takes a decoder thread count at open time (4.6+)."""
+    return hasattr( cv2, 'CAP_PROP_N_THREADS' )
+
+
+def open_capture_with_threads( path, threads=None ):
+    """
+    cv2.VideoCapture on path, with `threads` decoder threads.
+
+    WHY. OpenCV's FFmpeg backend gives every capture one decoder thread
+    per core, and frame threading keeps a decoded frame in flight per
+    thread. One capture, that is the fastest choice. Eight render workers
+    on a 16-core machine are eight captures, so 128 decoder threads and
+    128 4K frames in flight, competing for the same 16 cores: the memory
+    grows with the worker count while the throughput does not. Giving
+    each worker its share of the cores bounds both. Measured per machine
+    by tools/bench/tune_machine.py, set by render_decode_threads.
+
+    threads None (or an OpenCV without CAP_PROP_N_THREADS) opens it the
+    way it always was. A capture the parameter fails to open is retried
+    without it, so the setting can make decoding slower but never stop it.
+    """
+    if not threads or not capture_threads_supported():
+        return cv2.VideoCapture( path )
+    capture = cv2.VideoCapture( path, cv2.CAP_FFMPEG,
+                                [ cv2.CAP_PROP_N_THREADS, int( threads ) ] )
+    if capture.isOpened():
+        return capture
+    capture.release()
+    return cv2.VideoCapture( path )
+
+
+class _PrefetchEnd( object ):
+    """Marks the end of a prefetched sequence, carrying the producer's error."""
+
+    def __init__( self, error=None ):
+        self.error = error
+
+
+class Prefetched( object ):
+    """
+    Iterate `iterable` on a background thread, `depth` items ahead.
+
+    WHY. Detection used to decode a batch, then run the model on it, then
+    decode the next: the GPU waited on the decoder and the decoder waited
+    on the GPU, so a sampled frame cost decode + inference. OpenCV's
+    decode and onnxruntime's run both release the GIL, so a decoder
+    thread that keeps `depth` frames ready makes that max( decode,
+    inference ) instead.
+
+    Order and content are unchanged: the consumer gets exactly the items
+    the iterable yields, in the same order, and an exception the iterable
+    raises is re-raised in the consumer at the same point in the sequence.
+
+    close() (or leaving a `with` block) stops the producer and joins it.
+    Call it before releasing anything the iterable reads from: the
+    detection loop releases its VideoCapture right after, and a decoder
+    thread still inside grab() on a released capture is a crash.
+    """
+
+    def __init__( self, iterable, depth ):
+        import queue
+        self._queue = queue.Queue( maxsize=max( 1, int( depth ) ) )
+        self._stop = threading.Event()
+        self._finished = False
+        self._thread = threading.Thread( target=self._produce, args=( iter( iterable ), ),
+                                         name='betaprefetch', daemon=True )
+        self._thread.start()
+
+    def _put( self, item ):
+        import queue
+        while not self._stop.is_set():
+            try:
+                self._queue.put( item, timeout=0.1 )
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _produce( self, iterator ):
+        try:
+            for item in iterator:
+                if not self._put( item ):
+                    return
+        except BaseException as err:   # handed to the consumer, raised there
+            self._put( _PrefetchEnd( err ) )
+            return
+        self._put( _PrefetchEnd() )
+
+    def __iter__( self ):
+        return self
+
+    def __next__( self ):
+        if self._finished:
+            raise StopIteration
+        item = self._queue.get()
+        if isinstance( item, _PrefetchEnd ):
+            self._finished = True
+            self._thread.join()
+            if item.error is not None:
+                raise item.error
+            raise StopIteration
+        return item
+
+    def close( self ):
+        """Stop the producer and wait for it. Safe to call more than once."""
+        import queue
+        self._finished = True
+        self._stop.set()
+        while self._thread.is_alive():
+            try:
+                self._queue.get( timeout=0.05 )
+            except queue.Empty:
+                pass
+        self._thread.join()
+
+    def __enter__( self ):
+        return self
+
+    def __exit__( self, exc_type, exc, tb ):
+        self.close()
+        return False
+
+
+def prefetched( iterable, depth ):
+    """
+    `iterable` decoded `depth` items ahead on a thread, or `iterable`
+    itself when depth is 0/None. Either way the result has close().
+    """
+    if not depth or depth <= 0:
+        return _Unprefetched( iterable )
+    return Prefetched( iterable, depth )
+
+
+class _Unprefetched( object ):
+    """The same interface as Prefetched, doing nothing extra."""
+
+    def __init__( self, iterable ):
+        self._iterator = iter( iterable )
+
+    def __iter__( self ):
+        return self._iterator
+
+    def close( self ):
+        close = getattr( self._iterator, 'close', None )
+        if close is not None:
+            close()
+
+    def __enter__( self ):
+        return self
+
+    def __exit__( self, exc_type, exc, tb ):
+        self.close()
+        return False
 
 
 def open_video_source( path, file_hash, logger=None ):
@@ -712,6 +870,78 @@ def open_video_source( path, file_hash, logger=None ):
 
     height, width = frame.shape[:2]
     return VideoSource( path, decode_path, cap, vid_fps, num_frames, width, height, transcoded )
+
+
+def merge_cut_bursts( cuts, window, max_span=None, keep='last' ):
+    """
+    Cuts with each short burst collapsed to one cut.
+
+    A fade, dissolve or white flash changes the picture over several
+    consecutive samples, and the histogram scan flags a cut at each, so
+    one transition arrives as a burst: 10.0, 10.1, 10.2, 10.3. Each cut
+    ends every live track, and each sliver between them is too short for
+    a new track to reach min_track_hits, so the censor can blink off for
+    the length of the burst plus a confirmation.
+
+    A burst is a run of cuts each less than `window` seconds after the
+    one before. A burst spanning at most max_span seconds, first cut to
+    last, becomes one cut: its last (keep='last', old tracks carry
+    through the transition) or its first (keep='first', new tracks start
+    confirming during it). A longer run is left alone, because a long
+    chain of cuts that close together is genuine rapid-fire editing, and
+    merging it would let a track carry across real cuts onto someone
+    else. max_span None merges every burst.
+
+    Args:
+        cuts: Cut times in seconds, any order.
+        window: The largest gap, in seconds, that still joins two cuts.
+        max_span: The longest burst merged, or None for no limit.
+        keep: 'last' or 'first'.
+
+    Returns:
+        A sorted list of cut times.
+    """
+    if keep not in ( 'last', 'first' ):
+        raise ValueError( "keep must be 'last' or 'first', not %r"%( keep, ) )
+    ordered = sorted( cuts or [] )
+    merged = []
+    group = []
+
+    # Cut times are sample times (k / fps), so a nominal 0.6s span can
+    # come out as 0.6000000000000001; compare with a tolerance far below
+    # one sample.
+    tolerance = 1e-6
+
+    def flush():
+        if len( group ) == 1 or ( max_span is not None
+                                  and group[-1] - group[0] > max_span + tolerance ):
+            merged.extend( group )
+        elif group:
+            merged.append( group[-1] if keep == 'last' else group[0] )
+
+    for cut in ordered:
+        if group and cut - group[-1] >= window - tolerance:
+            flush()
+            group = []
+        group.append( cut )
+    if group:
+        flush()
+    return merged
+
+
+def cut_bursts( cuts, window ):
+    """Runs of two or more cuts each less than `window` seconds after the one before."""
+    bursts = []
+    group = []
+    for cut in sorted( cuts or [] ):
+        if group and cut - group[-1] >= window - 1e-6:
+            if len( group ) > 1:
+                bursts.append( group )
+            group = []
+        group.append( cut )
+    if len( group ) > 1:
+        bursts.append( group )
+    return bursts
 
 
 def absolute_cut_times( shot_cut_times, offset_seconds ):
@@ -957,10 +1187,7 @@ def scan_whole_file_in_worker( path, file_hash, fps, threshold, const_paths=None
     """
     for name, value in ( const_paths or {} ).items():
         setattr( betaconst, name, value )
-    worker_logger = logging.getLogger( 'betasuite.scan-worker' )
-    if not worker_logger.handlers:
-        worker_logger.addHandler( logging.NullHandler() )
-    worker_logger.propagate = False
+    worker_logger = bu_log.silent_logger( 'betasuite.scan-worker' )
     started = time.perf_counter()
     try:
         source = open_video_source( path, file_hash, worker_logger )

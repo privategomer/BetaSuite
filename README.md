@@ -194,6 +194,7 @@ rejects it at startup.
 | `nms_iou` *(nudenet_v3)* | `0.45` | overlap at which NMS drops the lower score |
 | `nms_mode` *(nudenet_v3)* | `'per_class'` | `'per_class'` leaves cross-label overlaps for `class_suppression`; `'agnostic'` is NudeNet's upstream behaviour |
 | `class_suppression` *(per-backend)* | per model | which labels suppress which, and how strictly |
+| `class_suppression_refused` *(per-backend)* | `[]` | `'label<-suppressor'` pairs you decided never get a rule; the suppression A/B never proposes them |
 | `class_promotion` *(per-backend)* | `{}` | relabel a detection when corroborating evidence overlaps it, e.g. `covered_vulva` → `exposed_vulva` under an `exposed_penis`. See [Class promotion](CONFIG_REFERENCE.md#class-promotion) |
 | `item_overrides` *(per-backend)* | per model | per-label detection and tracking settings |
 
@@ -201,10 +202,19 @@ Reference: [Detector backend](CONFIG_REFERENCE.md#detector-backend)
 
 ### Hardware
 
+These, the batch sizes and the render and encode settings below are this
+computer's to set: put them in `../resources/betaconfig_machine.py`,
+outside the repository, rather than `betaconfig.py`.
+`python3 tools/setup/machine_config.py` shows what is set and where it
+comes from, and `tools/bench/tune_machine.sh` measures them on this
+machine. Reference: [Machine config](CONFIG_REFERENCE.md#machine-config-this-computers-hardware-settings)
+
 | Setting | Default | What it does |
 |---|---|---|
 | `gpu_enabled` | `1` | request CUDA. A CPU provider is always added as a fallback, and the provider actually in use is logged and recorded in the stats row |
 | `cuda_device_id` | `0` | which GPU |
+| `detection_prefetch_frames` | `8` | frames decoded ahead of the model on a second thread. `0` decodes and detects in turn |
+| `structure_scan_workers` | `0` | `betabench structure-scan` files at once. `0` is one per core, at most 4 |
 
 ### Detection sampling
 
@@ -342,6 +352,7 @@ Reference: [Structure profiles](CONFIG_REFERENCE.md#structure-profiles)
 | Setting | Default | What it does |
 |---|---|---|
 | `default_min_track_hits`, `min_track_hits` *(per-label)* | `1` | real detections a track needs before any of its boxes render. `1` renders every track |
+| `default_confirm_score`, `confirm_score` *(per-label)* | `None` | a track short of `min_track_hits` still renders once one of its detections scores at least this. `None` leaves it to the hit count |
 
 Reference: [Track confirmation](CONFIG_REFERENCE.md#track-confirmation)
 
@@ -363,6 +374,22 @@ Reference: [Shot-cut detection](CONFIG_REFERENCE.md#shot-cut-detection)
 Every label BetaSuite understands is listed in `betaconst.classes`.
 Some (`exposed_anus`, `exposed_armpits`, `exposed_chest`) exist purely
 as suppression signals and are not meant to be censored directly.
+
+### Reverse mode
+
+| Setting | Default | What it does |
+|---|---|---|
+| `reverse['enabled']` | `False` | obscure the whole frame while a trigger is live, except windows (left uncensored) and censored labels (each in its own style) |
+| `reverse['frame_style']` | blur `triple_box`, 20 | the style over the whole frame (`gaussian` and `hex` are rejected as too slow) |
+| `reverse['empty_frame']` | `'passthrough'` | frames with no trigger stay clear, or `'obscure'` every frame |
+| `reverse['fade_seconds']` | `0.25` | fade in and out; the fade-in finishes before the target appears |
+| `reverse['trigger']` | every censored label, `min_prob` 0.30, hold 0.5 s | what switches the frame style on. A censored box on screen holds it on too |
+| `reverse['censor']` | `items_to_censor`, no overrides | labels censored inside a triggered frame, keeping their normal-mode styles; `overrides` changes any key for reverse mode only |
+| `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis` | never censored. Tuning keys are inherited from every tier; look keys never are |
+| `reverse['person_windows']` | on | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
+| `person_backend` | `yolo11_seg`, size `s` | the person model (`n`/`s`/`m`; `rf_detr_seg` is registered but not written yet). Exported to ONNX by setup |
+
+Reference: [Reverse mode](CONFIG_REFERENCE.md#reverse-mode), [Person segmentation](CONFIG_REFERENCE.md#person-segmentation)
 
 ### Censor styles
 
@@ -402,6 +429,7 @@ Reference: [Area safety and time safety](CONFIG_REFERENCE.md#area-safety-and-tim
 | Setting | Default | What it does |
 |---|---|---|
 | `render_workers` | `0` | chunks encoded at once. `0` is auto (CPU/2, capped at 8) |
+| `render_decode_threads` | `None` | decoder threads per worker. `None` is OpenCV's own (one per core), `0` shares the cores out |
 | `render_chunk_seconds` | `600` | seconds of video per resumable chunk. `0` disables chunking |
 | `render_chunk_container` | `'mkv'` | container for chunks and the intermediate |
 | `render_verify_frame_counts` | `True` | reject a chunk that is valid but short |
@@ -492,6 +520,7 @@ and committed, not flipped per invocation.
 | `--preview-random {on,off}` | `preview_random_slice` |
 | `--preview-preset PRESET` | `preview_encode_preset` |
 | `--encode-preset PRESET` | `encode_preset` |
+| `--reverse {on,off}` | `reverse['enabled']` |
 
 ```bash
 # a pinned 10-second slice, so repeated runs compare the same footage
@@ -657,7 +686,23 @@ python3 tools/bench/betabench.py --help
 | `hysteresis` | what are the score distributions? | `min_prob`, `min_prob_continue` |
 | `structure` | per source file: cut rate, subjects on screen, spatial layout | which source folder each file belongs in |
 | `structure-scan` | whole-file shot-cut scans, in parallel; `--geometry-slices N` adds detection-only slices | the inputs `structure` reads, reused by the next real run |
-| `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure-scan --workers` |
+| `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure_scan_workers` |
+| `encode` | render encode speed and quality (SSIM, PSNR) per encoder: current x264 settings, faster x264 presets, NVENC at several cq values; real worker count, real chunk command; not part of `all` | `encode_video_codec`, `encode_preset`, `encode_crf`, and `render_workers` if NVENC caps sessions |
+| `reverse` | what reverse mode would cost to render here, before it is built: each frame style and window blend on real frames, the real pipeline with and without a triggered frame layer, and the share of each file's runtime a trigger would hold on | the reverse-mode frame-style default, and whether it is affordable |
+| `persons` | each person-segmentation model and size on real frames: ms per frame per batch size, people found, preview images with the outlines drawn | `person_backend`'s `model_variant` and `batch_size` |
+
+**Measuring a subset.** `--first-videos N` (the first N files by name,
+case-insensitive, across every folder and both source trees) or
+`--videos-per-folder N` (the first N by name in each directory) narrows
+`structure`, `structure-scan`, `concurrency`, `encode` and `reverse` to
+the same files every time, so two runs stay comparable. The chosen files
+are listed in the log. The harnesses take the same choice as
+`VIDEOS_FIRST=N` or `VIDEOS_PER_FOLDER=N`:
+
+```bash
+VIDEOS_PER_FOLDER=1 bash tools/bench/structure_survey.sh
+VIDEOS_FIRST=3 bash tools/bench/reverse_cost.sh
+```
 
 `structure` is the one to read per file rather than pooled: it reports
 cut rate, how many subjects are live at once, and where they sit in
@@ -665,7 +710,8 @@ frame, which is what decides whether a file wants different timing and
 tracking values from the rest. See CONFIG_REFERENCE.md ->
 "Reading `structure`, and what profiles would need".
 
-Everything goes to `../output/benchmarks/<timestamp>/` with a log at
+Run on its own, everything goes to `../output/benchmarks/<timestamp>/`
+(under `run_all_analysis.sh`, to that run's own folder per step) with a log at
 `--log-level` (default `trace`, so the file keeps everything), a terminal
 view at `--console-level` (default `info`), and machine-readable
 `results.json`. Any step needing a decision prompts; `--yes` accepts
@@ -709,6 +755,43 @@ tools/analysis/run_all_analysis.sh        # the whole suite, every configuration
 python3 tools/bench/betabench.py all      # same, for the benchmarks
 python3 tools/tuning/auto_tune.py         # same, for the tuner
 ```
+
+`run_all_analysis.sh` reads caches only by default. The steps that
+measure the machine rather than the run are opt-in: `--with-encode`,
+`--with-reverse`, `--with-persons`, `--with-hardware`, or `--with-timing`
+for all four.
+They run one at a time after the parallel analysis steps have finished,
+never alongside them. The run ends with a list of where each
+recommendation was written.
+
+Every step's wall time and peak memory are in the summary and in
+`<step>.meter.json` beside its log; a step the system killed for memory
+(exit 137) is named as that, with the memory it had reached. A parallel
+step starts only when its expected peak (the last run's, plus 25%) fits
+beside the ones already running, within 85% of the memory free when the
+batch starts; `--memory-budget MB` sets that budget and `--jobs N` the
+most at once. The cache-reading tools hold one video's detections at a
+time and keep the rest compact, so their memory follows the largest
+video rather than the library.
+
+To see where one tool's time or memory goes, as flame graphs:
+
+```bash
+uv pip install -r requirements-dev.txt                         # once: memray and py-spy (profile.sh offers to)
+tools/bench/profile.sh tools/analysis/analyze_cut_bursts.py    # both, one run each
+PROFILE=memory tools/bench/profile.sh tools/tuning/auto_tune.py
+PROFILE_PID=12345 tools/bench/profile.sh                       # a step already running
+```
+
+Output goes to `../output/benchmarks/profile_<timestamp>_<tool>/`. The
+memory flame graph opens at the moment of peak memory. Without the two
+packages it falls back to tracemalloc and cProfile.
+
+Setup makes `.venv` with uv, which leaves pip out of it, so a bare
+`pip install` inside it reaches the system's Python instead and is
+refused (`externally-managed-environment`). Use `uv pip install` with the
+venv active, or `.venv/bin/python -m pip install` in a venv made with
+`python3 -m venv`.
 
 A *configuration* is one backend at one detection size under one
 detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
@@ -798,11 +881,18 @@ from the difference.
 | `tools/tuning/replay_tune.py` | replays cached detections through the real tracking and suppression code under config variants, with no re-detection |
 | `tools/tuning/batch_ab_test.py` | real `betatv.py` runs across batch sizes and backends, comparing detections and timing |
 | `tools/tuning/derive_suppression_rules.py` | turns overlap statistics into proposed rules |
-| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs |
+| `tools/tuning/ab_compare.sh` | the config against one change (suppression rules including suggested additions, `min_track_hits`, `confirm_score`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
+| `tools/tuning/suppression_ab.sh` | `ab_compare.sh` with the suppression experiment |
+| `tools/analysis/analyze_label_content.py` | which videos show which censored label, and which mix them |
+| `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |
+| `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs, cut bursts |
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |
 | `tools/tuning/auto_tune.py` | the staged tuner: measures candidates, prices them, writes the winners |
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |
 | `tools/bench/structure_survey.sh` | measures every source file and writes a reviewable script sorting them into profile folders |
+| `tools/bench/reverse_cost.sh` | one click for `betabench reverse`: logs everything, replays the summary |
+| `tools/bench/profile.sh` | any Python tool's CPU and memory as flame graphs (py-spy, memray; tracemalloc and cProfile without them), or a running step's by pid |
+| `tools/maintenance/cleanup_output.sh` | frees disk under `../output`: shows what each category would free, then asks before removing the renders of decided A/B rounds, the renders of undecided rounds untouched for 14 days (one at a time), round folders that never finished ranking, and an oversized `betasuite.log` (compressed, five copies kept). Never touches stats, caches, analysis runs, benchmark results or any round's ranking, clips, verdicts, decision or logs |
 
 Every tool that replays the pipeline imports the real
 `betautils_track` functions and observes their decisions through
@@ -871,7 +961,7 @@ To cut a release, note your changes under a `## Unreleased` heading in
 `CHANGELOG.md` as you go (optional), then run:
 
 ```bash
-pip install -r requirements-dev.txt      # once: the semver package
+uv pip install -r requirements-dev.txt   # once: semver, plus the profilers
 python3 tools/release/release.py         # or --dry-run to see the plan
 ```
 
@@ -924,6 +1014,17 @@ tests against reference implementations.
   than re-encoding them would be a large further win. Parked pending
   real measurements from a few full runs.
 - **Pixelation patterns beyond square/mosaic/hex** are not implemented.
+- **Reverse mode: see-through censor styles show the original.** A
+  sticker's transparent areas, and a bar thinner than its box, show the
+  original pixels rather than the frame style. Validation warns.
+- **Reverse mode's person windows need evidence.** A man is left
+  uncensored only when a male detection lands inside his outline
+  somewhere in his track. A woman overlapping him is cut out of his
+  window when the model outlines her separately; when it merges the two
+  into one outline and none of her labels is detected inside it, her
+  unlabeled skin there is shown with him.
+- **Reverse mode is not available in betavision**, which refuses to start
+  with it on.
 
 ---
 
