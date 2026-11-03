@@ -94,6 +94,7 @@ OUTPUT
 """
 
 import argparse
+from array import array
 import json
 import math
 import glob
@@ -110,6 +111,7 @@ import betaconfig
 import betaconst
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
+import betautils_detections as bu_detections
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
@@ -248,7 +250,11 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
             numbers.
 
     Returns:
-        A (raw_boxes, file_count) pair.
+        A (detections, file_count) pair. detections is a
+        betautils_detections.VideoCache (iterate it for (file_hash,
+        records) per video; .detections is the count), or [] when
+        nothing was found. The measurement bodies also accept a plain
+        list of '_file_hash'-tagged dicts.
     """
     picture_sizes = bu_cache.resolve_picture_sizes( picture_sizes, backend_name )
     fps = betaconfig.video_censor_fps
@@ -275,26 +281,49 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
 
 
 def _read_cached_detections( discovered, logger, backend_name ):
-    """Read {file_hash: [cache_path, ...]} into one box list tagged by video."""
-    raw_boxes = []
-    for file_hash, cache_paths in discovered.items():
-        for cache_path in cache_paths:
-            try:
-                loaded = bu_hash.read_json( cache_path )
-            except Exception as err:
-                logger.warning( "unreadable cache %s: %s"%(cache_path, err) )
-                continue
-            # Tag each box with its source video. Box geometry is in
-            # that video's native pixels, so anything expressed as a
-            # fraction of the frame needs to know WHICH frame - see
-            # _frame_areas_for - and anything grouped "at the same
-            # instant" needs to know which video the instant is in.
-            for raw in loaded:
-                raw['_file_hash'] = file_hash
-            raw_boxes.extend( loaded )
+    """
+    {file_hash: [cache_path, ...]} as a betautils_detections.VideoCache,
+    already parsed (so the count is known) but served one video at a time.
+
+    It used to return one list of every detection in the configuration:
+    7.3 million dicts on Aaron's library, 3.7 GB before any measurement
+    ran, and the analysis hub ran several such processes at once until
+    the kernel killed them. Each record still carries '_file_hash' (box
+    geometry is in its own video's pixels, and "the same instant" only
+    means something within one video), but only one video's dicts exist
+    at a time; the rest stay compact.
+    """
+    videos = bu_detections.VideoCache( discovered, logger )
+    count = videos.prime()
     logger.debug( "loaded %d cached detection(s) across %d video(s) for backend=%s"%(
-        len( raw_boxes ), len( discovered ), backend_name ) )
-    return raw_boxes, len( discovered )
+        count, len( discovered ), backend_name ) )
+    return videos, len( discovered )
+
+
+class _ListVideos:
+    """A plain list of tagged detections, served the way a VideoCache is."""
+
+    def __init__( self, raw_boxes ):
+        self._by_video = {}
+        for raw in raw_boxes:
+            self._by_video.setdefault( raw.get( '_file_hash' ), [] ).append( raw )
+        self.detections = len( raw_boxes )
+
+    @property
+    def file_hashes( self ):
+        return list( self._by_video )
+
+    def __iter__( self ):
+        return iter( self._by_video.items() )
+
+
+def _videos_of( raw_boxes ):
+    """What a measurement body iterates: a VideoCache as is, a list grouped by video."""
+    return raw_boxes if isinstance( raw_boxes, ( bu_detections.VideoCache, _ListVideos ) ) else _ListVideos( raw_boxes )
+
+
+def _detection_count( raw_boxes ):
+    return raw_boxes.detections if hasattr( raw_boxes, 'detections' ) else len( raw_boxes )
 
 
 # ---------------------------------------------------------------------------
@@ -766,7 +795,7 @@ def bench_render( args, logger ):
 # geometry: suggest the sanity filter's bounds
 # ---------------------------------------------------------------------------
 
-def _frame_areas_for( raw_boxes, args, logger ):
+def _frame_areas_for( file_hashes, args, logger ):
     """
     The real frame area behind each cached detection.
 
@@ -788,6 +817,9 @@ def _frame_areas_for( raw_boxes, args, logger ):
     --frame-height, then to 1920x1080, for a video that can no longer be
     found, and says how many boxes that affected.
 
+    Args:
+        file_hashes: The source videos' hashes (None for untagged boxes).
+
     Returns:
         A ( {file_hash: frame_area}, fallback_area ) pair.
     """
@@ -797,7 +829,7 @@ def _frame_areas_for( raw_boxes, args, logger ):
     fallback_height = args.frame_height or 1080
     fallback_area = float( fallback_width * fallback_height )
 
-    file_hashes = { raw.get( '_file_hash' ) for raw in raw_boxes }
+    file_hashes = set( file_hashes )
     file_hashes.discard( None )
     if not file_hashes:
         logger.warning( "cached detections carry no source video tag; assuming %dx%d for every "
@@ -861,16 +893,19 @@ def _bench_geometry_one( args, logger, config, raw_boxes ):
         constant.
     """
     backend_name = config.backend_name
+    videos = _videos_of( raw_boxes )
 
-    frame_areas, fallback_area = _frame_areas_for( raw_boxes, args, logger )
+    frame_areas, fallback_area = _frame_areas_for( videos.file_hashes, args, logger )
 
+    # array('d'): 8 bytes a value where a list of floats costs 32.
     by_label = {}
-    for raw in raw_boxes:
-        frame_area = frame_areas.get( raw.get( '_file_hash' ), fallback_area )
-        entry = by_label.setdefault( raw['class_id'], { 'area': [], 'aspect': [] } )
-        entry['area'].append( ( raw['w'] * raw['h'] ) / frame_area )
-        if raw['h']:
-            entry['aspect'].append( raw['w'] / raw['h'] )
+    for file_hash, records in videos:
+        frame_area = frame_areas.get( file_hash, fallback_area )
+        for raw in records:
+            entry = by_label.setdefault( raw['class_id'], { 'area': array( 'd' ), 'aspect': array( 'd' ) } )
+            entry['area'].append( ( raw['w'] * raw['h'] ) / frame_area )
+            if raw['h']:
+                entry['aspect'].append( raw['w'] / raw['h'] )
 
     censored_labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
     results = []
@@ -992,17 +1027,69 @@ def suggest_suppression_rule( ious, margins ):
     return valley, margin, len( same_spot ), ( len( wins ) / len( same_spot ) if same_spot else 0.0 )
 
 
-def _suppression_renderable_counts( raw_boxes, rules, parts_to_blur ):
-    """{'L<-S': renderable detections removed} from the production function, per video."""
-    by_video = {}
-    for raw in raw_boxes:
-        by_video.setdefault( raw.get( '_file_hash' ), [] ).append( raw )
-    totals = {}
-    for boxes in by_video.values():
-        _surviving, counts = bu_track.apply_class_suppression( boxes, rules, parts_to_blur )
-        for key, entry in counts.items():
-            totals[key] = totals.get( key, 0 ) + entry['renderable']
+def _suppression_renderable_counts( raw_boxes, rule_sets, parts_to_blur ):
+    """
+    {name: {'L<-S': renderable detections removed}} for each named rule
+    set, from the production function, per video, in ONE pass over the
+    videos (each pass rebuilds every video's dicts). An empty rule set
+    gets {} without being run.
+    """
+    totals = { name: {} for name in rule_sets }
+    active = { name: rules for name, rules in rule_sets.items() if rules }
+    if not active:
+        return totals
+    for _file_hash, boxes in _videos_of( raw_boxes ):
+        for name, rules in active.items():
+            _surviving, counts = bu_track.apply_class_suppression( boxes, rules, parts_to_blur )
+            for key, entry in counts.items():
+                totals[name][key] = totals[name].get( key, 0 ) + entry['renderable']
     return totals
+
+
+def _suppression_pairs_in( file_hash, records, by_instant, censored_labels, parts_to_blur, rules_for,
+                           pair_data, current_hits ):
+    """
+    One video's cross-label overlaps at each instant, added to pair_data
+    ({'L<-S': {'iou': [...], 'margin': [...]}}) and current_hits
+    ({'L<-S': {(file_hash, index): iou}}).
+    """
+    for indices in by_instant.values():
+        if len( indices ) < 2:
+            continue
+        for i in indices:
+            subject = records[i]
+            if subject['class_id'] not in censored_labels:
+                continue
+            settings = parts_to_blur.get( subject['class_id'] )
+            renderable = bool( settings ) and subject['score'] > settings['min_prob']
+            # Each removal is credited to the first suppressor that
+            # triggers it, in the same order apply_class_suppression
+            # checks them, so the side-by-side counts add up to the
+            # removals the production function reports.
+            attributed = False
+            for j in indices:
+                if i == j:
+                    continue
+                other = records[j]
+                if other['class_id'] == subject['class_id']:
+                    continue
+                iou = bu_track.intersection_over_union( subject, other )
+                if iou <= 0:
+                    continue
+                margin = other['score'] - subject['score']
+                key = '%s<-%s'%(subject['class_id'], other['class_id'])
+                entry = pair_data.setdefault( key, { 'iou': [], 'margin': [] } )
+                entry['iou'].append( iou )
+                entry['margin'].append( margin )
+                if not renderable or attributed:
+                    continue
+                for rule in rules_for( subject['class_id'] ):
+                    if ( rule['suppressed_by'] == other['class_id']
+                         and iou >= rule.get( 'min_iou', 0.3 )
+                         and margin >= rule.get( 'margin', 0.0 ) ):
+                        current_hits.setdefault( key, {} )[ ( file_hash, i ) ] = iou
+                        attributed = True
+                        break
 
 
 def _bench_suppression_one( args, logger, config, raw_boxes ):
@@ -1045,52 +1132,18 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
     refused = set( bu_detector.get_class_suppression_refused( backend_name ) )
     pair_data = {}
     current_hits = {}
-
-    by_instant = {}
-    for index, raw in enumerate( raw_boxes ):
-        by_instant.setdefault( ( raw.get( '_file_hash' ), raw['t'] ), [] ).append( index )
+    videos = _videos_of( raw_boxes )
 
     def rules_for( label ):
         rules = configured.get( label ) or []
         return [ rules ] if isinstance( rules, dict ) else rules
 
-    for indices in by_instant.values():
-        if len( indices ) < 2:
-            continue
-        for i in indices:
-            subject = raw_boxes[i]
-            if subject['class_id'] not in censored_labels:
-                continue
-            settings = parts_to_blur.get( subject['class_id'] )
-            renderable = bool( settings ) and subject['score'] > settings['min_prob']
-            # Each removal is credited to the first suppressor that
-            # triggers it, in the same order apply_class_suppression
-            # checks them, so the side-by-side counts add up to the
-            # removals the production function reports.
-            attributed = False
-            for j in indices:
-                if i == j:
-                    continue
-                other = raw_boxes[j]
-                if other['class_id'] == subject['class_id']:
-                    continue
-                iou = bu_track.intersection_over_union( subject, other )
-                if iou <= 0:
-                    continue
-                margin = other['score'] - subject['score']
-                key = '%s<-%s'%(subject['class_id'], other['class_id'])
-                entry = pair_data.setdefault( key, { 'iou': [], 'margin': [] } )
-                entry['iou'].append( iou )
-                entry['margin'].append( margin )
-                if not renderable or attributed:
-                    continue
-                for rule in rules_for( subject['class_id'] ):
-                    if ( rule['suppressed_by'] == other['class_id']
-                         and iou >= rule.get( 'min_iou', 0.3 )
-                         and margin >= rule.get( 'margin', 0.0 ) ):
-                        current_hits.setdefault( key, {} )[i] = iou
-                        attributed = True
-                        break
+    for file_hash, records in videos:
+        by_instant = {}
+        for index, raw in enumerate( records ):
+            by_instant.setdefault( raw['t'], [] ).append( index )
+        _suppression_pairs_in( file_hash, records, by_instant, censored_labels, parts_to_blur,
+                               rules_for, pair_data, current_hits )
 
     results = []
     suggested_rules = {}
@@ -1132,7 +1185,7 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
             win_rates[key] = same_spot_wins
         results.append( row )
 
-    impact = _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, current_hits,
+    impact = _log_suppression_impact( logger, videos, configured, suggested_rules, current_hits,
                                       parts_to_blur, refused, win_rates )
     logger.info( "" )
     logger.info( "These are starting points, not answers. A suppression rule removes real "
@@ -1157,8 +1210,19 @@ def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, cur
                       if r['suppressed_by'] == rule['suppressed_by'] ]
             if match:
                 proposed.setdefault( label, [] ).append( match[0] )
-    now = _suppression_renderable_counts( raw_boxes, configured, parts_to_blur )
-    after = _suppression_renderable_counts( raw_boxes, proposed, parts_to_blur ) if proposed else {}
+    additions = {}
+    for label, rules in sorted( suggested_rules.items() ):
+        named = { rule['suppressed_by'] for rule in
+                  ( [ configured.get( label ) ] if isinstance( configured.get( label ), dict )
+                    else configured.get( label ) or [] ) }
+        for rule in rules:
+            key = '%s<-%s'%( label, rule['suppressed_by'] )
+            if ( rule['suppressed_by'] not in named and key not in refused
+                 and ( win_rates or {} ).get( key, 1.0 ) >= ADDITION_MIN_WIN_RATE ):
+                additions.setdefault( label, [] ).append( rule )
+    counts = _suppression_renderable_counts(
+        raw_boxes, { 'now': configured, 'after': proposed, 'added': additions }, parts_to_blur )
+    now, after, added_counts = counts['now'], counts['after'], counts['added']
     logger.info( "" )
     logger.info( "What the configured rules remove (renderable detections, production function):" )
     logger.info( "  %-34s %-20s %9s %10s   %-20s %9s"%(
@@ -1180,17 +1244,6 @@ def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, cur
             rows.append( { 'rule': key, 'min_iou': rule.get( 'min_iou' ), 'margin': rule.get( 'margin' ),
                            'removed': now.get( key, 0 ), 'side_by_side': adjacent,
                            'suggested': match[0] if match else None, 'removed_suggested': removed_after } )
-    additions = {}
-    for label, rules in sorted( suggested_rules.items() ):
-        named = { rule['suppressed_by'] for rule in
-                  ( [ configured.get( label ) ] if isinstance( configured.get( label ), dict )
-                    else configured.get( label ) or [] ) }
-        for rule in rules:
-            key = '%s<-%s'%( label, rule['suppressed_by'] )
-            if ( rule['suppressed_by'] not in named and key not in refused
-                 and ( win_rates or {} ).get( key, 1.0 ) >= ADDITION_MIN_WIN_RATE ):
-                additions.setdefault( label, [] ).append( rule )
-    added_counts = _suppression_renderable_counts( raw_boxes, additions, parts_to_blur ) if additions else {}
     for label, rules in sorted( additions.items() ):
         for rule in rules:
             key = '%s<-%s'%( label, rule['suppressed_by'] )
@@ -1215,6 +1268,20 @@ def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, cur
 # dedup: suggest cross_size_dedup['iou_threshold']
 # ---------------------------------------------------------------------------
 
+def _cross_size_ious_in( records, by_instant, by_label ):
+    """One video's same-label IoUs between detections from different sizes, into by_label."""
+    for indices in by_instant.values():
+        for position, i in enumerate( indices ):
+            for j in indices[ position+1 : ]:
+                first, second = records[i], records[j]
+                if first['class_id'] != second['class_id']:
+                    continue
+                if first.get( 'size', 0 ) == second.get( 'size', 0 ):
+                    continue
+                by_label.setdefault( first['class_id'], [] ).append(
+                    bu_track.intersection_over_union( first, second ) )
+
+
 def _bench_dedup_one( args, logger, config, raw_boxes ):
     """
     How much detections from different picture sizes overlap.
@@ -1237,21 +1304,12 @@ def _bench_dedup_one( args, logger, config, raw_boxes ):
                      "and there is nothing to tune here."%(config.label, picture_sizes) )
         return {}
 
-    by_instant = {}
-    for index, raw in enumerate( raw_boxes ):
-        by_instant.setdefault( ( raw.get( '_file_hash' ), raw['t'] ), [] ).append( index )
-
     by_label = {}
-    for indices in by_instant.values():
-        for position, i in enumerate( indices ):
-            for j in indices[ position+1 : ]:
-                first, second = raw_boxes[i], raw_boxes[j]
-                if first['class_id'] != second['class_id']:
-                    continue
-                if first.get( 'size', 0 ) == second.get( 'size', 0 ):
-                    continue
-                by_label.setdefault( first['class_id'], [] ).append(
-                    bu_track.intersection_over_union( first, second ) )
+    for _file_hash, records in _videos_of( raw_boxes ):
+        by_instant = {}
+        for index, raw in enumerate( records ):
+            by_instant.setdefault( raw['t'], [] ).append( index )
+        _cross_size_ious_in( records, by_instant, by_label )
 
     results = []
     logger.info( "" )
@@ -1305,8 +1363,9 @@ def _bench_hysteresis_one( args, logger, config, raw_boxes ):
     censored_labels = set( getattr( betaconfig, 'items_to_censor', [] ) )
 
     by_label = {}
-    for raw in raw_boxes:
-        by_label.setdefault( raw['class_id'], [] ).append( raw['score'] )
+    for _file_hash, records in _videos_of( raw_boxes ):
+        for raw in records:
+            by_label.setdefault( raw['class_id'], array( 'd' ) ).append( raw['score'] )
 
     results = []
     logger.info( "" )
@@ -1392,11 +1451,11 @@ def _per_configuration( kind, body ):
             raw_boxes, file_count = load_cached_detections(
                 config.backend_name, logger, picture_sizes=config.picture_sizes,
                 configuration=config )
-            if not raw_boxes:
+            if not _detection_count( raw_boxes ):
                 continue
             loaded_any = True
             logger.info( "loaded %d cached detection(s) across %d video(s) for %s"%(
-                len( raw_boxes ), file_count, config.label ) )
+                _detection_count( raw_boxes ), file_count, config.label ) )
             produced = body( args, logger, config, raw_boxes ) or {}
             for result_key, rows in produced.items():
                 if not isinstance( rows, list ):
@@ -2105,8 +2164,13 @@ def _default_scan_workers():
     40-second clips 1.36x faster than 1, so OpenCV's own decode threading
     leaves cores idle and parallel files win. The cap of 4 is a judgment
     call, not a measurement: it keeps a spinning disk from seeking itself
-    to death on several multi-GB files at once. --workers overrides it.
+    to death on several multi-GB files at once. structure_scan_workers
+    (the machine config's, measured by `concurrency`) replaces the
+    guess; --workers overrides both.
     """
+    configured = getattr( betaconfig, 'structure_scan_workers', 0 )
+    if configured:
+        return max( 1, int( configured ) )
     return max( 1, min( 4, os.cpu_count() or 1 ) )
 
 
@@ -2437,8 +2501,9 @@ def _measure_scan_workers( args, logger, video_paths, caches ):
             '   <- use this' if row is choice else '' ) )
         for error in row['errors']:
             logger.warning( "    scan failed: %s"%( error, ) )
-    logger.info( "  default is %d; pass --workers %d to structure-scan to use the measured "
-                 "best"%( _default_scan_workers(), choice['workers'] ) )
+    logger.info( "  default is %d; to use the measured best, `python tools/setup/machine_config.py "
+                 "set structure_scan_workers=%d` (or pass --workers %d to structure-scan once)"%(
+                     _default_scan_workers(), choice['workers'], choice['workers'] ) )
     if untested and choice['workers'] == max( counts ):
         logger.info( "  the fastest count was the largest one measured, so more workers may be "
                      "faster still" )
@@ -2636,7 +2701,7 @@ def encode_segments( total_frames, fps, seconds, workers ):
 
 
 def _run_segments( video_path, segments, width, height, fps, candidate, threads, out_dir,
-                   frame_transform=None ):
+                   frame_transform=None, decoder_threads=None ):
     """
     Wall seconds and per-segment results for one pass: each segment on
     its own thread, decoding with OpenCV and, when `candidate` is given,
@@ -2644,6 +2709,8 @@ def _run_segments( video_path, segments, width, height, fps, candidate, threads,
     candidate None times decoding alone. frame_transform, when given, is
     applied to each decoded frame before it is encoded, on the worker's
     own thread, the way the real render composites its censor.
+    decoder_threads sets each segment's decoder thread count, as
+    render_decode_threads does for a real render; None is OpenCV's own.
     """
     import subprocess
     import cv2
@@ -2652,7 +2719,7 @@ def _run_segments( video_path, segments, width, height, fps, candidate, threads,
     def one( indexed ):
         index, ( start, count ) = indexed
         result = { 'index': index, 'start': start, 'frames': 0, 'path': None, 'error': None }
-        capture = cv2.VideoCapture( video_path )
+        capture = bu_video.open_capture_with_threads( video_path, decoder_threads )
         process = None
         stderr = None
         try:
@@ -2984,7 +3051,7 @@ def bench_encode( args, logger ):
     if choice is baseline:
         logger.info( "  keep the current encoder: nothing faster matched its quality" )
     else:
-        logger.info( "  to switch, set in betaconfig.py:" )
+        logger.info( "  to switch, set in the machine config (tools/setup/machine_config.py set NAME=VALUE):" )
         logger.info( "    encode_video_codec = '%s'"%( choice['codec'], ) )
         logger.info( "    encode_preset = '%s'"%( choice['preset'], ) )
         logger.info( "    encode_crf = %s%s"%( choice['quality'],

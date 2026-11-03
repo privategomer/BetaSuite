@@ -304,10 +304,12 @@ item_overrides = {
     },
 }
 
-# --- Hardware -----------------------------------------------------------
+# --- Hardware: this machine's own values go in ../resources/betaconfig_machine.py
 
 gpu_enabled = 1
 cuda_device_id = 0
+detection_prefetch_frames = 8   # frames decoded ahead of the model; 0 = off
+structure_scan_workers = 0      # betabench structure-scan; 0 = auto (one per core, at most 4)
 
 # Frames per second of video that get detection and tracking.
 video_censor_fps = 9
@@ -336,6 +338,7 @@ shot_cut_burst_keep = 'first'
 detection_checkpoint_frames = 500
 render_chunk_seconds = 180
 render_workers = 0          # 0 = auto (CPU count / 2, capped at 8)
+render_decode_threads = None           # per worker; None = OpenCV's own, 0 = cores / workers
 render_worker_mb_per_megapixel = 200   # memory per worker per megapixel; None = no memory cap
 render_memory_reserve_mb = 2048        # left free for everything else
 render_chunk_container = 'mkv'
@@ -345,9 +348,9 @@ ffmpeg_retry_backoff_seconds = 5
 
 # --- Encoding -----------------------------------------------------------
 
-encode_video_codec = 'h264_nvenc'
-encode_preset = 'p5'
-encode_crf = 21
+encode_video_codec = 'libx264'
+encode_preset = 'fast'
+encode_crf = 17
 
 # --- Source folder convention: folder -> structure profile --------------
 
@@ -529,3 +532,7 @@ betavision_interpolate = False
 
 debug_mode = 0   # 0 off | 1 debug overlay | 3 also save debug output
 enable_betasuite_watermark = False
+
+# --- This machine's overrides: ../resources/betaconfig_machine.py --------
+
+__import__( 'betautils_machine' ).apply( globals() )

@@ -53,6 +53,24 @@
 # with respect to everything else. Use --no-parallel when debugging a
 # single step and you want its output live.
 #
+# MEMORY
+#
+#   ./tools/analysis/run_all_analysis.sh --memory-budget 8000   # MB
+#
+# Every step runs under tools/lib/step_meter.py, which records its wall
+# time and peak memory to <step>.meter.json in the run's folder; the
+# summary prints both, and a step the system killed for memory (exit
+# 137) is named as that, with the memory it had reached.
+#
+# A parallel step only starts when its expected peak fits beside the
+# steps already running, within a budget of 85% of the memory free when
+# the batch starts (or --memory-budget / BETASUITE_ANALYSIS_MEMORY_MB).
+# Expected peak is what that step reached in the newest earlier run that
+# recorded one, plus 25%; with no history yet, an estimate from the size
+# of the detection caches on disk. A step too big for the budget runs
+# alone rather than not at all. Where the system does not report free
+# memory (macOS, native Windows) only --jobs limits the batch.
+#
 # WHAT IT RUNS, AND WHY IN THIS ORDER
 #
 #   1. summarize_run.py         Where the wall clock actually went, per
@@ -146,6 +164,9 @@ VARIANTS=""
 # it with --jobs N, or set --no-parallel to get the old strictly
 # sequential behaviour back when debugging a single step.
 JOBS="${BETASUITE_ANALYSIS_JOBS:-3}"
+# MB the parallel batch may use at once; empty means 85% of what is
+# free when the batch starts (see MEMORY above).
+MEMORY_BUDGET_MB="${BETASUITE_ANALYSIS_MEMORY_MB:-}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -163,6 +184,7 @@ while [ "$#" -gt 0 ]; do
                          done ;;
         --jobs)          JOBS="$2"; shift 2 ;;
         --no-parallel)   JOBS=1; shift ;;
+        --memory-budget) MEMORY_BUDGET_MB="$2"; shift 2 ;;
         --sweep-alpha)   shift; ALPHA_SWEEP=""
                          while [ "$#" -gt 0 ] && [[ "$1" != --* ]]; do
                              ALPHA_SWEEP="$ALPHA_SWEEP $1"; shift
@@ -278,32 +300,140 @@ TOTAL=$(( ${#STEPS[@]} + ${#TIMING_STEPS[@]} ))
 #
 # --no-parallel restores strict sequencing for debugging one step.
 
+METER="$CORE_DIR/tools/lib/step_meter.py"
+RUNS_DIR="$CORE_DIR/../output/logs/analysis_runs"
+
 run_one_step() {
-    # $1 label, $2 command. Output to the step's log only.
+    # $1 label, $2 command. Output to the step's log only; wall time and
+    # peak memory to the step's meter record.
     local label="$1" command="$2"
     local log_file="$LOG_DIR/${label}.log"
     # shellcheck disable=SC2086
-    $command > "$log_file" 2>&1
+    "$PYTHON_BIN" "$METER" --record "$LOG_DIR/${label}.meter.json" -- $command > "$log_file" 2>&1
     echo "$?" > "$LOG_DIR/.${label}.status"
+}
+
+meter_field() {
+    # meter_field FILE KEY: a numeric field of a meter record, or nothing
+    # when the file or the value (null) is missing.
+    [ -f "$1" ] || return 0
+    sed -n "s/.*\"$2\": \([0-9.][0-9.]*\).*/\1/p" "$1" | head -n 1
 }
 
 replay_step_log() {
     local label="$1" index="$2"
     local log_file="$LOG_DIR/${label}.log"
-    local status=1
+    local meter="$LOG_DIR/${label}.meter.json"
+    local status=1 wall peak usage=""
     [ -f "$LOG_DIR/.${label}.status" ] && status="$(cat "$LOG_DIR/.${label}.status")"
     rm -f "$LOG_DIR/.${label}.status"
+    wall="$(meter_field "$meter" wall_seconds)"
+    peak="$(meter_field "$meter" peak_rss_mb)"
+    [ -n "$wall" ] && usage="${wall%.*}s"
+    [ -n "$peak" ] && usage="${usage:+$usage, }peak ${peak%.*} MB"
 
     echo "=== [$index/$TOTAL] $label ==="
     [ -f "$log_file" ] && cat "$log_file"
+    [ -n "$usage" ] && echo "--- $label: $usage"
 
     if [ "$status" -eq 0 ]; then
-        RESULTS+=("OK   $label")
+        RESULTS+=("OK   $label${usage:+  ($usage)}")
     else
-        RESULTS+=("FAIL $label (exit $status) - see $log_file")
-        echo "WARNING: $label exited with status $status - continuing with the rest of the suite, check $log_file"
+        local why="exit $status"
+        if [ "$status" -eq 137 ]; then
+            why="exit 137: killed by the system, almost always for running out of memory${peak:+; it had reached ${peak%.*} MB}"
+        fi
+        RESULTS+=("FAIL $label ($why) - see $log_file")
+        echo "WARNING: $label failed ($why) - continuing with the rest of the suite, check $log_file"
     fi
     echo
+}
+
+# ---- memory-aware admission for the parallel batch (see MEMORY above) ----
+
+mem_available_mb() {
+    # What the kernel says could be used without swapping, in MB; nothing
+    # where it does not say (macOS, native Windows).
+    [ -r /proc/meminfo ] || return 0
+    awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo
+}
+
+# With no history, a step is assumed to need STEP_BASE_MB plus
+# CACHE_FACTOR times the detection caches' size on disk: about 1.5 times
+# the largest step measured. On a 7.3-million-detection library (141 MB
+# of caches) the largest step peaked at 995 MB; before the cache-reading
+# tools streamed, steps peaked at 4.1 to 4.8 GB, about 32 times the
+# caches' size.
+STEP_BASE_MB=300
+CACHE_FACTOR=8
+
+cache_size_mb() {
+    local kb=0 dir size
+    for dir in "$CORE_DIR/../output/cache/vid_hashes" "$CORE_DIR/../output/cache/pic_hashes"; do
+        [ -d "$dir" ] || continue
+        size="$(du -sk "$dir" 2>/dev/null | awk '{ print $1 }')"
+        kb=$(( kb + ${size:-0} ))
+    done
+    echo $(( kb / 1024 ))
+}
+
+STEP_ESTIMATE_MB=0
+STEP_ESTIMATE_SOURCE=""
+estimate_step() {
+    # estimate_step LABEL: sets STEP_ESTIMATE_MB (expected peak) and
+    # STEP_ESTIMATE_SOURCE (where that number came from).
+    local label="$1" dirs index peak
+    dirs=( "$RUNS_DIR"/*/ )
+    for (( index=${#dirs[@]}-1; index>=0; index-- )); do
+        [ -d "${dirs[$index]}" ] || continue
+        [ "${dirs[$index]%/}" = "$LOG_DIR" ] && continue
+        peak="$(meter_field "${dirs[$index]}${label}.meter.json" peak_rss_mb)"
+        if [ -n "$peak" ]; then
+            STEP_ESTIMATE_MB=$(( ${peak%.*} * 5 / 4 + 1 ))
+            STEP_ESTIMATE_SOURCE="run $(basename "${dirs[$index]}") peaked at ${peak%.*} MB, plus 25%"
+            return 0
+        fi
+    done
+    STEP_ESTIMATE_MB=$(( STEP_BASE_MB + CACHE_FACTOR * CACHE_MB ))
+    STEP_ESTIMATE_SOURCE="no earlier run recorded it: ${STEP_BASE_MB} MB + ${CACHE_FACTOR} x ${CACHE_MB} MB of caches"
+}
+
+declare -a RUN_PIDS=()
+declare -a RUN_NEEDS=()
+admit() {
+    # admit LABEL NEED: return once NEED MB fits beside the steps still
+    # running, within the budget and --jobs. A step bigger than the
+    # whole budget waits until nothing else runs, then runs alone.
+    local label="$1" need="$2" held=0
+    while :; do
+        local reserved=0 index
+        local -a alive_pids=() alive_needs=()
+        if [ "${#RUN_PIDS[@]}" -gt 0 ]; then
+            for index in "${!RUN_PIDS[@]}"; do
+                if kill -0 "${RUN_PIDS[$index]}" 2>/dev/null; then
+                    alive_pids+=("${RUN_PIDS[$index]}")
+                    alive_needs+=("${RUN_NEEDS[$index]}")
+                    reserved=$(( reserved + RUN_NEEDS[index] ))
+                fi
+            done
+        fi
+        RUN_PIDS=( ${alive_pids[@]+"${alive_pids[@]}"} )
+        RUN_NEEDS=( ${alive_needs[@]+"${alive_needs[@]}"} )
+        local running="${#RUN_PIDS[@]}"
+        [ "$running" -eq 0 ] && return 0
+        if [ "$running" -lt "$JOBS" ]; then
+            if [ -z "$MEMORY_BUDGET_MB" ] || [ $(( reserved + need )) -le "$MEMORY_BUDGET_MB" ]; then
+                return 0
+            fi
+            if [ "$held" -eq 0 ]; then
+                echo "holding $label until memory frees: it needs about ${need} MB and ${reserved} MB of the ${MEMORY_BUDGET_MB} MB budget is taken by ${running} running step(s)" | tee -a "$ADMISSION_LOG"
+                held=1
+            fi
+        fi
+        # wait -n returns when any background step ends; where it does not
+        # exist (bash 3.2) or nothing is left to wait for, poll instead.
+        wait -n 2>/dev/null || sleep 1
+    done
 }
 
 # Split the steps: first and last stay pinned, the middle can batch.
@@ -322,7 +452,22 @@ if [ "$JOBS" -gt 1 ] && [ "$TOTAL" -gt 2 ]; then
     echo
 fi
 
-running=0
+ADMISSION_LOG="$LOG_DIR/admission.log"
+if [ "$JOBS" -gt 1 ]; then
+    if [ -z "$MEMORY_BUDGET_MB" ]; then
+        available="$(mem_available_mb)"
+        [ -n "$available" ] && MEMORY_BUDGET_MB=$(( available * 85 / 100 ))
+    fi
+    CACHE_MB="$(cache_size_mb)"
+    if [ -n "$MEMORY_BUDGET_MB" ]; then
+        echo "memory budget for the parallel steps: ${MEMORY_BUDGET_MB} MB (detection caches: ${CACHE_MB} MB on disk); decisions in $ADMISSION_LOG"
+    else
+        echo "free memory is not reported on this system, so only --jobs ${JOBS} limits the parallel steps"
+    fi
+    echo "budget ${MEMORY_BUDGET_MB:-none} MB, jobs ${JOBS}, caches ${CACHE_MB} MB" > "$ADMISSION_LOG"
+    echo
+fi
+
 declare -a BATCH=()
 for (( i=1; i<LAST_INDEX; i++ )); do
     entry="${STEPS[$i]}"
@@ -330,12 +475,17 @@ for (( i=1; i<LAST_INDEX; i++ )); do
     command="${entry#*|}"
     BATCH+=("$label")
     if [ "$JOBS" -gt 1 ]; then
-        run_one_step "$label" "$command" &
-        running=$(( running + 1 ))
-        if [ "$running" -ge "$JOBS" ]; then
-            wait -n 2>/dev/null || wait
-            running=$(( running - 1 ))
+        estimate_step "$label"
+        need="$STEP_ESTIMATE_MB"
+        echo "$label: expect about ${need} MB ($STEP_ESTIMATE_SOURCE)" >> "$ADMISSION_LOG"
+        if [ -n "$MEMORY_BUDGET_MB" ] && [ "$need" -gt "$MEMORY_BUDGET_MB" ]; then
+            echo "$label may need about ${need} MB, more than the ${MEMORY_BUDGET_MB} MB budget: it will run alone" | tee -a "$ADMISSION_LOG"
         fi
+        admit "$label" "$need"
+        echo "$(date +%H:%M:%S) start $label" >> "$ADMISSION_LOG"
+        run_one_step "$label" "$command" &
+        RUN_PIDS+=("$!")
+        RUN_NEEDS+=("$need")
     else
         run_one_step "$label" "$command"
     fi

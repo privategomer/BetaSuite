@@ -127,8 +127,15 @@ To go back to development, `git switch main`.
    (reverse mode's person windows), checks any models already present,
    and lists the two optional ones you download yourself (see
    [Models](#6-models))
-8. Offers to set `gpu_enabled` in `betaconfig.py` to match the build
+8. Creates this machine's config, `../resources/betaconfig_machine.py`,
+   if it is missing, and sets `gpu_enabled` in it to match the build
+   (asking first only if that file already says otherwise)
 9. Runs `tools/setup/verify_env.py` and, optionally, the unit tests
+
+Optional, after setup: `tools/bench/tune_machine.sh` measures this
+machine's hardware settings (detection batch size, render workers,
+encoder and more, 15 to 30 minutes) and offers to write them to the
+machine config. See CONFIG_REFERENCE.md, "Machine config".
 
 Everything goes to `setup.log` in the repository at every log level.
 The console shows `info` and above unless you pass a different level.
@@ -286,7 +293,7 @@ pip install -r requirements-vision-windows.txt
 | `requirements-gpu.txt` | shared + `onnxruntime-gpu` (CUDA 12 build) + `gpu-requirements.txt` |
 | `gpu-requirements.txt` | CUDA 12.9 / cuDNN 9.10 runtime libraries as pip wheels |
 | `requirements-vision-windows.txt` | mss, pywin32 |
-| `requirements-dev.txt` | semver, for `tools/release/release.py` (maintainers only) |
+| `requirements-dev.txt` | semver for `tools/release/release.py`; memray and py-spy for `tools/bench/profile.sh` (maintainers only) |
 
 `onnxruntime-gpu` is capped below 1.27 on purpose. From 1.27 on, the
 default PyPI build targets CUDA 13, which doesn't match the CUDA 12
@@ -363,17 +370,24 @@ Only the model for the backend selected in `betaconfig.py`
 (`detector_backend['selected']`) is required. The benchmarking and
 comparison tools cover whichever ones are present.
 
-### 7. betaconfig.py
+### 7. This machine's config
 
-Set `gpu_enabled` to match what you installed:
+Hardware settings for this computer go in
+`../resources/betaconfig_machine.py`, outside the repository, not in
+`betaconfig.py`. Create it and set `gpu_enabled` to match what you
+installed:
 
-```python
-gpu_enabled = 1     # GPU build
-gpu_enabled = 0     # CPU build
+```bash
+python3 tools/setup/machine_config.py init
+python3 tools/setup/machine_config.py set gpu_enabled=1     # GPU build
+python3 tools/setup/machine_config.py set gpu_enabled=0     # CPU build
+python3 tools/setup/machine_config.py                       # what is set, and from where
 ```
 
 Leaving it at `1` on a CPU install still runs (a CPU fallback is always
-added) but logs a warning on every run.
+added) but logs a warning on every run. `tools/bench/tune_machine.sh`
+measures the rest of this machine's hardware settings; see
+CONFIG_REFERENCE.md, "Machine config".
 
 ### 8. Verify
 
@@ -382,7 +396,7 @@ See the next section.
 ## Verifying an install
 
 ```bash
-python3 tools/setup/verify_env.py          # reads gpu_enabled from betaconfig.py
+python3 tools/setup/verify_env.py          # reads gpu_enabled (machine config, else betaconfig.py)
 python3 tools/setup/verify_env.py --gpu    # insist on CUDA
 python3 tools/setup/verify_env.py --cpu
 ```

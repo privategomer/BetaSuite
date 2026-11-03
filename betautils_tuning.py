@@ -61,6 +61,7 @@ import betaconst
 import betautils_cache_paths as bu_cache
 import betautils_censor as bu_censor
 import betautils_config as bu_config
+import betautils_detections as bu_detections
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
@@ -225,7 +226,9 @@ def clear_replay_caches():
     _RAW_BOX_CACHE.clear()
 
 
-# Parsed cache-file contents, keyed on (path, mtime, size).
+# Parsed cache-file contents, keyed on (path, mtime, size): the process-
+# wide parse cache in betautils_detections, so betabench and the replay
+# tools in one process share one parse.
 #
 # A replay reads every detection cache for every video, and those files
 # are large - 182616 detections across 7 files for 640m. Re-parsing that
@@ -233,25 +236,30 @@ def clear_replay_caches():
 # non-tracking cost in the tool, and the parsed result is identical every
 # time because auto_tune never writes detection caches.
 #
+# Standard-shape caches (every one a real run writes) are kept as
+# columns, about 51 bytes a detection. They were kept as dicts, about
+# 500, so an auto_tune over a 7.3-million-detection library held 3.7 GB
+# for its whole run. Columns also make the per-replay copy cheaper:
+# rebuilding dicts from columns is faster than the deep copy was.
+#
 # The mtime and size are in the key so an externally rewritten cache is
-# re-read rather than served stale. Entries are deep-copied on the way
-# out: prepare_boxes_for_render mutates the boxes it is handed, and a
-# shared list would let one replay corrupt the next.
-_RAW_BOX_CACHE = {}
+# re-read rather than served stale. Every replay gets fresh dicts:
+# prepare_boxes_for_render mutates the boxes it is handed, and a shared
+# list would let one replay corrupt the next.
+_RAW_BOX_CACHE = bu_detections._PARSED
 
 
-def _parsed_caches( cache_paths ):
-    """The cached parse of each readable cache file, shared, never copied."""
+def _parsed_caches( cache_paths, keep=True ):
+    """
+    The cached parse of each readable cache file (Columns or a shared
+    list), never copied. keep=False reads a file not yet cached without
+    caching it, for a caller that will not read it again.
+    """
+    read = bu_detections.cached_read if keep else bu_detections.read_once
     parsed = []
     for path in cache_paths:
-        if not os.path.exists( path ):
-            continue
         try:
-            stat = os.stat( path )
-            key = ( path, stat.st_mtime_ns, stat.st_size )
-            if key not in _RAW_BOX_CACHE:
-                _RAW_BOX_CACHE[key] = bu_hash.read_json( path )
-            parsed.append( _RAW_BOX_CACHE[key] )
+            parsed.append( read( path ) )
         except Exception:
             continue
     return parsed
@@ -268,21 +276,29 @@ def _read_raw_boxes( cache_paths ):
         A fresh list of box dicts, safe for the caller to mutate.
     """
     boxes = []
-    for entries in _parsed_caches( cache_paths ):
-        boxes.extend( copy.deepcopy( entries ) )
+    for held in _parsed_caches( cache_paths ):
+        boxes.extend( bu_detections.as_dicts( held ) )
     return boxes
 
 
-def raw_boxes_for_reading( cache_paths ):
+def raw_boxes_for_reading( cache_paths, keep=True ):
     """
-    The same detections without the deep copy, for a caller that only reads.
+    The same detections for a caller that only reads. keep=False is for a
+    caller that reads each video once (it neither compacts nor keeps a
+    parse it did not find kept).
 
-    The parse is shared with every later replay, so mutating these dicts
-    corrupts them. On a large split-screen cache the copy is seconds.
+    A cache kept as columns comes back as new dicts (cheap, and there is
+    no shared dict to protect). One that is not the standard shape is
+    kept as its parsed list and handed out shared, without the deep copy:
+    mutating those dicts corrupts every later replay. On a large
+    split-screen cache the copy is seconds.
     """
     boxes = []
-    for entries in _parsed_caches( cache_paths ):
-        boxes.extend( entries )
+    for held in _parsed_caches( cache_paths, keep ):
+        if isinstance( held, bu_detections.Columns ):
+            boxes.extend( held.to_dicts() )
+        else:
+            boxes.extend( held )
     return boxes
 
 
@@ -391,7 +407,8 @@ def replay_rendered( file_hash, video_path, cache_paths, raw_boxes, vid_w, vid_h
     rendered, stats = bu_track.prepare_boxes_for_render(
         raw_boxes, vid_w, vid_h, shot_cut_times=tracking['shot_cut_times'],
         backend_name=backend_name, logger=logger or _QUIET_LOGGER,
-        profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'] )
+        profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'],
+        style_seed=file_hash )
     return rendered, stats, tracking
 
 
@@ -560,7 +577,7 @@ def content_by_video( videos, labels, confident_score=CONFIDENT_SCORE, forget=Tr
     """
     found = {}
     for file_hash, cache_paths in sorted( videos.items() ):
-        found[file_hash] = label_content( raw_boxes_for_reading( cache_paths ), labels,
+        found[file_hash] = label_content( raw_boxes_for_reading( cache_paths, keep=not forget ), labels,
                                           cache_sample_rate( cache_paths ), confident_score )
         if forget:
             forget_raw_boxes( cache_paths )
@@ -802,7 +819,7 @@ def measure_replay( videos, hash_to_path, backend_name, labels, shot_cuts_by_has
                     raw_boxes, vid_w, vid_h,
                     shot_cut_times=tracking_cuts, backend_name=backend_name,
                     logger=_QUIET_LOGGER, profile_name=profile_name,
-                    sample_fps=sample_fps, cut_bursts=replay_bursts )
+                    sample_fps=sample_fps, cut_bursts=replay_bursts, style_seed=file_hash )
 
         metrics['rendered_boxes'] += len( rendered )
         metrics['interpolated'] += stats.get( 'interpolated', 0 )

@@ -296,20 +296,14 @@ foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncens
 & $VenvPy 'tools\setup\fetch_models.py' '--log-level' $LogLevel '--log-file' $LogFile '--uv' $Uv
 if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
 
-# ---------------------------------------------------------------- betaconfig.gpu_enabled
+# ---------------------------------------------------------------- machine config
+# This machine's hardware settings live in ..\resources\betaconfig_machine.py,
+# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 $wantFlag = if ($Mode -eq 'gpu') { '1' } else { '0' }
-$cfgPath = Join-Path $RepoDir 'betaconfig.py'
-$cfg = [IO.File]::ReadAllText($cfgPath)
-$match = [regex]::Match($cfg, '(?m)^gpu_enabled(\s*=\s*)([01])')
-if ($match.Success -and $match.Groups[2].Value -ne $wantFlag) {
-    if (Ask-YesNo "betaconfig.py has gpu_enabled = $($match.Groups[2].Value) but this is a $Mode install. Set it to $wantFlag?" $true) {
-        $cfg = [regex]::Replace($cfg, '(?m)^gpu_enabled(\s*=\s*)[01]', "gpu_enabled`${1}$wantFlag")
-        [IO.File]::WriteAllText($cfgPath, $cfg, (New-Object Text.UTF8Encoding $false))
-        Write-Log info "betaconfig.py: gpu_enabled = $wantFlag"
-    } else {
-        Write-Log warn "left gpu_enabled = $($match.Groups[2].Value) in betaconfig.py"
-    }
-}
+$machineArgs = @('tools\setup\machine_config.py', '--log-level', $LogLevel, '--log-file', $LogFile, 'setup', '--gpu-enabled', $wantFlag)
+if ($Yes) { $machineArgs += '--yes' }
+& $VenvPy @machineArgs
+if ($LASTEXITCODE -ne 0) { Write-Log warn 'machine config step reported a problem; see the messages above' }
 
 # ---------------------------------------------------------------- verify
 Write-Log info '=== verifying environment ==='

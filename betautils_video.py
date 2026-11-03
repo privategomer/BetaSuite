@@ -608,14 +608,17 @@ class VideoSource:
         self.height = height
         self.transcoded = transcoded
 
-    def open_capture( self ):
+    def open_capture( self, threads=None ):
         """
         A fresh, independent cv2.VideoCapture on decode_path.
 
         Used by anything that needs its own read position - the
         shot-cut scan, and each worker in a parallel render.
+
+        threads, when given, is the decoder's thread count; None leaves
+        OpenCV's own choice (one per core). See open_capture_with_threads.
         """
-        return cv2.VideoCapture( self.decode_path )
+        return open_capture_with_threads( self.decode_path, threads )
 
     def release( self ):
         """Release the primary capture."""
@@ -632,6 +635,162 @@ class VideoSource:
 
 class VideoOpenError( RuntimeError ):
     """Raised when no decode strategy can produce a frame from a file."""
+
+
+def capture_threads_supported():
+    """Whether this OpenCV takes a decoder thread count at open time (4.6+)."""
+    return hasattr( cv2, 'CAP_PROP_N_THREADS' )
+
+
+def open_capture_with_threads( path, threads=None ):
+    """
+    cv2.VideoCapture on path, with `threads` decoder threads.
+
+    WHY. OpenCV's FFmpeg backend gives every capture one decoder thread
+    per core, and frame threading keeps a decoded frame in flight per
+    thread. One capture, that is the fastest choice. Eight render workers
+    on a 16-core machine are eight captures, so 128 decoder threads and
+    128 4K frames in flight, competing for the same 16 cores: the memory
+    grows with the worker count while the throughput does not. Giving
+    each worker its share of the cores bounds both. Measured per machine
+    by tools/bench/tune_machine.py, set by render_decode_threads.
+
+    threads None (or an OpenCV without CAP_PROP_N_THREADS) opens it the
+    way it always was. A capture the parameter fails to open is retried
+    without it, so the setting can make decoding slower but never stop it.
+    """
+    if not threads or not capture_threads_supported():
+        return cv2.VideoCapture( path )
+    capture = cv2.VideoCapture( path, cv2.CAP_FFMPEG,
+                                [ cv2.CAP_PROP_N_THREADS, int( threads ) ] )
+    if capture.isOpened():
+        return capture
+    capture.release()
+    return cv2.VideoCapture( path )
+
+
+class _PrefetchEnd( object ):
+    """Marks the end of a prefetched sequence, carrying the producer's error."""
+
+    def __init__( self, error=None ):
+        self.error = error
+
+
+class Prefetched( object ):
+    """
+    Iterate `iterable` on a background thread, `depth` items ahead.
+
+    WHY. Detection used to decode a batch, then run the model on it, then
+    decode the next: the GPU waited on the decoder and the decoder waited
+    on the GPU, so a sampled frame cost decode + inference. OpenCV's
+    decode and onnxruntime's run both release the GIL, so a decoder
+    thread that keeps `depth` frames ready makes that max( decode,
+    inference ) instead.
+
+    Order and content are unchanged: the consumer gets exactly the items
+    the iterable yields, in the same order, and an exception the iterable
+    raises is re-raised in the consumer at the same point in the sequence.
+
+    close() (or leaving a `with` block) stops the producer and joins it.
+    Call it before releasing anything the iterable reads from: the
+    detection loop releases its VideoCapture right after, and a decoder
+    thread still inside grab() on a released capture is a crash.
+    """
+
+    def __init__( self, iterable, depth ):
+        import queue
+        self._queue = queue.Queue( maxsize=max( 1, int( depth ) ) )
+        self._stop = threading.Event()
+        self._finished = False
+        self._thread = threading.Thread( target=self._produce, args=( iter( iterable ), ),
+                                         name='betaprefetch', daemon=True )
+        self._thread.start()
+
+    def _put( self, item ):
+        import queue
+        while not self._stop.is_set():
+            try:
+                self._queue.put( item, timeout=0.1 )
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _produce( self, iterator ):
+        try:
+            for item in iterator:
+                if not self._put( item ):
+                    return
+        except BaseException as err:   # handed to the consumer, raised there
+            self._put( _PrefetchEnd( err ) )
+            return
+        self._put( _PrefetchEnd() )
+
+    def __iter__( self ):
+        return self
+
+    def __next__( self ):
+        if self._finished:
+            raise StopIteration
+        item = self._queue.get()
+        if isinstance( item, _PrefetchEnd ):
+            self._finished = True
+            self._thread.join()
+            if item.error is not None:
+                raise item.error
+            raise StopIteration
+        return item
+
+    def close( self ):
+        """Stop the producer and wait for it. Safe to call more than once."""
+        import queue
+        self._finished = True
+        self._stop.set()
+        while self._thread.is_alive():
+            try:
+                self._queue.get( timeout=0.05 )
+            except queue.Empty:
+                pass
+        self._thread.join()
+
+    def __enter__( self ):
+        return self
+
+    def __exit__( self, exc_type, exc, tb ):
+        self.close()
+        return False
+
+
+def prefetched( iterable, depth ):
+    """
+    `iterable` decoded `depth` items ahead on a thread, or `iterable`
+    itself when depth is 0/None. Either way the result has close().
+    """
+    if not depth or depth <= 0:
+        return _Unprefetched( iterable )
+    return Prefetched( iterable, depth )
+
+
+class _Unprefetched( object ):
+    """The same interface as Prefetched, doing nothing extra."""
+
+    def __init__( self, iterable ):
+        self._iterator = iter( iterable )
+
+    def __iter__( self ):
+        return self._iterator
+
+    def close( self ):
+        close = getattr( self._iterator, 'close', None )
+        if close is not None:
+            close()
+
+    def __enter__( self ):
+        return self
+
+    def __exit__( self, exc_type, exc, tb ):
+        self.close()
+        return False
 
 
 def open_video_source( path, file_hash, logger=None ):

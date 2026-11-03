@@ -318,6 +318,21 @@ def _encoder_threads( worker_count ):
     return max( 1, cpu_count // max( 1, worker_count ) )
 
 
+def decode_threads( worker_count ):
+    """
+    Decoder threads per render worker, from render_decode_threads: None
+    leaves OpenCV's own (one per core, for every worker), 0 shares the
+    cores out (cores / workers), a number is used as given. Returns None
+    for OpenCV's own. See betautils_video.open_capture_with_threads.
+    """
+    configured = getattr( betaconfig, 'render_decode_threads', None )
+    if configured is None:
+        return None
+    if configured == 0:
+        return _encoder_threads( worker_count )
+    return max( 1, int( configured ) )
+
+
 # ---------------------------------------------------------------------------
 # Box windowing
 # ---------------------------------------------------------------------------
@@ -1101,7 +1116,8 @@ def chunk_failure_reason( returncode, frames_written, write_error, captured_stde
 
 
 def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
-                      retry_backoff, progress, logger, motion_timelines=None, reverse=None ):
+                      retry_backoff, progress, logger, motion_timelines=None, reverse=None,
+                      decoder_threads=None ):
     """
     Render one chunk to its own file, retrying on failure.
 
@@ -1124,6 +1140,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             over the same box list - correct, just wasteful.
         reverse: A betautils_reverse.ReverseRender for a reverse-mode
             video, or None for normal mode. Read-only, shared.
+        decoder_threads: This chunk's decoder thread count, or None for
+            OpenCV's own (decode_threads()).
 
     Returns:
         The number of frames written.
@@ -1152,7 +1170,7 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 plan.index, attempt, max_retries, last_error ) )
             time.sleep( retry_backoff )
 
-        capture = source.open_capture()
+        capture = source.open_capture( decoder_threads )
         process = None
         captured_stderr = None
         command = None
@@ -1517,10 +1535,14 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         worker_count, memory_cap = plan_worker_count(
             max( 1, len( outstanding ) ), source.width, source.height, memory_available, logger )
         encoder_threads = _encoder_threads( worker_count )
+        decoder_threads = decode_threads( worker_count )
         total_frames = sum( plan.expected_frames for plan in outstanding )
 
-        logger.info( "render: %d chunk(s) to build, %d worker(s), %d encoder thread(s) each, "
-                     "%d frame(s) total"%(len( outstanding ), worker_count, encoder_threads, total_frames) )
+        logger.info( "render: %d chunk(s) to build, %d worker(s), %d encoder thread(s) and %s "
+                     "decoder thread(s) each, %d frame(s) total"%(
+                         len( outstanding ), worker_count, encoder_threads,
+                         decoder_threads if decoder_threads else "OpenCV's default",
+                         total_frames ) )
 
         frames_written = 0
         if outstanding:
@@ -1539,7 +1561,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
                 try:
                     return render_one_chunk( plan, source, boxes, preset, encoder_threads,
                                              max_retries, retry_backoff, progress, logger,
-                                             motion_timelines=shared_timelines, reverse=reverse )
+                                             motion_timelines=shared_timelines, reverse=reverse,
+                                             decoder_threads=decoder_threads )
                 except Exception as err:
                     with failures_lock:
                         failures.append( err )

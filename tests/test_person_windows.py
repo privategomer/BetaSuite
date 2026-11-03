@@ -848,6 +848,15 @@ class TestPassResume( Harness ):
         self.cache_path = os.path.join( self.tmp, 'p.npz' )
         self.saved_interval = getattr( betaconfig, 'detection_checkpoint_frames', _MISSING )
         self.addCleanup( self._restore_interval )
+        # frames() requests the interrupt from inside the frame generator,
+        # which a prefetch thread runs ahead of the loop, so the interrupt
+        # would land samples early. A real Ctrl-C is checked by the loop
+        # itself either way; this pins the generator to the loop's pace.
+        saved_prefetch = getattr( betaconfig, 'detection_prefetch_frames', _MISSING )
+        betaconfig.detection_prefetch_frames = 0
+        self.addCleanup( lambda: setattr( betaconfig, 'detection_prefetch_frames', saved_prefetch )
+                         if saved_prefetch is not _MISSING
+                         else betaconfig.__dict__.pop( 'detection_prefetch_frames', None ) )
         betaconfig.person_backend = { 'selected': 'yolo11_seg', 'yolo11_seg': { 'batch_size': 3 } }
         self.starts = []
         self.interrupt_at = None
