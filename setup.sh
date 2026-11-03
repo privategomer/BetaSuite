@@ -280,18 +280,14 @@ if [ "$USE_UV" = 1 ] && [ -n "${UV:-}" ]; then FETCH_ARGS+=( --uv "$UV" ); fi
 "$VENV_PY" tools/setup/fetch_models.py "${FETCH_ARGS[@]}" \
     || log_warn "model check reported a problem; see the messages above"
 
-# ---------------------------------------------------------------- betaconfig.gpu_enabled
+# ---------------------------------------------------------------- machine config
+# This machine's hardware settings live in ../resources/betaconfig_machine.py,
+# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 want_flag=0; [ "$MODE" = gpu ] && want_flag=1
-current_flag="$(sed -n 's/^gpu_enabled[[:space:]]*=[[:space:]]*\([01]\).*/\1/p' betaconfig.py | head -n1)"
-if [ -n "$current_flag" ] && [ "$current_flag" != "$want_flag" ]; then
-    if ask_yes_no "betaconfig.py has gpu_enabled = $current_flag but this is a $MODE install. Set it to $want_flag?" y; then
-        sed -i.bak "s/^gpu_enabled\([[:space:]]*=[[:space:]]*\)[01]/gpu_enabled\1$want_flag/" betaconfig.py \
-            && rm -f betaconfig.py.bak
-        log_info "betaconfig.py: gpu_enabled = $want_flag"
-    else
-        log_warn "left gpu_enabled = $current_flag in betaconfig.py"
-    fi
-fi
+MACHINE_ARGS=( setup --gpu-enabled "$want_flag" )
+[ "$ASSUME_YES" = 1 ] && MACHINE_ARGS+=( --yes )
+"$VENV_PY" tools/setup/machine_config.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
+    "${MACHINE_ARGS[@]}" || log_warn "machine config step reported a problem; see the messages above"
 
 # ---------------------------------------------------------------- verify
 log_info "=== verifying environment ==="
@@ -318,6 +314,7 @@ Next steps:
   source .venv/bin/activate          # once per terminal
   # put videos in $(cd ../resources/uncensored_vids && pwd)
   python3 betatv.py --preview on --preview-seconds 20
+  tools/bench/tune_machine.sh        # optional: measure this machine's hardware settings
 
 A script cannot activate a venv in the shell that launched it, so the
 'source' line above is yours to run. Alternatively call .venv/bin/python

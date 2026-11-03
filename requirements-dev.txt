@@ -1,2 +1,5 @@
-# Developer tools: tools/release/release.py
+# Developer tools: semver for tools/release/release.py; memray and py-spy for
+# tools/bench/profile.sh (memray has no Windows build, profile.sh then uses tracemalloc)
 semver>=3,<4
+memray>=1.11,<2; sys_platform != "win32"
+py-spy>=0.3.14,<1

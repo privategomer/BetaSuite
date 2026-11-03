@@ -21,6 +21,13 @@ import os
 import shutil
 import tempfile
 
+# The repo's own defaults, whatever ../resources/betaconfig_machine.py
+# this machine has: tests that check the shipped config, or count on its
+# encoder or worker settings, must see the same values on every machine.
+# Set before betaconfig is imported, and inherited by every subprocess a
+# test starts. Tests of the machine config pass their own paths.
+os.environ['BETASUITE_MACHINE_CONFIG'] = 'none'
+
 import betaconfig
 import betaconst
 import betautils_log

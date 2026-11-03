@@ -29,7 +29,7 @@ REPO = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
 # the tool's logger).
 STANDALONE = {
     'tools/release/release.py': set(),
-    'tools/setup/verify_env.py': set(),
+    'tools/setup/verify_env.py': { 'betautils_machine' },   # reads LOADED; imports nothing itself
     'tools/setup/fetch_models.py': set(),
     'tools/tuning/run_bar_smoothing_test.py': { 'betautils_hash' },   # md5_for_file only
 }

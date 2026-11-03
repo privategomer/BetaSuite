@@ -38,18 +38,6 @@ TRACKING = { 'shot_cut_times': [ 1.5, 4.0 ], 'profile_name': 'compilation', 'sam
              'signals': None }
 
 
-class _FakeCapture( object ):
-    def __init__( self, *_args ):
-        pass
-
-    def get( self, prop ):
-        import cv2
-        return { cv2.CAP_PROP_FRAME_WIDTH: 640, cv2.CAP_PROP_FRAME_HEIGHT: 360 }.get( prop, 0 )
-
-    def release( self ):
-        pass
-
-
 class TestAnalysersReplayUnderTheRealProfileAndCuts( unittest.TestCase ):
 
     def replay( self, tool, call ):
@@ -63,9 +51,8 @@ class TestAnalysersReplayUnderTheRealProfileAndCuts( unittest.TestCase ):
         box = { 'label': 'exposed_breast', 'x': 0, 'y': 0, 'w': 10, 'h': 10 }
         with mock.patch.object( tool.bu_tuning, 'replay_tracking_inputs',
                                 return_value=( [ box ], TRACKING ) ), \
-             mock.patch.object( tool.bu_hash, 'read_json', return_value=[ { 'class_id': 'x' } ] ), \
-             mock.patch.object( tool.os.path, 'exists', return_value=True ), \
-             mock.patch.object( tool.cv2, 'VideoCapture', _FakeCapture ):
+             mock.patch.object( tool.bu_tuning, '_read_raw_boxes', return_value=[ { 'class_id': 'x' } ] ), \
+             mock.patch.object( tool.bu_tuning, 'frame_size_for_video', return_value=( 640, 360 ) ):
             call( fake_smooth )
         return seen
 
@@ -97,6 +84,90 @@ class TestAnalysersReplayUnderTheRealProfileAndCuts( unittest.TestCase ):
             tool.run_one_alpha( 0.5, { 'h1': [ 'c.gz' ] }, { 'h1': '/v.mp4' }, fake_smooth, None,
                                 { 'exposed_breast' }, 'nudenet_v3' )
         self.assert_real_context( self.replay( tool, call ) )
+
+
+class TestReplaysRollTheStylesTheRenderRolled( unittest.TestCase ):
+    """
+    betatv seeds a video's style rolls with its file hash. A replay that
+    does not rolls different styles, and a style's padding moves box
+    geometry, so two runs of one analysis disagreed (and neither matched
+    the render). Each replay path now seeds the same way.
+    """
+
+    def draws_inside_smooth( self, tool, call ):
+        import random
+        draws = []
+
+        def fake_smooth( boxes, **kwargs ):
+            draws.append( random.random() )
+            return boxes, {}
+
+        box = { 'label': 'exposed_breast', 'x': 0, 'y': 0, 'w': 10, 'h': 10 }
+        runs = []
+        for outside_seed in ( 1, 2 ):
+            random.seed( outside_seed )
+            del draws[:]
+            with mock.patch.object( tool.bu_tuning, 'replay_tracking_inputs',
+                                    return_value=( [ box ], TRACKING ) ), \
+                 mock.patch.object( tool.bu_tuning, '_read_raw_boxes', return_value=[ { 'class_id': 'x' } ] ), \
+                 mock.patch.object( tool.bu_tuning, 'frame_size_for_video', return_value=( 640, 360 ) ):
+                call( fake_smooth )
+            runs.append( list( draws ) )
+            after = random.random()
+            random.seed( outside_seed )
+            self.assertEqual( after, random.random(), "the seed leaked out of the replay" )
+        return runs
+
+    def test_jitter( self ):
+        tool = _load_tool( 'tools/analysis/analyze_jitter.py', '_jit_seed' )
+        runs = self.draws_inside_smooth( tool, lambda fake_smooth: tool.run_one_alpha(
+            0.5, { 'h1': [ 'c.gz' ] }, { 'h1': '/v.mp4' }, fake_smooth, None, { 'exposed_breast' },
+            'nudenet_v3' ) )
+        self.assertTrue( runs[0] )
+        self.assertEqual( runs[0], runs[1] )
+
+    def test_track_breaks( self ):
+        tool = _load_tool( 'tools/analysis/analyze_track_breaks.py', '_tb_seed' )
+
+        def call( fake_smooth ):
+            ns = { 'smooth_boxes': fake_smooth, 'apply_class_suppression': None,
+                   'observer': tool.bu_track.TrackingObserver() }
+            tool.run_one_combo( 1.0, 1.0, { 'h1': [ 'c.gz' ] }, { 'h1': '/v.mp4' }, ns,
+                                { 'exposed_breast' }, 'nudenet_v3' )
+        runs = self.draws_inside_smooth( tool, call )
+        self.assertTrue( runs[0] )
+        self.assertEqual( runs[0], runs[1] )
+
+    def test_the_seed_is_the_file_hash_render_uses( self ):
+        import betautils_track as bu_track
+        import random
+        with bu_track.seeded_styles( 'h1' ):
+            seeded = random.random()
+        random.seed( 'betasuite-styles:h1' )
+        self.assertEqual( seeded, random.random() )
+        state = random.getstate()
+        with bu_track.seeded_styles( None ):
+            pass
+        self.assertEqual( state, random.getstate() )
+
+    def test_replay_rendered_and_measure_replay_pass_the_file_hash( self ):
+        with mock.patch.object( bu_tuning.bu_track, 'prepare_boxes_for_render',
+                                return_value=( [], {} ) ) as prepare:
+            bu_tuning.replay_rendered( 'h1', '/v.mp4', [ 'c.gz' ], [], 640, 360, 'nudenet_v3',
+                                       tracking=TRACKING )
+        self.assertEqual( prepare.call_args.kwargs.get( 'style_seed' ), 'h1' )
+        with open( _repo_path( 'betautils_tuning.py' ) ) as handle:
+            source = handle.read()
+        measure = source[ source.index( 'def measure_replay(' ): ]
+        measure = measure[ :measure.index( '\ndef ' ) ]
+        self.assertIn( 'style_seed=file_hash', measure )
+
+    def test_style_flicker_seeds_its_replay( self ):
+        with open( _repo_path( 'tools/analysis/analyze_style_flicker.py' ) ) as handle:
+            source = handle.read()
+        seeded = source.index( 'with bu_track.seeded_styles( file_hash ):' )
+        self.assertLess( seeded, source.index( 'bu_tuning.replay_tracking_inputs(' ) )
+        self.assertLess( source.index( 'bu_tuning.replay_tracking_inputs(' ), source.index( 'smooth_boxes_fn(', seeded ) )
 
 
 class TestEveryHubAnalyserPassesTheContext( unittest.TestCase ):

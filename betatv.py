@@ -344,14 +344,18 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
     sample_index = start_sample_index
     next_t = bu_video.sample_time( start_sample_index, preview_offset_seconds,
                                    sample_fps )
+    # Decoded on a second thread while the model runs; closed before the
+    # capture is released (see betautils_video.Prefetched).
+    frames = bu_video.prefetched( bu_video.iter_sampled_frames(
+                                      capture, source.vid_fps, sample_fps,
+                                      offset_seconds=preview_offset_seconds,
+                                      num_frames=source.num_frames,
+                                      max_seconds=preview_max_seconds,
+                                      start_sample_index=start_sample_index ),
+                                  getattr( betaconfig, 'detection_prefetch_frames', 0 ) )
     try:
         with bu_log.ProgressReporter( "detect %d"%(size), total=total_samples ) as progress:
-            for sample_index, timestamp, frame in bu_video.iter_sampled_frames(
-                    capture, source.vid_fps, sample_fps,
-                    offset_seconds=preview_offset_seconds,
-                    num_frames=source.num_frames,
-                    max_seconds=preview_max_seconds,
-                    start_sample_index=start_sample_index ):
+            for sample_index, timestamp, frame in frames:
                 bu_signals.check()
 
                 frame_buffer.append( frame )
@@ -379,6 +383,7 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
             size, len( raw_boxes ), sample_index + 1 ) )
         raise
     finally:
+        frames.close()
         capture.release()
 
     bu_hash.write_json( raw_boxes, cache_path )

@@ -1095,7 +1095,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             # claims the nearest track and no single track is pulled
             # toward two simultaneous detections.
             candidates = []
-            for box in frame_boxes:
+            for box_index, box in enumerate( frame_boxes ):
                 centre_x = box['x'] + box['w']/2
                 centre_y = box['y'] + box['h']/2
                 for track_index, track in enumerate( tracks ):
@@ -1120,19 +1120,25 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                         track['w'], track['h'], box['w'], box['h'] )
                     if distance >= reach:
                         continue
-                    candidates.append( ( distance, id( box ), box, track_index ) )
+                    candidates.append( ( distance, box_index, box, track_index ) )
             if _tracking_observer is not None:
                 _notify( 'on_frame_candidates', label,
                          [ ( distance, box, track_index )
-                           for distance, _box_id, box, track_index in candidates ],
+                           for distance, _box_index, box, track_index in candidates ],
                          tracks, settings )
+            # Ties on distance go to the box earlier in the frame. They
+            # went to the box at the lower memory address, so the same
+            # detections could track differently from one run to the next
+            # (and a replay differently from the run it replays) whenever
+            # two boxes sat exactly as far from a track.
             candidates.sort( key=lambda candidate: ( candidate[0], candidate[1] ) )
 
             matched_box_ids = set()
             matched_track_indices = set()
             box_track_index = {}
 
-            for distance, box_id, box, track_index in candidates:
+            for distance, _box_index, box, track_index in candidates:
+                box_id = id( box )
                 if box_id in matched_box_ids or track_index in matched_track_indices:
                     continue
                 matched_box_ids.add( box_id )
@@ -1749,26 +1755,41 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
             passes the file hash: a render resumed from chunks a
             previous run finished then matches them, where an unseeded
             re-roll could switch a track's style at the chunk boundary.
-            None leaves the rolls unseeded (the replay tools).
+            The replay tools pass it too, so they roll what the render
+            rolled. None leaves the rolls unseeded.
 
     Returns:
         A (boxes, stats) pair. boxes is sorted by 'start' ascending,
         ready for the renderer. stats carries per-stage counts for the
         run's stats line.
     """
-    if style_seed is None:
+    with seeded_styles( style_seed ):
         return _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name,
                                           logger, profile_name, sample_fps, cut_bursts )
-    # The rolls draw from the random module (bu_censor.resolve_censor_style,
-    # sticker seeds), so seed it for this call and put it back after.
-    # Nothing else in the process draws from it while this runs: the
-    # shot-cut scan has finished, and the person pass and render never
-    # touch it.
+
+
+@contextlib.contextmanager
+def seeded_styles( style_seed ):
+    """
+    Seed every style roll and sticker choice inside the block with
+    style_seed (betatv passes the file hash), and put the random state
+    back after. None leaves the rolls unseeded.
+
+    The rolls draw from the random module (bu_censor.resolve_censor_style,
+    sticker seeds). Nothing else in the process draws from it while a
+    video is prepared: the shot-cut scan has finished, and the person
+    pass and render never touch it. A replay tool that tracks a video
+    under the same seed rolls the styles the render rolled, and a
+    style's padding moves box geometry, so without it two runs of the
+    same analysis disagreed.
+    """
+    if style_seed is None:
+        yield
+        return
     state = random.getstate()
     random.seed( 'betasuite-styles:%s'%( style_seed, ) )
     try:
-        return _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name,
-                                          logger, profile_name, sample_fps, cut_bursts )
+        yield
     finally:
         random.setstate( state )
 

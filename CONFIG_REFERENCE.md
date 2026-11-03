@@ -122,6 +122,95 @@ changes rendered output, add it to `censor_identity()` and to that file.
 
 ---
 
+## Machine config: this computer's hardware settings
+
+`betaconfig.py` describes what to censor and how. A few of its settings
+describe the computer instead: which encoder its GPU has, how many
+render workers its memory holds, the detection batch its GPU likes.
+Those have no value that suits every machine, and while they lived only
+in `betaconfig.py` one machine's tuning (NVENC at cq 21) became every
+checkout's default, and pulling a branch could undo a machine's tuning.
+
+So they can also be set in **`../resources/betaconfig_machine.py`**,
+beside the models and footage, which the repo never touches. A setting
+there replaces the same setting in `betaconfig.py` on that machine only;
+anything it leaves out uses `betaconfig.py`'s value. Precedence, lowest
+first:
+
+    betaconfig.py  <  ../resources/betaconfig_machine.py  <  command-line flags
+
+**What it may set.** Hardware settings only: `gpu_enabled`,
+`cuda_device_id`, `nn_batch_size` per backend (`detector_backend =
+{ 'nudenet_v3': { 'nn_batch_size': 8 } }`, `'defaults'` for every
+backend), the person backend's `batch_size` the same way,
+`detection_prefetch_frames`, `render_workers`, `render_decode_threads`,
+`render_worker_mb_per_megapixel`, `render_memory_reserve_mb`,
+`render_chunk_seconds`, `encode_video_codec`, `encode_preset`,
+`encode_crf`, `preview_encode_preset`, `structure_scan_workers`, and the
+BetaVision screen region (`vision_cap_*`). Anything else is refused by
+name. That is deliberate: a detection setting that differs per machine
+makes two machines' output, and every A/B comparison between them,
+disagree for a reason no log explains.
+
+**Format.** Plain `name = value` lines in Python syntax, read with
+`ast.literal_eval` and never executed. A line that is not allowed, or a
+file that does not parse, is skipped and printed when anything imports
+`betaconfig`, and stops `betatv.py` at validation with the file's name
+and line. Every validated run logs one line naming the file and what it
+set.
+
+**Working with it.**
+
+```
+python tools/setup/machine_config.py              every hardware setting, its value, and where it comes from
+python tools/setup/machine_config.py init         a new file, every setting commented out at betaconfig.py's value
+python tools/setup/machine_config.py set encode_video_codec=h264_nvenc encode_preset=p5 encode_crf=21
+python tools/setup/machine_config.py set detector_backend.nudenet_v3.nn_batch_size=8
+python tools/setup/machine_config.py unset encode_crf
+tools/bench/tune_machine.sh                        measure this machine, then offer to write the results
+```
+
+`set` checks a change the way `betatv.py` would and writes nothing if it
+would fail; edits keep your own lines and comments. Setup creates the
+file and sets `gpu_enabled` in it to match the install.
+
+**Moving an encoder.** NVENC's quality scale is not x264's, so a machine
+config that switches between them should set `encode_crf` too, or the
+repo's x264 CRF is read as NVENC's cq. Validation warns when it does not.
+
+`BETASUITE_MACHINE_CONFIG` points at another file, or `none` to ignore
+it. The test suite sets `none`, so tests see the repo's own defaults on
+every machine.
+
+### `tools/bench/tune_machine.sh`
+
+One command that measures what this machine's hardware settings should
+be, on your own footage, and asks before writing them. About 15 to 30
+minutes; close anything heavy first. It asks before starting if a betatv
+run, the load average or the GPU says the machine is busy.
+
+| stage | what it times | proposes |
+|---|---|---|
+| inventory | nothing: CPU, memory, GPU and driver, hardware encoders, onnxruntime providers, OpenCV's decoders, the settings in effect | |
+| detect | ms per frame at batch 1, 2, 4, 8, 16 on the same frames, and whether the detections stay the same | `nn_batch_size` |
+| prefetch | the real detection loop with 0, 1, 2 and 4 batches decoded ahead | `detection_prefetch_frames` |
+| render | decode + the real chunk encode at several worker counts, each with OpenCV's decoder threads and with the cores shared out, memory sampled | `render_workers`, `render_decode_threads`, `render_worker_mb_per_megapixel` |
+| encode | `betabench encode` | `encode_*` |
+| scan | `betabench concurrency`'s scan workers | `structure_scan_workers` |
+
+A value is proposed only when it beats the current one by more than 3%
+(below that it is run-to-run noise), and a near tie goes to the cheaper
+setting: fewer workers, a smaller batch, less memory. A batch size that
+changes the detections is never proposed. The render stage measures on
+the source with the most pixels, the hardest one to render, skips any
+worker count the memory it has measured says will not fit, and proposes
+the worst per-worker memory it saw plus 25% for the censoring the bench
+leaves out. Output in `../output/benchmarks/tune_machine_<time>/`:
+`results.json`, `proposal.json` (with the reason for each value) and the
+logs.
+
+---
+
 ## Detector backend
 
 ```python
@@ -337,9 +426,31 @@ sample:  ●         ●         ●         ●         ●         ●
                          run through the model
 ```
 
-Frames between samples are skipped with `grab()`, which does not decode
-their contents, so raising `video_censor_fps` costs inference time, not
-decode time.
+Frames between samples are skipped with `grab()`, which still decodes
+them (a compressed frame can only be decoded in order) but skips the
+colour conversion and the copy into a numpy array. So the decode cost is
+the video's own frame rate and resolution, whatever `video_censor_fps`
+is, and raising `video_censor_fps` costs inference time, not decode
+time.
+
+### `detection_prefetch_frames`
+
+Frames decoded ahead of the model, on a second thread. **8**; 0 decodes
+and detects in turn.
+
+Without it, detection decoded a batch, ran the model on it, and decoded
+the next: the GPU waited on the decoder and the decoder waited on the
+GPU, so each sampled frame cost decode plus inference. OpenCV's decode
+and onnxruntime's run both release Python's GIL, so with a decoder
+thread keeping frames ready a sampled frame costs the slower of the two.
+The frames, their order and the detections are exactly the plain path's;
+a test holds them to it. The person-segmentation pass uses it too.
+
+Each frame held costs its size in memory: 8 at 4096x2160 is about 210
+MB. One batch ahead is the least that hides the decode; more only
+smooths out uneven decode times. `tune_machine.sh` measures 0, 1, 2 and
+4 batches. Measured so far only with CPU work standing in for the
+model, on a 2-core box where the two compete for cores: 16% less time.
 
 ### `global_min_prob`
 
@@ -2190,8 +2301,11 @@ It runs three phases, logs everything to
 1. **`betabench structure-scan`**: a whole-file shot-cut scan of every
    source file in `uncensored_vids/` and `source/` that lacks one, on the
    CPU, files in parallel (one worker per core, at most 4; 2 workers ran
-   1.36x faster than 1 on a 2-core box). The scans land in the cache
-   betatv's full run reads, so the real run reuses them
+   1.36x faster than 1 on a 2-core box). `structure_scan_workers` sets
+   the count for this machine (in its machine config; `betabench
+   concurrency` and `tune_machine.sh` measure it), since the cap of 4 is
+   for spinning disks. The scans land in the cache betatv's full run
+   reads, so the real run reuses them
 2. **geometry slices**: detection, no render, on 3 slices of 20s spread
    through each file at 25%, 50% and 75%, never at the start. Needs the
    GPU. This is the only thing split-screen is recognised from. It asks
@@ -3256,10 +3370,35 @@ killed, raise it. Each stats row records `render_memory_available_mb`
 and `render_memory_worker_cap`, so runs that did and did not run out
 can be compared.
 
+`tools/bench/tune_machine.sh` measures it: the render's decode and
+encode at several worker counts with the process tree's memory sampled,
+the worst per-worker figure plus 25% for the censoring the bench leaves
+out. It depends on `render_decode_threads`, so the two are measured
+together.
+
 ### `render_memory_reserve_mb`
 
 Memory left out of the cap's arithmetic for everything else on the
 machine (desktop, browser, the detector's own session). **2048**.
+
+### `render_decode_threads`
+
+Decoder threads per render worker. **None** keeps OpenCV's own choice,
+one per core for every worker; **0** shares the cores out (cores /
+workers); a number sets it.
+
+OpenCV's FFmpeg backend gives each capture one decoder thread per core,
+and frame threading keeps a decoded frame in flight per thread. For one
+capture that is the fastest choice. A render opens one capture per
+worker, so 8 workers on a 16-core machine ran 128 decoder threads and
+held up to 128 frames in flight, competing for the same 16 cores: memory
+grows with the worker count while throughput does not. Sharing the
+cores out bounds both, which can let the memory cap allow more workers
+at 4K. None stays the default until measurements across machines say
+otherwise; `tune_machine.sh` measures both on yours and proposes 0 only
+when it is clearly faster, or as fast and clearly lighter. An OpenCV
+older than 4.6 cannot set it and decodes as before. Output frames are
+identical either way.
 
 ### `render_chunk_seconds`
 
@@ -3316,7 +3455,10 @@ same verdict, which every resume did before.
 
 ### `encode_video_codec`, `encode_crf`, `encode_preset`, `render_chunk_container`
 
-`'libx264'`, **17**, `'fast'`, `'mkv'`.
+`'libx264'`, **17**, `'fast'`, `'mkv'`. These work on any machine; a
+machine with a faster encoder sets its own in its machine config (see
+"Machine config"), which is where `betabench encode` and
+`tune_machine.sh` put a recommendation.
 
 CRF is quality: lower is better and larger, 17 is visually lossless for
 most material, 0 is truly lossless, 51 is worst. Preset is the

@@ -55,6 +55,7 @@ import threading
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+import betautils_machine as bu_machine
 import betautils_reverse as bu_reverse
 
 
@@ -1332,6 +1333,7 @@ def _collect_validation_warnings():
     _validate_class_suppression_zero_margin( warnings, valid_classes )
     _warn_promotion_evidence_also_suppresses( warnings )
     _warn_reverse( warnings )
+    _warn_machine_config( warnings )
     return warnings
 
 
@@ -1923,6 +1925,49 @@ def _validate_render_settings( errors ):
         errors.append( "render_verify_frame_counts must be True/False, got %r"%(verify,) )
 
 
+def _whole_number( value ):
+    return isinstance( value, int ) and not isinstance( value, bool )
+
+
+def _validate_hardware_settings( errors ):
+    """The hardware settings that came with the machine config."""
+    threads = getattr( betaconfig, 'render_decode_threads', None )
+    if threads is not None and not ( _whole_number( threads ) and threads >= 0 ):
+        errors.append( "render_decode_threads must be None (OpenCV's own thread count), 0 (the cores "
+            "shared out between render workers) or a whole number of threads, got %r"%(threads,) )
+
+    prefetch = getattr( betaconfig, 'detection_prefetch_frames', 0 )
+    if not ( _whole_number( prefetch ) and prefetch >= 0 ):
+        errors.append( "detection_prefetch_frames must be a whole number of frames, 0 to decode and "
+            "detect in turn, got %r"%(prefetch,) )
+
+    scan_workers = getattr( betaconfig, 'structure_scan_workers', 0 )
+    if not ( _whole_number( scan_workers ) and scan_workers >= 0 ):
+        errors.append( "structure_scan_workers must be a whole number, 0 for auto, got %r"%(scan_workers,) )
+
+    gpu = getattr( betaconfig, 'gpu_enabled', 0 )
+    if gpu not in ( 0, 1 ):   # True and False compare equal to 1 and 0
+        errors.append( "gpu_enabled must be 1 (GPU) or 0 (CPU), got %r"%(gpu,) )
+
+    device = getattr( betaconfig, 'cuda_device_id', 0 )
+    if not ( _whole_number( device ) and device >= 0 ):
+        errors.append( "cuda_device_id must be a GPU index (0 for the first), got %r"%(device,) )
+
+
+def _validate_machine_config( errors ):
+    """Lines of ../resources/betaconfig_machine.py that could not be applied."""
+    loaded = bu_machine.LOADED
+    if loaded is None:
+        return
+    errors.extend( loaded.problems )
+
+
+def _warn_machine_config( warnings ):
+    warning = bu_machine.encoder_scale_warning( bu_machine.LOADED )
+    if warning:
+        warnings.append( warning )
+
+
 def _validate_input_delete_probability_range( errors ):
     """Check that input_delete_probability is between 0 and 1."""
     if not ( 0 <= getattr( betaconfig, 'input_delete_probability', 0 ) <= 1 ):
@@ -2183,9 +2228,11 @@ def _collect_validation_errors():
     _validate_blur_approximation( errors )
     _validate_cross_size_dedup( errors )
     _validate_render_settings( errors )
+    _validate_hardware_settings( errors )
     _validate_detector_backend( errors )
     _validate_reverse( errors, valid_classes )
     _validate_person_backend( errors )
+    _validate_machine_config( errors )
 
     return errors
 
@@ -2212,6 +2259,9 @@ def validate_config():
     import betautils_log as bu_log
     logger = bu_log.get_logger()
 
+    if bu_machine.LOADED is not None:
+        logger.info( bu_machine.LOADED.describe() )
+
     warnings = _collect_validation_warnings()
     if warnings:
         logger.warning( "betaconfig.py validation warnings (not fatal, review when convenient):" )
@@ -2223,6 +2273,10 @@ def validate_config():
         logger.error( "betaconfig.py failed validation, fix the following and re-run:" )
         for err in errors:
             logger.error( "  - %s"%(err) )
+        loaded = bu_machine.LOADED
+        if loaded is not None and loaded.applied:
+            logger.error( "  (%s sets %s; an error naming one of those is about its value there, "
+                          "not betaconfig.py's)"%( loaded.path, ', '.join( loaded.set_names() ) ) )
         raise SystemExit(1)
 
     logger.debug( "betaconfig.py validated: %d warning(s), 0 errors"%(len( warnings )) )

@@ -325,12 +325,15 @@ def persons_for_video( source, fname, file_hash, preview_suffix, preview_offset_
                  else source.num_frames / source.vid_fps - preview_offset_seconds )
         total = max( 1, int( span * sample_fps ) )
     capture = source.open_capture()
+    samples = bu_video.prefetched( bu_video.iter_sampled_frames(
+                                       capture, source.vid_fps, sample_fps,
+                                       offset_seconds=preview_offset_seconds,
+                                       num_frames=source.num_frames, max_seconds=preview_max_seconds,
+                                       start_sample_index=start_index ),
+                                   getattr( betaconfig, 'detection_prefetch_frames', 0 ) )
     try:
         with bu_log.ProgressReporter( "persons", total=total ) as progress:
-            for sample_index, timestamp, frame in bu_video.iter_sampled_frames(
-                    capture, source.vid_fps, sample_fps, offset_seconds=preview_offset_seconds,
-                    num_frames=source.num_frames, max_seconds=preview_max_seconds,
-                    start_sample_index=start_index ):
+            for sample_index, timestamp, frame in samples:
                 if stop_event is not None and stop_event.is_set():
                     raise Stopped()
                 bu_signals.check()
@@ -353,6 +356,7 @@ def persons_for_video( source, fname, file_hash, preview_suffix, preview_offset_
         logger.info( "person pass: checkpointed %s at sample %d before stopping"%( fname, next_index ) )
         raise
     finally:
+        samples.close()
         capture.release()
     save_cache( cache_path, sample_times, people )
     try:

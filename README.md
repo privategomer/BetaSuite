@@ -202,10 +202,19 @@ Reference: [Detector backend](CONFIG_REFERENCE.md#detector-backend)
 
 ### Hardware
 
+These, the batch sizes and the render and encode settings below are this
+computer's to set: put them in `../resources/betaconfig_machine.py`,
+outside the repository, rather than `betaconfig.py`.
+`python3 tools/setup/machine_config.py` shows what is set and where it
+comes from, and `tools/bench/tune_machine.sh` measures them on this
+machine. Reference: [Machine config](CONFIG_REFERENCE.md#machine-config-this-computers-hardware-settings)
+
 | Setting | Default | What it does |
 |---|---|---|
 | `gpu_enabled` | `1` | request CUDA. A CPU provider is always added as a fallback, and the provider actually in use is logged and recorded in the stats row |
 | `cuda_device_id` | `0` | which GPU |
+| `detection_prefetch_frames` | `8` | frames decoded ahead of the model on a second thread. `0` decodes and detects in turn |
+| `structure_scan_workers` | `0` | `betabench structure-scan` files at once. `0` is one per core, at most 4 |
 
 ### Detection sampling
 
@@ -420,6 +429,7 @@ Reference: [Area safety and time safety](CONFIG_REFERENCE.md#area-safety-and-tim
 | Setting | Default | What it does |
 |---|---|---|
 | `render_workers` | `0` | chunks encoded at once. `0` is auto (CPU/2, capped at 8) |
+| `render_decode_threads` | `None` | decoder threads per worker. `None` is OpenCV's own (one per core), `0` shares the cores out |
 | `render_chunk_seconds` | `600` | seconds of video per resumable chunk. `0` disables chunking |
 | `render_chunk_container` | `'mkv'` | container for chunks and the intermediate |
 | `render_verify_frame_counts` | `True` | reject a chunk that is valid but short |
@@ -676,7 +686,7 @@ python3 tools/bench/betabench.py --help
 | `hysteresis` | what are the score distributions? | `min_prob`, `min_prob_continue` |
 | `structure` | per source file: cut rate, subjects on screen, spatial layout | which source folder each file belongs in |
 | `structure-scan` | whole-file shot-cut scans, in parallel; `--geometry-slices N` adds detection-only slices | the inputs `structure` reads, reused by the next real run |
-| `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure-scan --workers` |
+| `concurrency` | what running the shot-cut scan alongside detection saves here, and scan throughput at 1, 2, 4+ workers (on two files per worker by default; `--max-videos` overrides) | whether the overlap pays on this machine, and `structure_scan_workers` |
 | `encode` | render encode speed and quality (SSIM, PSNR) per encoder: current x264 settings, faster x264 presets, NVENC at several cq values; real worker count, real chunk command; not part of `all` | `encode_video_codec`, `encode_preset`, `encode_crf`, and `render_workers` if NVENC caps sessions |
 | `reverse` | what reverse mode would cost to render here, before it is built: each frame style and window blend on real frames, the real pipeline with and without a triggered frame layer, and the share of each file's runtime a trigger would hold on | the reverse-mode frame-style default, and whether it is affordable |
 | `persons` | each person-segmentation model and size on real frames: ms per frame per batch size, people found, preview images with the outlines drawn | `person_backend`'s `model_variant` and `batch_size` |
@@ -753,6 +763,35 @@ for all four.
 They run one at a time after the parallel analysis steps have finished,
 never alongside them. The run ends with a list of where each
 recommendation was written.
+
+Every step's wall time and peak memory are in the summary and in
+`<step>.meter.json` beside its log; a step the system killed for memory
+(exit 137) is named as that, with the memory it had reached. A parallel
+step starts only when its expected peak (the last run's, plus 25%) fits
+beside the ones already running, within 85% of the memory free when the
+batch starts; `--memory-budget MB` sets that budget and `--jobs N` the
+most at once. The cache-reading tools hold one video's detections at a
+time and keep the rest compact, so their memory follows the largest
+video rather than the library.
+
+To see where one tool's time or memory goes, as flame graphs:
+
+```bash
+uv pip install -r requirements-dev.txt                         # once: memray and py-spy (profile.sh offers to)
+tools/bench/profile.sh tools/analysis/analyze_cut_bursts.py    # both, one run each
+PROFILE=memory tools/bench/profile.sh tools/tuning/auto_tune.py
+PROFILE_PID=12345 tools/bench/profile.sh                       # a step already running
+```
+
+Output goes to `../output/benchmarks/profile_<timestamp>_<tool>/`. The
+memory flame graph opens at the moment of peak memory. Without the two
+packages it falls back to tracemalloc and cProfile.
+
+Setup makes `.venv` with uv, which leaves pip out of it, so a bare
+`pip install` inside it reaches the system's Python instead and is
+refused (`externally-managed-environment`). Use `uv pip install` with the
+venv active, or `.venv/bin/python -m pip install` in a venv made with
+`python3 -m venv`.
 
 A *configuration* is one backend at one detection size under one
 detection key, so `nudenet_v3/320n @320` and `nudenet_v3/640m @640` are
@@ -852,6 +891,7 @@ from the difference.
 | `tools/analysis/run_all_analysis.sh` | runs `summarize_run.py` and the analysis suite in one go |
 | `tools/bench/structure_survey.sh` | measures every source file and writes a reviewable script sorting them into profile folders |
 | `tools/bench/reverse_cost.sh` | one click for `betabench reverse`: logs everything, replays the summary |
+| `tools/bench/profile.sh` | any Python tool's CPU and memory as flame graphs (py-spy, memray; tracemalloc and cProfile without them), or a running step's by pid |
 | `tools/maintenance/cleanup_output.sh` | frees disk under `../output`: shows what each category would free, then asks before removing the renders of decided A/B rounds, the renders of undecided rounds untouched for 14 days (one at a time), round folders that never finished ranking, and an oversized `betasuite.log` (compressed, five copies kept). Never touches stats, caches, analysis runs, benchmark results or any round's ranking, clips, verdicts, decision or logs |
 
 Every tool that replays the pipeline imports the real
@@ -921,7 +961,7 @@ To cut a release, note your changes under a `## Unreleased` heading in
 `CHANGELOG.md` as you go (optional), then run:
 
 ```bash
-pip install -r requirements-dev.txt      # once: the semver package
+uv pip install -r requirements-dev.txt   # once: semver, plus the profilers
 python3 tools/release/release.py         # or --dry-run to see the plan
 ```
 

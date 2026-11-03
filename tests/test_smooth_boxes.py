@@ -174,6 +174,36 @@ class TestSmoothBoxesTrackMatching( _UnconfirmedTracksRenderMixin, unittest.Test
         self.assertEqual( result, [] )
         self.assertEqual( _stats['interpolated'], 0 )
 
+    def test_a_distance_tie_goes_to_the_earlier_box_whatever_the_addresses( self ):
+        # Two boxes exactly as far from one track. The tie used to be
+        # broken by id(), a memory address, so the same detections
+        # tracked one way in one run and the other way in the next (a
+        # replay differed from the run it replayed). Reversing what id()
+        # returns must not change who continues the track: the earlier
+        # box in the frame does.
+        import builtins
+        from unittest import mock
+
+        def track_of( reverse_addresses ):
+            boxes = [
+                _box( 'exposed_breast', 0.0, 0.3, 0.1, 100, 100, 50, 50 ),
+                _box( 'exposed_breast', 0.11, 0.41, 0.21, 110, 100, 50, 50 ),
+                _box( 'exposed_breast', 0.11, 0.41, 0.21, 90, 100, 50, 50 ),
+            ]
+            if reverse_addresses:
+                with mock.patch.object( bu_track, 'id', create=True,
+                                        new=lambda thing: -builtins.id( thing ) ):
+                    result, _stats = bu_track.smooth_boxes( boxes )
+            else:
+                result, _stats = bu_track.smooth_boxes( boxes )
+            real = { box['_raw_x']: box['_track_id'] for box in result if not box.get( 'interpolated' ) }
+            return real
+
+        for reverse_addresses in ( False, True ):
+            tracks = track_of( reverse_addresses )
+            self.assertEqual( tracks[110], tracks[100], reverse_addresses )
+            self.assertNotEqual( tracks[90], tracks[100], reverse_addresses )
+
 
 class TestPairedStyleUnambiguousNearest( _UnconfirmedTracksRenderMixin, unittest.TestCase ):
     """
