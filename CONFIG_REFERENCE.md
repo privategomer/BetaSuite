@@ -2983,7 +2983,15 @@ than these numbers suggest; re-run `betabench reverse` (the hub's
   his outline anywhere in his track stays obscured, and the two models
   can disagree about where a body ends. Outlines are coarse: the model's
   own mask is 160 cells along the frame's longer side at `picture_size`
-  640 (24 px per cell at 4K), smoothed when scaled up
+  640 (24 px per cell at 4K), smoothed when scaled up.
+  `tools/analysis/analyze_person_windows.py` (an analysis hub step)
+  measures how often this happens on your footage, from a reverse run's
+  person caches: frames with a man shown, every outline by how it was
+  attributed (shown, female evidence, no evidence, mixed, merged-outline
+  backstop) and where each evidence detection fell (inside one outline,
+  two or more, or none). Many outlines with no evidence point at a
+  person model that tells men from women itself; much male evidence
+  outside every outline points at a larger person model size
 - **Overlapping bodies.** A woman is cut out of a man only when the
   model outlines her separately. When it merges them and none of her
   `female_labels` is detected inside the merged outline at that sample,
@@ -3026,10 +3034,13 @@ IoU 1.00 and mask IoU 0.98 to 0.997.
 **Cost.** One more model pass per sampled frame, overlapped with
 detection. `betabench persons` (or the analysis hub's `--with-persons`)
 times every size on your footage and writes preview images with the
-outlines drawn, for choosing a size on this machine. Published figures
-put n at about 2 ms, s at 3 to 4 ms and m at about 7 ms per 640 px frame
-on a 3070-class GPU; at 9 fps sampling, an hour of video is about 32,000
-frames.
+outlines drawn, for choosing a size on this machine. Through the whole
+pass (letterbox, model, masks) on real source frames, batch 4, on a
+Ryzen 9 5900HS with an RTX 3070 Laptop GPU and onnxruntime-gpu 1.26, over
+two runs: s 8.9 to 10.3, n 9.2 to 12.1 and m 14.7 to 16.4 ms per frame,
+with s finding as many people as m (147 and 146 on 120 frames, n 139).
+At 9 fps sampling, an hour of video is about 32,000 frames, so s adds
+about 5 minutes per hour of video where detection does not hide it.
 
 ---
 

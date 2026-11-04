@@ -2,10 +2,10 @@
 """
 analyze_label_content.py - which videos show which censored label, and which mix them.
 
-Tuning on a library that is mostly one label tunes for that label: the
-2026-10 suppression A/B picked its videos by how much the rule sets
-differ, and breast-heavy compilations dominate that number. This lists,
-from the detection caches alone (no replay, no video decode):
+Tuning on a library that is mostly one label tunes for that label: a
+suppression A/B picks its videos by how much the rule sets differ, and
+breast-heavy compilations dominate that number. This lists, from the
+detection caches alone (no replay, no video decode):
 
   - per censored label, the videos with the most seconds of it
   - the videos with the most MIXED seconds, where two censored labels

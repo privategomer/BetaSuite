@@ -884,6 +884,7 @@ from the difference.
 | `tools/tuning/ab_compare.sh` | the config against one change (suppression rules including suggested additions, `min_track_hits`, `confirm_score`, match distance, shot-cut bursts, any per-label setting) on your footage: ranks every cached video by how differently the two censor it, renders the most-changed side by side and as colour-coded outlines, lists what caused each difference (`clips.md`), waits for your verdicts, prints the config lines they choose, and offers a confirm round on videos you have not judged |
 | `tools/tuning/suppression_ab.sh` | `ab_compare.sh` with the suppression experiment |
 | `tools/analysis/analyze_label_content.py` | which videos show which censored label, and which mix them |
+| `tools/analysis/analyze_person_windows.py` | reverse mode's person windows on your footage: how often a man is shown, and why the rest stay hidden |
 | `tools/analysis/compare_effectiveness.py` | two detection configurations of one preview slice (sizes or sample rate), compared as exposure events each one alone found |
 | `tools/analysis/analyze_*.py` | read-only reports over cached detections: jitter, track breaks, style flicker, span merges, score distributions, suppression pairs, cut bursts |
 | `tools/analysis/summarize_run.py` | where a finished run's wall clock went, and what it detected, per configuration |

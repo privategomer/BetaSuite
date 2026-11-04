@@ -460,7 +460,7 @@ def _centre( raw ):
     return raw['x'] + raw['w']/2.0, raw['y'] + raw['h']/2.0
 
 
-def _sample_evidence( people, evidence, male_labels, female_labels ):
+def _sample_evidence( people, evidence, male_labels, female_labels, tally=None ):
     """
     For each person at one sample: (male vote, female vote, female points).
 
@@ -469,12 +469,19 @@ def _sample_evidence( people, evidence, male_labels, female_labels ):
     of them it belongs to, so it votes for neither. Female points are
     every female detection centre inside the person, shared or not: the
     backstop below needs them all.
+
+    tally (a collections.Counter) counts each detection by where its
+    centre fell: evidence_<male|female>_<one|shared|outside>.
     """
     holders = []
     for raw in evidence:
         x, y = _centre( raw )
         holders.append( ( raw['class_id'], ( x, y ),
                           [ index for index, person in enumerate( people ) if _inside_mask( person, x, y ) ] ) )
+    if tally is not None:
+        for label, _point, inside in holders:
+            where = 'one' if len( inside ) == 1 else ( 'shared' if inside else 'outside' )
+            tally[ 'evidence_%s_%s'%( 'male' if label in male_labels else 'female', where ) ] += 1
     result = []
     for index in range( len( people ) ):
         male = any( label in male_labels and inside == [ index ] for label, _point, inside in holders )
@@ -509,7 +516,7 @@ def _show_and_hide( people, is_male, female_points ):
     return { 'show': show, 'hide': hide }
 
 
-def male_people_by_time( sample_times, people, evidence_by_time ):
+def male_people_by_time( sample_times, people, evidence_by_time, tally=None ):
     """
     The outlines to show and to cut out at each sample time.
 
@@ -519,6 +526,15 @@ def male_people_by_time( sample_times, people, evidence_by_time ):
     it has a male vote in at least one sample and more male than female
     votes (see _sample_evidence for what votes). Then, per sample, see
     _show_and_hide.
+
+    Args:
+        tally: Optional collections.Counter for analysis: where each
+            evidence detection fell (see _sample_evidence), samples,
+            samples with people, person outlines by how their track was
+            attributed (male, female, mixed, no evidence), outlines
+            shown, outlines the backstop hid, samples with a man shown,
+            and tracks by attribution. The windows are the same with or
+            without it.
 
     Returns:
         {time_key: {'show': [person, ...], 'hide': [person, ...]}} with
@@ -539,7 +555,7 @@ def male_people_by_time( sample_times, people, evidence_by_time ):
     for t in sorted( sample_times ):
         key = _time_key( t )
         here = by_time.get( key, [] )
-        flags = _sample_evidence( here, evidence_by_time.get( key, [] ), male_labels, female_labels )
+        flags = _sample_evidence( here, evidence_by_time.get( key, [] ), male_labels, female_labels, tally )
         live = [ track for track in tracks if t - track['last_t'] <= max_gap ]
         pairs = sorted( ( ( _iou( track['last'], person ), track_index, person_index )
                           for track_index, track in enumerate( live )
@@ -569,7 +585,31 @@ def male_people_by_time( sample_times, people, evidence_by_time ):
     for key, here, sample_tracks, female_points in samples:
         is_male = [ track['male'] >= 1 and track['male'] > track['female'] for track in sample_tracks ]
         windows[key] = _show_and_hide( here, is_male, female_points )
+        if tally is not None:
+            shown = len( windows[key]['show'] )
+            tally['samples'] += 1
+            tally['samples_with_people'] += int( bool( here ) )
+            tally['samples_with_man_shown'] += int( shown > 0 )
+            tally['outlines'] += len( here )
+            tally['outlines_shown'] += shown
+            tally['outlines_backstop_hidden'] += sum( is_male ) - shown
+            for track, male in zip( sample_tracks, is_male ):
+                tally[ 'outlines_' + _attribution( track, male ) ] += 1
+    if tally is not None:
+        tally['tracks'] += len( tracks )
+        for track in tracks:
+            male = track['male'] >= 1 and track['male'] > track['female']
+            tally[ 'tracks_' + _attribution( track, male ) ] += 1
     return windows
+
+
+def _attribution( track, male ):
+    """How a person track was attributed: male, female, mixed (votes both ways, not male) or none."""
+    if male:
+        return 'male'
+    if not track['male'] and not track['female']:
+        return 'no_evidence'
+    return 'female' if not track['male'] else 'mixed'
 
 
 def male_people_in_still( people, evidence ):

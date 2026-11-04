@@ -176,7 +176,7 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
             self.assertTrue( os.path.isfile( os.path.join( folder, label + '.meter.json' ) ), label )
         self.assertIn( 'OK   analyze_jitter  (0s, peak 12 MB)', self.stdout )
         self.assertIn( '--- analyze_jitter: 0s, peak 12 MB', self.stdout )
-        self.assertEqual( len( steps ), 11, "the meter runs each tool exactly once" )
+        self.assertEqual( len( steps ), 12, "the meter runs each tool exactly once" )
 
     def test_an_oom_kill_is_named_with_the_memory_it_reached( self ):
         self.run_suite( status=1, FAKE_KILL='analyze_jitter.py' )

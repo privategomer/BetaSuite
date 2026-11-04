@@ -106,6 +106,12 @@
 #                                     (fades, flashes) would recover censoring,
 #                                     replayed per profile. Nothing is wired in
 #                                     until its numbers say so.
+#   7c. analyze_person_windows.py      Reverse mode's person windows: how
+#                                     often a man is found and shown, and
+#                                     why the rest stay hidden (no
+#                                     evidence, female evidence, missed
+#                                     bodies). Needs a reverse run's
+#                                     person caches; says so without them.
 #
 #   T. (opt-in, see above) TIMING steps, one at a time after the
 #      parallel batch, so no other step's CPU use is measured with them:
@@ -256,6 +262,7 @@ STEPS+=("analyze_jitter|${PYTHON_BIN} $SCRIPT_DIR/analyze_jitter.py $VARIANT_FLA
 STEPS+=("analyze_track_breaks|${PYTHON_BIN} $SCRIPT_DIR/analyze_track_breaks.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_style_flicker|${PYTHON_BIN} $SCRIPT_DIR/analyze_style_flicker.py $VARIANT_FLAG ${PASSTHROUGH[*]:-}")
 STEPS+=("analyze_cut_bursts|${PYTHON_BIN} $SCRIPT_DIR/analyze_cut_bursts.py $VARIANT_FLAG --json $LOG_DIR/analyze_cut_bursts.json")
+STEPS+=("analyze_person_windows|${PYTHON_BIN} $SCRIPT_DIR/analyze_person_windows.py --json $LOG_DIR/person_windows.json")
 STEPS+=("auto_tune_dry_run|${PYTHON_BIN} $CORE_DIR/tools/tuning/auto_tune.py $VARIANT_FLAG --out-dir $LOG_DIR/auto_tune --log-level $LOG_LEVEL --console-level $CONSOLE_LEVEL")
 
 # Timing steps: run one at a time, after the parallel batch and before
@@ -528,6 +535,7 @@ where "structure: per-file table" "$LOG_DIR/betabench_cache.log"
 where "which videos show which label:" "$LOG_DIR/label_content.json"
 where "near-duplicate videos:" "$LOG_DIR/analyze_label_content.log"
 where "cut-burst merge, best variant:" "$LOG_DIR/analyze_cut_bursts.json"
+where "reverse mode, men found:" "$LOG_DIR/person_windows.json"
 where "encoder speed and quality:" "$LOG_DIR/betabench_encode/results.json"
 where "reverse-mode cost:" "$LOG_DIR/betabench_reverse/results.json"
 where "person models (speed, masks):" "$LOG_DIR/betabench_persons/results.json"

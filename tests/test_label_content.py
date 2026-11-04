@@ -1,7 +1,7 @@
 """
 test_label_content.py - which videos show which censored label.
 
-The 2026-10 suppression A/B picked its videos by total difference, and a
+A suppression A/B picks its videos by total difference, and a
 library that is three-quarters breast picks breast videos. label_content
 measures each label's on-screen seconds from the raw caches, and mixed
 seconds where two censored labels share a sample; analyze_label_content
