@@ -583,7 +583,12 @@ def _check_reverse_frame_style( frame_style, errors ):
         errors.append( "%s %s/%s is too slow over a whole frame (measured 0.9 to 4.8 s per 4K frame "
                        "on one core); use blur 'triple_box' or 'box', or pixel 'mosaic'"%(
                            where, style_type, variant ) )
-    _check_one_style_dict( frame_style, where, errors )
+    dim = frame_style.get( 'dim', 0 )
+    if isinstance( dim, bool ) or not isinstance( dim, ( int, float ) ) or not 0 <= dim <= 1:
+        errors.append( "%s['dim'] must be a number from 0 (no dimming) to 1 (black), got %r"%(
+            where, dim ) )
+    _check_one_style_dict( { key: value for key, value in frame_style.items() if key != 'dim' },
+                           where, errors )
 
 
 def _check_reverse_trigger( trigger, valid_classes, errors ):

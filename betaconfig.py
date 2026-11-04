@@ -387,7 +387,8 @@ items_to_censor = [
 
 reverse = {
     'enabled': False,
-    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 20 },
+    # dim: share of the frame style's brightness taken off, 0 to 1
+    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 7, 'dim': 0.4 },
     # 'passthrough' | 'obscure'
     'empty_frame': 'passthrough',
     'fade_seconds': 0.25,
@@ -404,12 +405,16 @@ reverse = {
         # {label: reverse-only item_overrides keys}
         'overrides': {},
     },
-    # Never censored
+    # Never censored. Area safety 1.0 doubles a window's width and height
     'windows': {
-        'face_femme': {},
-        'face_masc': {},
-        'exposed_chest': {},
-        'exposed_penis': {},
+        'face_femme':    { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'face_masc':     { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'exposed_chest': { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'exposed_penis': { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
     },
     # Whole male bodies, from person_backend masks
     'person_windows': {

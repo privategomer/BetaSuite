@@ -2807,7 +2807,7 @@ unchanged byte for byte.
 | Setting | Default | What it does |
 |---|---|---|
 | `reverse['enabled']` | `False` | the switch. `--reverse on/off` overrides it for one run |
-| `reverse['frame_style']` | blur `triple_box`, strength 20 | one style dict: `blur` (`triple_box` or `box`), `pixel` (`mosaic`, `square`) or `bar`. Strength is a percent of the frame's shorter side, so 20 is about a 216 px kernel at 1080p |
+| `reverse['frame_style']` | blur `triple_box`, strength 7, `dim` 0.4 | one style dict: `blur` (`triple_box` or `box`), `pixel` (`mosaic`, `square`) or `bar`. Strength is a percent of the frame's shorter side, so 7 is about a 76 px kernel at 1080p. Optional `dim`, 0 (off) to 1 (black): the share of brightness taken off whatever the style drew |
 | `reverse['empty_frame']` | `'passthrough'` | `'passthrough'`: untriggered frames are left clear. `'obscure'`: every frame gets the frame style |
 | `reverse['fade_seconds']` | `0.25` | fade between clear and obscured. 0 is a hard switch |
 | `reverse['trigger']['labels']` | `None` | labels whose detections switch the frame style on. `None` means every censored label, so a window (a face) never triggers by itself |
@@ -2815,7 +2815,7 @@ unchanged byte for byte.
 | `reverse['trigger']['hold_seconds']` | `0.5` | how long the frame stays obscured after each trigger detection |
 | `reverse['censor']['labels']` | `None` | labels censored inside a triggered frame, each with its own style. `None` means `items_to_censor` |
 | `reverse['censor']['overrides']` | `{}` | `{label: keys}` for reverse mode only: any `item_overrides` key, look keys included, e.g. a different style list while the frame is blurred |
-| `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis` | `{label: entry}`, never censored. `{}` inherits every tuning key |
+| `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis`, each with area safety 1.0 (twice the detection's width and height), an ellipse and feather 0.3 | `{label: entry}`, never censored. `{}` inherits every tuning key |
 | `reverse['person_windows']['enabled']` | `True` (shipped; `False` when the key is absent) | whole male bodies left uncensored, from [person masks](#person-segmentation) |
 | `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_chest` | detections that make a person male |
 | `reverse['person_windows']['female_labels']` | `face_femme`, `exposed_breast`, `exposed_vulva` | detections that count against it |
@@ -2903,6 +2903,35 @@ of the detection under the frame style instead of clear.
 `time_safety` is inherited, which keeps a window open briefly after the
 target leaves. Override it in the window if that shows too much.
 
+**Window size.** A window is the detection's box unless it sets
+`width_area_safety` / `height_area_safety`, which grow it about its
+centre: 1.0 doubles each side (four times the area), 0.41 doubles the
+area. The shipped windows use 1.0. Detector boxes are tight, so at 0 a
+busy frame becomes a scatter of face-sized holes in the frame style with
+too little around them to tell what is going on. The cost is the
+direction reverse mode treats as worse: everything inside the larger box
+is shown, including unlabelled skin beside a face. Censored labels still
+win where they overlap a window, and person windows are unaffected.
+
+**Window edges.** The shipped windows are ellipses with feather 0.3,
+which read as soft spotlights rather than rectangles cut out of the
+frame. In a box twice the detection's size, the whole detected box stays
+fully clear and about half the window is clear before the fade begins;
+the fade runs out to the ellipse's edge, and the window's corners are the
+frame style. Feather 0.4 starts dimming the detection's own corners.
+
+**Frame style strength and dim.** The frame style hides detail; how much
+of the scene it leaves readable decides whether the windows make sense.
+At strength 20 (about a 216 px kernel at 1080p) the background turned to
+smears of colour, and windows floating in them were hard to place. 7
+still removes detail but leaves bodies and the room recognisable. `dim`
+then darkens the frame layer so the windows stand out: 0.4 leaves 60% of
+the brightness. It applies to the frame layer only (windows are restored
+from the original afterwards, censored labels keep their normal look),
+it fades in and out with the frame style, and it costs one pass over the
+frame, about 5 ms at 4K on two threads. Darkening alone hides nothing,
+so it goes with a blur or a mosaic, not instead of one.
+
 ### When the trigger fires
 
 Two sources, merged:
@@ -2958,7 +2987,7 @@ one core per value, x264 at the time):
 | `pixel` `mosaic` s4 | 11 |
 | `blur` `box` s20 | 31 |
 | `bar` | 45 |
-| `blur` `triple_box` s20 | 78 |
+| `blur` `triple_box` s20 | 78 (the earlier default) |
 | `pixel` `hex` s4 | 930 (rejected by validation) |
 | `blur` `gaussian` s20 | 4,765 (rejected by validation) |
 
@@ -2967,8 +2996,9 @@ render), output 0.48x the size. 63% of the library's runtime would be
 triggered, so passthrough saves less than it might. NVENC has since made
 encoding cheaper, so the frame style is a larger share of render time
 than these numbers suggest; re-run `betabench reverse` (the hub's
-`--with-reverse`) for current figures. `box` or `mosaic` is the lever if
-`triple_box` costs too much.
+`--with-reverse`) for current figures; its frame-layer rows include the
+shipped style, the same without `dim`, and strength 20. `box` or
+`mosaic` is the lever if `triple_box` costs too much.
 
 ### Limitations
 

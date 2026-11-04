@@ -1478,12 +1478,25 @@ def _censored_windows( boxes, img_w, img_h ):
 
 
 def obscure_full_frame( image, frame_style ):
-    """Render frame_style over the whole of image, in place, and return it."""
+    """
+    Render frame_style over the whole of image, in place, and return it.
+
+    frame_style's optional 'dim' (0 to 1) then takes that share of the
+    brightness off the result, so windows stand out against a background
+    a lighter blur alone would leave as busy as the scene. It darkens
+    only the frame layer: windows are restored from the original after
+    this, and a fade blends the dimmed frame like any other.
+    """
     img_h, img_w = image.shape[:2]
     frame_box = { 'x': 0, 'y': 0, 'w': img_w, 'h': img_h,
                   'censor_style': dict( frame_style, feather=0 ), 'censor_shape': 'box',
                   'censor_sticker_seed': 0.5, 'label': 'reverse_frame' }
-    return censor_image( image, frame_box )
+    censor_image( image, frame_box )
+    dim = frame_style.get( 'dim' ) or 0
+    if dim:
+        # One saturating uint8 pass, rounded: about 5 ms per 4K frame.
+        cv2.convertScaleAbs( image, dst=image, alpha=1.0 - dim )
+    return image
 
 
 def censor_img_reverse( image, boxes, frame_alpha, frame_style, window_mask=None ):

@@ -3147,12 +3147,16 @@ def _log_encode_table( logger, rows, choice, decode_fps ):
 # It exists so the cost of the design can be known before it is written.
 
 # strength is a percent of the frame's shorter side under
-# censor_scale_strategy 'feature'. 20 is the plan's default frame blur,
-# about a 216 px kernel at 1080p. Pixel strength 20 would mean 216 px
+# censor_scale_strategy 'feature'. The first entry is the shipped frame
+# style (blur 7, about a 76 px kernel at 1080p, dimmed 40%) and is what the
+# pipeline rows use; 7 without dim shows what the dimming costs, and 20 is
+# the earlier default, about a 216 px kernel. Pixel strength 20 would mean 216 px
 # blocks, a 9x5 grid at 1080p, which nobody would choose for a frame; 4 is
 # about 43 px blocks. Block cost barely depends on block size, so the
 # choice affects the look, not this measurement.
 REVERSE_FRAME_STYLES = (
+    { 'type': 'blur',  'method': 'triple_box', 'strength': 7, 'dim': 0.4 },
+    { 'type': 'blur',  'method': 'triple_box', 'strength': 7 },
     { 'type': 'blur',  'method': 'triple_box', 'strength': 20 },
     { 'type': 'blur',  'method': 'box',        'strength': 20 },
     { 'type': 'blur',  'method': 'gaussian',   'strength': 20 },
@@ -3166,7 +3170,7 @@ REVERSE_PIPELINE_STYLE = REVERSE_FRAME_STYLES[0]
 # from a full 56-video run.
 REVERSE_WINDOW_AREA_FRACTIONS = ( ( 'p50', 0.0105 ), ( 'p99', 0.1031 ) )
 REVERSE_WINDOW_SHAPE = 'ellipse'
-REVERSE_WINDOW_FEATHER = 0.25
+REVERSE_WINDOW_FEATHER = 0.3
 REVERSE_CENSORED_WINDOW_STYLE = { 'type': 'pixel', 'pattern': 'mosaic', 'strength': 30 }
 
 # One call slower than this is timed once rather than in repeated trials.
@@ -3177,13 +3181,6 @@ REVERSE_SLOW_CALL_MS = 250.0
 
 REVERSE_SUMMARY_BEGIN = "=== reverse mode cost: summary ==="
 REVERSE_SUMMARY_END = "=== end of reverse mode summary ==="
-
-
-def _full_frame_box( width, height, style ):
-    """A box covering the whole frame, for the frame layer."""
-    return { 'x': 0, 'y': 0, 'w': width, 'h': height, 'censor_style': style,
-             'censor_shape': 'box', 'censor_sticker_seed': 0.5,
-             'label': 'reverse_frame', 'score': 1.0, 'start': 0.0, 'end': 1.0 }
 
 
 def reverse_window_rects( width, height, area_fraction, count ):
@@ -3232,7 +3229,7 @@ def reverse_composite( frame, frame_style, show_rects ):
     import betautils_censor as bu_censor
     height, width = frame.shape[:2]
     out = frame.copy()
-    bu_censor.censor_image( out, _full_frame_box( width, height, frame_style ) )
+    bu_censor.obscure_full_frame( out, frame_style )
     for rect in show_rects:
         reverse_blend_window( out, frame, rect, REVERSE_WINDOW_SHAPE, REVERSE_WINDOW_FEATHER )
     return out
@@ -3241,7 +3238,8 @@ def reverse_composite( frame, frame_style, show_rects ):
 def _style_label( style ):
     variant = style.get( 'pattern' ) or style.get( 'method' ) or 'solid'
     strength = style.get( 'strength' )
-    return "%s/%s%s"%( style['type'], variant, '' if strength is None else ' s%g'%( strength, ) )
+    return "%s/%s%s%s"%( style['type'], variant, '' if strength is None else ' s%g'%( strength, ),
+                         ' dim %g'%( style['dim'], ) if style.get( 'dim' ) else '' )
 
 
 def _time_call_ms( call, trials, repeats ):
@@ -3314,13 +3312,12 @@ def _reverse_op_costs( frames, args, logger ):
         record( "copy original (needed by every window)", lambda: frame.copy() )
 
         for style in REVERSE_FRAME_STYLES:
-            box = _full_frame_box( width, height, style )
             working = frame.copy()
             record( "frame layer: %s"%( _style_label( style ), ),
-                    lambda box=box, working=working: bu_censor.censor_image( working, box ) )
+                    lambda style=style, working=working: bu_censor.obscure_full_frame( working, style ) )
 
         blurred = frame.copy()
-        bu_censor.censor_image( blurred, _full_frame_box( width, height, REVERSE_PIPELINE_STYLE ) )
+        bu_censor.obscure_full_frame( blurred, REVERSE_PIPELINE_STYLE )
         for size_label, area_fraction in REVERSE_WINDOW_AREA_FRACTIONS:
             rects = reverse_window_rects( width, height, area_fraction, 2 )
             working = blurred.copy()

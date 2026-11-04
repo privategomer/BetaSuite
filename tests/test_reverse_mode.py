@@ -166,6 +166,43 @@ class TestCompositor( ConfigHarness ):
         out = bu_censor.censor_img_reverse( _noise(), [], 1.0, dict( BLACK_FRAME, feather=0.5 ) )
         self.assertTrue( np.all( out == 0 ) )
 
+    def test_dim_darkens_the_frame_style_and_nothing_else( self ):
+        source = _noise()
+        window = _box( 10, 10, 40, 30, SHOW )
+        censored = _box( 80, 50, 40, 40, MOSAIC )
+        plain = bu_censor.censor_img_reverse( source.copy(), [ window, censored ], 1.0, BLUR_FRAME )
+        dimmed = bu_censor.censor_img_reverse( source.copy(), [ window, censored ], 1.0,
+                                               dict( BLUR_FRAME, dim=0.4 ) )
+        outside = np.ones( ( FRAME_H, FRAME_W ), dtype=bool )
+        outside[ 10:40, 10:50 ] = outside[ 50:90, 80:120 ] = False
+        expected = np.round( plain.astype( np.float64 ) * 0.6 )
+        self.assertLessEqual( np.abs( dimmed[outside] - expected[outside] ).max(), 1.0,
+                              "the frame style, 40% darker" )
+        np.testing.assert_array_equal( dimmed[ 10:40, 10:50 ], source[ 10:40, 10:50 ],
+                                       "a show window is the source, never dimmed" )
+        np.testing.assert_array_equal( dimmed[ 50:90, 80:120 ], plain[ 50:90, 80:120 ],
+                                       "a censored label keeps its normal look" )
+
+    def test_no_dim_is_the_frame_style_exactly( self ):
+        source = _noise()
+        for frame_style in ( dict( BLUR_FRAME, dim=0 ), dict( BLUR_FRAME, dim=0.0 ) ):
+            np.testing.assert_array_equal(
+                bu_censor.censor_img_reverse( source.copy(), [], 1.0, frame_style ),
+                bu_censor.censor_img_reverse( source.copy(), [], 1.0, BLUR_FRAME ) )
+        self.assertTrue( np.all( bu_censor.censor_img_reverse( source.copy(), [], 1.0,
+                                                              dict( BLUR_FRAME, dim=1 ) ) == 0 ) )
+
+    def test_dim_darkens_whatever_the_frame_style_drew( self ):
+        out = bu_censor.censor_img_reverse( _noise(), [], 1.0, dict( WHITE_BAR, dim=0.4 ) )
+        self.assertTrue( np.all( out == 153 ), "a white bar dimmed 40%" )
+
+    def test_a_fade_blends_the_dimmed_frame( self ):
+        source = _noise()
+        full = bu_censor.censor_img_reverse( source.copy(), [], 1.0, dict( BLUR_FRAME, dim=0.5 ) )
+        half = bu_censor.censor_img_reverse( source.copy(), [], 0.5, dict( BLUR_FRAME, dim=0.5 ) )
+        expected = 0.5 * full.astype( np.float64 ) + 0.5 * source.astype( np.float64 )
+        self.assertLessEqual( np.abs( half - expected ).max(), 1.0 )
+
     def test_a_hard_edged_show_window_is_exactly_the_source( self ):
         source = _noise()
         out = bu_censor.censor_img_reverse( source.copy(), [ _box( 10, 10, 40, 30, SHOW ) ],
@@ -319,6 +356,48 @@ class TestResolution( ConfigHarness ):
         settings = bu_config.get_label_settings( 'exposed_breast' )
         self.assertEqual( settings['min_prob'], 0.21 )
         self.assertEqual( settings['censor_shape'], 'circle' )
+
+    def _rendered_box( self ):
+        step = 1.0 / betaconfig.video_censor_fps
+        raw = [ _raw( 'exposed_breast', 0.9, k * step, x=400, y=300, w=100, h=80 ) for k in range( 6 ) ]
+        boxes, _stats = bu_track.prepare_boxes_for_render( raw, 1920, 1080, style_seed='seed' )
+        ( box, ) = { ( b['x'], b['y'], b['w'], b['h'] ) for b in boxes if b['label'] == 'exposed_breast' }
+        return box
+
+    def test_a_window_area_safety_grows_it_about_its_centre( self ):
+        # 1.0 doubles both sides, centred on the detection: the shipped
+        # windows, so the frame style is not a field of detector-sized holes.
+        self.as_window( { 'width_area_safety': 1.0, 'height_area_safety': 1.0 } )
+        self.assertEqual( self._rendered_box(), ( 350, 260, 200, 160 ) )
+        self.as_window( { 'width_area_safety': 0.0, 'height_area_safety': 0.0 } )
+        self.assertEqual( self._rendered_box(), ( 400, 300, 100, 80 ) )
+
+    def test_the_shipped_windows_are_twice_the_detection_and_soft_edged( self ):
+        import importlib.util
+        # A separate module object: the shipped file, untouched by any test.
+        spec = importlib.util.spec_from_file_location( 'shipped_betaconfig', betaconfig.__file__ )
+        module = importlib.util.module_from_spec( spec )
+        spec.loader.exec_module( module )
+        shipped = module.reverse['windows']
+        self.assertEqual( { label: ( entry.get( 'width_area_safety' ), entry.get( 'height_area_safety' ),
+                                     entry.get( 'censor_shape' ), entry.get( 'censor_style' ) )
+                            for label, entry in shipped.items() },
+                          { label: ( 1.0, 1.0, 'ellipse', { 'type': 'show', 'feather': 0.3 } )
+                            for label in shipped } )
+
+    def test_a_soft_window_keeps_the_whole_detection_clear( self ):
+        # The feathered ellipse of a doubled window fades only outside
+        # the detected box: what was detected is shown in full.
+        self.as_window( { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                          'censor_style': { 'type': 'show', 'feather': 0.3 } } )
+        step = 1.0 / betaconfig.video_censor_fps
+        raw = [ _raw( 'exposed_breast', 0.9, k * step, x=60, y=40, w=40, h=30 ) for k in range( 6 ) ]
+        boxes, _stats = bu_track.prepare_boxes_for_render( raw, FRAME_W, FRAME_H, style_seed='seed' )
+        box = next( b for b in boxes if b['label'] == 'exposed_breast' )
+        source = _noise()
+        out = bu_censor.censor_img_reverse( source.copy(), [ box ], 1.0, BLACK_FRAME )
+        np.testing.assert_array_equal( out[ 40:70, 60:100 ], source[ 40:70, 60:100 ] )
+        self.assertTrue( np.all( out[ box['y'], box['x'] ] == 0 ), "the window's corner is the frame" )
 
     def test_a_censored_label_keeps_its_normal_mode_look_and_tuning( self ):
         # The point of a censored label: a breast keeps its mosaic/hex
@@ -559,6 +638,7 @@ class TestCensorKey( ConfigHarness ):
     def test_every_reverse_setting_moves_the_key( self ):
         self.assert_moves( {}, { 'frame_style': { 'type': 'pixel', 'pattern': 'mosaic', 'strength': 4 } },
                            'frame_style' )
+        self.assert_moves( {}, { 'frame_style': dict( BLUR_FRAME, dim=0.4 ) }, 'frame dim' )
         self.assert_moves( {}, { 'empty_frame': 'obscure' }, 'empty_frame' )
         self.assert_moves( {}, { 'fade_seconds': 0.5 }, 'fade_seconds' )
         self.assert_moves( {}, { 'trigger': { 'min_prob': 0.4 } }, 'trigger min_prob' )
@@ -613,6 +693,16 @@ class TestValidation( ConfigHarness ):
             self.assertTrue( self.errors(), frame_style )
         self.set_reverse( frame_style={ 'type': 'pixel', 'pattern': 'mosaic', 'strength': 4 } )
         self.assertEqual( self.errors(), [] )
+
+    def test_dim_is_a_share_of_brightness( self ):
+        for dim in ( 0, 0.4, 1, 1.0 ):
+            self.set_reverse( frame_style=dict( BLUR_FRAME, dim=dim ) )
+            self.assertEqual( self.errors(), [], dim )
+        for dim in ( -0.1, 1.01, '0.4', None, True ):
+            self.set_reverse( frame_style=dict( BLUR_FRAME, dim=dim ) )
+            self.assertTrue( any( "['dim']" in error for error in self.errors() ), dim )
+        self.set_reverse( frame_style=dict( BLUR_FRAME, dim=0.4, dimm=0.4 ) )
+        self.assertTrue( self.errors(), "a misspelt key is still caught" )
 
     def test_a_trigger_below_the_cache_floor_is_rejected( self ):
         betaconfig.global_min_prob = 0.12

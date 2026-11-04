@@ -382,12 +382,12 @@ as suppression signals and are not meant to be censored directly.
 | Setting | Default | What it does |
 |---|---|---|
 | `reverse['enabled']` | `False` | obscure the whole frame while a trigger is live, except windows (left uncensored) and censored labels (each in its own style) |
-| `reverse['frame_style']` | blur `triple_box`, 20 | the style over the whole frame (`gaussian` and `hex` are rejected as too slow) |
+| `reverse['frame_style']` | blur `triple_box`, 7, dimmed 40% | the style over the whole frame (`gaussian` and `hex` are rejected as too slow). `dim` darkens it so windows stand out |
 | `reverse['empty_frame']` | `'passthrough'` | frames with no trigger stay clear, or `'obscure'` every frame |
 | `reverse['fade_seconds']` | `0.25` | fade in and out; the fade-in finishes before the target appears |
 | `reverse['trigger']` | every censored label, `min_prob` 0.30, hold 0.5 s | what switches the frame style on. A censored box on screen holds it on too |
 | `reverse['censor']` | `items_to_censor`, no overrides | labels censored inside a triggered frame, keeping their normal-mode styles; `overrides` changes any key for reverse mode only |
-| `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis` | never censored. Tuning keys are inherited from every tier; look keys never are |
+| `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis`, each twice the detection's width and height, as a soft-edged ellipse | never censored. Tuning keys are inherited from every tier; look keys never are |
 | `reverse['person_windows']` | on | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
 | `person_backend` | `yolo11_seg`, size `s` | the person model (`n`/`s`/`m`; `rf_detr_seg` is registered but not written yet). Exported to ONNX by setup |
 

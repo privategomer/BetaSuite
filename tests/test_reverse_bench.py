@@ -163,6 +163,21 @@ class TestComposite( unittest.TestCase ):
         self.assertLess( unchanged.sum() / float( outside.sum() ), 0.05,
                          "outside every window the frame style has been applied" )
 
+    def test_the_composite_dims_like_the_render( self ):
+        frame = _textured( 90, 160, seed=4 )
+        rects = [ ( 10, 20, 30, 30 ) ]
+        style = { 'type': 'pixel', 'pattern': 'mosaic', 'strength': 10 }
+        plain = betabench.reverse_composite( frame, style, rects ).astype( np.float64 )
+        dimmed = betabench.reverse_composite( frame, dict( style, dim=0.5 ), rects ).astype( np.float64 )
+        self.assertLessEqual( np.abs( dimmed[ 60:, : ] - np.round( plain[ 60:, : ] * 0.5 ) ).max(), 1.0 )
+
+    def test_every_frame_style_row_has_its_own_label( self ):
+        labels = [ betabench._style_label( style ) for style in betabench.REVERSE_FRAME_STYLES ]
+        self.assertEqual( len( labels ), len( set( labels ) ), labels )
+        self.assertEqual( betabench.REVERSE_PIPELINE_STYLE,
+                          __import__( 'betautils_reverse' ).DEFAULTS['frame_style'],
+                          "the pipeline rows measure the shipped frame style" )
+
 
 @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the clip" )
 class TestRunSegmentsFrameTransform( unittest.TestCase ):

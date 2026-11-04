@@ -50,7 +50,7 @@ EMPTY_FRAME_POLICIES = ( 'passthrough', 'obscure' )
 
 DEFAULTS = {
     'enabled': False,
-    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 20 },
+    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 7, 'dim': 0.4 },
     'empty_frame': 'passthrough',
     'fade_seconds': 0.25,
     'trigger': {
