@@ -331,11 +331,21 @@ class TestAttribution( Harness ):
                           { 'show': [ man ], 'hide': [ stranger ] } )
 
     def test_evidence_inside_two_outlines_votes_for_neither( self ):
-        # The penis lands where the two overlap: it cannot say which of
+        # The chest lands where the two overlap: it cannot say which of
         # them it belongs to, so neither becomes a man from it.
         left, right = _person( 0, 0, 200, 300 ), _person( 120, 0, 200, 300 )
-        self.assertEqual( self.windows( [ 0.0 ], [ left, right ], [ _raw( 'exposed_penis', 140, 150, 20, 20 ) ] )[0.0],
+        self.assertEqual( self.windows( [ 0.0 ], [ left, right ], [ _raw( 'exposed_chest', 140, 150, 20, 20 ) ] )[0.0],
                           { 'show': [], 'hide': [ left, right ] } )
+
+    def test_a_penis_inside_a_womans_outline_does_not_make_her_a_man( self ):
+        # In penetration the man's penis sits inside his partner's
+        # outline. Counted as male evidence it outvoted her own face, so
+        # her whole body was shown wherever her face went undetected.
+        samples = [ _person( 0, 0, 100, 200, t=round( 0.1 * k, 3 ) ) for k in range( 3 ) ]
+        raw = [ _raw( 'face_femme', 30, 10, 40, 40, t=0.0 ), _raw( 'face_femme', 30, 10, 40, 40, t=0.1 ) ]
+        raw += [ _raw( 'exposed_penis', 40, 120, 20, 20, t=round( 0.1 * k, 3 ) ) for k in range( 3 ) ]
+        windows = self.windows( [ p['t'] for p in samples ], samples, raw )
+        self.assertEqual( [ windows[t]['show'] for t in ( 0.0, 0.1, 0.2 ) ], [ [], [], [] ] )
 
     def test_one_outline_holding_a_woman_is_not_shown_at_that_sample( self ):
         # Two bodies returned as ONE outline: female evidence inside his

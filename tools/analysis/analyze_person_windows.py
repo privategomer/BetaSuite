@@ -62,7 +62,7 @@ import betautils_tuning as bu_tuning
 
 
 PERSON_CACHE = re.compile( r'^(?P<hash>[0-9a-f]+)-person-(?P<backend>[A-Za-z0-9_]+)-(?P<fps>[0-9.]+)'
-                           r'-p(?P<key>[0-9a-f]+)(?P<suffix>(-preview(@[0-9.]+s)?)?)\.npz$' )
+                           r'-p(?P<key>[0-9a-f]+)(?P<suffix>(-preview(@[0-9.]+s)?(\+([0-9.]+s|all))?)?)\.npz$' )
 
 OUTLINE_KINDS = ( ( 'shown', 'shown as a man' ),
                   ( 'female', 'hidden: female evidence' ),

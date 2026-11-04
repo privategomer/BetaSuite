@@ -104,6 +104,25 @@ class TestDiscoverFullRunVideos( unittest.TestCase ):
         result, preview_used_for = bu_cache.discover_full_run_videos( [800], 9, 0.2, 'nudenet_v3', include_preview=True )
         self.assertNotIn( 'jkl000', result )
 
+    def test_the_longest_preview_at_one_offset_is_used( self ):
+        # Two lengths at one start overlap, so the longer holds the
+        # shorter: reading it is more data, not a guess. A name from
+        # before lengths were added covers an unknown window and loses.
+        for suffix in ( '-preview@30.0s', '-preview@30.0s+20.0s', '-preview@30.0s+60.0s' ):
+            self._write_cache( 'mno111', 800, 'nudenet_v3', preview_suffix=suffix )
+        result, preview_used_for = bu_cache.discover_full_run_videos( [800], 9, 0.2, 'nudenet_v3', include_preview=True )
+        self.assertEqual( preview_used_for.get( 'mno111' ), '-preview@30.0s+60.0s' )
+        self.assertTrue( result['mno111'][0].endswith( '-preview@30.0s+60.0s.gz' ) )
+
+    def test_a_preview_length_is_matched_across_picture_sizes( self ):
+        self._write_cache( 'pqr222', 800, 'nudenet_v3', preview_suffix='-preview+20.0s' )
+        self._write_cache( 'pqr222', 800, 'nudenet_v3', preview_suffix='-preview+60.0s' )
+        self._write_cache( 'pqr222', 1280, 'nudenet_v3', preview_suffix='-preview+20.0s' )
+        _result, preview_used_for = bu_cache.discover_full_run_videos(
+            [800, 1280], 9, 0.2, 'nudenet_v3', include_preview=True )
+        self.assertEqual( preview_used_for.get( 'pqr222' ), '-preview+20.0s',
+                          "only the 20-second slice exists at every size" )
+
     def test_no_caches_at_all_returns_empty( self ):
         result, preview_used_for = bu_cache.discover_full_run_videos( [800], 9, 0.2, 'nudenet_v3' )
         self.assertEqual( result, {} )

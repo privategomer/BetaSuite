@@ -26,6 +26,8 @@ Linux and Windows).
 
 **Original project by [solarorb93](https://github.com/solarorb93/BetaSuite).** This fork is optimized for performance and efficacy.
 
+**License:** [PolyForm Noncommercial 1.0.0](LICENSE): free to use, modify and share for any noncommercial purpose, including personal, hobby and research use. Commercial use is not permitted. Scope of the license and upstream attribution: [NOTICE](NOTICE).
+
 ---
 
 ## Contents

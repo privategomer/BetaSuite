@@ -249,17 +249,19 @@ def main():
 
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     # a video shorter than --preview-start-seconds falls back (in betatv.py)
-    # to processing the whole file with a plain '-preview' suffix instead of
-    # '-preview@<offset>s' - resolve_preview_slice replicates that exactly
-    # so this always looks for the cache file betatv.py actually wrote,
-    # not the one a naive '-preview@<start>s' guess would expect
+    # to processing the whole file, suffix '-preview+all' instead of
+    # '-preview@<offset>s+<length>s' - resolve_preview_slice and
+    # preview_suffix_for_slice replicate that exactly so this always looks
+    # for the cache file betatv.py actually wrote
     preview_offset_seconds, preview_window_unlimited = bu_video.resolve_preview_slice(
         vid_fps, num_frames, True, args.preview_seconds, args.preview_start_seconds )
-    cache_suffix = bu_video.preview_cache_suffix( True, preview_offset_seconds )
+    cache_suffix = bu_video.preview_suffix_for_slice(
+        vid_fps, num_frames, True, args.preview_seconds, preview_offset_seconds,
+        preview_window_unlimited )
     if preview_window_unlimited:
         print( "note: --preview-start-seconds %.1fs is past the end of %s - this video's cache was built from the "
-               "WHOLE file (suffix '-preview', not '-preview@%.1fs')"%(
-            args.preview_start_seconds, args.video, args.preview_start_seconds ) )
+               "WHOLE file (suffix '%s')"%(
+            args.preview_start_seconds, args.video, cache_suffix ) )
     file_hash = bu_hash.md5_for_file( video_path, 16 )
 
     flat_raw, missing = load_cached_raw_boxes(
@@ -267,8 +269,8 @@ def main():
     if missing:
         print( "missing detection cache for size(s) %s - run a preview pass with these exact settings first:"%(
             [m[0] for m in missing] ) )
-        print( "    python3 betatv.py --preview on --preview-start-seconds %s --picture-sizes %s --video-censor-fps %s"%(
-            args.preview_start_seconds, " ".join(map(str,args.picture_sizes)), args.video_censor_fps ) )
+        print( "    python3 betatv.py --preview on --preview-start-seconds %s --preview-seconds %s --picture-sizes %s --video-censor-fps %s"%(
+            args.preview_start_seconds, args.preview_seconds, " ".join(map(str,args.picture_sizes)), args.video_censor_fps ) )
         for size, path in missing:
             print( "    (expected: %s)"%(path) )
         sys.exit(1)

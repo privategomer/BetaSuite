@@ -1,0 +1,23 @@
+BetaSuite fork notices
+
+License scope
+The license in LICENSE (PolyForm Noncommercial License 1.0.0) covers the
+changes and additions made in this fork: new files, and modifications to
+existing files.
+
+Upstream
+This project is a fork of BetaSuite 0.2.4 by solarorb93:
+https://github.com/solarorb93/BetaSuite
+
+The upstream repository carries no license file. The code that originates
+there remains under its author's rights and is included here pending the
+author's permission. The license in LICENSE does not grant any rights to it
+beyond what its author has granted.
+
+Third-party components
+BetaSuite does not redistribute the detection or segmentation models.
+Setup downloads them from their publishers, and each keeps its own license.
+The Ultralytics YOLO11-seg person models are AGPL-3.0, and the weights
+exported from them on your machine stay under those terms. They are used
+through onnxruntime. BetaSuite's own environment does not include the
+Ultralytics package.

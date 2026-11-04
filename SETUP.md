@@ -352,7 +352,7 @@ gh release download v0 -R notAI-tech/NudeNet -p detector_v2_default_checkpoint.o
 ```
 
 **The YOLO11-seg person models are exported, not downloaded as ONNX.**
-Ultralytics publishes them (AGPL-3.0, the same license as BetaSuite) as
+Ultralytics publishes them (AGPL-3.0; BetaSuite does not redistribute them) as
 PyTorch `.pt` files. Setup downloads each one, checks it against a pinned
 hash, and exports it to ONNX in a throwaway environment (ultralytics plus
 CPU-only PyTorch, a few hundred MB, fetched once into uv's cache) that is

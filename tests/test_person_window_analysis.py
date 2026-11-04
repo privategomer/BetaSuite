@@ -63,7 +63,7 @@ class TestTally( Harness ):
         overlap_a, overlap_b = _person( 0, 300, 100, 50 ), _person( 50, 300, 100, 50 )
         raw = [ _raw( 'face_masc', 30, 10, 40, 40 ),          # inside the man only: votes
                 _raw( 'face_femme', 230, 10, 40, 40 ),        # inside the woman only: votes
-                _raw( 'exposed_penis', 70, 310, 20, 20 ),     # inside both overlapping outlines: votes for nobody
+                _raw( 'exposed_chest', 70, 310, 20, 20 ),     # inside both overlapping outlines: votes for nobody
                 _raw( 'exposed_chest', 600, 300, 20, 20 ) ]   # outside every outline
         windows, tally = self.run_tally( [ 0.0, 0.1 ], [ man, woman, nobody, overlap_a, overlap_b ], raw )
         self.assertEqual( windows[0.0]['show'], [ man ] )
@@ -132,6 +132,10 @@ class TestTool( Harness ):
         self.assertEqual( parse( 'abc123-person-yolo11_seg-18-p0f0f0f-preview@600.0s.npz' )['suffix'],
                           '-preview@600.0s' )
         self.assertEqual( parse( 'abc123-person-yolo11_seg-9-p0f0f0f-preview.npz' )['suffix'], '-preview' )
+        self.assertEqual( parse( 'abc123-person-yolo11_seg-9-p0f0f0f-preview@600.0s+20.0s.npz' )['suffix'],
+                          '-preview@600.0s+20.0s' )
+        self.assertEqual( parse( 'abc123-person-yolo11_seg-9-p0f0f0f-preview+all.npz' )['suffix'],
+                          '-preview+all' )
         self.assertIsNone( parse( 'abc123-person-yolo11_seg-9-p0f0f0f.npz.checkpoint.npz' ) )
         self.assertIsNone( parse( 'abc123-nudenet_v3-3-640-9-0.120-df43d00.gz' ) )
 
@@ -142,7 +146,7 @@ class TestTool( Harness ):
         bu_person.save_cache( person_path, [ 0.0, 1 / 9.0 ], [ man, nobody ] )
         with open( os.path.join( self.tmp, 'aaaa-person-yolo11_seg-9-p0f0f0f.npz.checkpoint.npz' ), 'wb' ) as handle:
             handle.write( b'not a finished cache' )
-        detections = [ _raw( 'face_masc', 30, 10, 40, 40 ), _raw( 'exposed_penis', 700, 300, 20, 20 ) ]
+        detections = [ _raw( 'face_masc', 30, 10, 40, 40 ), _raw( 'exposed_chest', 700, 300, 20, 20 ) ]
         caches = self.tool.person_caches( self.tmp )
         self.assertEqual( [ os.path.basename( path ) for path, _parsed in caches ],
                           [ 'aaaa-person-yolo11_seg-9-p0f0f0f.npz' ] )

@@ -360,6 +360,26 @@ class TestPreviewMode( BetaTvHarness ):
         self.assertEqual( self.run_one(), 'processed' )
         self.assertEqual( self.run_one(), 'skipped' )
 
+    def test_a_longer_preview_detects_past_the_shorter_ones_end( self ):
+        # A 2-second preview after a 1-second one used to read the
+        # 1-second cache and skip on the 1-second output, leaving its
+        # second half undetected and so uncensored.
+        betaconfig.preview_mode_enabled = True
+        betaconfig.preview_max_seconds = 1
+        _build_clip( os.path.join( self.uncensored, 'clip.mp4' ), seconds=4 )
+        self.assertEqual( self.run_one(), 'processed' )
+        first_frames = self.detector.frames_seen
+
+        betaconfig.preview_max_seconds = 2
+        self.assertEqual( self.run_one(), 'processed' )
+        self.assertGreater( self.detector.frames_seen - first_frames, first_frames,
+                            "the longer slice must be detected, not read from the shorter cache" )
+        self.assertEqual( len( self.outputs() ), 2 )
+        # The scan carries the same slice name as the detections, which
+        # is how the tuning replay finds the scan of exactly that slice.
+        self.assertEqual( sorted( name.split( '-preview' )[1] for name in os.listdir( betaconst.shot_cut_dir ) ),
+                          [ '+1.0s.gz', '+2.0s.gz' ] )
+
     def test_a_changed_censor_setting_reprocesses_a_preview( self ):
         # The other half of the contract above, and the reason the skip
         # is safe: changing anything that alters rendered output must

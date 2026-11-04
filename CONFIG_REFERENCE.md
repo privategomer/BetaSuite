@@ -2817,7 +2817,7 @@ unchanged byte for byte.
 | `reverse['censor']['overrides']` | `{}` | `{label: keys}` for reverse mode only: any `item_overrides` key, look keys included, e.g. a different style list while the frame is blurred |
 | `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis` | `{label: entry}`, never censored. `{}` inherits every tuning key |
 | `reverse['person_windows']['enabled']` | `True` (shipped; `False` when the key is absent) | whole male bodies left uncensored, from [person masks](#person-segmentation) |
-| `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_penis`, `exposed_chest` | detections that make a person male |
+| `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_chest` | detections that make a person male |
 | `reverse['person_windows']['female_labels']` | `face_femme`, `exposed_breast`, `exposed_vulva` | detections that count against it |
 | `reverse['person_windows']['evidence_min_prob']` | `0.40` | how sure a detection must be to count as evidence |
 | `reverse['person_windows']['track_iou']` | `0.30` | box overlap that links a person to the same person in the next sample |
@@ -2847,7 +2847,11 @@ uncensored when the detections inside it say he is a man.
   outlines votes for neither, since it can't say whose it is. People are
   linked from sample to sample by box overlap, so a man whose face is
   visible in one sample stays a man while he turns away. A track is male
-  with at least one male vote and more male votes than female ones
+  with at least one male vote and more male votes than female ones.
+  `exposed_penis` is not male evidence: in penetration it sits inside the
+  partner's outline, so it outvoted her own face and showed her whole
+  body. On reverse previews of a 28-file library, 852 of 880 penis votes
+  inside a single outline went to otherwise-female tracks
 - **Overlap: whoever isn't a man is cut out of the men.** Every outline
   that isn't shown (a woman's, or anyone not attributed) is cut out of
   the shown ones, so where a woman overlaps a man she stays under the
@@ -3013,7 +3017,7 @@ Adapters live in `segmenters/`, beside the detectors in `detectors/`.
 
 | Backend | Variants | Status |
 |---|---|---|
-| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0, like BetaSuite. Exported to ONNX by setup |
+| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0. Exported to ONNX by setup, on the user's machine |
 | `rf_detr_seg` | `nano`, `small`, `medium` | registered, decoder not written yet: selecting it is a validation error. Apache-2.0 |
 
 | Setting (`person_backend['yolo11_seg']`) | Default | What it does |
@@ -3580,10 +3584,24 @@ preview_start_seconds = None
 preview_random_slice = False
 ```
 
-Processes a slice of each video instead of the whole thing. Preview
-output gets its own filename suffix, its own detection cache key, and is
-never skipped for an existing output, you are expected to re-run it
-every time you change a setting.
+Processes a slice of each video instead of the whole thing. A
+preview's detection, person and shot-cut caches and its output carry the
+slice in their names: `-preview+20.0s` for 20 seconds from the start,
+`-preview@600.0s+20.0s` from 600 seconds in, and `-preview+all` when the
+slice reaches the end of the file (a clip shorter than the window, or a
+start past its end), which every length shares. A repeat run with
+unchanged settings skips the output it already wrote, except a random
+slice, which always runs. A different start or length is a different
+name, so it is detected and rendered fresh: a longer preview never reads
+a shorter one's cache, which would leave everything past the shorter
+length undetected and uncensored.
+
+Names written before the length was part of them (`-preview`,
+`-preview@600.0s`) stay on disk and are never read by a run. The
+analysis tools still read them with `--include-preview`; where one video
+has several lengths at one start they read the longest, and a name
+without a length ranks below any with one. The tuning tools predict a
+run's names, so their `--preview-seconds` has to match the run's.
 
 **`preview_start_seconds`** pins where the slice starts. Use the **same
 value** across runs to keep comparing the same footage. The offset is

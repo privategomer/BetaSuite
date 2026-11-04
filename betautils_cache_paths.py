@@ -13,7 +13,7 @@ standalone tools. They drifted, and the drift caused real bugs twice:
 once when the detector backend name was missing from one copy of a glob
 (corrupting the file_hash it parsed back out, so every video looked
 "not found"), and once when a video shorter than preview_start_seconds
-fell back to a plain '-preview' suffix that two tools' hand-copied
+fell back to a whole-file preview suffix that two tools' hand-copied
 formulas did not model. Both were invisible until someone noticed a
 result that made no sense.
 
@@ -76,28 +76,101 @@ PIC_HASH_DIR = betaconst.pic_hash_dir
 # Preview slice suffix
 # ---------------------------------------------------------------------------
 
-def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ):
+def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                          duration_seconds ):
     """
-    Build the '' / '-preview' / '-preview@<offset>s' filename tail.
+    Build the filename tail for a preview slice: '' for a real run, else
+    '-preview', then '@<offset>s' when the slice does not start at 0,
+    then '+<length>s', or '+all' when the slice runs to the end of the
+    file.
 
-    An offset of exactly 0.0 lands on the plain '-preview' form, not
-    '-preview@0.0s'. That covers both "no explicit slice requested" and
-    the whole-file fallback (a preview run of a file shorter than
-    preview_start_seconds), which are the same thing on disk: not a
-    slice of anything, so no '@<offset>s' implying one.
+        -preview+20.0s    -preview@600.0s+20.0s    -preview+all
+
+    The length is in the name because a cache, scan or render of a
+    20-second slice must never be served to a 60-second one: the rest of
+    that slice would have no detections, so nothing there would be
+    censored, and in reverse mode nothing there would be shown. Names
+    without a length (written before it was added) are still read by the
+    analysis tools, and never by a run.
+
+    A slice that reaches the end of the file is '+all' whatever length
+    was asked for, because every such request reads the same frames: a
+    20- and a 60-second preview of a 15-second clip share one cache, and
+    so do they and a start past the end (the whole-file fallback).
 
     Args:
         preview_mode_enabled: Whether preview mode is on at all.
         preview_offset_seconds: The resolved slice offset in seconds.
+        preview_seconds: The slice length in seconds, or None for a
+            slice that runs to the end of the file.
+        duration_seconds: The file's length in seconds, or None when it
+            is not known (the name then carries the length as asked).
+
+    Both are required so no caller can build a name without them by
+    leaving them out: the old two-argument form is exactly how a name
+    without a length was built.
 
     Returns:
         The suffix string.
     """
     if not preview_mode_enabled:
         return ''
-    if preview_offset_seconds:
-        return '-preview@%.1fs'%(preview_offset_seconds)
-    return '-preview'
+    offset = preview_offset_seconds or 0.0
+    to_end = ( not preview_seconds
+               or ( duration_seconds is not None
+                    and offset + preview_seconds >= duration_seconds - 1e-6 ) )
+    start = '@%.1fs'%( offset, ) if offset else ''
+    length = '+all' if to_end else '+%.1fs'%( preview_seconds, )
+    return '-preview' + start + length
+
+
+_PREVIEW_SUFFIX = re.compile(
+    r'^-preview(?:@(?P<offset>[0-9.]+)s)?(?:\+(?:(?P<seconds>[0-9.]+)s|(?P<all>all)))?$' )
+
+
+def parse_preview_suffix( suffix ):
+    """
+    Pull a preview suffix apart: the inverse of preview_cache_suffix.
+
+    Returns:
+        None for '' or anything that is not a preview suffix, else a dict
+        with offset_seconds, preview_seconds (None when the slice runs to
+        the end or the length is unknown), to_end and length_known
+        (False for a name written before lengths were added).
+    """
+    match = _PREVIEW_SUFFIX.match( suffix or '' )
+    if not match:
+        return None
+    seconds = match.group( 'seconds' )
+    return {
+        'offset_seconds': float( match.group( 'offset' ) or 0.0 ),
+        'preview_seconds': float( seconds ) if seconds else None,
+        'to_end': bool( match.group( 'all' ) ),
+        'length_known': bool( seconds or match.group( 'all' ) ),
+    }
+
+
+def longest_preview_suffix( suffixes ):
+    """
+    The one preview slice to read when a video has several, or None.
+
+    Slices at more than one offset are different parts of the video, so
+    None: blending them into one "video" is worse than not reporting on
+    it. At one offset the slices overlap and the longest holds every
+    other one, so it is the most data, not a guess. A slice to the end
+    beats any length, and a name without a length (from before lengths
+    were added) loses to any name with one, since what it covers is not
+    known: it ranks as length 0.
+    """
+    parsed = [ ( suffix, parse_preview_suffix( suffix ) ) for suffix in suffixes ]
+    parsed = [ item for item in parsed if item[1] is not None ]
+    if not parsed or len( { round( info['offset_seconds'], 1 ) for _s, info in parsed } ) != 1:
+        return None
+
+    def rank( item ):
+        info = item[1]
+        return ( info['to_end'], info['preview_seconds'] or 0.0, item[0] )
+    return max( parsed, key=rank )[0]
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +536,8 @@ def parse_shot_cut_path( path ):
     Offline tools (betabench, the tuning replay) read caches a run
     already wrote and need the WINDOW that run scanned, which the
     filename records and the cut list does not: '-max<N>s' is a
-    preview's bound and '-preview@<X>s' its offset. Before this existed
+    preview's bound and '-preview@<X>s' its offset (then '+<length>s'
+    or '+all', see preview_cache_suffix). Before this existed
     they globbed on the hash and took whichever file was newest, then
     guessed the window from the spread of their own detections.
 
@@ -493,7 +567,7 @@ def parse_shot_cut_path( path ):
 _SHOT_CUT_NAME = re.compile(
     r'^(?P<hash>[0-9a-f]+)-(?P<fps>[0-9.e+]+)-(?P<threshold>[0-9]+\.[0-9]{3})'
     r'(?:-max(?P<max>[0-9.e+]+)s)?'
-    r'(?P<preview>-preview(?:@(?P<offset>[0-9.]+)s)?)?$' )
+    r'(?P<preview>-preview(?:@(?P<offset>[0-9.]+)s)?(?:\+(?:[0-9.]+s|all))?)?$' )
 
 
 def shot_cut_caches_for( file_hash, fps, threshold ):
@@ -519,7 +593,7 @@ def shot_cut_caches_for( file_hash, fps, threshold ):
             continue
         found.append( ( path, parsed ) )
     # No bound means the scan ran to the end of the file. That includes
-    # a '-preview' scan of a file shorter than its slice, which betatv
+    # a '-preview+all' scan of a file shorter than its slice, which betatv
     # processes whole, so it is a whole-file measurement too.
     whole = [ item for item in found if item[1]['max_seconds'] is None ]
     sliced = sorted( ( item for item in found if item not in whole ),
@@ -1340,7 +1414,8 @@ def discover_full_run_videos( picture_sizes, fps, min_prob, backend_name,
         backend_name: Backend to match. Never defaulted - pin it.
         include_preview: When True, a file_hash with no real cache is
             still included if it has a complete set of preview caches at
-            exactly ONE preview suffix. A real cache always wins over a
+            exactly one preview offset (the longest slice there, see
+            longest_preview_suffix). A real cache always wins over a
             preview one for the same file_hash, because a real run is
             strictly better data. A file_hash with preview caches at
             more than one offset is skipped rather than guessed at:
@@ -1388,20 +1463,20 @@ def discover_full_run_videos( picture_sizes, fps, min_prob, backend_name,
         for file_hash in sorted( candidates ):
             shared_suffixes = set.intersection(
                 *[ set( paths[file_hash] ) for paths in per_size_preview ] )
-            if len( shared_suffixes ) != 1:
+            preview_suffix = longest_preview_suffix( shared_suffixes )
+            if preview_suffix is None:
                 import betautils_log as bu_log
                 if not shared_suffixes:
                     bu_log.get_logger().info(
-                        "%s has preview caches for backend=%s but not at the same offset across "
+                        "%s has preview caches for backend=%s but not of the same slice across "
                         "every picture size - skipping (re-run with one consistent "
-                        "--preview-start-seconds)"%(file_hash, backend_name) )
+                        "--preview-start-seconds and --preview-seconds)"%(file_hash, backend_name) )
                 else:
                     bu_log.get_logger().info(
                         "%s has preview caches at more than one offset for backend=%s (%s) - "
                         "skipping rather than guessing which you meant"%(
                             file_hash, backend_name, sorted( shared_suffixes ) ) )
                 continue
-            preview_suffix = next( iter( shared_suffixes ) )
             result[file_hash] = [ paths[file_hash][preview_suffix] for paths in per_size_preview ]
             preview_used_for[file_hash] = preview_suffix
 

@@ -330,7 +330,7 @@ def resolve_preview_slice( vid_fps, num_frames, preview_mode_enabled,
     predict a preview run's cache/output filename compute the same
     offset. They each used to keep a copy, and the copies drifted: a
     video shorter than preview_start_seconds falls back to the whole
-    file with a plain '-preview' suffix, which neither copy modelled, so
+    file with a '-preview+all' suffix, which neither copy modelled, so
     short videos silently never matched the cache the tools expected.
 
     Args:
@@ -364,9 +364,26 @@ def resolve_preview_slice( vid_fps, num_frames, preview_mode_enabled,
     return preview_offset_seconds, preview_window_unlimited
 
 
-def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ):
+def preview_suffix_for_slice( vid_fps, num_frames, preview_mode_enabled, preview_max_seconds,
+                              preview_offset_seconds, preview_window_unlimited ):
+    """
+    The preview suffix betatv.py writes for a slice resolve_preview_slice
+    chose: a slice past the end of the file is the whole file, so it has
+    no length. One implementation for betatv.py and every tool that
+    predicts its cache or output names, for the reason
+    resolve_preview_slice gives.
+    """
+    duration_seconds = ( num_frames / vid_fps ) if vid_fps else None
+    preview_seconds = None if preview_window_unlimited else preview_max_seconds
+    return bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds,
+                                          preview_seconds, duration_seconds )
+
+
+def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                          duration_seconds ):
     """Deprecated alias. The real implementation lives in betautils_cache_paths."""
-    return bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds )
+    return bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds,
+                                          preview_seconds, duration_seconds )
 
 
 # ---------------------------------------------------------------------------

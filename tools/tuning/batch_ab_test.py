@@ -248,10 +248,10 @@ def run_one_backend( backend_name, args, video_files, global_min_prob ):
 
     # cache_suffix depends on each video's own length, not just
     # --preview-start-seconds: a video shorter than that offset falls back
-    # (in betatv.py) to processing the WHOLE file with a plain '-preview'
-    # suffix instead of '-preview@<start>s' - resolve_preview_slice
-    # replicates that exactly so this always clears/reads the cache file
-    # betatv.py actually wrote, not a naive '-preview@<start>s' guess
+    # (in betatv.py) to processing the WHOLE file, suffix '-preview+all'
+    # instead of '-preview@<start>s+<length>s' - resolve_preview_slice and
+    # preview_suffix_for_slice replicate that exactly so this always
+    # clears/reads the cache file betatv.py actually wrote, not a guess
     # (this was silently wrong before: any video shorter than
     # --preview-start-seconds always "produced no cache" from this script's
     # point of view, even though betatv.py ran it to completion every time)
@@ -267,13 +267,16 @@ def run_one_backend( backend_name, args, video_files, global_min_prob ):
         cap.release()
         preview_offset_seconds, preview_window_unlimited = bu_video.resolve_preview_slice(
             vid_fps, num_frames, True, args.preview_seconds, args.preview_start_seconds )
-        cache_suffix_by_video[(root, fname)] = bu_video.preview_cache_suffix( True, preview_offset_seconds )
+        cache_suffix_by_video[(root, fname)] = bu_video.preview_suffix_for_slice(
+            vid_fps, num_frames, True, args.preview_seconds, preview_offset_seconds,
+            preview_window_unlimited )
         offset_by_fname[fname] = preview_offset_seconds
         if preview_window_unlimited:
             print( "note: preview_start_seconds=%.1fs is past the end of %s - this video will be processed and "
-                   "cached as a WHOLE-file preview run (suffix '-preview'), not a %.1fs slice - its "
+                   "cached as a WHOLE-file preview run (suffix '%s'), not a %.1fs slice - its "
                    "betasuite_stats.jsonl row will carry preview_offset_seconds=0.0, not %.1f"%(
-                args.preview_start_seconds, fname, args.preview_seconds, args.preview_start_seconds ) )
+                args.preview_start_seconds, fname, cache_suffix_by_video[(root, fname)],
+                args.preview_seconds, args.preview_start_seconds ) )
 
     # boxes_by_batch[batch][(root,fname)][size] = raw_boxes list (or None
     # if that combo's cache never got written - a failed/skipped file)

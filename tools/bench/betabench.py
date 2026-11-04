@@ -2286,7 +2286,7 @@ def _detect_geometry_slices( args, logger, sources, count ):
                 bounded = slice_seconds if duration and duration > slice_seconds else None
                 betatv.detect_boxes_for_video(
                     video, source['name'], session, source['file_hash'], picture_sizes,
-                    bu_cache.preview_cache_suffix( True, offset ), offset, bounded,
+                    bu_cache.preview_cache_suffix( True, offset, bounded, duration ), offset, bounded,
                     logger, fps )
             logger.info( "[%d/%d] %s: slices at %s"%( index, len( sources ), source['name'],
                                                      ', '.join( '%.0fs'%o for o in offsets ) ) )

@@ -170,10 +170,12 @@ def main():
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     preview_offset_seconds, preview_window_unlimited = bu_video.resolve_preview_slice(
         vid_fps, num_frames_total, True, args.preview_seconds, args.preview_start_seconds )
-    cache_suffix = bu_video.preview_cache_suffix( True, preview_offset_seconds )
+    cache_suffix = bu_video.preview_suffix_for_slice(
+        vid_fps, num_frames_total, True, args.preview_seconds, preview_offset_seconds,
+        preview_window_unlimited )
     if preview_window_unlimited:
         print( "note: --preview-start-seconds %.1fs is past the end of this video - its cache was built from "
-               "the WHOLE file (suffix '-preview')"%(args.preview_start_seconds) )
+               "the WHOLE file (suffix '%s')"%( args.preview_start_seconds, cache_suffix ) )
     file_hash = bu_hash.md5_for_file( video_path, 16 )
 
     flat_raw, missing = load_cached_raw_boxes(

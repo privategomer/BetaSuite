@@ -69,6 +69,7 @@ import betaconst
 import betaconfig
 import betautils_cache_paths as bu_cache
 import betautils_detector as bu_detector
+import betautils_video as bu_video
 import betautils_hash as bu_hash
 import betautils_tuning as bu_tuning
 
@@ -145,6 +146,10 @@ def main():
     parser.add_argument( '--video', required=True )
     parser.add_argument( '--preview-start-seconds', type=float, required=True,
         help="must match the preview-start-seconds both caches were built with" )
+    parser.add_argument( '--preview-seconds', type=float,
+        default=float( os.environ.get( 'PREVIEW_SECONDS', getattr( betaconfig, 'preview_max_seconds', 20.0 ) ) ),
+        help="must match the preview-seconds both caches were built with (default: "
+             "$PREVIEW_SECONDS, else betaconfig.preview_max_seconds)" )
     parser.add_argument( '--sizes-a', type=int, nargs='+', required=True )
     parser.add_argument( '--fps-a', type=float, required=True )
     parser.add_argument( '--sizes-b', type=int, nargs='+', required=True )
@@ -162,6 +167,8 @@ def main():
     cap = cv2.VideoCapture( video_path )
     vid_w = int( cap.get( cv2.CAP_PROP_FRAME_WIDTH ) )
     vid_h = int( cap.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
+    vid_fps = cap.get( cv2.CAP_PROP_FPS )
+    num_frames = cap.get( cv2.CAP_PROP_FRAME_COUNT )
     cap.release()
     if not vid_w or not vid_h:
         print( "couldn't read frame dimensions from %s"%(video_path) )
@@ -169,7 +176,14 @@ def main():
 
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     file_hash = bu_hash.md5_for_file( video_path, 16 )
-    cache_suffix = bu_cache.preview_cache_suffix( True, args.preview_start_seconds )
+    # The slice betatv.py actually ran for this file: a start past the end
+    # is the whole file, and a start too late for the full length is moved
+    # earlier. Naming it from --preview-start-seconds alone missed both.
+    preview_offset_seconds, preview_window_unlimited = bu_video.resolve_preview_slice(
+        vid_fps, num_frames, True, args.preview_seconds, args.preview_start_seconds )
+    cache_suffix = bu_video.preview_suffix_for_slice(
+        vid_fps, num_frames, True, args.preview_seconds, preview_offset_seconds,
+        preview_window_unlimited )
 
     def cache_paths_for( sizes, fps ):
         return [ bu_cache.box_hash_path_for( file_hash, size, fps, global_min_prob, backend_name,
@@ -181,8 +195,8 @@ def main():
         if missing:
             print( "missing detection cache for config %s (size(s) %s @ fps=%s) - run this first:"%(
                 label, [m[0] for m in missing], fps ) )
-            print( "    python3 betatv.py --preview on --preview-start-seconds %s --picture-sizes %s --video-censor-fps %s"%(
-                args.preview_start_seconds, " ".join(map(str,sizes)), fps ) )
+            print( "    python3 betatv.py --preview on --preview-start-seconds %s --preview-seconds %s --picture-sizes %s --video-censor-fps %s"%(
+                args.preview_start_seconds, args.preview_seconds, " ".join(map(str,sizes)), fps ) )
             sys.exit(1)
         return( flat_raw )
 

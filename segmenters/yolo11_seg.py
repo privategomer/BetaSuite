@@ -4,8 +4,8 @@ segmenters/yolo11_seg.py - Ultralytics YOLO11-seg person masks, run as ONNX.
 Reverse mode's whole-body windows need people, not parts, and none of
 the nudity detectors has a person class. YOLO11-seg is a COCO instance
 segmentation model: class 0 is 'person', and every detection carries a
-mask. Ultralytics publishes it under AGPL-3.0, the same license as
-BetaSuite.
+mask. Ultralytics publishes it under AGPL-3.0. BetaSuite does not
+redistribute it, and this backend does not import the ultralytics package.
 
 It runs through onnxruntime like every detector backend, so the runtime
 environment gains no PyTorch. tools/setup/fetch_models.py exports the

@@ -250,7 +250,7 @@ class TestEveryFileIsSurveyed( StructureHarness ):
         file_hash = self.clip( 'sliced.mp4', 120 )
         for offset in ( 25.0, 50.0, 75.0 ):
             self.boxes( file_hash, [ _box( file_hash, offset + i / 9.0, 700, 400 ) for i in range( 20 ) ],
-                        preview_suffix=bu_cache.preview_cache_suffix( True, offset ) )
+                        preview_suffix=bu_cache.preview_cache_suffix( True, offset, 20.0, 120.0 ) )
         self.assertEqual( self.rows()['sliced.mp4']['frames_with_boxes'], 60 )
 
 

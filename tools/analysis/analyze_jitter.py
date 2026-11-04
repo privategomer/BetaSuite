@@ -54,7 +54,7 @@ slices. This only reads that cache and opens the matching source video
 runs the neural net itself.
 
 --include-preview: also reads preview-slice caches
-(the '-preview'/'-preview@<offset>s' suffixed cache files a
+(the '-preview[@<offset>s]+<length>s' suffixed cache files a
 'betatv.py --preview on' run writes) when no real run exists yet, or
 you specifically want to compare backends against identical short
 slices rather than wait for full real runs on every video. Read the

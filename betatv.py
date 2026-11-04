@@ -213,8 +213,8 @@ def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_sec
 
 
 def _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                  preview_mode_enabled, preview_offset_seconds, sample_fps=None,
-                  output_label='' ):
+                  preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                  duration_seconds, sample_fps=None, output_label='' ):
     """
     Every path this file needs, from the one module that owns naming.
 
@@ -231,7 +231,8 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
         previous output and left nothing to compare.
     """
     sample_fps = sample_fps or betaconfig.video_censor_fps
-    preview_suffix = bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds )
+    preview_suffix = bu_cache.preview_cache_suffix(
+        preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
     detection_key = bu_cache.detection_key( fps=sample_fps )
     censor_key = bu_cache.censor_key()
     encode_key = bu_cache.encode_key( preview_mode_enabled )
@@ -526,6 +527,10 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         effective_preview_seconds = ( preview_max_seconds
                                       if preview_mode_enabled and not preview_window_unlimited
                                       else None )
+        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
+        preview_suffix = bu_video.preview_suffix_for_slice(
+            source.vid_fps, source.num_frames, preview_mode_enabled, preview_max_seconds,
+            preview_offset_seconds, preview_window_unlimited )
 
         picture_sizes = bu_detector.get_picture_sizes()
 
@@ -554,13 +559,11 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         shot_cut_args = (
             source, file_hash, betaconfig.video_censor_fps,
             getattr( betaconfig, 'shot_cut_threshold', 0.5 ),
-            preview_offset_seconds, effective_preview_seconds,
-            bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ) )
+            preview_offset_seconds, effective_preview_seconds, preview_suffix )
         shot_cut_kwargs = {
             'enabled': getattr( betaconfig, 'shot_cut_detection_enabled', True ),
             'logger': logger,
         }
-        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
         scanned_seconds = bu_detector.scanned_window_seconds(
             duration_seconds, preview_offset_seconds, effective_preview_seconds )
 
@@ -577,7 +580,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
                           if declared is not None else None )
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                                  preview_mode_enabled, preview_offset_seconds, early_fps,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, early_fps,
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -620,7 +624,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
 
         if paths is None or paths['sample_fps'] != sample_fps:
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                                  preview_mode_enabled, preview_offset_seconds, sample_fps,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, sample_fps,
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )

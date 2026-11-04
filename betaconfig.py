@@ -414,7 +414,7 @@ reverse = {
     # Whole male bodies, from person_backend masks
     'person_windows': {
         'enabled': True,
-        'male_labels': [ 'face_masc', 'exposed_penis', 'exposed_chest' ],
+        'male_labels': [ 'face_masc', 'exposed_chest' ],
         'female_labels': [ 'face_femme', 'exposed_breast', 'exposed_vulva' ],
         'evidence_min_prob': 0.40,
         'track_iou': 0.30,

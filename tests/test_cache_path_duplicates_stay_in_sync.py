@@ -32,6 +32,7 @@ import unittest
 
 import betaconfig
 import betautils_cache_paths as bu_cache
+import betautils_video as bu_video
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 
@@ -94,20 +95,99 @@ class TestPathsRoundTrip( unittest.TestCase ):
         self.assertEqual( bu_cache._file_hash_from_cache_path( path ), self.FILE_HASH )
 
     def test_preview_suffix_survives_a_round_trip( self ):
-        suffix = bu_cache.preview_cache_suffix( True, 10.0 )
-        self.assertEqual( suffix, '-preview@10.0s' )
+        suffix = bu_cache.preview_cache_suffix( True, 10.0, 20, 120.0 )
+        self.assertEqual( suffix, '-preview@10.0s+20.0s' )
         path = bu_cache.box_hash_path_for(
             self.FILE_HASH, self.SIZE, self.FPS, self.MIN_PROB, self.BACKEND, suffix )
-        self.assertTrue( path.endswith( '-preview@10.0s.gz' ), path )
+        self.assertTrue( path.endswith( '-preview@10.0s+20.0s.gz' ), path )
         self.assertEqual( bu_cache._file_hash_from_cache_path( path ), self.FILE_HASH )
+        parsed = bu_cache.parse_any_cache_name( path )
+        self.assertEqual( parsed['file_hash'], self.FILE_HASH )
+        self.assertEqual( parsed['preview_suffix'], suffix )
+        self.assertEqual( bu_cache.parse_cache_name(
+            path, self.BACKEND, self.SIZE, self.FPS, self.MIN_PROB )[2], suffix )
 
-    def test_whole_file_preview_gets_the_plain_suffix( self ):
+    def test_whole_file_preview_runs_to_the_end( self ):
         # A preview run of a file shorter than preview_start_seconds
         # processes the whole file, so it is not a slice of anything and
         # must not get an '@<offset>s' implying one. This is the exact
         # case two hand-copied formulas failed to model.
-        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0 ), '-preview' )
-        self.assertEqual( bu_cache.preview_cache_suffix( False, 12.5 ), '' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, None, 30.0 ), '-preview+all' )
+        self.assertEqual( bu_cache.preview_cache_suffix( False, 12.5, 20, 30.0 ), '' )
+
+    def test_the_preview_length_is_in_the_name( self ):
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, 20, 300.0 ), '-preview+20.0s' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, 20, None ), '-preview+20.0s' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 600.0, 60, None ),
+                          '-preview@600.0s+60.0s' )
+
+    def test_a_slice_reaching_the_end_has_no_length( self ):
+        # Every length asked of a 15-second clip reads the same frames,
+        # so they share one name rather than re-detecting per length.
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, 20, 15.0 ), '-preview+all' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, 60, 15.0 ), '-preview+all' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 0.0, 15, 15.0 ), '-preview+all' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 80.0, 20, 100.0 ), '-preview@80.0s+all' )
+        self.assertEqual( bu_cache.preview_cache_suffix( True, 79.0, 20, 100.0 ),
+                          '-preview@79.0s+20.0s' )
+
+    def test_a_longer_preview_never_reads_a_shorter_ones_cache( self ):
+        # The bug this closes: a 60-second preview served the 20-second
+        # preview's cache, so nothing after second 20 had a detection and
+        # nothing there was censored.
+        short = bu_cache.preview_cache_suffix( True, 600.0, 20, 3600.0 )
+        long_ = bu_cache.preview_cache_suffix( True, 600.0, 60, 3600.0 )
+        self.assertNotEqual(
+            bu_cache.box_hash_path_for( self.FILE_HASH, self.SIZE, self.FPS, self.MIN_PROB,
+                                        self.BACKEND, short ),
+            bu_cache.box_hash_path_for( self.FILE_HASH, self.SIZE, self.FPS, self.MIN_PROB,
+                                        self.BACKEND, long_ ) )
+        self.assertNotEqual(
+            bu_cache.person_cache_path_for( self.FILE_HASH, self.FPS, 'yolo11_seg', {}, short ),
+            bu_cache.person_cache_path_for( self.FILE_HASH, self.FPS, 'yolo11_seg', {}, long_ ) )
+        self.assertNotEqual(
+            bu_cache.video_output_basename( 'clip', self.FILE_HASH, [ 640 ], 9, 'd1', 'c1', 'e1', short ),
+            bu_cache.video_output_basename( 'clip', self.FILE_HASH, [ 640 ], 9, 'd1', 'c1', 'e1', long_ ) )
+
+    def test_a_preview_suffix_parses_back( self ):
+        parse = bu_cache.parse_preview_suffix
+        self.assertEqual( parse( '-preview@600.0s+20.0s' ), {
+            'offset_seconds': 600.0, 'preview_seconds': 20.0, 'to_end': False, 'length_known': True } )
+        self.assertEqual( parse( '-preview+all' ), {
+            'offset_seconds': 0.0, 'preview_seconds': None, 'to_end': True, 'length_known': True } )
+        # Names from before the length was added still parse, as unknown.
+        self.assertEqual( parse( '-preview@30.0s' ), {
+            'offset_seconds': 30.0, 'preview_seconds': None, 'to_end': False, 'length_known': False } )
+        self.assertEqual( parse( '-preview' )['length_known'], False )
+        self.assertIsNone( parse( '' ) )
+        self.assertIsNone( parse( '-previewish' ) )
+        self.assertIsNone( parse( '-preview+20.0' ) )
+
+    def test_the_longest_slice_at_one_offset_is_read( self ):
+        pick = bu_cache.longest_preview_suffix
+        self.assertEqual( pick( { '-preview@30.0s+20.0s', '-preview@30.0s+60.0s' } ),
+                          '-preview@30.0s+60.0s' )
+        self.assertEqual( pick( { '-preview+5.0s', '-preview+20.0s' } ), '-preview+20.0s',
+                          "by length, not by how the name sorts" )
+        self.assertEqual( pick( { '-preview+60.0s', '-preview+all' } ), '-preview+all' )
+        self.assertEqual( pick( { '-preview@30.0s', '-preview@30.0s+5.0s' } ), '-preview@30.0s+5.0s',
+                          "a name without a length covers an unknown window" )
+        self.assertEqual( pick( { '-preview', '-preview+20.0s' } ), '-preview+20.0s' )
+        self.assertEqual( pick( { '-preview@30.0s' } ), '-preview@30.0s' )
+        self.assertIsNone( pick( { '-preview@30.0s+20.0s', '-preview@90.0s+20.0s' } ),
+                           "slices at two offsets are two parts of the video" )
+        self.assertIsNone( pick( set() ) )
+
+    def test_the_slice_suffix_matches_what_a_run_writes( self ):
+        for_slice = bu_video.preview_suffix_for_slice
+        # fps 30, 3600 frames: a 120-second file.
+        self.assertEqual( for_slice( 30.0, 3600, True, 20, 50.0, False ), '-preview@50.0s+20.0s' )
+        self.assertEqual( for_slice( 30.0, 3600, True, 20, 0.0, True ), '-preview+all',
+                          "a start past the end is the whole file" )
+        self.assertEqual( for_slice( 30.0, 300, True, 20, 0.0, False ), '-preview+all',
+                          "a 10-second file is whole at any length" )
+        self.assertEqual( for_slice( 0.0, 0, True, 20, 0.0, False ), '-preview+20.0s' )
+        self.assertEqual( for_slice( 30.0, 3600, False, 20, 0.0, False ), '' )
 
     def test_backend_name_is_in_the_path( self ):
         for backend_name in bu_detector.registered_backend_names():
