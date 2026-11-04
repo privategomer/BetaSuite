@@ -52,7 +52,7 @@ Prerequisite: same as analyze_jitter.py - real (non-preview) detection
 caches must already exist for each backend's resolved picture_sizes (per
 backend, not the shared betaconfig.picture_sizes) at your video_censor_fps.
 
-As of 2026-09-16 this reports every registered backend with real (or, with
+This reports every registered backend with real (or, with
 --include-preview, preview-slice) cache for this config as its own
 section, same as analyze_jitter.py/analyze_track_breaks.py - previously
 single-backend, and previously had a real bug (see box_hash_path_for's
@@ -62,7 +62,7 @@ file_hash (backend name stuck to the end of it) and made every source
 video look "not found" regardless of which directory was actually
 searched - not a resources/source/ lookup problem, a cache-parsing one.
 
---include-preview (added 2026-09-16): same opt-in/CAVEAT as
+--include-preview: same opt-in/CAVEAT as
 analyze_jitter.py's flag of the same name.
 
 Usage:

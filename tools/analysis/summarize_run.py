@@ -41,7 +41,7 @@ deciding what to order differently.
 Usage:
     python3 tools/analysis/summarize_run.py
     python3 tools/analysis/summarize_run.py --last 7      # most recent 7 rows only
-    python3 tools/analysis/summarize_run.py --since 2026-09-17
+    python3 tools/analysis/summarize_run.py --since YYYY-MM-DD
     python3 tools/analysis/summarize_run.py --include-preview
     python3 tools/analysis/summarize_run.py --stats-path /path/to/other.jsonl
 """

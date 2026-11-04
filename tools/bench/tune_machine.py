@@ -276,8 +276,8 @@ def measured_noise( first, second, floor=NOISE ):
     """
     How far apart two timings of the SAME setting came out, as a
     fraction, never below `floor`. A difference between two settings
-    smaller than this is not evidence of anything: on 2026-11-03 the
-    same detection loop timed 22.01 and 23.18 ms a sample, 5% apart,
+    smaller than this is not evidence of anything: on an RTX 3070 Laptop
+    the same detection loop timed 22.01 and 23.18 ms a sample, 5% apart,
     while the fixed 3% bar proposed changes of 5 to 10%.
     """
     if not first or not second:

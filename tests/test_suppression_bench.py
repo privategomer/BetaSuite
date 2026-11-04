@@ -121,7 +121,7 @@ class TestSuppressionBench( _BenchCase ):
 
     def test_side_by_side_never_exceeds_removals_under_two_rules( self ):
         # A breast touching both a face and a belly is removed once, by the
-        # first rule the production function reaches. The 2026-10-10 table
+        # first rule the production function reaches. The old table
         # credited it to both and showed 15,184 side-by-side removals for a
         # rule that removed 14,295.
         rules = { 'exposed_breast': [

@@ -408,8 +408,8 @@ class MinTrackHitsStage( Stage ):
     a brief real exposure, and dropped boxes look the same in either
     case. The old rule counted every dropped box as noise removed, so it
     always favoured the strictest value that stayed inside the area
-    coverage tolerance: it raised the shipped 2 to 3 on 2026-09-30, and
-    at 3 the 2026-10-09 run withheld 23,311 breast boxes that 1 would
+    coverage tolerance: it once raised the shipped 2 to 3, and at 3 a
+    full-library run withheld 23,311 breast boxes that 1 would
     have drawn.
 
     The evidence used now is confidence. A detection scoring at least
@@ -433,7 +433,7 @@ class MinTrackHitsStage( Stage ):
     confirm_score at or below --confident-score draws every track holding
     a confident detection, whatever min_track_hits says, so every value
     leaves the same confident detections uncensored. The rule above then
-    reads "strictest" as free: on 2026-10-24, with confirm_score 0.5, it
+    reads "strictest" as free: with confirm_score 0.5, it
     recommended 4 for both labels (1,403 breast and 161 vulva uncensored
     at every value) although 4 cost 1.71% of vulva coverage. So the stage
     is skipped when confirm_score hides it on every file, and anywhere
@@ -1071,7 +1071,7 @@ def main():
                 # A structure profile that sets this key for this label
                 # overrides the backend value tuned here, for every file
                 # that runs it. When that is every file, no candidate can
-                # change anything: the 2026-10-09 run spent 12 minutes on
+                # change anything: one full-library run spent 12 minutes on
                 # six identical exposed_breast track_max_gap replays,
                 # because scene, compilation and split_screen each set
                 # their own.

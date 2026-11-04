@@ -1,7 +1,7 @@
 """
 test_derive_suppression_rules.py - regression coverage for
 tools/tuning/derive_suppression_rules.py's parsing and proposal logic,
-added 2026-09-16 alongside margin derivation.
+added alongside margin derivation.
 
 Why this needed its own test: this tool's output is what gets pasted
 directly into betaconfig.py's class_suppression blocks (see
@@ -18,7 +18,7 @@ proposing a margin that would silently gut the rule.
 
 These tests build synthetic analyze_suppression_pairs.py-shaped text
 blocks by hand (not against real cache data - that's what the manual
-2026-09-16 nudenet_v3 margin derivation used, see CONFIG_REFERENCE.md)
+nudenet_v3 margin derivation used, see CONFIG_REFERENCE.md)
 so the parsing regexes and proposal heuristics are pinned down
 independently of any one real run's numbers.
 """
@@ -175,7 +175,7 @@ class TestProposeMargin( unittest.TestCase ):
 
 class TestMarginRequiredAlongsideMinIou( unittest.TestCase ):
     """
-    The user's explicit instruction: margin should be required per
+    By design, margin is required per
     suppression rule, since no default convention (apply_class_suppression's
     0.0 fallback) is a safe stand-in. main()'s proposed dict must never
     contain a rule with min_iou but no margin key.

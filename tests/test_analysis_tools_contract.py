@@ -486,7 +486,7 @@ class TestVariantFiltering( unittest.TestCase ):
     -------------------------------
     320n and 640m are both nudenet_v3, so --backends nudenet_v3 still
     analyses both. Once one variant is the one being tuned, replaying
-    the others is pure cost: on the 2026-09-19 run the retinanet replays
+    the others is pure cost: on one run the retinanet replays
     alone were roughly 11 minutes of a 15-minute auto_tune.
 
     The filter must only ever narrow. It reads nothing new, writes

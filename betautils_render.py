@@ -225,7 +225,7 @@ def available_memory_bytes( meminfo_path='/proc/meminfo' ):
     or None where that cannot be read (other platforms, or a kernel
     without the field). Swap is deliberately not counted: a render
     pushed into swap crawls, and 4 GiB of swap did not stop the
-    2026-10-26 out-of-memory kills anyway.
+    out-of-memory kills described in memory_worker_cap anyway.
     """
     try:
         with open( meminfo_path, 'r', encoding='ascii' ) as handle:
@@ -243,8 +243,8 @@ def memory_worker_cap( frame_width, frame_height, available_bytes ):
     this frame size, or ( None, None ) when the cap does not apply.
 
     WHY THIS EXISTS. Worker count came from CPU count alone. A 16-CPU
-    laptop with 15 GiB of RAM got 8 workers for a 4096x2160 file on
-    2026-10-26, and the kernel's out-of-memory killer killed betatv
+    laptop with 15 GiB of RAM (Ryzen 9 5900HS, RTX 3070 Laptop) got 8
+    workers for a 4096x2160 file, and the kernel's out-of-memory killer killed betatv
     twice, about 25 frames per worker into the render (python held 5.4
     and 4.2 GB; the GPU driver also failed an allocation and one chunk
     encoder segfaulted). The 1080p file before it rendered fine with
@@ -742,7 +742,7 @@ class FfmpegStderr:
     last lines kept.
 
     Render ffmpeg used to inherit the terminal's stderr, so its reason for
-    failing never reached betasuite.log. On 2026-10-23/24 two 4K files
+    failing never reached betasuite.log. Two 4K files in one run
     each lost one chunk to an encoder that quit within seconds, three
     attempts running, and all the log could say was BrokenPipeError: the
     encoder's own message went to a terminal nobody kept.
@@ -839,7 +839,7 @@ def describe_exit_status( returncode ):
     'was killed (SIGKILL)'.
 
     A negative returncode is a signal, and printing it as "exited -11"
-    hid the one fact that mattered on 2026-10-26: a 4K chunk encoder
+    hid the one fact that mattered in a 4K out-of-memory render: a chunk encoder
     segfaulted when the GPU driver ran out of host memory, and ffmpeg
     prints nothing when it segfaults, so the signal is the whole story.
     """
@@ -1087,7 +1087,7 @@ def chunk_failure_reason( returncode, frames_written, write_error, captured_stde
 
     BUG FIX: when the encoder quits mid-chunk, the next frame write raises
     BrokenPipeError, and that consequence used to be the whole report.
-    a 4K AV1 file on 2026-10-23 logged "render chunk 5 failed after 3
+    One 4K AV1 file logged "render chunk 5 failed after 3
     attempt(s): BrokenPipeError(32, 'Broken pipe')" while ffmpeg's exit
     status went unread and its message went to the terminal. An encoder
     that exited non-zero is the cause, so its exit code and the line

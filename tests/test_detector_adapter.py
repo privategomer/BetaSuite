@@ -133,7 +133,7 @@ class TestGetNnBatchSize( unittest.TestCase ):
     detector_backend[<name>]['nn_batch_size'] override first, then the
     old flat top-level betaconfig.nn_batch_size as a backward-compatible
     fallback, then 1 if neither is set at all. Added alongside the
-    2026-09-15 change moving nn_batch_size from one shared setting into
+    change moving nn_batch_size from one shared setting into
     per-backend config (real hardware evidence: retinanet_v2 OOMs at
     batch sizes nudenet_v3 handles fine - see CONFIG_REFERENCE.md).
     """
@@ -211,7 +211,7 @@ class TestGetClassSuppression( unittest.TestCase ):
     detector_backend[<name>]['class_suppression'] override first, then
     the old flat top-level betaconfig.class_suppression as a backward-
     compatible fallback, then {} (no suppression) if neither is set.
-    Added alongside the 2026-09-15 change moving class_suppression from
+    Added alongside the change moving class_suppression from
     one shared setting into per-backend config (real evidence: nudenet_v3's
     boxes run structurally smaller/tighter than retinanet_v2's for the
     same labels on the same footage, and suppression-pair IoU distributions

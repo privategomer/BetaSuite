@@ -6,8 +6,8 @@ backends, analyze" harness.
 Why this exists: comparing retinanet_v2 vs nudenet_v3 by hand (edit
 detector_backend['selected'], run betatv.py, edit it again, run again,
 then eyeball two different runs' logs/caches that may be mixed with
-older leftover data) is exactly what produced real confusion diagnosed
-2026-09-17 - three of six nudenet_v3 caches from a "6-video full run"
+older leftover data) is exactly what produced real confusion once -
+three of six nudenet_v3 caches from a "6-video full run"
 turned out to be stale leftovers from a DIFFERENT, earlier session,
 because nothing had cleared the cache first. This script removes that
 whole class of mistake: it wipes every cache/log/stat file in the app
@@ -28,7 +28,7 @@ where each of these paths is defined):
     ../output/stats/*                   (betasuite_stats.jsonl)
     any stray *.checkpoint files anywhere under output/cache/ (resume
         state for an interrupted detection pass - always safe to drop,
-        including pre-migration orphans like the ones found 2026-09-17)
+        including pre-migration orphans)
 
 Deliberately NOT cleared: ../output/censored_vids/, ../output/censored_pics/,
 ../output/betafied/ - those are real DELIVERABLE output, not cache or
@@ -144,7 +144,7 @@ def _build_logger( log_dir, log_level_name, console_level_name ):
     """
     File handler at log_level_name (default info, can go down to trace),
     console handler at console_level_name (default info) - independent
-    levels, per the user's own standing rule for harness scripts: full
+    levels, per the project's rule for harness scripts: full
     detail always in the log file, console kept readable/filterable
     separately.
     """
@@ -355,7 +355,7 @@ def main():
         help="which backends to run, in order (default: every registered backend, sorted)" )
     parser.add_argument( '--yes', action='store_true',
         help="skip the confirmation prompt before deleting cache/logs/stats - for scripted/unattended use. "
-             "Without this flag, the prompt is REQUIRED (the wait/confirm step the user's own standing rule for "
+             "Without this flag, the prompt is REQUIRED (the wait/confirm step the project's rule for "
              "harness scripts asks for) - this script never deletes anything without an explicit human or --yes." )
     parser.add_argument( '--skip-clean', action='store_true',
         help="skip the delete step entirely (rare - mainly for debugging this script itself)" )
@@ -366,7 +366,7 @@ def main():
         help="restrict analyze_jitter.py/analyze_track_breaks.py/analyze_style_flicker.py to these labels" )
     parser.add_argument( '--log-level', choices=sorted(_LEVEL_NAMES.keys()), default='info',
         help="this script's OWN narration log-file verbosity (default info) - trace/debug/info/warn/error, per "
-             "the user's own standing rule for harness scripts. Does not affect betatv.py's own logging (see "
+             "the project's rule for harness scripts. Does not affect betatv.py's own logging (see "
              "betaconfig.log_level) - only this orchestrator script's messages." )
     parser.add_argument( '--console-level', choices=sorted(_LEVEL_NAMES.keys()), default='info',
         help="this script's OWN narration console verbosity (default info) - independent of --log-level, so the "

@@ -55,7 +55,7 @@ class TestChoosing( unittest.TestCase ):
         return [ { 'workers': workers, 'fps': fps } for workers, fps in pairs ]
 
     def test_fewer_workers_at_the_hardest_file_are_never_proposed( self ):
-        # The 2026-11-03 run on a 16-core laptop: a 4096x2160 file, 4 and
+        # A Ryzen 9 5900HS laptop (16 threads, 15 GiB): a 4096x2160 file, 4 and
         # more workers skipped for memory. Proposing 2 would also have
         # held 1080p renders, which ran fine at 8, to 2.
         rows = self._rows( ( 1, 31.76 ), ( 1, 31.22 ), ( 2, 37.97 ), ( 2, 37.93 ) )
@@ -199,7 +199,7 @@ class TestStagesWithAStandInModel( unittest.TestCase ):
         self.assertIn( self.context['batch_best'], ( 1, 2, 4, 8, 16 ) )
 
     def test_a_gain_inside_the_current_settings_own_spread_is_not_proposed( self ):
-        # 2026-11-03, 1080p: batch 2 timed 10% faster than batch 4 while
+        # RTX 3070 Laptop, 1080p: batch 2 timed 10% faster than batch 4 while
         # batch 1 and 16 sat beside 4. Here batch 2 is 8% faster, and
         # batch 4 timed again comes out 15% slower than the first time.
         import time

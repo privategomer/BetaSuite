@@ -3,7 +3,7 @@ test_logging_contract.py - every logger comes from betautils_log.
 
 Pipeline code calls logger.trace(). A tool that built its own plain
 logging.Logger and handed it to the render path failed every render
-chunk with AttributeError (suppression_ab, 2026-10-10): betabench,
+chunk with AttributeError (suppression_ab): betabench,
 auto_tune and four other tools each re-declared TRACE and built their
 own logger, and none of those loggers had trace(). These tests pin one
 level vocabulary and one place loggers are built.

@@ -354,12 +354,12 @@ class TestHarnessVariables( unittest.TestCase ):
 
     def replay( self, **env ):
         log = tempfile.NamedTemporaryFile( 'w', suffix='.log', delete=False )
-        log.write( "2026-10-08 22:52:56,100 [INFO ] betabench: command=reverse\n"
-                   "2026-10-08 22:52:56,177 [INFO ] video subset: the first 2 by name, 2 of 9 file(s):\n"
-                   "2026-10-08 22:52:56,177 [INFO ]   uncensored_vids/scene/a.mp4\n"
-                   "2026-10-08 22:52:56,177 [INFO ]   source/compilation/b.mp4\n"
-                   "2026-10-08 22:52:56,597 [INFO ] reverse: a.mp4, 1920x1080 at 30 fps\n"
-                   "2026-10-08 22:52:57,000 [INFO ]   part 1 detail that is not a file\n" )
+        log.write( "2000-01-01 00:00:06,100 [INFO ] betabench: command=reverse\n"
+                   "2000-01-01 00:00:06,177 [INFO ] video subset: the first 2 by name, 2 of 9 file(s):\n"
+                   "2000-01-01 00:00:06,177 [INFO ]   uncensored_vids/scene/a.mp4\n"
+                   "2000-01-01 00:00:06,177 [INFO ]   source/compilation/b.mp4\n"
+                   "2000-01-01 00:00:06,597 [INFO ] reverse: a.mp4, 1920x1080 at 30 fps\n"
+                   "2000-01-01 00:00:07,000 [INFO ]   part 1 detail that is not a file\n" )
         log.close()
         self.addCleanup( os.unlink, log.name )
         script = ( 'log_info() { echo "INFO $*"; }; log_error() { echo "ERROR $*"; }; '

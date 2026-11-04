@@ -3,7 +3,7 @@ test_reset_classification.py - the analysers' idea of a track reset matches the 
 
 smooth_boxes never continues a track across a shot cut, however close
 the boxes. analyze_track_breaks and analyze_jitter classified each new
-track by looking for a nearby live track, and until 2026-10-18 neither
+track by looking for a nearby live track, and at first neither
 looked at cuts: on cut-dense compilations every new shot's first
 detection beside where the last shot's track ended counted as an
 "unexplained" reset or a "likely reset". These pin the cut-aware

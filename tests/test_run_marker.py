@@ -1,7 +1,7 @@
 """
 tests/test_run_marker.py - noticing a run that died without a word.
 
-On 2026-10-26 the out-of-memory killer SIGKILLed betatv twice in a 4K
+The out-of-memory killer once SIGKILLed betatv twice in a 4K
 render; the only trace anywhere was the shell printing "Killed". A
 marker that exists exactly while a run is running turns that into a
 warning and a failure record at the next start. These tests drive the

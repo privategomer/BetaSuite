@@ -731,7 +731,7 @@ clock went and what was detected.
 ```bash
 python3 tools/analysis/summarize_run.py
 python3 tools/analysis/summarize_run.py --last 7      # just the run that finished
-python3 tools/analysis/summarize_run.py --since 2026-09-17
+python3 tools/analysis/summarize_run.py --since YYYY-MM-DD
 ```
 
 Rows are grouped by backend, variant, picture sizes, sample rate and

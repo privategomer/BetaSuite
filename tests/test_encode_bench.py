@@ -165,7 +165,7 @@ class TestChoice( unittest.TestCase ):
         self.assertIs( betabench.choose_encoder( rows ), rows[2] )
 
     def test_a_speed_difference_inside_the_noise_keeps_the_current_encoder( self ):
-        # 2026-11-03, 4K on an RTX 3070 Laptop: p1 and p5 both 39.1 fr/s,
+        # 4K on an RTX 3070 Laptop (driver 595, ffmpeg 8.0.1): p1 and p5 both 39.1 fr/s,
         # p1 writing 25% more. p1 was recommended.
         rows = [ self.row( 'p5', 39.08, 17.97, 42.78, size=409 ), self.row( 'p1', 39.12, 17.83, 42.77, size=511 ),
                  self.row( 'p3', 38.9, 17.87, 42.77, size=497 ) ]

@@ -28,7 +28,6 @@ settings are resolved. This module imports nothing from the project but
 betaconfig, so any of those can import it without a cycle.
 
 The design, its error economics and the phase 0 cost measurements are in
-the project doc claude/plan-reverse-mode-2026-10-08.md and in
 CONFIG_REFERENCE.md -> "Reverse mode".
 """
 

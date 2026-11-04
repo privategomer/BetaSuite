@@ -209,7 +209,7 @@ class TestPairedStyleUnambiguousNearest( _UnconfirmedTracksRenderMixin, unittest
     """
     paired_style (exposed_breast has it on) used to require EXACTLY ONE
     other live track nearby to share style - real data from
-    analyze_style_flicker.py (2026-09-13) showed that gate almost never
+    analyze_style_flicker.py showed that gate almost never
     actually applied: 79% of independent-resolve events had 2+ candidates
     nearby, because two breasts on the SAME person plus any other
     already-live track nearby routinely puts the count above 1. Fixed to
@@ -292,7 +292,7 @@ class TestPairedStyleDonorFreshness( _UnconfirmedTracksRenderMixin, unittest.Tes
     survive an occlusion.
 
     Style pairing asks a different question: "is this the other breast
-    of the person on screen right now?" On the 2026-09-19 overnight run
+    of the person on screen right now?" On one overnight run
     the structure bench measured 53.5 cuts/min on one compilation and
     74.7 on another - a shot every 0.8-1.1 seconds. At 27s of donor
     eligibility that leaves roughly two dozen departed subjects

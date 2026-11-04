@@ -451,7 +451,7 @@ def edit_text( text, updates=None, removals=None, namespace=None, comment=None )
             goes back to a commented-out line at betaconfig.py's value.
         namespace: betaconfig's values, for those commented-out lines.
         comment: Trailing comment for every line written, e.g.
-            'measured by tune_machine 2026-11-02'.
+            'measured by tune_machine'.
 
     Raises:
         ValueError: the text does not parse, so it cannot be edited

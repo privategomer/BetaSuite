@@ -215,7 +215,7 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertEqual( decision.chosen, 3, "4 leaves 350 more bare, over the 100 allowed" )
 
     def test_confident_losses_recommend_going_looser( self ):
-        # The 2026-10-09 shape: 3 left far more confident detections bare.
+        # A real run's shape: 3 left far more confident detections bare.
         decision = self.decide( self.stage_at( 3 ),
                                 self.rows( 3, { 1: 50, 2: 120, 3: 900, 4: 2000 } ) )
         self.assertTrue( decision.accepted )
@@ -250,7 +250,7 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertIn( '+400 box(es)', lower['verdict'] )
 
     def test_identical_counts_keep_the_current_value( self ):
-        # The 2026-10-24 shape: confirm_score 0.5 drew every confident short
+        # A real run's shape: confirm_score 0.5 drew every confident short
         # track, so 1-4 all left 1,403 bare and the old rule chose 4.
         decision = self.decide( self.stage_at( 2 ),
                                 self.rows( 2, { 1: 1403, 2: 1403, 3: 1403, 4: 1403 } ) )
@@ -275,7 +275,7 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         return rows
 
     def test_a_value_costing_coverage_is_rejected( self ):
-        # 2026-10-24 vulva: 3 cost 0.84% of coverage and 4 cost 1.71%.
+        # A real run's vulva: 3 cost 0.84% of coverage and 4 cost 1.71%.
         rows = self.with_coverage( self.rows( 2, { 1: 50, 2: 50, 3: 60, 4: 400 } ),
                                    { 1: 1000.0, 2: 1000.0, 3: 991.6, 4: 982.9 } )
         decision = self.decide( self.stage_at( 2 ), rows )
@@ -443,7 +443,7 @@ class TestConfirmScoreRecommendation( unittest.TestCase ):
         self.assertIsNone( stage.review( decision, {} ) )
 
     def test_a_stricter_score_is_reviewed_for_what_it_removes( self ):
-        # The 2026-10-24 breast shape: 0.5 decided by eye, 0.7 within the tolerance.
+        # A real run's breast shape: 0.5 decided by eye, 0.7 within the tolerance.
         stage = self.stage( 0.5 )
         decision = bu_tuning.Decision( stage.title, 0.7, True, '', [] )
         why = stage.review( decision, {} )['why']

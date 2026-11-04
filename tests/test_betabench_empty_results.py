@@ -4,7 +4,7 @@ test_betabench_empty_results.py - "no caches" only when there are none.
 A cache-reading betabench subcommand runs once per cached configuration.
 dedup with one picture size reads the caches, says it has nothing to
 tune, and returns no rows; the wrapper then also warned "no cached
-detections found for any configuration", and the 2026-10-11 hub run sent
+detections found for any configuration", and one hub run sent
 people looking for caches that were there. The warning is now kept for
 the case it describes.
 """

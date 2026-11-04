@@ -286,7 +286,7 @@ def _read_cached_detections( discovered, logger, backend_name ):
     already parsed (so the count is known) but served one video at a time.
 
     It used to return one list of every detection in the configuration:
-    7.3 million dicts on the developer's library, 3.7 GB before any measurement
+    7.3 million dicts on a 56-video library, 3.7 GB before any measurement
     ran, and the analysis hub ran several such processes at once until
     the kernel killed them. Each record still carries '_file_hash' (box
     geometry is in its own video's pixels, and "the same instant" only
@@ -2049,7 +2049,7 @@ def _move_verdict( row ):
          see either distinction, so timing alone does not override it,
          unless the move raises the sample rate (rule 2's mirror).
       4. Only the tree root and mapped folders are scripted. An unmapped
-         folder (favorites/, completed/) is the user's own
+         folder (favorites/, completed/) is your own
          organisation; the move is listed, not performed.
     """
     destination = row['recommended_profile']
@@ -2848,7 +2848,7 @@ def _measure_encode_quality( video_path, segment_results, stride ):
 
 
 # How much faster than the current encoder a candidate must be to count
-# as faster. On 2026-11-03 h264_nvenc p1 and p5 both rendered 4K at 39.1
+# as faster. On an RTX 3070 Laptop h264_nvenc p1 and p5 both rendered 4K at 39.1
 # fr/s, and p1 was recommended for a speed difference in the third digit
 # while writing 25% bigger files.
 ENCODE_SPEED_NOISE = 0.03
@@ -3135,8 +3135,7 @@ def _log_encode_table( logger, rows, choice, decode_fps ):
 # reverse: what reverse mode would cost to render, before it is built
 # ---------------------------------------------------------------------------
 #
-# Phase 0 of the reverse-mode plan (claude/plan-reverse-mode-2026-10-08.md
-# in the project). Reverse mode obscures the whole frame with a frame style
+# Phase 0 of the reverse-mode plan. Reverse mode obscures the whole frame with a frame style
 # while a trigger is live, then restores "windows" over the detections.
 # Today a frame with no censored box costs almost nothing to render; in
 # reverse mode every triggered frame pays for a full-frame censor. Whether
@@ -3164,7 +3163,7 @@ REVERSE_FRAME_STYLES = (
 REVERSE_PIPELINE_STYLE = REVERSE_FRAME_STYLES[0]
 
 # Window sizes as a fraction of frame area: exposed_breast p50 and p99
-# from the 2026-09-30 full run (claude/full-run-analysis-2026-09-30.md).
+# from a full 56-video run.
 REVERSE_WINDOW_AREA_FRACTIONS = ( ( 'p50', 0.0105 ), ( 'p99', 0.1031 ) )
 REVERSE_WINDOW_SHAPE = 'ellipse'
 REVERSE_WINDOW_FEATHER = 0.25

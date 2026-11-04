@@ -4,7 +4,7 @@ logic in betautils_cache_paths.py (discover_full_run_videos/
 build_hash_to_video_path), which previously only had indirect coverage
 via test_cache_path_duplicates_stay_in_sync.py's box_hash_path_for
 string checks. This is the logic that actually caused the real
-2026-09-16 analyze_style_flicker.py bug (backend name not pinned into
+analyze_style_flicker.py bug (backend name not pinned into
 the discovery glob corrupted the extracted file_hash, making every
 video appear "not found") - box_hash_path_for producing the right
 STRING was never the part that broke; discover_full_run_videos parsing

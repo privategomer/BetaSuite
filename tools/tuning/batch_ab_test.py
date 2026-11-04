@@ -341,7 +341,7 @@ def run_one_backend( backend_name, args, video_files, global_min_prob ):
             # run (each run_one_backend call launches betatv.py with
             # BETASUITE_DETECTOR_BACKEND_OVERRIDE=backend_name), but
             # betasuite_stats.jsonl rows have recorded which backend
-            # produced them since 2026-09-15 (see betatv.py's stats-row
+            # produced them since the per-backend migration (see betatv.py's stats-row
             # write) - checking it directly costs nothing and guards
             # against a row landing just outside its true window (clock
             # skew, a slow-starting subprocess) being misattributed.

@@ -126,7 +126,7 @@ class TestDetectShotCuts( unittest.TestCase ):
         self.assertTrue( len( cuts_loose ) >= len( cuts_strict ) )
 
     def test_back_to_back_rapid_cuts_all_detected( self ):
-        # regression test for the real bug found on 2026-09-13 against
+        # regression test for the real bug found against
         # actual quick-cut compilation footage: a version of this
         # function that confirmed a pending candidate by comparing the
         # NEXT sample against the CANDIDATE's own state scored zero cuts
@@ -145,7 +145,7 @@ class TestDetectShotCuts( unittest.TestCase ):
         self.assertEqual( len( cuts ), 3 )
 
     def test_a_confirming_sample_can_also_open_the_next_candidate( self ):
-        # The 2026-09-19 fix. Confirmation used to be an `elif`: a sample
+        # The fix: confirmation used to be an `elif`: a sample
         # that resolved a pending candidate could not itself raise a new
         # one, so on footage cutting close to the sample cadence roughly
         # every other cut was thrown away.

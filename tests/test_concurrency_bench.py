@@ -193,7 +193,7 @@ class TestScanWorkerCounts( unittest.TestCase ):
     """Which worker counts the bench can honestly measure on a given set of files."""
 
     def test_counts_above_the_file_count_are_untested_not_timed( self ):
-        # The 2026-10-06 run: 12 cores, 3 files. 4 and 8 workers each ran
+        # A 12-thread laptop, 3 files: 4 and 8 workers each ran
         # 3 processes, and the bench recommended 8 on noise.
         tested, untested = betabench._scan_worker_counts( cores=12, files=3 )
         self.assertEqual( tested, [ 1, 2 ] )

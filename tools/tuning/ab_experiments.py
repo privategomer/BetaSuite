@@ -589,7 +589,7 @@ CUT_BURST_KEYS = ( 'shot_cut_burst_window', 'shot_cut_burst_max_span', 'shot_cut
 # What the code reads when the keys are absent from betaconfig: off.
 CUT_BURST_ABSENT = { 'shot_cut_burst_window': 0.0, 'shot_cut_burst_max_span': None,
                      'shot_cut_burst_keep': 'first' }
-# The best variant of the 2026-10-11 analysis, for when no newer one is on disk.
+# The best variant of a real 56-video analysis, for when no newer one is on disk.
 CUT_BURST_DEFAULT = { 'shot_cut_burst_window': 0.35, 'shot_cut_burst_max_span': None,
                       'shot_cut_burst_keep': 'first' }
 

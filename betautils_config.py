@@ -529,7 +529,7 @@ REVERSE_TRIGGER_KEYS = frozenset( bu_reverse.DEFAULTS['trigger'] )
 REVERSE_CENSOR_KEYS = frozenset( bu_reverse.DEFAULTS['censor'] )
 REVERSE_PERSON_WINDOW_KEYS = frozenset( bu_reverse.DEFAULTS['person_windows'] )
 REVERSE_FRAME_STYLE_TYPES = frozenset( { 'blur', 'pixel', 'bar' } )
-# Measured on the developer's machine (betabench reverse, 2026-10-11, 3840x2160,
+# Measured with betabench reverse on a 12-thread laptop (3840x2160,
 # one core): gaussian 4,765 ms and hex 930 ms per frame, against 78 ms
 # for triple_box and 11 ms for mosaic. Whole-frame, those two would make
 # every triggered frame cost seconds. With blur_edge_margin on, the
@@ -943,7 +943,7 @@ def _validate_class_suppression( errors, valid_classes ):
                     # negative margin lets the suppressing label be LESS confident than the label
                     # it's overriding and still win, inverting the entire "require better evidence
                     # to override a real detection" premise the margin gate exists for. No known
-                    # legitimate use case (confirmed with the user 2026-09-16) - always an error,
+                    # legitimate use case - always an error,
                     # unlike margin=0.0, which is only a warning (see _validate_class_suppression_zero_margin).
                     errors.append( "%s['margin'] = %r is negative - the suppressing label would be allowed to be "
                         "LESS confident than the label it's overriding and still suppress it, which defeats the "
@@ -1281,11 +1281,10 @@ def _validate_class_suppression_zero_margin( warnings, valid_classes ):
     positive margin there would gut the rule rather than refine it,
     see CONFIG_REFERENCE.md's nudenet_v3 margin section for several
     real examples), so this must never hard-block a run. But per
-    explicit user direction (2026-09-16): a bare tie (margin=0.0,
+    explicit design decision: a bare tie (margin=0.0,
     "suppressing label's score just has to be >= the suppressed
-    label's") is too permissive on its own - the user hand-raised
-    every nudenet_v3 rule that had been exactly 0.0 up to 0.10, and
-    wants a future edit that reintroduces exactly 0.0 (most likely by
+    label's") is too permissive on its own - every nudenet_v3 rule that
+    had been exactly 0.0 was raised to 0.10 by hand, and a future edit that reintroduces exactly 0.0 (most likely by
     copying an older rule, or by a future derive_suppression_rules.py
     run getting pasted back in unreviewed) flagged rather than
     silently shipped. This checks only for margin == 0.0 specifically,
@@ -1340,8 +1339,8 @@ def _collect_validation_warnings():
 def _check_item_override_values( override, where, errors ):
     """
     Check one already-resolved item_overrides-shaped dict (either the
-    shared betaconfig.item_overrides[label] block - which, as of
-    2026-09-17, should only ever actually HAVE censor_style/censor_shape
+    shared betaconfig.item_overrides[label] block - which should only
+    ever actually HAVE censor_style/censor_shape
     set, since every backend-tunable key now lives in each backend's own
     block instead - or the effective per-backend-merged result from
     bu_detector.get_item_overrides) for individually well-formed values -
@@ -1495,7 +1494,7 @@ def _validate_item_overrides( errors, valid_classes ):
     choices, not detection-derived - see bu_detector.
     ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS's own comment).
 
-    2026-09-17: every backend-tunable key (min_prob, width_area_safety,
+    Every backend-tunable key (min_prob, width_area_safety,
     height_area_safety, time_safety, track_max_gap, interpolation_max_gap,
     paired_style, etc - the full ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS set)
     used to also be accepted here, since a config that never set a
@@ -1534,7 +1533,7 @@ def _validate_item_overrides( errors, valid_classes ):
         backend_tunable_keys_present = set(override.keys()) & bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
         if backend_tunable_keys_present:
             errors.append( "%s has backend-tunable key(s) %s in the SHARED item_overrides block - these moved to "
-                "each backend's own detector_backend[<name>]['item_overrides']['%s'] block (2026-09-17) and are no "
+                "each backend's own detector_backend[<name>]['item_overrides']['%s'] block and are no "
                 "longer read from here at all (bu_detector.get_item_overrides only reads backend-tunable keys from "
                 "a backend's own block), so this is silently doing nothing - move %s into detector_backend['nudenet_v3']"
                 "['item_overrides']['%s'] and detector_backend['retinanet_v2']['item_overrides']['%s'] (with "
@@ -1568,7 +1567,7 @@ def _validate_backend_item_overrides( errors, valid_classes ):
     """
     Check every registered backend's per-backend item_overrides block
     (detector_backend[<name>]['item_overrides'][label]) - added
-    2026-09-16 alongside bu_detector.get_item_overrides, same reasoning
+    alongside bu_detector.get_item_overrides, same reasoning
     and structure as _validate_class_suppression/_validate_nn_batch_size:
     checks every backend, not just the currently selected one, so a typo
     in an unselected backend's override is still caught before it's ever

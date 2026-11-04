@@ -1,7 +1,7 @@
 """
 tests/test_render_memory_cap.py - render workers sized by memory as well as CPUs.
 
-On 2026-10-26 a 16-CPU laptop with 15 GiB of RAM got 8 render workers
+A 16-thread laptop with 15 GiB of RAM (Ryzen 9 5900HS) got 8 render workers
 for a 4096x2160 file and the out-of-memory killer killed betatv twice;
 the 1080p file before it rendered fine with the same 8. These tests pin
 that the worker count now falls with frame size and available memory,

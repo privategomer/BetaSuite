@@ -47,31 +47,31 @@ class _Tree( unittest.TestCase ):
         self.write( 'stats/betasuite_stats.jsonl', keep=True )
         self.write( 'cache/vid_hashes/abc-nudenet_v3-3-640-9-0.120-df43d00.gz', keep=True )
         self.write( 'cache/shot_cuts/abc-9-0.400.gz', keep=True )
-        self.write( 'logs/analysis_runs/20261018_170253/auto_tune/decisions.json', keep=True )
-        self.write( 'benchmarks/20261006_165708/results.json', keep=True )
-        self.write( 'benchmarks/20261006_165708/betabench.log', keep=True )
+        self.write( 'logs/analysis_runs/20011018_170253/auto_tune/decisions.json', keep=True )
+        self.write( 'benchmarks/20011006_165708/results.json', keep=True )
+        self.write( 'benchmarks/20011006_165708/betabench.log', keep=True )
         # Decided round: renders, a half-rendered whole video, its record.
-        self.round( 'ab_suppression_20261019_100748', age=DAY, decided=True,
+        self.round( 'ab_suppression_20011019_100748', age=DAY, decided=True,
                     renders=[ 'a_clip01_ab.mp4', 'a_clip01_diff.mp4', 'a_full_current.tmp.mp4',
                               'a_full_current.chunk000.mkv', 'a_full_current.mp4.concat.txt' ] )
         # Undecided, stale and fresh.
-        self.round( 'ab_suppression_20261019_092944', age=20 * DAY, renders=[ 'b_clip01_ab.mp4' ] )
-        self.round( 'ab_min_track_hits_20261022_090000', age=DAY, renders=[ 'c_clip01_ab.mp4' ] )
+        self.round( 'ab_suppression_20011019_092944', age=20 * DAY, renders=[ 'b_clip01_ab.mp4' ] )
+        self.round( 'ab_min_track_hits_20011022_090000', age=DAY, renders=[ 'c_clip01_ab.mp4' ] )
         # Older name, decided by chosen_rules.json only.
-        self.round( 'suppression_ab_20261010_145028', age=10 * DAY, decided='chosen_rules.json',
+        self.round( 'suppression_ab_20011010_145028', age=10 * DAY, decided='chosen_rules.json',
                     renders=[ 'd_full_proposed.mp4' ] )
         # Aborted starts: an old one, one still ranking, a start folder.
-        self.write( 'benchmarks/ab_suppression_20261018_181042/ab_compare.log', age=5 * DAY )
-        self.write( 'benchmarks/ab_suppression_20261023_093620_confirm/betabench.log', age=600, keep=True )
-        self.write( 'benchmarks/.ab_start_20261020_101010/ab_compare.log', age=2 * DAY )
+        self.write( 'benchmarks/ab_suppression_20011018_181042/ab_compare.log', age=5 * DAY )
+        self.write( 'benchmarks/ab_suppression_20011023_093620_confirm/betabench.log', age=600, keep=True )
+        self.write( 'benchmarks/.ab_start_20011020_101010/ab_compare.log', age=2 * DAY )
         # A round folder symlinked from elsewhere, and a symlinked render.
         self.write_outside( 'elsewhere/x_clip01_ab.mp4' )
         self.write_outside( 'elsewhere/ranking.json' )
         self.write_outside( 'elsewhere/chosen.json' )
         os.symlink( os.path.join( self.outside, 'elsewhere' ),
-                    os.path.join( self.root, 'benchmarks', 'ab_linked_20261001_000000' ) )
+                    os.path.join( self.root, 'benchmarks', 'ab_linked_20011001_000000' ) )
         os.symlink( os.path.join( self.outside, 'elsewhere', 'x_clip01_ab.mp4' ),
-                    os.path.join( self.root, 'benchmarks', 'ab_suppression_20261019_100748', 'linked.mp4' ) )
+                    os.path.join( self.root, 'benchmarks', 'ab_suppression_20011019_100748', 'linked.mp4' ) )
 
     def write( self, relative, size=10, age=0, keep=False ):
         path = os.path.join( self.root, relative )
@@ -118,12 +118,12 @@ class TestPlan( _Tree ):
 
     def test_each_round_lands_in_its_category( self ):
         self.assertEqual( self.by_category(), {
-            'decided_renders': [ 'ab_suppression_20261019_100748', 'suppression_ab_20261010_145028' ],
-            'stale_renders': [ 'ab_suppression_20261019_092944' ],
-            'aborted_rounds': [ '.ab_start_20261020_101010', 'ab_suppression_20261018_181042' ] } )
+            'decided_renders': [ 'ab_suppression_20011019_100748', 'suppression_ab_20011010_145028' ],
+            'stale_renders': [ 'ab_suppression_20011019_092944' ],
+            'aborted_rounds': [ '.ab_start_20011020_101010', 'ab_suppression_20011018_181042' ] } )
 
     def test_renders_include_half_finished_leftovers_and_nothing_else( self ):
-        decided = [ item for item in self.plan() if item.name == 'ab_suppression_20261019_100748' ][0]
+        decided = [ item for item in self.plan() if item.name == 'ab_suppression_20011019_100748' ][0]
         self.assertEqual( sorted( os.path.basename( path ) for path in decided.files ), [
             'a_clip01_ab.mp4', 'a_clip01_diff.mp4', 'a_full_current.chunk000.mkv',
             'a_full_current.mp4.concat.txt', 'a_full_current.tmp.mp4' ] )
@@ -132,19 +132,19 @@ class TestPlan( _Tree ):
     def test_stale_days_moves_the_line( self ):
         self.assertNotIn( 'stale_renders', self.by_category( stale_days=21 ) )
         self.assertEqual( self.by_category( stale_days=1 )['stale_renders'],
-                          [ 'ab_min_track_hits_20261022_090000', 'ab_suppression_20261019_092944' ],
+                          [ 'ab_min_track_hits_20011022_090000', 'ab_suppression_20011019_092944' ],
                           "a day old at stale_days=1 is stale" )
 
     def test_a_round_still_ranking_is_not_aborted( self ):
         names = [ item.name for item in self.plan() ]
-        self.assertNotIn( 'ab_suppression_20261023_093620_confirm', names )
+        self.assertNotIn( 'ab_suppression_20011023_093620_confirm', names )
 
     def test_an_aborted_round_with_a_render_is_left_alone( self ):
-        self.write( 'benchmarks/ab_cut_bursts_20261001_000000/odd.mp4', age=5 * DAY )
-        self.assertNotIn( 'ab_cut_bursts_20261001_000000', [ item.name for item in self.plan() ] )
+        self.write( 'benchmarks/ab_cut_bursts_20011001_000000/odd.mp4', age=5 * DAY )
+        self.assertNotIn( 'ab_cut_bursts_20011001_000000', [ item.name for item in self.plan() ] )
 
     def test_a_symlinked_round_is_never_planned( self ):
-        self.assertNotIn( 'ab_linked_20261001_000000', [ item.name for item in self.plan() ] )
+        self.assertNotIn( 'ab_linked_20011001_000000', [ item.name for item in self.plan() ] )
 
 
 class TestApply( _Tree ):
@@ -161,28 +161,28 @@ class TestApply( _Tree ):
 
     def test_decided_renders_go_and_their_records_stay( self ):
         lines = self.cli( '--apply', 'decided_renders' )
-        folder = os.path.join( self.root, 'benchmarks', 'ab_suppression_20261019_100748' )
+        folder = os.path.join( self.root, 'benchmarks', 'ab_suppression_20011019_100748' )
         self.assertEqual( sorted( os.listdir( folder ) ), [
             'ab_compare.log', 'betabench.log', 'chosen.json', 'clips.md', 'feedback.csv', 'linked.mp4',
             'ranking.json' ] )
         self.assertTrue( os.path.exists( os.path.join(
-            self.root, 'benchmarks', 'ab_suppression_20261019_092944', 'b_clip01_ab.mp4' ) ),
+            self.root, 'benchmarks', 'ab_suppression_20011019_092944', 'b_clip01_ab.mp4' ) ),
             "an undecided round is another category" )
         self.assertIn( 'INFO freed 5.9 KB (decided_renders)', lines )
 
     def test_only_removes_one_round( self ):
-        self.cli( '--apply', 'decided_renders', '--only', 'suppression_ab_20261010_145028' )
+        self.cli( '--apply', 'decided_renders', '--only', 'suppression_ab_20011010_145028' )
         self.assertFalse( os.path.exists( os.path.join(
-            self.root, 'benchmarks', 'suppression_ab_20261010_145028', 'd_full_proposed.mp4' ) ) )
+            self.root, 'benchmarks', 'suppression_ab_20011010_145028', 'd_full_proposed.mp4' ) ) )
         self.assertTrue( os.path.exists( os.path.join(
-            self.root, 'benchmarks', 'ab_suppression_20261019_100748', 'a_clip01_ab.mp4' ) ) )
+            self.root, 'benchmarks', 'ab_suppression_20011019_100748', 'a_clip01_ab.mp4' ) ) )
 
     def test_aborted_rounds_go_whole( self ):
         self.cli( '--apply', 'aborted_rounds' )
         benchmarks = os.path.join( self.root, 'benchmarks' )
-        self.assertFalse( os.path.exists( os.path.join( benchmarks, 'ab_suppression_20261018_181042' ) ) )
-        self.assertFalse( os.path.exists( os.path.join( benchmarks, '.ab_start_20261020_101010' ) ) )
-        self.assertTrue( os.path.exists( os.path.join( benchmarks, 'ab_suppression_20261023_093620_confirm' ) ) )
+        self.assertFalse( os.path.exists( os.path.join( benchmarks, 'ab_suppression_20011018_181042' ) ) )
+        self.assertFalse( os.path.exists( os.path.join( benchmarks, '.ab_start_20011020_101010' ) ) )
+        self.assertTrue( os.path.exists( os.path.join( benchmarks, 'ab_suppression_20011023_093620_confirm' ) ) )
 
     def test_nothing_outside_the_root_is_removed_even_if_planned( self ):
         stray = TOOL.Item( 'decided_renders', 'stray', self.outside,
@@ -203,7 +203,7 @@ class TestApply( _Tree ):
         self.assertTrue( os.path.exists( victim ) )
 
     def test_a_file_outside_its_round_is_refused( self ):
-        folder = os.path.join( self.root, 'benchmarks', 'ab_suppression_20261019_100748' )
+        folder = os.path.join( self.root, 'benchmarks', 'ab_suppression_20011019_100748' )
         stray = TOOL.Item( 'decided_renders', 'r', folder, [ self.kept[0] ], 10, 'test' )
         lines = []
         TOOL.apply( [ stray ], self.root, 'decided_renders', out=lines.append )
@@ -218,11 +218,11 @@ class TestApply( _Tree ):
     def test_summary_and_list_feed_the_wrapper( self ):
         self.assertEqual( self.cli( '--summary', 'decided_renders' ), [ '2 6000' ] )
         self.assertEqual( self.cli( '--summary', 'decided_renders', '--only',
-                                    'ab_suppression_20261019_100748' ), [ '1 5000' ] )
+                                    'ab_suppression_20011019_100748' ), [ '1 5000' ] )
         self.assertEqual( self.cli( '--summary', 'stale_renders', '--only', 'nope' ), [ '0 0' ] )
         listed = self.cli( '--list', 'stale_renders' )
         self.assertEqual( len( listed ), 1 )
-        self.assertTrue( listed[0].startswith( 'ab_suppression_20261019_092944\t1000 B\tno decision, '
+        self.assertTrue( listed[0].startswith( 'ab_suppression_20011019_092944\t1000 B\tno decision, '
                                                'untouched 20 day(s)' ), listed )
 
 
@@ -305,7 +305,7 @@ class TestWrapper( unittest.TestCase ):
         for name in os.listdir( REPO_ROOT ):
             if name.endswith( '.py' ):
                 shutil.copy( os.path.join( REPO_ROOT, name ), repo )
-        render = os.path.join( top, 'output', 'benchmarks', 'ab_suppression_20261019_100748',
+        render = os.path.join( top, 'output', 'benchmarks', 'ab_suppression_20011019_100748',
                                'a_clip01_ab.mp4' )
         environment = dict( os.environ, PYTHON_BIN=shutil.which( 'python3' ), PYTHON_BIN_SOURCE='test' )
         environment.pop( 'HARNESS_LOG_FILE', None )

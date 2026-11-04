@@ -336,8 +336,8 @@ class TestWrapperModes( unittest.TestCase ):
         return path
 
     def test_explain_uses_the_newest_run( self ):
-        self.make_run( 'suppression_ab_20261010_120000' )
-        newest = self.make_run( 'suppression_ab_20261010_145028' )
+        self.make_run( 'suppression_ab_20011010_120000' )
+        newest = self.make_run( 'suppression_ab_20011010_145028' )
         result = self.run_mode( 'explain' )
         self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
         with open( self.calls ) as handle:
@@ -346,8 +346,8 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertIn( '--out-dir %s'%( newest, ), call )
 
     def test_decide_takes_a_named_run_and_no_run_is_an_error( self ):
-        older = self.make_run( 'suppression_ab_20261010_120000' )
-        self.make_run( 'suppression_ab_20261010_145028' )
+        older = self.make_run( 'suppression_ab_20011010_120000' )
+        self.make_run( 'suppression_ab_20011010_145028' )
         self.assertEqual( self.run_mode( 'decide', older ).returncode, 0 )
         with open( self.calls ) as handle:
             self.assertIn( '--phase decide --out-dir %s'%( older, ), handle.read() )
@@ -360,16 +360,16 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertEqual( self.run_mode( 'frobnicate' ).returncode, 2 )
 
     def test_newest_is_by_the_name_across_both_prefixes( self ):
-        self.make_run( 'suppression_ab_20261010_145028' )
-        newest = self.make_run( 'ab_min_track_hits_20261011_090000' )
-        older = self.make_run( 'ab_suppression_20261009_090000' )
+        self.make_run( 'suppression_ab_20011010_145028' )
+        newest = self.make_run( 'ab_min_track_hits_20011011_090000' )
+        older = self.make_run( 'ab_suppression_20011009_090000' )
         os.utime( older )   # touched last: mtime must not decide
         self.assertEqual( self.run_mode( 'explain' ).returncode, 0 )
         with open( self.calls ) as handle:
             self.assertIn( '--out-dir %s'%( newest, ), handle.read() )
 
     def test_confirm_runs_the_chosen_side_on_videos_not_yet_shown( self ):
-        previous = self.make_run( 'ab_min_track_hits_20261011_090000' )
+        previous = self.make_run( 'ab_min_track_hits_20011011_090000' )
         with open( os.path.join( previous, 'ranking.json' ), 'w' ) as handle:
             handle.write( '{"experiment": "min_track_hits", "focus": ["exposed_vulva"], "chosen": ["h1"]}' )
         with open( os.path.join( previous, 'chosen.json' ), 'w' ) as handle:
@@ -384,7 +384,7 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertIn( '_confirm', rank )
 
     def test_confirm_takes_ab_focus_over_the_earlier_rounds( self ):
-        previous = self.make_run( 'ab_suppression_20261019_100748' )
+        previous = self.make_run( 'ab_suppression_20011019_100748' )
         with open( os.path.join( previous, 'ranking.json' ), 'w' ) as handle:
             handle.write( '{"experiment": "suppression", "focus": [], "chosen": ["h1"]}' )
         with open( os.path.join( previous, 'chosen.json' ), 'w' ) as handle:
@@ -401,7 +401,7 @@ class TestWrapperModes( unittest.TestCase ):
                 self.assertNotIn( '--focus', rank, "no AB_FOCUS: the earlier round's focus stands" )
 
     def test_confirm_with_nothing_chosen_runs_nothing( self ):
-        previous = self.make_run( 'ab_min_track_hits_20261011_090000' )
+        previous = self.make_run( 'ab_min_track_hits_20011011_090000' )
         with open( os.path.join( previous, 'chosen.json' ), 'w' ) as handle:
             handle.write( '{}' )
         result = self.run_mode( 'confirm' )
@@ -424,7 +424,7 @@ class TestWrapperModes( unittest.TestCase ):
             return handle.read().splitlines()
 
     def test_resume_picks_up_at_the_first_unfinished_step( self ):
-        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        run = self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.run_mode( 'resume', FAKE_STATUS=self.status( explained=0, clips=0 ) )
         self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
         calls = self.calls_made()
@@ -436,14 +436,14 @@ class TestWrapperModes( unittest.TestCase ):
                        "unattended, it says how to pick up again" )
 
     def test_resume_after_the_clips_skips_straight_to_judging( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.run_mode( 'resume', FAKE_STATUS=self.status() )
         self.assertEqual( result.returncode, 0 )
         self.assertEqual( self.calls_made(), [], "nothing re-run; unattended it stops at the verdicts" )
         self.assertIn( 'feedback.csv', result.stdout )
 
     def test_resume_unattended_renders_whole_videos_only_when_asked( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         self.run_mode( 'resume', FAKE_STATUS=self.status(), AB_FULL='1' )
         calls = self.calls_made()
         self.assertEqual( len( calls ), 1, calls )
@@ -453,7 +453,7 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertEqual( self.calls_made(), [], "already rendered whole" )
 
     def test_resume_of_a_decided_round_renders_nothing( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.run_mode( 'resume', FAKE_STATUS=self.status( decided=1, adopted=0 ) )
         self.assertEqual( self.calls_made(), [] )
         self.assertIn( 'nothing won', result.stdout )
@@ -473,14 +473,14 @@ class TestWrapperModes( unittest.TestCase ):
             os.close( master )
 
     def test_at_a_terminal_judging_waits_again_while_there_are_no_verdicts( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( '1\n\nq\n', FAKE_STATUS=self.status() )
         self.assertIn( 'no verdicts yet', result.stdout )
         self.assertIn( 'stopped before deciding', result.stdout )
         self.assertEqual( self.calls_made(), [] )
 
     def test_at_a_terminal_whole_videos_come_after_the_choice_then_judging( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( '2\nq\n', FAKE_STATUS=self.status() )
         calls = self.calls_made()
         self.assertEqual( len( calls ), 1, result.stdout )
@@ -488,19 +488,19 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertIn( 'stopped before deciding', result.stdout )
 
     def test_at_a_terminal_stop_leaves_a_resume_line( self ):
-        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        run = self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( '3\n', FAKE_STATUS=self.status() )
         self.assertEqual( self.calls_made(), [] )
         self.assertIn( 'ab_compare.sh resume %s'%( run, ), result.stdout )
 
     def test_at_a_terminal_with_whole_videos_done_the_menu_has_two_choices( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( '2\n', FAKE_STATUS=self.status( full=1 ) )
         self.assertNotIn( 'render the whole videos first', result.stdout )
         self.assertEqual( self.calls_made(), [], "2 is now stop" )
 
     def test_at_a_terminal_verdicts_lead_to_decide( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( '1\n\n', FAKE_STATUS=self.status( verdicts=12 ) )
         calls = self.calls_made()
         self.assertEqual( len( calls ), 1, result.stdout )
@@ -508,7 +508,7 @@ class TestWrapperModes( unittest.TestCase ):
         self.assertIn( '12 of 35 row(s) have a verdict', result.stdout )
 
     def test_at_a_terminal_a_decided_round_offers_to_free_its_renders( self ):
-        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
+        run = self.make_run( 'ab_cut_bursts_20011011_175010' )
         status = self.status( decided=1, adopted=0 )
         result = self.at_a_terminal( 'y\n', FAKE_STATUS=status, FAKE_RENDERS='24 486539264' )
         self.assertIn( "Delete this round's renders (464MB)", result.stdout )
@@ -518,30 +518,30 @@ class TestWrapperModes( unittest.TestCase ):
             os.path.dirname( os.path.dirname( run ) ), os.path.basename( run ) ), calls[0] )
 
     def test_at_a_terminal_declining_keeps_the_renders( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( 'n\n', FAKE_STATUS=self.status( decided=1, adopted=0 ),
                                      FAKE_RENDERS='24 486539264' )
         self.assertEqual( self.calls_made(), [] )
         self.assertIn( 'kept the renders', result.stdout )
 
     def test_no_renders_no_question_and_unattended_never_deletes( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         result = self.at_a_terminal( 'y\n', FAKE_STATUS=self.status( decided=1, adopted=0 ) )
         self.assertNotIn( "Delete this round's renders", result.stdout )
         self.run_mode( 'resume', FAKE_STATUS=self.status( decided=1, adopted=0 ), FAKE_RENDERS='24 486539264' )
         self.assertEqual( self.calls_made(), [] )
 
     def test_resume_takes_a_bare_folder_name( self ):
-        run = self.make_run( 'ab_cut_bursts_20261011_175010' )
-        self.make_run( 'ab_min_track_hits_20261012_090000' )      # newer, so not the default
-        result = self.run_mode( 'resume', 'ab_cut_bursts_20261011_175010/',
+        run = self.make_run( 'ab_cut_bursts_20011011_175010' )
+        self.make_run( 'ab_min_track_hits_20011012_090000' )      # newer, so not the default
+        result = self.run_mode( 'resume', 'ab_cut_bursts_20011011_175010/',
                                 FAKE_STATUS=self.status( decided=1, adopted=0 ) )
         self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
         self.assertIn( 'resuming the round in %s\n'%( run, ), result.stdout,
                        "the folder named once, without the trailing slash" )
 
     def test_an_unreadable_status_says_so_instead_of_blaming_the_ranking( self ):
-        self.make_run( 'ab_cut_bursts_20261011_175010' )
+        self.make_run( 'ab_cut_bursts_20011011_175010' )
         empty = os.path.join( self.root, 'empty.txt' )
         open( empty, 'w' ).close()
         result = self.run_mode( 'resume', FAKE_STATUS=empty )

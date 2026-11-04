@@ -48,7 +48,7 @@ Prerequisite: same as analyze_jitter.py - real (non-preview) detection
 caches must already exist for each backend's resolved picture_sizes (per
 backend, not the shared betaconfig.picture_sizes) at your video_censor_fps.
 
---include-preview (added 2026-09-16): same opt-in/same CAVEAT as
+--include-preview: same opt-in/same CAVEAT as
 analyze_jitter.py's flag of the same name - falls back to a preview-slice
 cache for any video with no real cache yet. Reset counts from a preview
 slice are NOT comparable to a real-run count (short, boundary-truncated
@@ -547,7 +547,7 @@ def main():
         print( "several consecutive frames badly), not something either threshold can fix. 'after-cut' means the nearest track ended before a " )
         print( "shot cut: the tracker never continues a track across one, so that is a new shot starting, not a reset. 'unexplained' is what " )
         print( "is left: the nearest track qualified on both distance and time, and another box in the same frame claimed it first (see " )
-        print( "contention below). Until 2026-10-18 this tool ignored cuts and counted every post-cut start as 'unexplained'." )
+        print( "contention below). Earlier versions of this tool ignored cuts and counted every post-cut start as 'unexplained'." )
         print()
         print( "reading contention: this is the real evidence for whether loosening match_distance_multiplier's default is safe. A contention " )
         print( "event means 2+ different boxes in one frame both qualified as candidates for the same existing track - the greedy assignment picks " )

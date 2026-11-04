@@ -1,6 +1,6 @@
 """
 test_pic_hash_path_unified.py - regression coverage for the still-photo
-side of the cache-path unification (2026-09-17): betastare.py's
+side of the cache-path unification: betastare.py's
 _raw_boxes_for_size used to build its own independent copy of the
 picture-cache path formula inline, rather than calling a shared
 implementation (unlike betatv.py's video-cache path, which already had

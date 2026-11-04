@@ -586,8 +586,8 @@ def content_by_video( videos, labels, confident_score=CONFIDENT_SCORE, forget=Tr
 
 # Two videos are the same footage (a re-encode, another container, a
 # trim) when their runtimes and every labelled-seconds figure agree this
-# closely. Re-encodes land well inside: the four pairs in the 2026-10-18
-# library differ by at most 0.8% in runtime and 4.4% in any label.
+# closely. Re-encodes land well inside: four re-encoded pairs in a
+# 56-video library differed by at most 0.8% in runtime and 4.4% in any label.
 DUPLICATE_DURATION_SHARE = 0.02
 DUPLICATE_SECONDS_SHARE = 0.06
 DUPLICATE_SECONDS_FLOOR = 2.0     # seconds, for a label a video barely shows
@@ -1050,7 +1050,7 @@ class ConfigWriter:
         indent = self._indent_of_line( source, backend_at ) + '    '
         block = (
             "%s'variants': {\n"
-            "%s    # Per-variant overrides, written by auto_tune %s. These merge\n"
+            "%s    # Per-variant overrides, written by auto_tune. These merge\n"
             "%s    # ON TOP of this backend's own item_overrides, so a variant only\n"
             "%s    # names what it genuinely wants to differ on.\n"
             "%s    '%s': {\n"
@@ -1062,7 +1062,7 @@ class ConfigWriter:
             "%s    },\n"
             "%s},\n"
         )%( indent,
-            indent, time.strftime( '%Y-%m-%d' ), indent, indent,
+            indent, indent, indent,
             indent, variant_name, indent, indent, label,
             indent, key, self._format( value ),
             indent, indent, indent, indent )
@@ -1075,12 +1075,12 @@ class ConfigWriter:
             "%s'%s': {\n"
             "%s    'item_overrides': {\n"
             "%s        '%s': {\n"
-            "%s            '%s': %s,  # set by auto_tune %s\n"
+            "%s            '%s': %s,  # set by auto_tune\n"
             "%s        },\n"
             "%s    },\n"
             "%s},\n"
         )%( indent, variant_name, indent, indent, label,
-            indent, key, self._format( value ), time.strftime( '%Y-%m-%d' ),
+            indent, key, self._format( value ),
             indent, indent, indent )
         insert_at = source.rfind( '\n', 0, variants_end ) + 1
         return source[:insert_at] + block + source[insert_at:]
@@ -1093,11 +1093,11 @@ class ConfigWriter:
             block = (
                 "%s'item_overrides': {\n"
                 "%s    '%s': {\n"
-                "%s        '%s': %s,  # set by auto_tune %s\n"
+                "%s        '%s': %s,  # set by auto_tune\n"
                 "%s    },\n"
                 "%s},\n"
             )%( indent, indent, label, indent, key, self._format( value ),
-                time.strftime( '%Y-%m-%d' ), indent, indent )
+                indent, indent )
             insert_at = source.rfind( '\n', 0, variant_end ) + 1
             return source[:insert_at] + block + source[insert_at:]
 
@@ -1107,10 +1107,10 @@ class ConfigWriter:
             indent = self._indent_of_line( source, overrides_at ) + '    '
             block = (
                 "%s'%s': {\n"
-                "%s    '%s': %s,  # set by auto_tune %s\n"
+                "%s    '%s': %s,  # set by auto_tune\n"
                 "%s},\n"
             )%( indent, label, indent, key, self._format( value ),
-                time.strftime( '%Y-%m-%d' ), indent )
+                indent )
             insert_at = source.rfind( '\n', 0, overrides_end ) + 1
             return source[:insert_at] + block + source[insert_at:]
 
@@ -1155,8 +1155,8 @@ class ConfigWriter:
             brace_line_start = source.rfind( '\n', 0, end ) + 1
             indent = source[brace_line_start:end] + '    '
 
-        line = "%s'%s': %s,  # set by auto_tune %s\n"%(
-            indent, key, self._format( value ), time.strftime( '%Y-%m-%d' ) )
+        line = "%s'%s': %s,  # set by auto_tune\n"%(
+            indent, key, self._format( value ) )
 
         # Insert before the closing brace's own line, not before the
         # brace character, so a block written as "}" on its own line
@@ -1292,7 +1292,7 @@ def tightening_review( rows, baseline_value, coverage_tolerance=TIGHTENING_COVER
 
     The loosening stages accept only candidates that cut track resets,
     so a tighter value never wins there, however much ambiguity it
-    removes: on 2026-10-11, match_distance 0.75 for exposed_breast cut
+    removes: on one 56-video library, match_distance 0.75 for exposed_breast cut
     risky contention from 13,884 to 4,375 for 6,631 more resets at no
     coverage loss, and was rejected for the resets alone. Whether a
     snap (a reset) or a possible subject swap (risky contention) looks

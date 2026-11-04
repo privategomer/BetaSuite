@@ -4,7 +4,7 @@ test_setup_release_check.py - setup's "switch to the latest release" step.
 setup.sh and setup.ps1 move the user's git checkout: they fetch tags,
 pick the newest release, check it out and restart from that release's
 own copy of the script. Nothing else in the suite runs either script;
-on 2026-10-26 the suite still passed all 1480 tests with setup.sh made
+the suite once still passed all 1480 tests with setup.sh made
 unparseable, and with the release step never called.
 
 Each test builds a throwaway repository: a bare origin, and a clone

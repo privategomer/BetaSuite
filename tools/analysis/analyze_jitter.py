@@ -53,7 +53,7 @@ slices. This only reads that cache and opens the matching source video
 (to get its real width/height, same as process_raw_box needs); it never
 runs the neural net itself.
 
---include-preview (added 2026-09-16): also reads preview-slice caches
+--include-preview: also reads preview-slice caches
 (the '-preview'/'-preview@<offset>s' suffixed cache files a
 'betatv.py --preview on' run writes) when no real run exists yet, or
 you specifically want to compare backends against identical short
@@ -139,7 +139,7 @@ def _record_new_track_event( label, tracks, ti, b ):
     # A track the box is separated from by a shot cut never counts: the
     # tracker does not continue across a cut however close the boxes
     # are, so a new shot's first detection beside where the last shot's
-    # track ended is not a reset. Until 2026-10-18 this counted them,
+    # track ended is not a reset. This once counted them,
     # and on cut-dense compilations they were most of the "resets".
     cx = b['x'] + b['w']/2
     cy = b['y'] + b['h']/2

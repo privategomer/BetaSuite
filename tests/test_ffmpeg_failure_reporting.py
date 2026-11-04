@@ -1,7 +1,7 @@
 """
 tests/test_ffmpeg_failure_reporting.py - what the render says when ffmpeg fails.
 
-On 2026-10-23/24 two files each lost one render chunk to an encoder that
+Two files in one run each lost one render chunk to an encoder that
 quit within seconds, three attempts running, and the log said only
 BrokenPipeError: ffmpeg's own message went to the terminal and its exit
 status was never read. These tests pin that the encoder's reason now
@@ -112,7 +112,7 @@ class TestChunkFailureReason( unittest.TestCase ):
                           "ffmpeg exited 1 after 0 frame(s) written" )
 
     def test_a_crash_or_kill_is_named_by_its_signal( self ):
-        # 2026-10-26: a 4K chunk encoder segfaulted when the GPU driver ran
+        # A 4K chunk encoder segfaulted when the GPU driver ran
         # out of host memory. ffmpeg prints nothing then; the signal is it.
         self.assertEqual( bu_render.chunk_failure_reason( -11, 186, BrokenPipeError( 32, 'x' ),
                                                           _captured( b'' ), 'h264_nvenc' ),

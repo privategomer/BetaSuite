@@ -2,7 +2,7 @@
 """
 cleanup_output.py - free disk under ../output without losing anything a later decision needs.
 
-Nearly all of the growth is A/B video: on 2026-10-23, 29 GB of a 29.5 GB
+Nearly all of the growth is A/B video: in one measurement 29 GB of a 29.5 GB
 output folder was clip and whole-video renders, and 27.3 GB of that was
 whole-video renders of two rounds already decided. Every one of them can
 be made again from the detection caches. What cannot be made again
@@ -38,7 +38,7 @@ shows the plan and asks before each category.
 
     python3 tools/maintenance/cleanup_output.py
     python3 tools/maintenance/cleanup_output.py --apply decided_renders
-    python3 tools/maintenance/cleanup_output.py --apply stale_renders --only ab_suppression_20261019_092944
+    python3 tools/maintenance/cleanup_output.py --apply stale_renders --only ab_suppression_<timestamp>
 """
 
 import argparse

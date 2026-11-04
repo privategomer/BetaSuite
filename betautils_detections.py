@@ -3,7 +3,7 @@ betautils_detections.py - reading detection caches without holding them as dicts
 
 A detection cache is a gzipped JSON list of dicts, one per detection:
 x, y, w, h, class_id, score, t, size. Parsed, each dict costs about
-500 bytes of Python objects. The library on the developer's laptop holds 7.3
+500 bytes of Python objects. A 56-video library holds 7.3
 million detections for one configuration, so any tool that loads it
 whole needs 3.7 GB before it computes anything, and the analysis hub ran
 three or four such tools at once on a 15 GB machine. The kernel killed

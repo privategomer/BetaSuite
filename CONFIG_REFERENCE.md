@@ -201,8 +201,8 @@ run, the load average or the GPU says the machine is busy.
 A value is proposed only when it beats the current one by more than 3%,
 or by more than the stage's own run-to-run spread when that is larger:
 detection times the current batch size again after the sweep, and the
-prefetch stage times none ahead first and last. On 2026-11-03 the same
-setting came out 5% apart between two timings, so a fixed 3% bar had
+prefetch stage times none ahead first and last. On a Ryzen 9 5900HS / RTX
+3070 Laptop the same setting came out 5% apart between two timings, so a fixed 3% bar had
 proposed changes that were noise. A near tie goes to the cheaper
 setting: fewer workers, a smaller batch, less memory. A batch size that
 changes the detections is never proposed. `render_workers` is only ever
@@ -457,8 +457,8 @@ The frames, their order and the detections are exactly the plain path's;
 a test holds them to it. The person-segmentation pass uses it too.
 
 **Measured, and why it is off.** With CPU work standing in for the
-model on a 2-core box it saved 16%. On the first real machine (Ryzen 9
-5900HS, 16 threads, RTX 3070 Laptop, 2026-11-03) it saved nothing:
+model on a 2-core box it saved 16%. On a Ryzen 9 5900HS laptop (16
+threads, RTX 3070 Laptop, onnxruntime-gpu 1.26, OpenCV 4.14) it saved nothing:
 
 | source | none ahead | 1 batch | 2 batches | 4 batches |
 |---|---|---|---|---|
@@ -831,7 +831,7 @@ marked "refused" in the bench report. It changes nothing a run renders,
 so it is not part of the censor key. `ab_compare.sh decide` prints this
 line with every addition your verdicts turned down added to it.
 
-> **In the config since 2026-10-19: the 2026-09-19 decisions.** `exposed_vulva<-exposed_penis`
+> **In the config: the earlier hand decisions.** `exposed_vulva<-exposed_penis`
 > (the penetrative case: removing that rule fixed a miss),
 > `exposed_vulva<-exposed_buttocks` (about 90% of vulva detections would
 > sit behind the gate: anatomy, not a competing claim about one object)
@@ -932,23 +932,22 @@ you are back. Every sample
 rate's caches are ranked, so quick-cut videos detected at 18 fps are
 included. Nothing touches `betaconfig.py`.
 
-> **Before 2026-10-10 the suggestions were wrong.** Pairs were formed by
+> **Earlier suggestions were wrong.** Pairs were formed by
 > timestamp alone, so every video's boxes at t=12.0s were compared with
 > every other video's, and `min_iou` was the 25th percentile of all
 > overlaps, which sits inside the side-by-side cluster by construction.
-> On the 2026-10-09 caches that was 6.3M "overlaps" for
+> On one 56-video library that was 6.3M "overlaps" for
 > `exposed_breast<-face_femme` against 49k real ones. The `nudenet_v3`
-> rules derived on 2026-09-19 ("used unmodified", below) came from that
-> output. Re-run the bench before trusting any of them; the 2026-10-09
-> run removed 16,780 renderable breast detections for overlapping a
+> rules derived from it ("used unmodified", below) came from that
+> output. Re-run the bench before trusting any of them; one full run
+> removed 16,780 renderable breast detections for overlapping a
 > face, 16,812 for overlapping a belly and 22,860 for overlapping a
 > covered breast, and `analyze_suppression_pairs.py` puts the bulk of
 > the face and belly overlaps at IoU 0.01 to 0.05.
 
-> **Decided (2026-10-23): breast rules, by eye.** One suppression round
-> (`ab_suppression_20261019_100748`, no focus, cut-burst merge on) on
-> the two most-changed videos, Compilation for big bouncing boobs
-> lovers and oo Gooner Heaven, 12 clips, 128 moments judged:
+> **Decided: breast rules, by eye.** One suppression round (no focus,
+> cut-burst merge on) on the two most-changed videos, both compilations,
+> 12 clips, 128 moments judged:
 >
 > | rule | right | left | same | decision |
 > |---|---|---|---|---|
@@ -961,7 +960,7 @@ included. Nothing touches `betaconfig.py`.
 > | `exposed_breast<-exposed_chest` (addition) | 0 | 0 | 1 | not added, not refused |
 >
 > RIGHT was the proposal. The face and belly rules were the two the
-> 2026-10-18 bench measured removing 16,780 and 14,295 renderable breast
+> bench measured removing 16,780 and 14,295 renderable breast
 > detections, 99% of them with the face or belly beside the breast
 > rather than on it; on screen those were real breasts left bare beside
 > a face. `exposed_breast<-exposed_buttocks`'s retune, the vulva rules'
@@ -970,12 +969,12 @@ included. Nothing touches `betaconfig.py`.
 > (`AB_EXPERIMENT=suppression AB_FOCUS=exposed_vulva`) puts them on
 > screen; the vulva evidence above is 1 to 4 rows a rule. 56 "tracking"
 > rows (33 right, 5 left, 18 same) were knock-on effects and decide
-> nothing. Applied to `betaconfig.py` on 2026-10-23. The censor key
+> nothing. Applied to `betaconfig.py`. The censor key
 > moved, so the next run re-renders.
 
-> **Decided (2026-10-23): vulva rules, by eye.** A vulva-focused round
-> (`ab_suppression_20261023_100129`, `AB_FOCUS=exposed_vulva`) on Gooner
-> shit and AssGoonEdge2, 12 clips, 83 moments judged:
+> **Decided: vulva rules, by eye.** A vulva-focused round
+> (`AB_FOCUS=exposed_vulva`) on two compilations, 12 clips, 83 moments
+> judged:
 >
 > | rule | right | left | same | decision |
 > |---|---|---|---|---|
@@ -984,13 +983,13 @@ included. Nothing touches `betaconfig.py`.
 >
 > The addition removes a vulva censor where the model reads the same
 > spot as covered and is more sure of it. The anus drop rests on one
-> moment by eye, 24 alike; the bench agrees (on 2026-10-18 the rule
+> moment by eye, 24 alike; the bench agrees (the rule
 > removed 1,833 renderable vulva detections, 73% with the anus beside
 > the vulva rather than on it), and dropping a rule can only add
 > censors. 45 "tracking" rows (10 right, 35 same) decide nothing.
 > `exposed_vulva<-face_femme`, `<-exposed_breast`, `<-exposed_belly`
 > and `<-covered_breast` had no rows: together they removed about 1,165
-> renderable vulva detections library-wide on 2026-10-18, 98% to 100% of
+> renderable vulva detections library-wide, 98% to 100% of
 > them side by side, too rare to land in two videos' clips. They stay as
 > configured. `exposed_breast<-exposed_buttocks`'s retune and the
 > `exposed_breast<-exposed_chest` addition had no rows either.
@@ -1518,7 +1517,7 @@ positions in neighbouring panes are different people.
 
 **Tighter is a judgement by eye.** auto_tune's match_distance stage
 accepts only values that cut track resets, so a tighter value can never
-win there. On 2026-10-11, 0.75 for `exposed_breast` cut ambiguous track
+win there. On a 56-video library, 0.75 for `exposed_breast` cut ambiguous track
 decisions (two candidates within 25% of each other's distance) from
 13,884 to 4,375 for 6,631 more resets (+9.6%), with no coverage lost.
 A reset shows as a box snapping to a new spot; an ambiguous decision
@@ -1593,10 +1592,10 @@ only if single-frame noise is a visible problem. Drop the boxes of an
 unconfirmed track and its interpolated boxes go with it, a track that
 never confirmed contributes nothing at all.
 
-> **Decided (2026-10-10): 2, set by hand.** Every label is at 2. The
-> 2026-09-30 auto_tune run raised all three `nudenet_v3` labels and
+> **Decided: 2, set by hand.** Every label is at 2. An earlier
+> auto_tune run raised all three `nudenet_v3` labels and
 > `retinanet_v2`'s `exposed_breast` to 3, undoing the hand tuning
-> described below; at 3 the 2026-10-09 run withheld 23,311 breast and
+> described below; at 3 a full 56-video run withheld 23,311 breast and
 > 11,405 vulva boxes that 1 would have drawn (10,569 and 7,140 against
 > 2). That stage scored every dropped box as noise removed, and a
 > brief real exposure drops exactly like noise.
@@ -1613,7 +1612,7 @@ never confirmed contributes nothing at all.
 > of rendered boxes and under 0.1% of area. A recommendation is a
 > report; nothing is written without `--apply` and a yes.
 
-> **2026-10-11: auto_tune recommends 1, the config stays at 2.** With
+> **auto_tune recommends 1, the config stays at 2.** With
 > no cap, the stage picked 1 for both labels: 7,022 fewer confident
 > breast detections uncensored (of 1.10M) for 12,742 more boxes, and
 > 1,568 fewer vulva (of 189k) for 4,265 more. The confident-score
@@ -1630,7 +1629,7 @@ never confirmed contributes nothing at all.
 > easy to misdiagnose as a threshold problem. This is a recall-side
 > change: expect slightly more short-lived false positives in exchange.
 
-> **2026-10-18, with the cut-burst merge on: the case for 1 shrank.**
+> **With the cut-burst merge on, the case for 1 shrank.**
 > auto_tune still picks 1, but for 2,356 fewer confident breast
 > detections uncensored (was 7,022) and 653 vulva (was 1,568). The
 > merge already rescued most of the shots that were splitting tracks.
@@ -1640,7 +1639,7 @@ never confirmed contributes nothing at all.
 > rest are single low-score hits, the shape of a false positive.
 > `confirm_score` below draws the confident ones and none of the rest.
 
-> **2026-10-24, with `confirm_score` 0.5: the stage went blind.**
+> **With `confirm_score` 0.5, the stage went blind.**
 > `confirm_score` at or below `--confident-score` draws every track
 > holding a confident detection, so every `min_track_hits` value left
 > the same confident detections uncensored (1,403 breast, 161 vulva)
@@ -1681,14 +1680,13 @@ every censored label when auto_tune has not flagged a value yet). It is
 in the censor key only while set, so adding the setting re-rendered
 nothing.
 
-> **Decided (2026-10-23): 0.5 for both labels, by eye.** The 2026-10-23
-> hub run (both suppression rounds applied, moves.sh run) had auto_tune
+> **Decided: 0.5 for both labels, by eye.** The hub run after both
+> suppression rounds were applied (and moves.sh run) had auto_tune
 > at breast 0.7 and vulva 0.5. Breast 0.7 sat inside the 0.1% tolerance
 > by 4 detections, and 0.5 covers 1,095 more confident breast detections
 > for 1,105 more boxes, about one for one, so the round tested 0.5 for
-> both (`ab_confirm_score_20261023_141041`, GOONER Blowjob and NOFAP
-> Therapy; the ranking skipped "hour a half long goon fest", the same
-> footage as GOONER):
+> both, on two videos (the ranking skipped a third that was the same
+> footage as one of them):
 >
 > | label | right | left | same | decision |
 > |---|---|---|---|---|
@@ -1753,7 +1751,7 @@ shot_cut_burst_max_span = None
 shot_cut_burst_keep = 'first'
 ```
 
-Those are the best variant of the 2026-10-11 analysis over 56 videos:
+Those are the best variant of one analysis over 56 videos:
 5,223 more confident detections (score at least 0.5) censored for 841
 more risky track assignments (about one per six), 10,568 fewer track
 resets, coverage unchanged, and no profile worse. A max span of 0.6s
@@ -1768,13 +1766,13 @@ your footage before you turn it on. The settings join the censor key
 only while the merge is on, so adding them left every finished render
 valid; turning it on, or changing it, re-renders (detections are reused).
 
-> **Decided (2026-10-18): on, at 0.35 s, any span, keep first.** Two
+> **Decided: on, at 0.35 s, any span, keep first.** Two
 > rounds of `ab_compare.sh` judged by eye, one verdict per moment:
 >
 > | round | videos | merge better | config better | same |
 > |---|---|---|---|---|
-> | first | "hour a half long goon fest pt.2", "GOONER Blowjob Doggy Cowgirl" | 94 | 31 | 18 |
-> | confirm | "NOFAP Therapy", "Hypno edge addict 8" (not seen before) | 53 | 32 | 19 |
+> | first | two compilations | 94 | 31 | 18 |
+> | confirm | two more, not seen before | 53 | 32 | 19 |
 > | both | four files, three distinct footages | 147 (70%) | 63 | 37 |
 >
 > The first round's two files are near-identical copies of one
@@ -2221,7 +2219,7 @@ resources/uncensored_vids/
 ├── compilation/    -> compilation    subject changes every few seconds
 ├── quick-cut/      -> quick_cut      sub-second shots, 18fps sampling
 ├── split-screen/   -> split_screen   panes side by side
-├── favorites/    -> not mapped, so MEASURED
+├── favorites/      -> not mapped, so MEASURED
 └── loose_file.mp4  -> in the root, so MEASURED
 ```
 
@@ -2948,7 +2946,7 @@ vulva box) is shown.
 
 ### Cost
 
-Measured on the developer's machine (`betabench reverse`, 2026-10-11, 3840x2160,
+Measured with `betabench reverse` on a 12-thread laptop (3840x2160,
 one core per value, x264 at the time):
 
 | frame style | ms per frame |
@@ -3365,8 +3363,8 @@ the chunk size is what decides how many chunks exist to hand out.
 
 **Memory caps it too (Linux).** Every worker holds its own decoder,
 frames in flight and ffmpeg encoder, and all of them grow with the
-frame's pixel count. On 2026-10-26 a 16-CPU laptop with 15 GiB of RAM
-got 8 workers for a 4096x2160 file and the kernel's out-of-memory
+frame's pixel count. A 16-thread laptop with 15 GiB of RAM (Ryzen 9
+5900HS, RTX 3070 Laptop, h264_nvenc) got 8 workers for a 4096x2160 file and the kernel's out-of-memory
 killer killed betatv twice, about 25 frames per worker into the render;
 the 1080p file before it rendered fine with the same 8. So the CPU
 count is now lowered to what fits in `MemAvailable` at the start of
@@ -3388,9 +3386,11 @@ before.
 Memory one render worker is assumed to need per megapixel of frame.
 **200**. `None` turns the memory cap off.
 
-**Uncertain, and a lower bound.** 200 is read off the two 2026-10-26
-kills, not a measurement of one worker: 8 workers at 8.85 MP exhausted
-roughly 14 GiB, so at least ~1.75 GiB each. At 200, 10 GiB available
+**Where 200 comes from.** It was first read off those two kills (8
+workers at 8.85 MP exhausted roughly 14 GiB, so at least ~1.75 GiB
+each), then measured by `tune_machine.sh` on the same Ryzen 9 5900HS /
+RTX 3070 Laptop with h264_nvenc p5: 184 to 204 MB per megapixel per
+worker at 4096x2160, decode plus encode. At 200, 10 GiB available
 holds 4 workers at 4096x2160 and 19 at 1080p. If a render is still
 killed, raise it. Each stats row records `render_memory_available_mb`
 and `render_memory_worker_cap`, so runs that did and did not run out
@@ -3469,7 +3469,7 @@ over-reports the frame count on some files. OpenCV derives an MKV's
 frame count from its duration, and the duration includes the stream's
 start offset, so an MKV starting at 0.067s plans two frames that do not
 exist. Reproduced on a synthetic file: estimate 1201, real 1199, every
-seek frame-exact. On the 2026-10-06 run, all four MKVs came up 2 or 3
+seek frame-exact. On one real run, all four MKVs came up 2 or 3
 frames short and both MP4s matched exactly.
 
 A shortfall of up to one second of frames is routine and goes to the
@@ -3510,7 +3510,7 @@ passes `encode_crf` to NVENC as constant quality (`-cq`, with
 `-b:v 0`), and translates x264 preset names to NVENC's `p1` (fastest)
 to `p7` (best), so `preview_encode_preset = 'ultrafast'` becomes `p1`
 rather than an error. `p1` to `p7` can also be set directly whenever
-the codec is an NVENC one. Until 2026-10-18 validation knew only x264's
+the codec is an NVENC one. Validation once knew only x264's
 names and rejected the `p5` that `betabench encode` recommends, so a
 config switched to NVENC failed `validate_config`; it now checks the
 preset against the codec, and `p5` with `libx264` is still an error.
@@ -3522,14 +3522,15 @@ current encoder, two faster x264 presets and NVENC at cq 17, 19, 21 and
 each against the source (SSIM and PSNR on luma), and recommends one
 within 0.25 dB of the current quality on both that renders more than 3%
 faster, or one as fast whose files are more than 10% smaller; otherwise
-it keeps the current one, with the settings to paste. On 2026-11-03 it
-recommended `p1` over `p5` for 39.1 against 39.1 fr/s at 4K, while
+it keeps the current one, with the settings to paste. On an RTX 3070
+Laptop (driver 595, ffmpeg 8.0.1) it once recommended `p1` over `p5` for
+39.1 against 39.1 fr/s at 4K, while
 `p1` wrote 25% bigger files, which is why a difference has to clear the
 noise first. Consumer drivers cap how many NVENC encodes run at once; the
 bench opens as many as the render would and says if `render_workers`
 has to come down.
 
-Measured on 2026-10-06's real renders, render speed tracks pixel count
+Measured on real renders on a 12-thread laptop, render speed tracks pixel count
 (38 to 75 million pixels a second), so 1080p renders at about 18 frames
 a second and spends two thirds of its time rendering. That is the case
 an encoder change is for.
@@ -3645,8 +3646,7 @@ with whether a later run rendered the file. They are kept out of the
 stats file because five tools read every stats row as a finished
 render, and a failure among them would skew all of them without a
 sign. Before this a failed file left nothing outside `betasuite.log`,
-and on 2026-10-24 two render failures read as files missing from the
-run.
+and two render failures once read as files missing from the run.
 
 A run that is SIGKILLed (the kernel's out-of-memory killer,
 systemd-oomd), crashes inside a native library, or loses power cannot
@@ -3666,13 +3666,13 @@ Every ffmpeg the render starts (chunk encode, chunk concat, final mux)
 has its stderr captured into the log file at debug, and a failure's
 reason carries how ffmpeg ended and the line that names the encoder.
 A signal is named rather than printed as a negative exit code:
-`crashed (SIGSEGV)`, `was killed (SIGKILL)`. On 2026-10-26 a 4K chunk
+`crashed (SIGSEGV)`, `was killed (SIGKILL)`. In the 4K out-of-memory render above, a chunk
 encoder segfaulted when the GPU driver ran out of host memory, and
 ffmpeg prints nothing when it segfaults, so the signal is the only
 reason there is.
 Before this, ffmpeg wrote to the terminal only, and an encoder that
 quit mid-chunk was reported as `BrokenPipeError` with no reason: two
-4K files on 2026-10-23/24 lost a chunk each that way. A successful
+4K files in one run lost a chunk each that way. A successful
 ffmpeg that still printed something at `-loglevel error` is a warning.
 Only the first 10 and last 30 lines of each ffmpeg are kept.
 
@@ -3968,15 +3968,15 @@ was seventeen times higher.
 > reasons to re-run `auto_tune.py` once more footage exists rather than
 > treating these as settled.
 
-### `nudenet_v3`: fully data-derived at 640m (2026-09-19)
+### `nudenet_v3`: fully data-derived at 640m
 
 Every `margin` and `min_iou` in the shipped `nudenet_v3`
 `class_suppression` block is now the value
 `tools/bench/betabench.py suppression` proposed from the `640m` caches
 (7 videos, 182,616 detections), used unmodified. Before this pass the
 rules were **hand-set numbers that had never been derived from data**,
-including the 2026-09-18 pass described below, which changed two rules
-from the suggestions and left five at their 2026-09-16 hand-picked
+including the second pass described below, which changed two rules
+from the suggestions and left five at their first-pass hand-picked
 values. That is worth stating plainly, because the file's comment said
 "re-derived" and only part of it was.
 
@@ -3987,7 +3987,7 @@ at 0.02-0.08, but the shipped gates were 0.05 and 0.30. A rule with
 (`exposed_breast<-exposed_buttocks`) essentially never fired. Several
 "rules" in the config were decorative.
 
-**The 2026-09-18 `covered_breast` change was wrong and is corrected
+**The second pass's `covered_breast` change was wrong and is corrected
 here.** It was set to `min_iou: 0.30` on the reasoning that "median IoU
 0.815 means they are the same object". That 0.815 was the p75-weighted
 figure; the p25 is 0.029 and the tool's suggestion is 0.029. Anchoring
@@ -4039,7 +4039,7 @@ overlap between consecutive boxes while halving the bleed past a true
 edge.
 
 **`track_max_gap` for `exposed_vulva` went 21.6 → 43.2**, which is
-`auto_tune`'s accepted decision from the 2026-09-19 run: 20 track resets
+`auto_tune`'s accepted decision from its run on the 640m caches: 20 track resets
 avoided across both nudenet configurations at ~0 risky assignments each.
 
 `auto_tune` also proposed `min_track_hits: 3` for both labels again.
@@ -4052,11 +4052,11 @@ observation outranks the metric.
 
 ---
 
-### `nudenet_v3`: the 2026-09-18 pass (superseded above)
+### `nudenet_v3`: the second pass (superseded above)
 
-The shipped `nudenet_v3` values were re-derived on 2026-09-18 from the
+The shipped `nudenet_v3` values were re-derived in a second pass from the
 `640m` caches: 7 videos, 182,616 detections, at the variant's native
-640 with per-class NMS. They supersede the 2026-09-16 pass described
+640 with per-class NMS. They supersede the first pass described
 further down, which was fitted at 1280 with class-agnostic NMS and is
 kept here because its reasoning about the confounds still applies.
 
@@ -4112,7 +4112,7 @@ complaint, that suggestion is where to start.
 
 ---
 
-The original 2026-09-16 findings, and why they were not simply trusted:
+The original first-pass findings, and why they were not simply trusted:
 
 - Cross-label IoU distributions sat far below `retinanet_v2`'s for the
   same label pairs on the same footage, `exposed_breast<-covered_breast`

@@ -143,12 +143,12 @@ detector_backend = {
                 'height_area_safety': 0.00,
                 'width_area_safety': 0.00,
                 'interpolation_max_gap': 3.6,
-                'track_max_gap': 43.2,  # set by auto_tune 2026-09-19
+                'track_max_gap': 43.2,  # set by auto_tune
                 'position_smoothing': 0.75,
                 'paired_style': False,
                 'min_track_hits': 2,
                 'confirm_score': 0.5,
-                'match_distance_multiplier': 3,  # set by auto_tune 2026-09-18
+                'match_distance_multiplier': 3,  # set by auto_tune
             },
             'exposed_breast': {
                 'min_prob': 0.205,
@@ -162,7 +162,7 @@ detector_backend = {
                 'min_track_hits': 2,
                 'confirm_score': 0.5,
                 'position_smoothing': 0.60,
-                'match_distance_multiplier': 2.0,  # set by auto_tune 2026-09-30
+                'match_distance_multiplier': 2.0,  # set by auto_tune
             },
             'covered_vulva': {
                 'min_prob': 0.49,
@@ -212,8 +212,8 @@ detector_backend = {
                 'interpolation_max_gap': 1.2,
                 'track_max_gap': 7.2,
                 'paired_style': True,
-                'match_distance_multiplier': 1.25,  # set by auto_tune 2026-09-18
-                'min_track_hits': 2,  # set by auto_tune 2026-09-18
+                'match_distance_multiplier': 1.25,  # set by auto_tune
+                'min_track_hits': 2,  # set by auto_tune
             },
             'exposed_breast': {
                 'min_prob': 0.37,

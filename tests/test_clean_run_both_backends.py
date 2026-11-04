@@ -2,7 +2,7 @@
 test_clean_run_both_backends.py - regression coverage for
 tools/tuning/clean_run_both_backends.py's clear-path logic.
 
-Covers a real bug caught by this script's own smoke test 2026-09-17:
+Covers a real bug caught by this script's own smoke test:
 an earlier version tried to keep only THIS run's own active log
 subdirectory alive during the clear step, via a path-based "is this
 entry an ancestor of the path to keep" check. That's fragile in a way
@@ -68,14 +68,14 @@ class TestClearEverythingExcludesOwnLogHistory( unittest.TestCase ):
         self._logs_dir = os.path.join( self._tmpdir, 'output', 'logs' )
 
         # this run's own active log directory
-        self._active_run_dir = os.path.join( self._logs_dir, 'clean_run_both_backends', '20260917_201441' )
+        self._active_run_dir = os.path.join( self._logs_dir, 'clean_run_both_backends', '20010917_201441' )
         os.makedirs( self._active_run_dir, exist_ok=True )
         with open( os.path.join( self._active_run_dir, 'clean_run_both_backends.log' ), 'w' ) as f:
             f.write( 'in-progress log content\n' )
 
         # an OLDER sibling run directory under the same shared parent -
         # the case the earlier path-based approach couldn't distinguish
-        self._old_run_dir = os.path.join( self._logs_dir, 'clean_run_both_backends', '20260101_000000' )
+        self._old_run_dir = os.path.join( self._logs_dir, 'clean_run_both_backends', '20010101_000000' )
         os.makedirs( self._old_run_dir, exist_ok=True )
         with open( os.path.join( self._old_run_dir, 'clean_run_both_backends.log' ), 'w' ) as f:
             f.write( 'old run\n' )
@@ -85,7 +85,7 @@ class TestClearEverythingExcludesOwnLogHistory( unittest.TestCase ):
             f.write( 'stale\n' )
 
         # a stray unrelated subdirectory that SHOULD be deleted
-        other_stray_dir = os.path.join( self._logs_dir, 'analysis_runs', '20260101_000000' )
+        other_stray_dir = os.path.join( self._logs_dir, 'analysis_runs', '20010101_000000' )
         os.makedirs( other_stray_dir, exist_ok=True )
         with open( os.path.join( other_stray_dir, 'analyze_jitter.log' ), 'w' ) as f:
             f.write( 'stale analysis log\n' )

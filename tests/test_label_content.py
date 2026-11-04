@@ -136,7 +136,7 @@ def _signature( duration, breast, vulva, mixed ):
 class TestSameContent( unittest.TestCase ):
     """The same footage twice: runtime and every labelled-seconds figure agree."""
 
-    # The 2026-10-18 library's re-encoded pair, and its trimmed one.
+    # A real library's re-encoded pair, and its trimmed one.
     REENCODE = ( _signature( 5704.16, 2105.7, 871.6, 625.2 ), _signature( 5704.4, 2090.2, 854.3, 609.0 ) )
     TRIM = ( _signature( 738.6, 458.3, 176.4, 111.1 ), _signature( 733.3, 460.3, 174.8, 110.8 ) )
 

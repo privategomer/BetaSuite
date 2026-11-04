@@ -946,7 +946,7 @@ def videos_across_sample_rates( configuration, min_prob=None, rates=None ):
     A profile can set its own video_censor_fps (quick_cut samples at 18),
     and the rate is in the cache name and the detection key, so a
     per-rate lookup sees only the videos detected at that rate: 48 of 56
-    in the 2026-10-06 library, with every quick-cut video missing. This
+    in one library, with every quick-cut video missing. This
     gathers the same backend, sizes and variant at each rate in `rates`
     (default: every rate a profile can select). A video cached at two
     rates keeps the newer set, which is what its last run used.

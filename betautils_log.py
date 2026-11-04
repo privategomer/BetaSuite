@@ -86,7 +86,7 @@ def _trace_capable( name ):
 
     Pipeline code calls logger.trace(). A tool that built its own plain
     logging.Logger and handed it to the render path got AttributeError on
-    every chunk (suppression_ab, 2026-10-10), so every logger in the
+    every chunk (suppression_ab), so every logger in the
     project comes from here.
     """
     logger = logging.getLogger( name )
@@ -385,8 +385,8 @@ def write_failure( record ):
     stats row as a finished render (timings, label counts, encode
     estimates), and a failure row among them would quietly skew all of
     them. Before this existed a failed file left no trace outside
-    betasuite.log, so summarize_run showed it as simply absent; on
-    2026-10-24 two render failures read as "missing from the run".
+    betasuite.log, so summarize_run showed it as simply absent: two render
+    failures once read as "missing from the run".
 
     Same switch and same swallow-and-log behaviour as write_stats.
     """
@@ -466,7 +466,7 @@ class RunMarker:
     killer, systemd-oomd), a native crash inside a library, or a power
     loss ends the run without a single line in betasuite.log: no
     "failed", no "run finished", nothing the failures file or
-    summarize_run could ever show. On 2026-10-26 two runs died that way
+    summarize_run could ever show. Two runs once died that way
     on a 4K file and the only trace was the shell printing "Killed". The
     marker is removed by every ending the run can still act on (finish,
     Ctrl-C, an exception), so one found at startup means the last run

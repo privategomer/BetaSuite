@@ -1,7 +1,7 @@
 """
 test_class_suppression_margin_required.py - regression coverage for
 betautils_config._validate_class_suppression's margin-required check,
-added 2026-09-16 per explicit user direction: apply_class_suppression's
+added by design: apply_class_suppression's
 own fallback when margin is absent (betatv.py: rule.get('margin', 0.0))
 is 0.0, the LOOSEST possible gate (fires whenever the suppressing
 label's score is even just >= the suppressed label's) - not a neutral
@@ -17,7 +17,7 @@ whole point of the gate - no legitimate use case, confirmed with the
 user, so this is always an error (unlike margin == 0.0 exactly, which
 is a real value with real use cases - see
 test_class_suppression_zero_margin.py for that one's warning-not-error
-treatment; the user's own framing was explicit: "<0 is error; ==0 is
+treatment; the rule is explicit: "<0 is error; ==0 is
 warning").
 """
 

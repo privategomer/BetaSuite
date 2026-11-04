@@ -298,7 +298,7 @@ class TestProposals( unittest.TestCase ):
 
 
 class TestReviewValues( unittest.TestCase ):
-    """auto_tune's numbers from 2026-10-11, as decisions.json held them."""
+    """auto_tune's numbers from one real run, as decisions.json held them."""
 
     MATCH_BREAST = { 'stage': 'match_distance / nudenet_v3 / exposed_breast', 'chosen': 2.0,
                      'accepted': False, 'rows': [
@@ -336,10 +336,10 @@ class TestReviewValues( unittest.TestCase ):
     def test_the_newest_run_is_found( self ):
         root = tempfile.mkdtemp( prefix='betasuite-runs-' )
         try:
-            for name in ( '20261009_1', '20261011_1' ):
+            for name in ( '20011009_1', '20011011_1' ):
                 os.makedirs( os.path.join( root, name, 'auto_tune' ) )
                 open( os.path.join( root, name, 'auto_tune', 'decisions.json' ), 'w' ).close()
-            self.assertIn( '20261011_1', ex.latest_auto_tune_decisions( root ) )
+            self.assertIn( '20011011_1', ex.latest_auto_tune_decisions( root ) )
             self.assertIsNone( ex.latest_auto_tune_decisions( os.path.join( root, 'none' ) ) )
         finally:
             shutil.rmtree( root )
@@ -436,8 +436,8 @@ class TestCutBurstExperiment( unittest.TestCase ):
     def test_the_analysers_best_variant_is_the_proposal( self ):
         root = tempfile.mkdtemp( prefix='betasuite-runs-' )
         try:
-            os.makedirs( os.path.join( root, '20261011_1' ) )
-            with open( os.path.join( root, '20261011_1', 'analyze_cut_bursts.json' ), 'w' ) as handle:
+            os.makedirs( os.path.join( root, '20011011_1' ) )
+            with open( os.path.join( root, '20011011_1', 'analyze_cut_bursts.json' ), 'w' ) as handle:
                 json.dump( { 'best_settings': { 'window': 0.25, 'max_span': 0.6, 'keep': 'last' } }, handle )
             found, path = ex.latest_cut_burst_best( root )
             self.assertEqual( found, { 'shot_cut_burst_window': 0.25, 'shot_cut_burst_max_span': 0.6,

@@ -116,22 +116,22 @@ class ReleaseHelpersTest( unittest.TestCase ):
         self.assertEqual( b( semver, '1.1.3', 'none' ), '1.1.3' )
 
     def test_changelog_unreleased_section_is_dated( self ):
-        text = '# Changelog\n\n## Unreleased\n\n- thing\n\n## 1.0.0 (2026-09-30)\n\n- first\n'
-        out, notes = self.release.date_changelog( text, '1.1.0', '2026-10-03', [ 'ignored' ] )
-        self.assertIn( '## 1.1.0 (2026-10-03)\n\n- thing', out )
+        text = '# Changelog\n\n## Unreleased\n\n- thing\n\n## 1.0.0 (2000-01-01)\n\n- first\n'
+        out, notes = self.release.date_changelog( text, '1.1.0', '2000-01-03', [ 'ignored' ] )
+        self.assertIn( '## 1.1.0 (2000-01-03)\n\n- thing', out )
         self.assertNotIn( 'Unreleased', out )
         self.assertEqual( notes, '- thing' )
 
     def test_changelog_existing_version_is_redated( self ):
-        text = '# Changelog\n\n## 1.1.0 (2026-10-01)\n\n- setup\n\n## 1.0.0 (2026-09-30)\n'
-        out, notes = self.release.date_changelog( text, '1.1.0', '2026-10-03', [] )
-        self.assertIn( '## 1.1.0 (2026-10-03)', out )
+        text = '# Changelog\n\n## 1.1.0 (2000-01-02)\n\n- setup\n\n## 1.0.0 (2000-01-01)\n'
+        out, notes = self.release.date_changelog( text, '1.1.0', '2000-01-03', [] )
+        self.assertIn( '## 1.1.0 (2000-01-03)', out )
         self.assertEqual( out.count( '## 1.1.0' ), 1 )
         self.assertEqual( notes, '- setup' )
 
     def test_changelog_drafted_from_commits_above_latest( self ):
-        text = '# Changelog\n\nIntro.\n\n## 1.1.0 (2026-10-01)\n\n- setup\n'
-        out, notes = self.release.date_changelog( text, '1.1.1', '2026-10-03', [ 'fix a', 'fix b' ] )
+        text = '# Changelog\n\nIntro.\n\n## 1.1.0 (2000-01-02)\n\n- setup\n'
+        out, notes = self.release.date_changelog( text, '1.1.1', '2000-01-03', [ 'fix a', 'fix b' ] )
         self.assertLess( out.index( '## 1.1.1' ), out.index( '## 1.1.0' ) )
         self.assertEqual( notes, '- fix a\n- fix b' )
 
