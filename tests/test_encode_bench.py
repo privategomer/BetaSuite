@@ -164,6 +164,23 @@ class TestChoice( unittest.TestCase ):
                  self.row( 'small', 30, 20.0, 40.0, size=150 ) ]
         self.assertIs( betabench.choose_encoder( rows ), rows[2] )
 
+    def test_a_speed_difference_inside_the_noise_keeps_the_current_encoder( self ):
+        # 2026-11-03, 4K on an RTX 3070 Laptop: p1 and p5 both 39.1 fr/s,
+        # p1 writing 25% more. p1 was recommended.
+        rows = [ self.row( 'p5', 39.08, 17.97, 42.78, size=409 ), self.row( 'p1', 39.12, 17.83, 42.77, size=511 ),
+                 self.row( 'p3', 38.9, 17.87, 42.77, size=497 ) ]
+        self.assertIs( betabench.choose_encoder( rows ), rows[0] )
+
+    def test_as_fast_and_clearly_smaller_is_recommended( self ):
+        rows = [ self.row( 'now', 39.0, 18.0, 42.8, size=400 ), self.row( 'hevc', 38.6, 17.9, 42.7, size=250 ),
+                 self.row( 'slightly smaller', 39.0, 18.0, 42.8, size=380 ) ]
+        self.assertIs( betabench.choose_encoder( rows ), rows[1] )
+
+    def test_among_the_faster_a_near_tie_goes_to_the_smaller_file( self ):
+        rows = [ self.row( 'now', 30, 20.0, 40.0 ), self.row( 'big', 40.5, 20.0, 40.0, size=200 ),
+                 self.row( 'small', 40.0, 20.0, 40.0, size=120 ) ]
+        self.assertIs( betabench.choose_encoder( rows ), rows[2] )
+
     def test_failed_rows_never_win( self ):
         rows = [ self.row( 'now', 18, 20.0, 40.0 ),
                  self.row( 'broken', 99, 30.0, 50.0, error='Cannot load libcuda.so.1' ) ]

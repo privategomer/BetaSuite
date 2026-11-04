@@ -103,11 +103,15 @@ if [ "${#PROPOSAL[@]}" -eq 0 ]; then
     log_info "nothing to write; every number: $RUN_DIR/results.json"
     exit 0
 fi
+WRITE_LATER="$PYTHON_BIN $MACHINE set ${PROPOSAL[*]} --comment \"tune_machine $STAMP\""
+# Ctrl+C at the prompt is a "no", with the command to say yes later.
+trap 'echo; log_warn "stopped at the prompt; nothing was written. To write them later:"; log_warn "  $WRITE_LATER"; exit 130' INT
 if [ "$TUNE_YES" != 1 ] && ! wait_for_confirmation "Write these ${#PROPOSAL[@]} setting(s) to the machine config?"; then
     log_info "not written. To write them later:"
-    log_info "  $PYTHON_BIN $MACHINE set ${PROPOSAL[*]}"
+    log_info "  $WRITE_LATER"
     exit 0
 fi
+trap - INT
 if run_logged "write the machine config" "$PYTHON_BIN" "$MACHINE" --log-file "$HARNESS_LOG_FILE" \
         set "${PROPOSAL[@]}" --comment "tune_machine $STAMP"; then
     log_info "written; to see every setting and where it comes from: $PYTHON_BIN $MACHINE show"

@@ -213,7 +213,7 @@ machine. Reference: [Machine config](CONFIG_REFERENCE.md#machine-config-this-com
 |---|---|---|
 | `gpu_enabled` | `1` | request CUDA. A CPU provider is always added as a fallback, and the provider actually in use is logged and recorded in the stats row |
 | `cuda_device_id` | `0` | which GPU |
-| `detection_prefetch_frames` | `8` | frames decoded ahead of the model on a second thread. `0` decodes and detects in turn |
+| `detection_prefetch_frames` | `0` | frames decoded ahead of the model on a second thread. `0` decodes and detects in turn; `tune_machine.sh` says whether it helps here |
 | `structure_scan_workers` | `0` | `betabench structure-scan` files at once. `0` is one per core, at most 4 |
 
 ### Detection sampling

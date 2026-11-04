@@ -50,6 +50,39 @@ class TestChoosing( unittest.TestCase ):
         self.assertIsNone( pick( 50, 4000, 50.5, 3990 ), "a tie keeps what every render did" )
         self.assertIsNone( pick( 50, 4000, 45, 2000 ), "lighter but slower is not chosen" )
 
+    @staticmethod
+    def _rows( *pairs ):
+        return [ { 'workers': workers, 'fps': fps } for workers, fps in pairs ]
+
+    def test_fewer_workers_at_the_hardest_file_are_never_proposed( self ):
+        # The 2026-11-03 run on a 16-core laptop: a 4096x2160 file, 4 and
+        # more workers skipped for memory. Proposing 2 would also have
+        # held 1080p renders, which ran fine at 8, to 2.
+        rows = self._rows( ( 1, 31.76 ), ( 1, 31.22 ), ( 2, 37.97 ), ( 2, 37.93 ) )
+        value, why = tune.render_workers_proposal( rows, [ 4, 6, 8, 10, 12 ], 16, 0, '4096x2160' )
+        self.assertIsNone( value )
+        self.assertIn( 'not measured', why )
+        self.assertIn( 'memory cap', why )
+        value, why = tune.render_workers_proposal( self._rows( ( 4, 50 ), ( 8, 50.5 ) ), [], 16, 0, '1920x1080' )
+        self.assertIsNone( value, "fewer was as fast with nothing skipped: still not proposed" )
+
+    def test_more_workers_are_proposed_when_measured_faster( self ):
+        rows = self._rows( ( 4, 40 ), ( 8, 60 ), ( 10, 66 ), ( 12, 66.5 ) )
+        value, why = tune.render_workers_proposal( rows, [], 16, 0, '1920x1080' )
+        self.assertEqual( value, 10 )
+        self.assertIn( 'against 60.0 at 8', why )
+        self.assertIsNone( tune.render_workers_proposal( self._rows( ( 8, 60 ), ( 10, 61 ) ), [], 16, 0, 'x' )[0],
+                           "within noise of the current count" )
+        self.assertIsNone( tune.render_workers_proposal( self._rows( ( 10, 61 ) ), [], 16, 0, 'x' )[0],
+                           "the current count was never measured" )
+        self.assertEqual( tune.render_workers_proposal( self._rows( ( 4, 30 ), ( 8, 60 ) ), [], 16, 4, 'x' )[0], 0,
+                          "the auto count is written as 0" )
+
+    def test_the_bar_is_the_measured_spread_when_that_is_wider( self ):
+        self.assertAlmostEqual( tune.measured_noise( 22.01, 23.18 ), 0.0532, places=3 )
+        self.assertEqual( tune.measured_noise( 10.0, 10.1 ), tune.NOISE )
+        self.assertEqual( tune.measured_noise( 0, 10 ), tune.NOISE )
+
     def test_memory_proposal_takes_the_worst_case_with_margin( self ):
         rows = [ { 'mb_per_megapixel': 90.0 }, { 'mb_per_megapixel': 121.0 }, { 'mb_per_megapixel': None } ]
         self.assertEqual( tune.mb_per_megapixel_proposal( rows ), 160 )   # 151.25 rounded up
@@ -113,6 +146,15 @@ class TestMemorySampling( unittest.TestCase ):
         self.assertEqual( sorted( tune.child_pids( 100, root ) ), [ 101, 102 ] )
         self.assertAlmostEqual( tune.tree_rss_mb( 100, root ), 375.0 )
 
+    def test_the_sampler_splits_python_from_the_encoders( self ):
+        reads = iter( [ ( 100.0, 0.0 ), ( 400.0, 900.0 ), ( 300.0, 1200.0 ) ] + [ ( 150.0, 10.0 ) ] * 100 )
+        with tune.MemorySampler( interval=0.01, rss=lambda: next( reads ), available=lambda: None ) as sampler:
+            import time
+            time.sleep( 0.1 )
+        self.assertEqual( sampler.peak_mb, 1500.0 )
+        self.assertEqual( sampler.own_growth_mb(), 300.0 )
+        self.assertEqual( sampler.peak_children_mb, 1200.0 )
+
     def test_the_sampler_keeps_the_peak_and_the_low( self ):
         rss = iter( [ 100.0, 300.0, 250.0, 260.0, 260.0, 260.0 ] + [ 200.0 ] * 100 )
         available = iter( [ 9000.0, 4000.0, 6000.0 ] + [ 7000.0 ] * 100 )
@@ -156,6 +198,28 @@ class TestStagesWithAStandInModel( unittest.TestCase ):
         self.assertTrue( all( row['detections'] == 16 for row in result['rows'] ) )
         self.assertIn( self.context['batch_best'], ( 1, 2, 4, 8, 16 ) )
 
+    def test_a_gain_inside_the_current_settings_own_spread_is_not_proposed( self ):
+        # 2026-11-03, 1080p: batch 2 timed 10% faster than batch 4 while
+        # batch 1 and 16 sat beside 4. Here batch 2 is 8% faster, and
+        # batch 4 timed again comes out 15% slower than the first time.
+        import time
+        seen = []
+        class Jittery( object ):
+            @staticmethod
+            def raw_boxes_for_imgs( frames, size, session, times ):
+                seen.append( len( frames ) )
+                repeat = 16 in seen[ : -1 ]
+                per_frame = 0.0020 * ( 0.92 if len( frames ) == 2 else 1.0 ) * ( 1.15 if repeat else 1.0 )
+                time.sleep( per_frame * len( frames ) )
+                return [ { 'class_id': 'exposed_breast', 'score': 0.5, 't': t } for t in times ]
+        self.context['detector'] = ( 'nudenet_v3', Jittery, None, 320 )
+        with mock.patch.object( tune, 'nvidia_smi', return_value={} ):
+            result = tune.stage_detect( self.context, self.logger )
+        self.assertGreater( result['noise'], 0.08 )
+        self.assertEqual( self.context['proposal'], {} )
+        current = next( r for r in result['rows'] if r['batch'] == 4 )
+        self.assertIn( 'ms_per_frame_repeat', current )
+
     def test_detections_that_change_with_the_batch_are_flagged_and_not_proposed( self ):
         class Rounding( object ):
             @staticmethod
@@ -197,6 +261,7 @@ class TestScripts( unittest.TestCase ):
         self.assertIn( tune.SUMMARY_START, text )
         self.assertIn( tune.SUMMARY_END, text )
         self.assertIn( 'wait_for_confirmation', text, "asks before writing" )
+        self.assertIn( "trap '", text, "Ctrl+C at the prompt says how to write later" )
         self.assertNotIn( '—', text )
 
 

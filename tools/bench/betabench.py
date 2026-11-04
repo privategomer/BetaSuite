@@ -2847,11 +2847,29 @@ def _measure_encode_quality( video_path, segment_results, stride ):
     return psnr_db( mean_mse ), ssim_db( mean_ssim ), frames_out
 
 
-def choose_encoder( rows, tolerance_db=ENCODE_QUALITY_TOLERANCE_DB ):
+# How much faster than the current encoder a candidate must be to count
+# as faster. On 2026-11-03 h264_nvenc p1 and p5 both rendered 4K at 39.1
+# fr/s, and p1 was recommended for a speed difference in the third digit
+# while writing 25% bigger files.
+ENCODE_SPEED_NOISE = 0.03
+# How much smaller a candidate's output must be to recommend it at the
+# same speed and quality.
+ENCODE_SIZE_GAIN = 0.10
+
+
+def choose_encoder( rows, tolerance_db=ENCODE_QUALITY_TOLERANCE_DB, speed_noise=ENCODE_SPEED_NOISE,
+                    size_gain=ENCODE_SIZE_GAIN ):
     """
-    The fastest row whose SSIM and PSNR are both within tolerance_db of
-    the current encoder's (rows[0]), smaller output breaking ties. None
-    when the current encoder itself failed, since nothing can be judged.
+    The encoder to recommend, judged against the current one (rows[0]).
+
+    Only rows whose SSIM and PSNR are both within tolerance_db of the
+    current encoder's take part. Of those, one that renders more than
+    speed_noise faster wins, the fastest of them, a near tie going to
+    the smaller output. Failing that, one as fast within speed_noise
+    whose output is more than size_gain smaller. Otherwise the current
+    encoder: a difference inside the noise is not a reason to switch.
+    None when the current encoder itself failed, since nothing can be
+    judged.
     """
     baseline = rows[0]
     if baseline.get( 'error' ) or baseline.get( 'ssim_db' ) is None:
@@ -2860,7 +2878,17 @@ def choose_encoder( rows, tolerance_db=ENCODE_QUALITY_TOLERANCE_DB ):
                  if not row.get( 'error' ) and row.get( 'ssim_db' ) is not None
                  and row['ssim_db'] >= baseline['ssim_db'] - tolerance_db
                  and row['psnr_db'] >= baseline['psnr_db'] - tolerance_db ]
-    return max( eligible, key=lambda row: ( row['fps'], -row['bytes'] ) )
+    faster = [ row for row in eligible if row['fps'] > baseline['fps'] * ( 1.0 + speed_noise ) ]
+    if faster:
+        best = max( row['fps'] for row in faster )
+        return min( ( row for row in faster if row['fps'] >= best * ( 1.0 - speed_noise ) ),
+                    key=lambda row: row['bytes'] )
+    smaller = [ row for row in eligible if row is not baseline
+                and row['fps'] >= baseline['fps'] * ( 1.0 - speed_noise )
+                and row['bytes'] < baseline['bytes'] * ( 1.0 - size_gain ) ]
+    if smaller:
+        return min( smaller, key=lambda row: row['bytes'] )
+    return baseline
 
 
 def real_render_fps( width, height ):
@@ -3085,7 +3113,13 @@ def _log_encode_table( logger, rows, choice, decode_fps ):
         if row is baseline:
             verdict = 'current config'
         elif row is choice:
-            verdict = 'as good, fastest  <- use this'
+            verdict = ( 'as good, faster  <- use this'
+                        if row['fps'] > baseline['fps'] * ( 1.0 + ENCODE_SPEED_NOISE )
+                        else 'as good and as fast, smaller files  <- use this' )
+        elif baseline_ok and abs( row['fps'] - baseline['fps'] ) <= baseline['fps'] * ENCODE_SPEED_NOISE \
+                and not ( row['ssim_db'] < baseline['ssim_db'] - ENCODE_QUALITY_TOLERANCE_DB
+                          or row['psnr_db'] < baseline['psnr_db'] - ENCODE_QUALITY_TOLERANCE_DB ):
+            verdict = 'as good, no faster'
         elif baseline_ok and ( row['ssim_db'] < baseline['ssim_db'] - ENCODE_QUALITY_TOLERANCE_DB
                                or row['psnr_db'] < baseline['psnr_db'] - ENCODE_QUALITY_TOLERANCE_DB ):
             verdict = 'lower quality (%+.2f dB SSIM, %+.2f dB PSNR)'%(

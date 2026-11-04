@@ -198,10 +198,20 @@ run, the load average or the GPU says the machine is busy.
 | encode | `betabench encode` | `encode_*` |
 | scan | `betabench concurrency`'s scan workers | `structure_scan_workers` |
 
-A value is proposed only when it beats the current one by more than 3%
-(below that it is run-to-run noise), and a near tie goes to the cheaper
+A value is proposed only when it beats the current one by more than 3%,
+or by more than the stage's own run-to-run spread when that is larger:
+detection times the current batch size again after the sweep, and the
+prefetch stage times none ahead first and last. On 2026-11-03 the same
+setting came out 5% apart between two timings, so a fixed 3% bar had
+proposed changes that were noise. A near tie goes to the cheaper
 setting: fewer workers, a smaller batch, less memory. A batch size that
-changes the detections is never proposed. The render stage measures on
+changes the detections is never proposed. `render_workers` is only ever
+raised: the render stage measures the file with the most pixels, and
+fewer workers being as fast at 4K says nothing about 1080p, where the
+same count would hold back a render that runs fine with more. Large
+frames are what the memory cap is for. Render memory is logged by side,
+Python (decoders, frames) and the ffmpeg encoders, so a high per-worker
+figure points at the part to fix. The render stage measures on
 the source with the most pixels, the hardest one to render, skips any
 worker count the memory it has measured says will not fit, and proposes
 the worst per-worker memory it saw plus 25% for the censoring the bench
@@ -435,8 +445,8 @@ time.
 
 ### `detection_prefetch_frames`
 
-Frames decoded ahead of the model, on a second thread. **8**; 0 decodes
-and detects in turn.
+Frames decoded ahead of the model, on a second thread. **0**, decode and
+detect in turn, until a machine measures a gain.
 
 Without it, detection decoded a batch, ran the model on it, and decoded
 the next: the GPU waited on the decoder and the decoder waited on the
@@ -446,11 +456,27 @@ thread keeping frames ready a sampled frame costs the slower of the two.
 The frames, their order and the detections are exactly the plain path's;
 a test holds them to it. The person-segmentation pass uses it too.
 
+**Measured, and why it is off.** With CPU work standing in for the
+model on a 2-core box it saved 16%. On the first real machine (Ryzen 9
+5900HS, 16 threads, RTX 3070 Laptop, 2026-11-03) it saved nothing:
+
+| source | none ahead | 1 batch | 2 batches | 4 batches |
+|---|---|---|---|---|
+| 4096x2160, 60 fps | 61.9 ms/sample | 62.4 | 61.7 | 60.8 |
+| 1920x1080, 30 fps | 22.0 | 21.9 | 23.5 | 23.3 |
+
+Both inside run-to-run noise: none ahead, timed again at the end of each
+stage, came out 1% and 5% slower than the first time. At 4K the loop is
+decode-bound (about 40 ms decoding the frames behind a sample, 22 ms of
+model), and the likely reason nothing overlapped is that OpenCV's
+decoder already keeps every core busy, so a second thread has no idle
+CPU to use; that explanation is not proven. At 1080p decode is about 5
+ms of the 22, the most it could ever hide. So the default is 0, and
+`tune_machine.sh` proposes it only where it measures a gain larger than
+that machine's own run-to-run spread.
+
 Each frame held costs its size in memory: 8 at 4096x2160 is about 210
-MB. One batch ahead is the least that hides the decode; more only
-smooths out uneven decode times. `tune_machine.sh` measures 0, 1, 2 and
-4 batches. Measured so far only with CPU work standing in for the
-model, on a 2-core box where the two compete for cores: 16% less time.
+MB. One batch ahead is the least that hides the decode.
 
 ### `global_min_prob`
 
@@ -3493,9 +3519,13 @@ The cq and crf scales do not match number for number, so do not carry
 17 across and assume the same quality. `betabench encode` times the
 current encoder, two faster x264 presets and NVENC at cq 17, 19, 21 and
 23 through the real chunk command with the real worker count, scores
-each against the source (SSIM and PSNR on luma), and names the fastest
-one within 0.25 dB of the current quality on both, with the settings
-to paste. Consumer drivers cap how many NVENC encodes run at once; the
+each against the source (SSIM and PSNR on luma), and recommends one
+within 0.25 dB of the current quality on both that renders more than 3%
+faster, or one as fast whose files are more than 10% smaller; otherwise
+it keeps the current one, with the settings to paste. On 2026-11-03 it
+recommended `p1` over `p5` for 39.1 against 39.1 fr/s at 4K, while
+`p1` wrote 25% bigger files, which is why a difference has to clear the
+noise first. Consumer drivers cap how many NVENC encodes run at once; the
 bench opens as many as the render would and says if `render_workers`
 has to come down.
 

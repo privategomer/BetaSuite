@@ -308,7 +308,7 @@ item_overrides = {
 
 gpu_enabled = 1
 cuda_device_id = 0
-detection_prefetch_frames = 8   # frames decoded ahead of the model; 0 = off
+detection_prefetch_frames = 0   # frames decoded ahead of the model; 0 = off
 structure_scan_workers = 0      # betabench structure-scan; 0 = auto (one per core, at most 4)
 
 # Frames per second of video that get detection and tracking.

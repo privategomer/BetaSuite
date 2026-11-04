@@ -94,26 +94,40 @@ def child_pids( pid, proc_root='/proc' ):
     return children
 
 
+def tree_rss_split_mb( pid=None, proc_root='/proc' ):
+    """( this process, its direct children ) resident memory, in MB."""
+    pid = os.getpid() if pid is None else pid
+    children = sum( _status_kb( child, 'VmRSS', proc_root ) for child in child_pids( pid, proc_root ) )
+    return _status_kb( pid, 'VmRSS', proc_root ) / 1024.0, children / 1024.0
+
+
 def tree_rss_mb( pid=None, proc_root='/proc' ):
     """Resident memory of this process and its direct children, in MB."""
-    pid = os.getpid() if pid is None else pid
-    total = _status_kb( pid, 'VmRSS', proc_root )
-    for child in child_pids( pid, proc_root ):
-        total += _status_kb( child, 'VmRSS', proc_root )
-    return total / 1024.0
+    own, children = tree_rss_split_mb( pid, proc_root )
+    return own + children
 
 
 class MemorySampler( object ):
     """Peak resident memory of this process tree, and the lowest MemAvailable, while it runs."""
 
-    def __init__( self, interval=0.2, rss=tree_rss_mb, available=None ):
+    def __init__( self, interval=0.2, rss=None, available=None ):
         self.interval = interval
-        self._rss = rss
+        # rss returns a total, or ( this process, children ) to split the peak by side.
+        self._rss = rss or tree_rss_split_mb
         self._available = available
         self._stop = threading.Event()
         self.baseline_mb = None
         self.peak_mb = None
+        self.baseline_own_mb = None
+        self.peak_own_mb = None
+        self.peak_children_mb = None
         self.min_available_mb = None
+
+    def _read( self ):
+        value = self._rss()
+        if isinstance( value, tuple ):
+            return value[0] + value[1], value[0], value[1]
+        return value, None, None
 
     def _available_mb( self ):
         if self._available is not None:
@@ -123,7 +137,11 @@ class MemorySampler( object ):
         return None if value is None else value / 2**20
 
     def _sample( self ):
-        self.peak_mb = max( self.peak_mb or 0.0, self._rss() )
+        total, own, children = self._read()
+        self.peak_mb = max( self.peak_mb or 0.0, total )
+        if own is not None:
+            self.peak_own_mb = max( self.peak_own_mb or 0.0, own )
+            self.peak_children_mb = max( self.peak_children_mb or 0.0, children )
         available = self._available_mb()
         if available is not None:
             self.min_available_mb = ( available if self.min_available_mb is None
@@ -134,7 +152,7 @@ class MemorySampler( object ):
             self._sample()
 
     def __enter__( self ):
-        self.baseline_mb = self._rss()
+        self.baseline_mb, self.baseline_own_mb, _children = self._read()
         self.peak_mb = self.baseline_mb
         self._sample()
         self._thread = threading.Thread( target=self._run, name='memory-sampler', daemon=True )
@@ -149,6 +167,12 @@ class MemorySampler( object ):
 
     def growth_mb( self ):
         return max( 0.0, ( self.peak_mb or 0.0 ) - ( self.baseline_mb or 0.0 ) )
+
+    def own_growth_mb( self ):
+        """Growth of this process alone (decoders, frames), or None when not split."""
+        if self.peak_own_mb is None:
+            return None
+        return max( 0.0, self.peak_own_mb - ( self.baseline_own_mb or 0.0 ) )
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +212,43 @@ def decoder_mode_choice( rows, noise=NOISE ):
     return default
 
 
+def render_workers_proposal( rows, skipped, cpu_count, configured, resolution, noise=NOISE ):
+    """
+    ( value or None, why ): the render_workers to propose, from rows
+    measured on the source with the most pixels.
+
+    Only ever a RAISE. The measurement runs on the hardest file, and
+    render_workers applies to every file: fewer workers being as fast at
+    4K says nothing about 1080p, where the same count would hold back a
+    render that runs fine with more. Large frames are already limited by
+    the memory cap, which is the setting that knows the frame size. A
+    count that was skipped for memory was never measured at all, so it
+    cannot lose either.
+    """
+    auto = auto_render_workers( cpu_count )
+    now = configured or auto
+    choice = fastest_within_noise( rows, lambda r: r['fps'], lambda r: r['workers'], noise )
+    if choice is None:
+        return None, "nothing measured"
+    gap = ( "; %s worker(s) not measured, %s would not fit in memory"%(
+        ', '.join( str( n ) for n in skipped ), 'they' if len( skipped ) > 1 else 'it' ) if skipped else '' )
+    if choice['workers'] <= now:
+        if choice['workers'] < now:
+            return None, ( "%d worker(s) were as fast as any count measured at %s%s. Not proposed: "
+                           "render_workers would also limit smaller files, and the memory cap "
+                           "already limits this one"%( choice['workers'], resolution, gap ) )
+        return None, "the current count (%d) measured fastest at %s%s"%( now, resolution, gap )
+    current = [ r for r in rows if r['workers'] == now ]
+    if not current:
+        return None, "the current count (%d) was not measured, so there is nothing to compare%s"%( now, gap )
+    best_now = max( current, key=lambda r: r['fps'] )
+    if choice['fps'] <= best_now['fps'] * ( 1.0 + noise ):
+        return None, "more workers were no faster than %d at %s%s"%( now, resolution, gap )
+    return ( 0 if choice['workers'] == auto else choice['workers'] ), (
+        "%.1f fr/s at %d worker(s) against %.1f at %d, at %s, the hardest file"%(
+            choice['fps'], choice['workers'], best_now['fps'], now, resolution ) )
+
+
 def mb_per_megapixel_proposal( rows, margin=MEMORY_MARGIN ):
     """The highest per-worker memory measured, per megapixel, with margin, rounded up to 10."""
     measured = [ row['mb_per_megapixel'] for row in rows if row.get( 'mb_per_megapixel' ) ]
@@ -209,6 +270,19 @@ def render_worker_counts( cpu_count, nvenc_sessions=None ):
     if nvenc_sessions is not None:
         counts = [ n for n in counts if n <= max( 1, nvenc_sessions ) ]
     return counts or [ 1 ]
+
+
+def measured_noise( first, second, floor=NOISE ):
+    """
+    How far apart two timings of the SAME setting came out, as a
+    fraction, never below `floor`. A difference between two settings
+    smaller than this is not evidence of anything: on 2026-11-03 the
+    same detection loop timed 22.01 and 23.18 ms a sample, 5% apart,
+    while the fixed 3% bar proposed changes of 5 to 10%.
+    """
+    if not first or not second:
+        return floor
+    return max( floor, abs( first - second ) / min( first, second ) )
 
 
 def _rate( milliseconds ):
@@ -382,9 +456,7 @@ def stage_detect( context, logger ):
     logger.info( "detect: %s at size %d, %d frames from %.0fs in, providers %s"%(
         backend, size, len( frames ), start, bu_detector.session_provider_summary( session ) ) )
 
-    rows = []
-    reference = None
-    for batch in batch_sizes_to_try( context['batch_now'] ):
+    def timed( batch ):
         module.raw_boxes_for_imgs( frames[ : batch ], size, session, times[ : batch ] )   # warm-up
         best = None
         for _repeat in range( 2 ):
@@ -395,10 +467,16 @@ def stage_detect( context, logger ):
                                                     times[ offset : offset + batch ] )
             elapsed = time.perf_counter() - started
             best = elapsed if best is None else min( best, elapsed )
+        return 1000.0 * best / len( frames ), boxes
+
+    rows = []
+    reference = None
+    for batch in batch_sizes_to_try( context['batch_now'] ):
+        ms_per_frame, boxes = timed( batch )
         labels = _labels( boxes )
         reference = labels if reference is None else reference
         gpu = nvidia_smi( [ 'memory.used' ] )
-        row = { 'batch': batch, 'ms_per_frame': round( 1000.0 * best / len( frames ), 3 ),
+        row = { 'batch': batch, 'ms_per_frame': round( ms_per_frame, 3 ),
                 'detections': len( boxes ), 'labels': labels, 'same_as_batch_1': labels == reference,
                 'gpu_memory_used_mb': gpu.get( 'memory.used' ) }
         rows.append( row )
@@ -408,17 +486,28 @@ def stage_detect( context, logger ):
     if any( not row['same_as_batch_1'] for row in rows ):
         logger.warning( "  detections differ between batch sizes on the same frames; batched GPU "
                         "kernels can round differently. Only matching sizes are proposed" )
-    candidates = [ row for row in rows if row['same_as_batch_1'] ]
-    choice = fastest_within_noise( candidates, lambda r: _rate( r['ms_per_frame'] ), lambda r: r['batch'] )
+    # The current batch again, after the sweep: how far one setting's
+    # timing moves on its own is the bar every other setting must clear.
     current = next( ( row for row in rows if row['batch'] == context['batch_now'] ), None )
+    noise = NOISE
+    if current:
+        again, _boxes = timed( current['batch'] )
+        noise = measured_noise( current['ms_per_frame'], again )
+        current['ms_per_frame_repeat'] = round( again, 3 )
+        current['ms_per_frame'] = round( min( current['ms_per_frame'], again ), 3 )
+        logger.info( "  batch %d again: %.2f ms/frame; run-to-run spread %.1f%%, the bar for a change"%(
+            current['batch'], again, 100.0 * noise ) )
+    candidates = [ row for row in rows if row['same_as_batch_1'] ]
+    choice = fastest_within_noise( candidates, lambda r: _rate( r['ms_per_frame'] ), lambda r: r['batch'],
+                                   noise )
     result = { 'backend': backend, 'size': size, 'frames': len( frames ), 'rows': rows,
-               'chosen': choice['batch'] if choice else None }
+               'noise': round( noise, 4 ), 'chosen': choice['batch'] if choice else None }
     if choice and current and choice['batch'] != current['batch'] \
-            and choice['ms_per_frame'] < current['ms_per_frame'] * ( 1.0 - NOISE ):
+            and choice['ms_per_frame'] < current['ms_per_frame'] * ( 1.0 - noise ):
         context['proposal'][ 'detector_backend.%s.nn_batch_size'%( backend, ) ] = {
             'value': choice['batch'],
-            'reason': "%.2f ms/frame against %.2f at batch %d"%(
-                choice['ms_per_frame'], current['ms_per_frame'], current['batch'] ) }
+            'reason': "%.2f ms/frame against %.2f at batch %d (spread %.1f%%)"%(
+                choice['ms_per_frame'], current['ms_per_frame'], current['batch'], 100.0 * noise ) }
     context['batch_best'] = choice['batch'] if choice else context['batch_now']
     logger.info( "  best: batch %s"%( result['chosen'], ) )
     return result
@@ -475,20 +564,24 @@ def stage_prefetch( context, logger ):
         kept = by_depth.get( row['depth'] )
         if kept is None or row['ms_per_sample'] < kept['ms_per_sample']:
             by_depth[ row['depth'] ] = row
+    unprefetched = [ row['ms_per_sample'] for row in rows if row['depth'] == 0 ]
+    noise = measured_noise( unprefetched[0], unprefetched[-1] ) if len( unprefetched ) > 1 else NOISE
+    logger.info( "  none ahead, first and last: run-to-run spread %.1f%%, the bar for a change"%(
+        100.0 * noise, ) )
     choice = fastest_within_noise( list( by_depth.values() ), lambda r: _rate( r['ms_per_sample'] ),
-                                   lambda r: r['depth'] )
+                                   lambda r: r['depth'], noise )
     current = by_depth.get( context['prefetch_now'] )
     if choice and current and choice['depth'] != current['depth'] \
-            and choice['ms_per_sample'] < current['ms_per_sample'] * ( 1.0 - NOISE ):
+            and choice['ms_per_sample'] < current['ms_per_sample'] * ( 1.0 - noise ):
         context['proposal']['detection_prefetch_frames'] = {
             'value': choice['depth'],
-            'reason': "%.2f ms/sample against %.2f with %d" %(
-                choice['ms_per_sample'], current['ms_per_sample'], current['depth'] ) }
+            'reason': "%.2f ms/sample against %.2f with %d (spread %.1f%%)" %(
+                choice['ms_per_sample'], current['ms_per_sample'], current['depth'], 100.0 * noise ) }
     off = by_depth.get( 0 )
     if off and choice:
         logger.info( "  best: %d ahead, %.0f%% less detection time than none"%(
             choice['depth'], 100.0 * ( 1.0 - choice['ms_per_sample'] / off['ms_per_sample'] ) ) )
-    return { 'batch': batch, 'seconds': seconds, 'rows': rows,
+    return { 'batch': batch, 'seconds': seconds, 'rows': rows, 'noise': round( noise, 4 ),
              'chosen': choice['depth'] if choice else None }
 
 
@@ -521,6 +614,7 @@ def stage_render( context, logger ):
     scratch = tempfile.mkdtemp( prefix='tune-machine-render-',
                                 dir=betaconst.benchmark_dir if os.path.isdir( betaconst.benchmark_dir ) else None )
     rows = []
+    skipped = []
     # The config's own estimate until something is measured, so the first
     # big step cannot run the machine out of memory before any data exists.
     model_mb = megapixels * ( getattr( context['betaconfig'], 'render_worker_mb_per_megapixel', None ) or 200 )
@@ -535,6 +629,7 @@ def stage_render( context, logger ):
                     logger.warning( "  %d worker(s) skipped: about %.0f MB needed (%s), %.0f MB available"%(
                         workers, needed, 'measured' if per_worker_mb else 'the config estimate',
                         available / 2**20 ) )
+                    skipped = [ n for n in counts if n >= workers ]
                     break
             stop = False
             for mode in ( None, 0 ):
@@ -550,18 +645,24 @@ def stage_render( context, logger ):
                 frames = sum( r['frames'] for r in results )
                 errors = [ r['error'] for r in results if r['error'] ]
                 growth = memory.growth_mb()
+                own = memory.own_growth_mb()
                 row = { 'workers': workers, 'decode_threads_setting': mode,
                         'decode_threads': threads, 'frames': frames, 'seconds': round( wall, 3 ),
                         'fps': round( frames / wall, 2 ) if wall and not errors else 0.0,
                         'peak_growth_mb': round( growth ), 'min_available_mb':
                             None if memory.min_available_mb is None else round( memory.min_available_mb ),
                         'mb_per_megapixel': round( growth / workers / megapixels, 1 ) if not errors else None,
+                        # Which side the memory is on: decoders and frames in Python, or the encoders.
+                        'python_growth_mb': None if own is None else round( own ),
+                        'encoder_peak_mb': ( None if memory.peak_children_mb is None
+                                             else round( memory.peak_children_mb ) ),
                         'error': errors[0] if errors else None }
                 rows.append( row )
                 logger.info( "  %2d worker(s), decoder threads %-15s %6.1f fr/s   +%5.0f MB "
-                             "(%4.0f MB/MP/worker)%s"%(
+                             "(%4.0f MB/MP/worker; python +%s MB, ffmpeg %s MB)%s"%(
                                  workers, "OpenCV's own" if mode is None else '%d each'%( threads, ),
                                  row['fps'], growth, row['mb_per_megapixel'] or 0,
+                                 row['python_growth_mb'], row['encoder_peak_mb'],
                                  '   ERROR %s'%( row['error'], ) if row['error'] else '' ) )
                 if not errors:
                     per_worker_mb = max( per_worker_mb or 0, growth / workers )
@@ -580,21 +681,16 @@ def stage_render( context, logger ):
     if choice:
         choice = decoder_mode_choice( [ r for r in good if r['workers'] == choice['workers'] ] ) or choice
     result = { 'video': video, 'encoder': candidate, 'rows': rows, 'nvenc_sessions': sessions,
-               'chosen': choice }
+               'skipped_workers': skipped, 'chosen': choice }
     if not choice:
         return result
-    now_workers = context['betaconfig'].render_workers or auto_render_workers( cpu_count )
     now_mode = getattr( context['betaconfig'], 'render_decode_threads', None )
-    current = next( ( r for r in good if r['workers'] == now_workers
-                      and r['decode_threads_setting'] == ( 0 if now_mode == 0 else None ) ), None )
-    better = current is None or choice['fps'] > current['fps'] * ( 1.0 + NOISE )
-    if better:
-        wanted_workers = 0 if choice['workers'] == auto_render_workers( cpu_count ) else choice['workers']
-        if wanted_workers != context['betaconfig'].render_workers:
-            context['proposal']['render_workers'] = {
-                'value': wanted_workers,
-                'reason': "%.1f fr/s at %d worker(s)%s"%( choice['fps'], choice['workers'],
-                          '' if current is None else ' against %.1f at %d'%( current['fps'], current['workers'] ) ) }
+    value, note = render_workers_proposal( good, skipped, cpu_count, context['betaconfig'].render_workers,
+                                           "%dx%d"%( width, height ) )
+    result['render_workers_note'] = note
+    logger.info( "  render_workers: %s"%( note, ) )
+    if value is not None:
+        context['proposal']['render_workers'] = { 'value': value, 'reason': note }
     if choice['decode_threads_setting'] != now_mode:
         other = next( ( r for r in good if r['workers'] == choice['workers']
                         and r['decode_threads_setting'] != choice['decode_threads_setting'] ), None )
