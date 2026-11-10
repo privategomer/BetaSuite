@@ -321,6 +321,20 @@ class TestMovesStayInTheirTree( StructureHarness ):
         self.assertIn( os.path.join( self.staging, 'quick-cut' ), text )
         self.assertNotIn( os.path.join( self.vids, 'quick-cut' ), text )
 
+    def test_a_held_back_move_reaches_the_script_behind_the_flag( self ):
+        # compilation/ is a manual folder, so a scene-shaped file in it is a
+        # review move. It used to be only logged; now it is in the script.
+        file_hash = self.clip( 'compilation/long.mp4', 60 )
+        self.cuts( file_hash, [] )
+        script = os.path.join( self.tmp, 'moves.sh' )
+        self.args.write_move_script = script
+        self.rows()
+        with open( script ) as handle:
+            text = handle.read()
+        self.assertIn( 'move_held ', text )
+        self.assertIn( os.path.join( self.vids, 'scene' ), text )
+        self.assertNotIn( '\nmove_one ', text.split( 'HELD BACK' )[-1] )
+
 
 class TestMoveVerdict( StructureHarness ):
     """Which recommended moves go in the script. See _move_verdict."""
@@ -778,3 +792,118 @@ class TestMoveScript( unittest.TestCase ):
                 self.assertEqual( f.read(), 'original',
                                   "mv -n must not overwrite the moved file" )
             self.assertIn( 'skip', result.stdout )
+
+
+class TestHeldBackMoves( unittest.TestCase ):
+    """
+    Moves _move_verdict lists for review are in the script too, and are
+    made only with --include-held-back. Without the flag a run must
+    leave them exactly where they are.
+    """
+
+    def build( self, root ):
+        import subprocess
+        sure = os.path.join( root, 'compilation', 'sure.mp4' )
+        judged = os.path.join( root, 'compilation', "judged's call.mp4" )
+        _write_text_in( sure, 'sure' )
+        _write_text_in( judged, 'judged' )
+        script = os.path.join( root, 'moves.sh' )
+        betabench._write_move_script(
+            script,
+            [ { 'source': 'sure.mp4', 'source_path': sure,
+                'dest_dir': os.path.join( root, 'quick-cut' ), 'from': 'compilation',
+                'to': 'quick-cut', 'why': 'sure.mp4: fast cuts' } ],
+            _quiet_logger(),
+            held_back=[ { 'source': "judged's call.mp4", 'source_path': judged,
+                          'dest_dir': os.path.join( root, 'scene' ), 'from': 'compilation',
+                          'to': 'scene', 'why': "judged's call.mp4: only 41% in sub-10s shots",
+                          'held_back': 'compilation/ is a judgment timing cannot see' } ] )
+        return sure, judged, script, subprocess
+
+    def test_a_plain_run_makes_the_safe_move_and_only_reports_the_held_one( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            result = subprocess.run( [ 'bash', script ], capture_output=True, text=True )
+            self.assertEqual( result.returncode, 0, result.stderr )
+            self.assertFalse( os.path.exists( sure ) )
+            self.assertTrue( os.path.exists( judged ), "a held-back file must not move" )
+            self.assertFalse( os.path.exists( os.path.join( root, 'scene' ) ),
+                              "nor may its destination be created" )
+            self.assertIn( 'held back', result.stdout )
+            self.assertIn( '--include-held-back', result.stdout )
+            self.assertIn( 'compilation/ is a judgment timing cannot see', result.stdout )
+
+    def test_the_flag_makes_the_held_back_move_too( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            result = subprocess.run( [ 'bash', script, '--include-held-back' ],
+                                     capture_output=True, text=True )
+            self.assertEqual( result.returncode, 0, result.stderr )
+            self.assertFalse( os.path.exists( sure ) )
+            self.assertFalse( os.path.exists( judged ) )
+            self.assertTrue( os.path.exists( os.path.join( root, 'scene', "judged's call.mp4" ) ) )
+            self.assertIn( 'moved 2 file(s)', result.stdout )
+
+    def test_the_flag_still_never_overwrites( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            _write_text_in( os.path.join( root, 'scene', "judged's call.mp4" ), 'already here' )
+            result = subprocess.run( [ 'bash', script, '--include-held-back' ],
+                                     capture_output=True, text=True )
+            with open( os.path.join( root, 'scene', "judged's call.mp4" ) ) as f:
+                self.assertEqual( f.read(), 'already here' )
+            self.assertTrue( os.path.exists( judged ) )
+            self.assertIn( 'skip (target exists)', result.stdout )
+
+    def test_an_unknown_argument_moves_nothing( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            result = subprocess.run( [ 'bash', script, '--include-everything' ],
+                                     capture_output=True, text=True )
+            self.assertEqual( result.returncode, 2 )
+            self.assertTrue( os.path.exists( sure ) )
+            self.assertTrue( os.path.exists( judged ) )
+
+    def test_a_held_back_file_already_moved_is_not_reported_again( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            subprocess.run( [ 'bash', script, '--include-held-back' ], capture_output=True, text=True )
+            result = subprocess.run( [ 'bash', script ], capture_output=True, text=True )
+            self.assertNotIn( 'held back', result.stdout )
+
+    def test_the_script_with_a_held_back_section_is_valid_bash_and_quotes_the_reason( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            sure, judged, script, subprocess = self.build( root )
+            self.assertEqual( subprocess.run( [ 'bash', '-n', script ] ).returncode, 0 )
+            with open( script ) as handle:
+                text = handle.read()
+            self.assertIn( "move_held '%s'"%( judged.replace( "'", "'\\''" ), ), text )
+
+    def test_a_survey_with_only_held_back_moves_still_writes_the_script( self ):
+        # The case that prompted the flag: nothing passed the safety rules,
+        # so there used to be no script at all.
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            script = os.path.join( root, 'moves.sh' )
+            betabench._write_move_script(
+                script, [], _quiet_logger(),
+                held_back=[ { 'source': 'a.mp4', 'source_path': os.path.join( root, 'a.mp4' ),
+                              'dest_dir': os.path.join( root, 'scene' ), 'from': 'compilation',
+                              'to': 'scene', 'why': 'a.mp4: only 6% in sub-10s shots',
+                              'held_back': 'held' } ] )
+            with open( script ) as handle:
+                text = handle.read()
+            self.assertIn( 'move_held ', text )
+            self.assertIn( 'HELD BACK', text )
+
+
+def _write_text_in( path, text ):
+    os.makedirs( os.path.dirname( path ), exist_ok=True )
+    with open( path, 'w' ) as handle:
+        handle.write( text )

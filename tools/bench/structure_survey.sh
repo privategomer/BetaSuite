@@ -24,15 +24,19 @@
 #                        the only signal that identifies split-screen.
 #                        Asks first; unattended, it runs.
 #   3. structure         the per-file table, recommendations, and the move
-#                        script, holding back any move that rests on a
-#                        slice, would lower the sample rate, or would
-#                        override a manual folder on timing alone.
+#                        script. A move that rests on a slice, would lower
+#                        the sample rate, or would override a manual folder
+#                        on timing alone goes in the script's HELD BACK
+#                        section: reported on a plain run, made only with
+#                        moves.sh --include-held-back.
 #
 # OUTPUT
 #   ../output/benchmarks/structure_survey_<timestamp>/
 #       structure_survey.log    everything, every level
 #       scan/ geometry/ structure/   each phase's own betabench log + results.json
-#       moves.sh                the script, when any move passed
+#       moves.sh                the script, when any move is recommended;
+#                               moves the safety rules hold back are in it
+#                               too, made only with --include-held-back
 #
 # Terminal output is filtered by LOG_LEVEL (trace|debug|info|warn|error,
 # default info). The log file keeps everything regardless.
@@ -112,7 +116,10 @@ fi
 if [ -f "$SURVEY_DIR/moves.sh" ]; then
     log_info "move script: $SURVEY_DIR/moves.sh"
     log_info "read the reason above each move, then run it: bash '$SURVEY_DIR/moves.sh'"
+    if grep -q '^move_held ' "$SURVEY_DIR/moves.sh"; then
+        log_info "held-back moves are in it too, and are only reported unless you add the flag: bash '$SURVEY_DIR/moves.sh' --include-held-back"
+    fi
 else
-    log_info "no move passed the safety rules, so there is no script to run"
+    log_info "no recommended moves, so there is no script to run"
 fi
 log_info "full per-file table: $BENCH_LOG"
