@@ -666,6 +666,34 @@ class TestProgressReporter( unittest.TestCase ):
         progress.finish()
         self.assertIn( '400', logger.records[-1][1] )
 
+    def test_advance_loses_no_count_when_threads_switch_constantly( self ):
+        # The test above only fails when the scheduler happens to switch
+        # threads between advance()'s read and its write, which it did on
+        # one machine in a full-suite run (177 of 400) and on another never.
+        # Forcing a switch every microsecond makes the race certain.
+        import sys
+        import threading
+        logger = self._CountingLogger()
+        progress = bu_log.ProgressReporter( 'test', total=800, logger=logger,
+                                            log_interval=3600 )
+
+        def worker():
+            for _ in range( 200 ):
+                progress.advance()
+
+        previous = sys.getswitchinterval()
+        sys.setswitchinterval( 1e-6 )
+        try:
+            threads = [ threading.Thread( target=worker ) for _ in range( 4 ) ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        finally:
+            sys.setswitchinterval( previous )
+        progress.finish()
+        self.assertIn( 'done, 800 in', logger.records[-1][1] )
+
     def test_it_works_as_a_context_manager( self ):
         logger = self._CountingLogger()
         with bu_log.ProgressReporter( 'test', total=5, logger=logger,

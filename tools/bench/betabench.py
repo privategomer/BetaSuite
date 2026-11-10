@@ -1512,7 +1512,23 @@ SPLIT_LEFT_HALF_RANGE = ( 0.40, 0.60 )
 # file measured a LONGER 0.50s median. Ranked by median those two come
 # out in the wrong order; ranked by duration share they separate by 5x.
 COMPILATION_SHOT_SECONDS = 10.0
-COMPILATION_MIN_RUNTIME_FRACTION = 0.5
+# 0.375, from the 2026-11-10 survey of 176 whole-file scans: no file sat
+# between 34.6% and 40.6% of runtime in sub-10s shots, so this is the
+# middle of the one empty stretch below the compilation files. Below it
+# the files read as scenes (Fat 3some mix, 34.6%); above it, as
+# compilations (In a Dreamy State 7, 40.6%). It is where the measurement
+# has a gap, not a separation of kinds: the sub-30s share below does not
+# split them either, and the files near the line are the ones to look at.
+COMPILATION_MIN_RUNTIME_FRACTION = 0.375
+
+# Reported beside the sub-10s share, never used to decide. A compilation
+# built from clips longer than 10s hides from the sub-10s share, so the
+# survey also reports the share of runtime in sub-30s shots. On the same
+# survey it did not separate compilations from scenes: the 18 files kept
+# as compilations ran 82% to 100%, but 79 scene-folder files ran 0% to
+# 100% (median 31%) and 23 of them sat at 67% or more. It is here for a
+# person to read; a rule needs more evidence than this.
+COMPILATION_LONG_SHOT_SECONDS = 30.0
 
 
 def _quick_cut_threshold( backend_name=None ):
@@ -1886,12 +1902,16 @@ def _measure_source( source, file_hash, boxes, geometry_label, fps, threshold ):
     if cached is None:
         signals = bu_detector.structure_signals( None, None )
         mid_fraction = None
+        long_fraction = None
         evidence = None
     else:
         signals = bu_detector.structure_signals( cached.cuts, cached.scanned_seconds )
         mid_fraction = ( bu_detector.short_shot_fraction_for(
                              cached.cuts, cached.scanned_seconds, COMPILATION_SHOT_SECONDS )
                          if signals.is_measured else None )
+        long_fraction = ( bu_detector.short_shot_fraction_for(
+                              cached.cuts, cached.scanned_seconds, COMPILATION_LONG_SHOT_SECONDS )
+                          if signals.is_measured else None )
         evidence = ( 'whole file' if cached.is_whole_file
                      else 'slice' ) if signals.is_measured else None
     width, height = bu_tuning.frame_size_for_video( source['path'] )
@@ -1914,6 +1934,7 @@ def _measure_source( source, file_hash, boxes, geometry_label, fps, threshold ):
         'short_shot_fraction': ( round( signals.short_shot_fraction, 4 )
                                  if signals.short_shot_fraction is not None else None ),
         'mid_shot_fraction': round( mid_fraction, 4 ) if mid_fraction is not None else None,
+        'sub30_shot_fraction': round( long_fraction, 4 ) if long_fraction is not None else None,
         'geometry_configuration': geometry_label,
     }
     row.update( _geometry_of( boxes, width, height ) )
@@ -1999,11 +2020,11 @@ def _log_structure_table( rows, logger ):
 
     logger.info( "" )
     logger.info( "Per-file structure (censored labels only):" )
-    logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %6s %5s %6s  %s"%(
-        'source', 'folder', 'scanned', 'from', 'cuts/m', '<1s', '<10s',
+    logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %5s %6s %5s %6s  %s"%(
+        'source', 'folder', 'scanned', 'from', 'cuts/m', '<1s', '<10s', '<30s',
         'frames', 'p90', 'L-half', 'belongs in' ) )
     for row in rows:
-        logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %6d %5s %6s  %s"%(
+        logger.info( "  %-32s %-15s %7s %-6s %7s %5s %5s %5s %6d %5s %6s  %s"%(
             row['source'][:32],
             ( row['current_folder'] if row['tree'] == 'uncensored_vids'
               else 'src:' + row['current_folder'] )[:15],
@@ -2011,6 +2032,7 @@ def _log_structure_table( rows, logger ):
             { 'whole file': 'whole', 'slice': 'slice', None: '-' }[row['timing_evidence']],
             '%.1f'%row['cuts_per_min'] if row['cuts_per_min'] is not None else 'n/a',
             pct( row['short_shot_fraction'] ), pct( row['mid_shot_fraction'] ),
+            pct( row.get( 'sub30_shot_fraction' ) ),
             row['frames_with_boxes'], row['p90_simultaneous'],
             '%.2f'%row['left_half_fraction'] if row['left_half_fraction'] is not None else 'n/a',
             row['recommended_profile'] or '?' ) )
@@ -2026,9 +2048,9 @@ def _log_structure_table( rows, logger ):
                      "start of a file mostly measures its intro; 'betabench structure-scan' "
                      "measures the whole file, and the next real run reuses that scan"%(
                          len( sliced ), ) )
-    logger.info( "reading this: 'scanned' is the footage the timing numbers rest on. '<1s' "
-                 "and '<10s' are shares of RUNTIME in shots shorter than that, never shares "
-                 "of shots. 'frames' is how many sampled frames held a censored box; 'p90' "
+    logger.info( "reading this: 'scanned' is the footage the timing numbers rest on. '<1s', "
+                 "'<10s' and '<30s' are shares of RUNTIME in shots shorter than that, never "
+                 "shares of shots; '<30s' is reported for you to read and decides nothing. 'frames' is how many sampled frames held a censored box; 'p90' "
                  "is how many boxes share a frame at the 90th percentile; 'L-half' near 0.50 "
                  "with a high p90 is the split-screen signature." )
 

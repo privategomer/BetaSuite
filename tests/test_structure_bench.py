@@ -300,6 +300,34 @@ class TestStructureShares( StructureHarness ):
         # The median DOES read as rapid-fire, which is why it does not decide.
         self.assertLess( row['median_shot_seconds'], 0.2 )
 
+    def test_the_sub30_share_sees_clips_the_sub10_share_cannot( self ):
+        # 20-second clips: no shot is under 10s, every one is under 30s.
+        file_hash = self.clip( 'clips.mp4', 60 )
+        self.cuts( file_hash, [ 20.0, 40.0 ] )
+        row = self.rows()['clips.mp4']
+        self.assertEqual( row['mid_shot_fraction'], 0.0 )
+        self.assertEqual( row['sub30_shot_fraction'], 1.0 )
+
+    def test_the_sub30_share_is_weighted_by_duration( self ):
+        # A 40s shot then a 20s one: a third of the runtime is under 30s,
+        # though half of the shots are. Counting shots would say 0.5.
+        file_hash = self.clip( 'weighted.mp4', 60 )
+        self.cuts( file_hash, [ 40.0 ] )
+        row = self.rows()['weighted.mp4']
+        self.assertAlmostEqual( row['sub30_shot_fraction'], 1 / 3, places=2 )
+
+    def test_the_sub30_share_reports_but_does_not_decide( self ):
+        # Same sub-10s share, very different sub-30s share: same folder.
+        a = self.clip( 'a.mp4', 60 )
+        self.cuts( a, [ 20.0, 40.0 ] )
+        b = self.clip( 'b.mp4', 70 )
+        self.cuts( b, [ 50.0 ] )
+        rows = self.rows()
+        self.assertNotEqual( rows['a.mp4']['sub30_shot_fraction'],
+                             rows['b.mp4']['sub30_shot_fraction'] )
+        self.assertEqual( rows['a.mp4']['recommended_profile'],
+                          rows['b.mp4']['recommended_profile'] )
+
     def test_sustained_short_shots_do_reach_the_compilation_share( self ):
         file_hash = self.clip( 'comp.mp4', 24 )
         self.cuts( file_hash, [ round( 3.0 * n, 2 ) for n in range( 1, 8 ) ] )
@@ -565,6 +593,16 @@ class TestFolderRecommendation( unittest.TestCase ):
         exact = betabench.COMPILATION_MIN_RUNTIME_FRACTION
         self.assertEqual( self.pick( mid_shot_fraction=exact ), 'compilation' )
         self.assertEqual( self.pick( mid_shot_fraction=exact - 0.001 ), 'scene' )
+
+    def test_the_compilation_boundary_sits_in_the_gap_the_survey_measured( self ):
+        # 176 whole-file scans (2026-11-10): the nearest file below the line
+        # read 34.6% of runtime in sub-10s shots and the nearest above it
+        # 40.6%. The boundary has to stay between them, or the survey starts
+        # sorting the files it was set to catch the other way.
+        self.assertEqual( self.pick( mid_shot_fraction=0.4059 ), 'compilation' )
+        self.assertEqual( self.pick( mid_shot_fraction=0.3457 ), 'scene' )
+        self.assertGreater( betabench.COMPILATION_MIN_RUNTIME_FRACTION, 0.3457 )
+        self.assertLess( betabench.COMPILATION_MIN_RUNTIME_FRACTION, 0.4059 )
 
     def test_never_scanned_recommends_nothing( self ):
         # It used to recommend 'scene' with "no shot cuts found", which

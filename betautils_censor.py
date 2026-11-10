@@ -237,15 +237,62 @@ def feather_mask( mask, feather, w, h ):
     return cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0 )
 
 
-@functools.lru_cache( maxsize=_MASK_CACHE_ENTRIES )
-def _alpha_for( shape, w, h, feather ):
+def _ramp_sigma( feather, w, h ):
+    """The Gaussian sigma feather_mask's kernel works out to (cv2's rule for sigma 0)."""
+    radius = max( 1, round( feather * min( w, h ) / 2 ) )
+    kernel_size = 2*radius + 1
+    return 0.3 * ( ( kernel_size - 1 ) * 0.5 - 1 ) + 0.8
+
+
+def feather_pad( shape, w, h, feather ):
     """
-    Cached float32 alpha plane for one (shape, size, feather).
+    How far past its box a feathered circle or ellipse ramps to nothing.
+
+    The shape's edge is the middle of the ramp, so the outer half of the
+    ramp has to go somewhere: two sigma past the edge is where the alpha
+    is down to about 2%, which reads as gone. 0 for a box, and for any
+    shape without a feather, where there is no ramp.
+    """
+    if shape not in ( 'circle', 'ellipse' ) or not feather:
+        return 0
+    return int( math.ceil( 2 * _ramp_sigma( feather, w, h ) ) )
+
+
+@functools.lru_cache( maxsize=_MASK_CACHE_ENTRIES )
+def _alpha_for( shape, w, h, feather, pad=0 ):
+    """
+    Cached float32 alpha plane for one (shape, size, feather, pad).
+
+    A feathered circle or ellipse is blurred over a canvas with 'pad'
+    pixels of room on every side and a border of zeros. The default
+    border reflects the mask at the canvas edge, and an ellipse touches
+    all four edges of its box, so the reflection doubled it there: alpha
+    stayed at 0.95 right up to the box edge and then dropped to 0 in one
+    pixel, a hard straight edge on all four sides with only the corners
+    rounded. Heavy feathers (0.55 on a 300px box) read as a square.
+
+    With pad 0 the ramp is cut by the box, so alpha is about 0.5 where
+    the shape touches the box edge. With pad = feather_pad() the ramp
+    finishes outside the box and nothing is cut. A box, and a shape with
+    no feather, take the original path unchanged.
 
     Returns:
-        A read-only (h, w, 1) float32 array in [0, 1].
+        A read-only (h + 2*pad, w + 2*pad, 1) float32 array in [0, 1].
     """
-    mask = feather_mask( make_shape_mask( shape, w, h ), feather, w, h )
+    if shape in ( 'circle', 'ellipse' ) and feather:
+        mask = np.zeros( ( h + 2*pad, w + 2*pad ), dtype=np.uint8 )
+        centre = ( pad + w//2, pad + h//2 )
+        if shape == 'circle':
+            cv2.circle( mask, centre, min( w, h )//2, 255, cv2.FILLED )
+        else:
+            cv2.ellipse( mask, centre, ( max( w//2, 1 ), max( h//2, 1 ) ),
+                         0, 0, 360, 255, cv2.FILLED )
+        radius = max( 1, round( feather * min( w, h ) / 2 ) )
+        kernel_size = 2*radius + 1
+        mask = cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0,
+                                 borderType=cv2.BORDER_CONSTANT )
+    else:
+        mask = feather_mask( make_shape_mask( shape, w, h ), feather, w, h )
     alpha = ( mask.astype( np.float32 ) / 255.0 )[ :, :, None ]
     alpha.flags.writeable = False
     return alpha
@@ -739,6 +786,20 @@ def blur_image( image, x, y, w, h, style, shape='box', feather=0,
     # Read a margin of real neighbouring pixels when asked to, so the
     # blur is not a function of where the box's edge sits. The margin is
     # read only; what gets composited back is still exactly the box.
+    #
+    # A feathered circle or ellipse ramps to nothing OUTSIDE its box, so
+    # the region blurred and composited is the box plus that ramp's room
+    # (feather_pad), clipped to the frame. Everything below then works on
+    # that rectangle; for a box, or no feather, it is the box itself and
+    # nothing here changes.
+    pad = feather_pad( shape, w, h, feather )
+    if pad:
+        image_h, image_w = image.shape[:2]
+        box_x, box_y, box_w, box_h = x, y, w, h
+        x = max( 0, box_x - pad )
+        y = max( 0, box_y - pad )
+        w = min( image_w, box_x + box_w + pad ) - x
+        h = min( image_h, box_y + box_h + pad ) - y
     use_margin = getattr( betaconfig, 'blur_edge_margin', True )
     if use_margin:
         region, offset_x, offset_y = _blur_region_with_margin(
@@ -767,6 +828,18 @@ def blur_image( image, x, y, w, h, style, shape='box', feather=0,
 
     # Crop the blurred result back to the box itself.
     censored_region = censored_region[ offset_y:offset_y+h, offset_x:offset_x+w ]
+
+    if pad:
+        # The padded alpha is laid out around the box; the rectangle
+        # blurred may be smaller where the frame cut it, so take the
+        # matching window of it.
+        alpha = _alpha_for( shape, box_w, box_h, feather, pad )[
+            y - ( box_y - pad ) : y - ( box_y - pad ) + h,
+            x - ( box_x - pad ) : x - ( box_x - pad ) + w ]
+        original_region = image[ y:y+h, x:x+w ].astype( np.float32 )
+        blended = alpha*censored_region.astype( np.float32 ) + ( 1 - alpha )*original_region
+        image[ y:y+h, x:x+w ] = blended.astype( image.dtype )
+        return image
 
     return apply_masked_region( image, x, y, w, h, censored_region, shape, feather )
 

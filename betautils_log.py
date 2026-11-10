@@ -293,23 +293,33 @@ class ProgressReporter:
         The thread-safe counterpart to update(): parallel render workers
         each know how many frames THEY wrote, not the global total.
         """
+        now = time.monotonic()
+        # The read, the add and the write are ONE lock hold. They used to be
+        # two: advance() read the count under the lock, released it, and
+        # update() wrote it back, so two workers could read the same count
+        # and both write count+1, and the total came up short (177 of 400
+        # across four threads), which also made the "done, N" summary wrong.
         with self._lock:
-            current = self._current + delta
-        self.update( current )
+            self._current += delta
+            self._report_locked( now, self._current )
 
     def update( self, current ):
         """Record progress. Cheap enough to call once per frame."""
         now = time.monotonic()
         with self._lock:
             self._current = current
-            if self._isatty and ( now - self._last_paint ) >= self.min_interval:
-                self._last_paint = now
-                sys.stdout.write( "\r\033[K" + self._format( current ) )
-                sys.stdout.flush()
-                self._painted = True
-            if ( now - self._last_log ) >= self.log_interval:
-                self._last_log = now
-                self.logger.log( self.level, self._format( current ) )
+            self._report_locked( now, current )
+
+    def _report_locked( self, now, current ):
+        """Paint and log if their intervals are up. The caller holds the lock."""
+        if self._isatty and ( now - self._last_paint ) >= self.min_interval:
+            self._last_paint = now
+            sys.stdout.write( "\r\033[K" + self._format( current ) )
+            sys.stdout.flush()
+            self._painted = True
+        if ( now - self._last_log ) >= self.log_interval:
+            self._last_log = now
+            self.logger.log( self.level, self._format( current ) )
 
     def finish( self, note=None ):
         """Clear the in-place line and emit one summary record."""

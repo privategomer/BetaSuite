@@ -395,7 +395,38 @@ def censor_identity( backend_name=None ):
         if bu_reverse.person_windows_enabled():
             import betautils_person as bu_person   # deferred: keeps cv2 out of this import graph
             identity['person_model'] = bu_person.identity()
+    # A feathered circle or ellipse is drawn differently since the mask
+    # fix (see betautils_censor._alpha_for), with no config change to show
+    # for it, so a render made before it would be reused as current. Keyed
+    # only while a style that the fix touches is in use, so every config
+    # without one keeps its key and its finished output.
+    if censor_uses_feathered_shape( per_label ):
+        identity['feathered_shape_mask'] = 2
     return identity
+
+
+def censor_uses_feathered_shape( per_label ):
+    """
+    Whether any blur or pixel style in these resolved label settings is a
+    circle or ellipse with a feather, the one case the feather mask fix
+    changed. Bars and stickers are not: a bar is a box, and a sticker's
+    feather softens its own silhouette.
+
+    Args:
+        per_label: {label: resolved settings}, as get_label_settings returns.
+    """
+    import betautils_censor as bu_censor   # deferred: keeps cv2 out of this import graph
+    for settings in per_label.values():
+        styles = settings.get( 'censor_style' )
+        if isinstance( styles, dict ):
+            styles = [ styles ]
+        for style in styles or ():
+            if style.get( 'type' ) not in ( 'blur', 'pixel' ) or not style.get( 'feather' ):
+                continue
+            shape = bu_censor.resolve_censor_shape( style, settings.get( 'censor_shape', 'box' ) )
+            if shape in ( 'circle', 'ellipse' ):
+                return True
+    return False
 
 
 def censor_key( backend_name=None ):

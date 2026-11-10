@@ -2546,6 +2546,18 @@ Feathering blurs the shape mask itself, so edge pixels blend
 proportionally instead of jumping. Too much and real detail shows
 through the gradient.
 
+The shape's edge is the middle of the ramp. On a `box` a feather does
+nothing (a rectangle has no edge to soften), and a `bar` is always a
+box. On a `circle` or `ellipse` the outer half of the ramp falls outside
+the shape: a `blur` renders that margin past its box, about two sigma of
+the feather (51 px for feather 0.55 on a 300 px box, 10 px for 0.1), so
+a heavily feathered blur covers slightly more than its box and fades
+out. `pixel` styles keep the ramp inside their box, so alpha is about
+0.5 where the shape touches the box edge. Before this was fixed the
+ramp was mirrored at the box edge, which left the blur nearly opaque
+(0.95) right up to all four sides and cut it off there: a rounded
+square, worse the heavier the feather.
+
 ### `type: 'blur'`
 
 `method`: `'gaussian'` (default) or `'box'`. `strength`: kernel size,
