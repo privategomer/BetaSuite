@@ -346,8 +346,8 @@ class TestMovesStayInTheirTree( StructureHarness ):
         self.rows()
         with open( script ) as handle:
             text = handle.read()
-        self.assertIn( os.path.join( self.staging, 'quick-cut' ), text )
-        self.assertNotIn( os.path.join( self.vids, 'quick-cut' ), text )
+        self.assertIn( "'%s'"%( os.path.relpath( os.path.join( self.staging, 'quick-cut' ), self.tmp ), ), text )
+        self.assertNotIn( os.path.relpath( os.path.join( self.vids, 'quick-cut' ), self.tmp ), text )
 
     def test_a_held_back_move_reaches_the_script_behind_the_flag( self ):
         # compilation/ is a manual folder, so a scene-shaped file in it is a
@@ -360,7 +360,7 @@ class TestMovesStayInTheirTree( StructureHarness ):
         with open( script ) as handle:
             text = handle.read()
         self.assertIn( 'move_held ', text )
-        self.assertIn( os.path.join( self.vids, 'scene' ), text )
+        self.assertIn( "'%s'"%( os.path.relpath( os.path.join( self.vids, 'scene' ), self.tmp ), ), text )
         self.assertNotIn( '\nmove_one ', text.split( 'HELD BACK' )[-1] )
 
 
@@ -595,7 +595,7 @@ class TestFolderRecommendation( unittest.TestCase ):
         self.assertEqual( self.pick( mid_shot_fraction=exact - 0.001 ), 'scene' )
 
     def test_the_compilation_boundary_sits_in_the_gap_the_survey_measured( self ):
-        # 176 whole-file scans (2026-11-10): the nearest file below the line
+        # 176 whole-file scans: the nearest file below the line
         # read 34.6% of runtime in sub-10s shots and the nearest above it
         # 40.6%. The boundary has to stay between them, or the survey starts
         # sorting the files it was set to catch the other way.
@@ -767,8 +767,9 @@ class TestMoveScript( unittest.TestCase ):
     def test_paths_with_quotes_and_spaces_survive( self ):
         # A filename with an apostrophe is the classic way a generated
         # script turns into an arbitrary command.
-        _path, text = self.write()
-        self.assertIn( """'/vids/b'\\''s film.mkv'""", text )
+        path, text = self.write()
+        rel = os.path.relpath( "/vids/b's film.mkv", os.path.dirname( path ) )
+        self.assertIn( "'" + rel.replace( "'", "'\\''" ) + "'", text )
 
     def test_every_move_carries_its_reason_as_a_comment( self ):
         _path, text = self.write()
@@ -782,7 +783,7 @@ class TestMoveScript( unittest.TestCase ):
     def test_it_checks_the_source_still_exists( self ):
         # So a re-run after a partial move reports rather than errors.
         _path, text = self.write()
-        self.assertIn( 'if [[ ! -f "$src" ]]', text )
+        self.assertIn( 'if [[ ! -f "$abs_src" ]]', text )
 
     def test_it_is_executable( self ):
         path, _text = self.write()
@@ -921,7 +922,7 @@ class TestHeldBackMoves( unittest.TestCase ):
             self.assertEqual( subprocess.run( [ 'bash', '-n', script ] ).returncode, 0 )
             with open( script ) as handle:
                 text = handle.read()
-            self.assertIn( "move_held '%s'"%( judged.replace( "'", "'\\''" ), ), text )
+            self.assertIn( "move_held '%s'"%( os.path.relpath( judged, root ).replace( "'", "'\\''" ), ), text )
 
     def test_a_survey_with_only_held_back_moves_still_writes_the_script( self ):
         # The case that prompted the flag: nothing passed the safety rules,
@@ -939,6 +940,85 @@ class TestHeldBackMoves( unittest.TestCase ):
                 text = handle.read()
             self.assertIn( 'move_held ', text )
             self.assertIn( 'HELD BACK', text )
+
+
+class TestMoveScriptIsRelativeToItself( unittest.TestCase ):
+    """
+    The script lives beside the survey logs under output/ and finds the
+    videos by its own location, so it works from any directory and never
+    has to be copied into the source tree (and removed again).
+    """
+
+    def build( self, base ):
+        res = os.path.join( base, 'resources' )
+        src = os.path.join( res, 'uncensored_vids', 'compilation', "c's clip.mp4" )
+        _write_text_in( src, 'x' )
+        _write_text_in( os.path.join( res, 'uncensored_vids', 'quick-cut', 'keep.txt' ), '' )
+        out = os.path.join( base, 'output', 'benchmarks', 'survey' )
+        script = os.path.join( out, 'moves.sh' )
+        betabench._write_move_script( script, [ {
+            'source': "c's clip.mp4", 'source_path': src,
+            'dest_dir': os.path.join( res, 'uncensored_vids', 'quick-cut' ),
+            'from': 'compilation', 'to': 'quick-cut', 'why': 'fast cuts' } ],
+            _quiet_logger() )
+        return res, src, script
+
+    def run_script( self, script, cwd, *extra ):
+        import subprocess
+        return subprocess.run( [ 'bash', script ] + list( extra ), cwd=cwd,
+                               capture_output=True, text=True )
+
+    def test_no_absolute_path_is_baked_in( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as base:
+            _res, _src, script = self.build( base )
+            with open( script ) as handle:
+                text = handle.read()
+            self.assertNotIn( base, text )
+
+    def test_it_moves_the_file_from_an_unrelated_working_directory( self ):
+        import tempfile
+        with tempfile.TemporaryDirectory() as base, tempfile.TemporaryDirectory() as elsewhere:
+            res, src, script = self.build( base )
+            result = self.run_script( script, elsewhere )
+            self.assertEqual( result.returncode, 0, result.stderr )
+            self.assertFalse( os.path.exists( src ) )
+            self.assertTrue( os.path.exists(
+                os.path.join( res, 'uncensored_vids', 'quick-cut', "c's clip.mp4" ) ) )
+
+    def test_it_still_works_when_the_whole_tree_is_relocated_together( self ):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as base, tempfile.TemporaryDirectory() as other:
+            self.build( base )
+            moved_base = os.path.join( other, 'copy' )
+            shutil.copytree( base, moved_base )
+            script = os.path.join( moved_base, 'output', 'benchmarks', 'survey', 'moves.sh' )
+            result = self.run_script( script, other )
+            self.assertEqual( result.returncode, 0, result.stderr )
+            self.assertTrue( os.path.exists( os.path.join(
+                moved_base, 'resources', 'uncensored_vids', 'quick-cut', "c's clip.mp4" ) ) )
+
+    def test_a_script_copied_where_its_paths_do_not_reach_stops_before_moving( self ):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as base:
+            res, src, script = self.build( base )
+            stray = os.path.join( res, 'moves.sh' )
+            shutil.copy( script, stray )
+            result = self.run_script( stray, base )
+            self.assertEqual( result.returncode, 3 )
+            self.assertIn( 'nothing moved', result.stderr )
+            self.assertTrue( os.path.exists( src ), "the guard must stop before any move" )
+            self.assertNotIn( 'skip (not found)', result.stdout )
+
+    def test_help_works_even_where_the_guard_would_stop( self ):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as base:
+            res, _src, script = self.build( base )
+            stray = os.path.join( res, 'moves.sh' )
+            shutil.copy( script, stray )
+            result = self.run_script( stray, base, '--help' )
+            self.assertEqual( result.returncode, 0 )
+            self.assertIn( 'usage', result.stdout )
 
 
 def _write_text_in( path, text ):

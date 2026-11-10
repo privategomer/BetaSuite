@@ -85,7 +85,9 @@
 #                               caches. Every variant of every backend, at
 #                               its native size. Writes moves.sh, the
 #                               reviewable source-folder moves the
-#                               structure survey recommends.
+#                               structure survey recommends. It finds the
+#                               videos relative to itself, so it runs from
+#                               here; no copying into the source tree.
 #   2b. analyze_label_content.py      Which videos show which censored label,
 #                                     and which mix them: where to judge a
 #                                     per-label setting (AB_FOCUS).

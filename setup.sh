@@ -295,7 +295,7 @@ log_info "=== verifying environment ==="
 VERIFY_STATUS=$?
 
 if [ -z "$RUN_TESTS" ]; then
-    ask_yes_no "Run the unit tests now (about 15 seconds)?" n && RUN_TESTS=1 || RUN_TESTS=0
+    ask_yes_no "Run the unit tests now (a minute or two)?" n && RUN_TESTS=1 || RUN_TESTS=0
 fi
 if [ "$RUN_TESTS" = 1 ]; then
     run_logged "unit tests" "$VENV_PY" -m unittest discover -s tests -t . -p 'test_*.py' \

@@ -22,14 +22,20 @@ folder, not inside them:
 
 ```
 BetaSuiteHome/                      any name, any location
-├── Betasuite/                      this repository; always run commands from here
+├── BetaSuite/                      this repository; always run commands from here
 │   └── .venv/                      Python virtual environment (created by setup)
 ├── resources/
-│   ├── model/                      detector .onnx files
+│   ├── betaconfig_machine.py       this computer's hardware settings (created by setup)
+│   ├── model/                      detector and person-segmentation .onnx files
 │   │   ├── v3.4-320n.onnx          nudenet_v3 320n (default backend)
 │   │   ├── v3.4-640m.onnx          nudenet_v3 640m (optional)
-│   │   └── detector_v2_default_checkpoint.onnx   retinanet_v2 (optional)
+│   │   ├── detector_v2_default_checkpoint.onnx   retinanet_v2 (optional)
+│   │   ├── yolo11s-seg.onnx        person masks, default size (reverse mode; exported by setup)
+│   │   ├── yolo11n-seg.onnx        person masks, smaller (optional; exported by setup)
+│   │   └── yolo11m-seg.onnx        person masks, larger (optional; exported by setup)
 │   ├── uncensored_vids/            videos to censor (betatv.py input)
+│   │   └── scene/, compilation/, quick-cut/, split-screen/
+│   │                               optional: the folder a video sits in picks its tuned profile
 │   ├── uncensored_pics/            images to censor (betastare.py input)
 │   ├── source/                     optional archive of source footage
 │   └── stickers/
@@ -39,11 +45,22 @@ BetaSuiteHome/                      any name, any location
 ```
 
 Because the paths are relative to the working directory, running
-`python3 Betasuite/betatv.py` from `BetaSuiteHome/` will **not** work.
+`python3 BetaSuite/betatv.py` from `BetaSuiteHome/` will **not** work.
 `cd` into the repository first.
 
 The sticker folders ship empty. Until you add `.png` files to them,
 sticker styles render as solid bars.
+
+The three `yolo11*-seg.onnx` files are person-segmentation models. Only
+reverse mode uses them (`reverse['enabled']`, off by default), for its
+`person_windows`, so a normal run does not need them. With the shipped
+config only `yolo11s-seg.onnx` is used; `n` and `m` are alternatives you
+pick with `person_backend['yolo11_seg']['model_variant']`. Setup exports
+all three (about 12, 41 and 90 MB).
+
+The subfolders under `uncensored_vids/` are optional. If you sort videos
+into them, `profile_by_source_dir` gives each folder its own tuned
+profile (see the README's "The folder convention").
 
 ## Requirements
 
@@ -78,15 +95,15 @@ switch the checkout to the newest release (`vX.Y.Z`), then carries on
 from that release's own copy of the script. Answer no, or pass
 `--no-release-check` (`-NoReleaseCheck` on Windows), to install `main`
 as it is. If you prefer no git at all, download the source zip from the
-[latest release](https://github.com/privategomer/Betasuite/releases/latest)
+[latest release](https://github.com/privategomer/BetaSuite/releases/latest)
 instead of cloning; setup works the same from it.
 
 ### Linux
 
 ```bash
 mkdir -p ~/BetaSuiteHome && cd ~/BetaSuiteHome
-git clone https://github.com/privategomer/Betasuite.git
-cd Betasuite
+git clone https://github.com/privategomer/BetaSuite.git
+cd BetaSuite
 ./setup.sh
 ```
 
@@ -94,8 +111,8 @@ cd Betasuite
 
 ```powershell
 mkdir $HOME\BetaSuiteHome; cd $HOME\BetaSuiteHome
-git clone https://github.com/privategomer/Betasuite.git
-cd Betasuite
+git clone https://github.com/privategomer/BetaSuite.git
+cd BetaSuite
 .\setup.cmd
 ```
 
@@ -352,23 +369,37 @@ gh release download v0 -R notAI-tech/NudeNet -p detector_v2_default_checkpoint.o
 ```
 
 **The YOLO11-seg person models are exported, not downloaded as ONNX.**
-Ultralytics publishes them (AGPL-3.0; BetaSuite does not redistribute them) as
-PyTorch `.pt` files. Setup downloads each one, checks it against a pinned
-hash, and exports it to ONNX in a throwaway environment (ultralytics plus
-CPU-only PyTorch, a few hundred MB, fetched once into uv's cache) that is
-deleted afterwards. BetaSuite's own `.venv` never gets PyTorch: the
-models run through onnxruntime like the detectors. `--no-export` skips
-it; reverse mode with `person_windows` on then refuses to start until the
-model is there. The export takes about a minute once the packages are
-downloaded.
+They are for reverse mode's person windows and not needed otherwise.
+Ultralytics publishes them (AGPL-3.0; BetaSuite does not redistribute
+them) as PyTorch `.pt` files. Setup downloads each one, checks it
+against a pinned hash, and exports it to ONNX in a throwaway environment
+(ultralytics plus CPU-only PyTorch, a few hundred MB, fetched once into
+uv's cache) that is deleted afterwards. BetaSuite's own `.venv` never
+gets PyTorch: the models run through onnxruntime like the detectors. The
+export takes about a minute once the packages are downloaded, and needs
+network access to github.com, PyPI and download.pytorch.org (set
+`BETASUITE_EXPORT_TORCH_INDEX` to use a mirror of the last).
+
+The setup scripts always export whichever of the three are missing and
+have no switch to skip it. `python3 tools/setup/fetch_models.py
+--no-export` checks the models without exporting. A failed export is
+logged as an error and setup carries on, so the rest of the install
+still completes; re-run setup or `fetch_models.py` to retry. If reverse
+mode has `person_windows` on and the selected size is missing, the
+config check refuses to start and names the missing file. To run reverse
+mode without person windows, set `reverse['person_windows']['enabled'] = False`.
 
 A logged-out download saves GitHub's sign-in page under the `.onnx` name,
 which then fails to load with `INVALID_PROTOBUF`. `fetch_models.py`
 spots that and moves the file to `<name>.bad`.
 
 Only the model for the backend selected in `betaconfig.py`
-(`detector_backend['selected']`) is required. The benchmarking and
-comparison tools cover whichever ones are present.
+(`detector_backend['selected']`) is required, plus the selected person
+model (`person_backend['selected']`, size `model_variant`) if you use
+reverse mode with person windows. `person_backend` also names
+`rf_detr_seg`, which is registered but not implemented, so there is no
+model for it. The benchmarking and comparison tools cover whichever
+ones are present.
 
 ### 7. This machine's config
 
@@ -403,19 +434,21 @@ python3 tools/setup/verify_env.py --cpu
 
 It checks the Python version, that exactly one onnxruntime flavour is
 installed, ffmpeg/ffprobe, the folder layout, and that each model
-present actually loads, on CUDA when GPU is requested. It exits
+present (detectors and person models) actually loads, on CUDA when GPU
+is requested. It exits
 non-zero if anything fails. Full detail goes to `verify_env.log`.
 
 A healthy GPU install ends with lines like:
 
 ```
 OK    model nudenet_v3 / 320n loads (CUDAExecutionProvider, 12.2 MB)
+OK    model person yolo11_seg / s loads (CUDAExecutionProvider, 41.4 MB)
 verify finished: 0 error(s), 0 warning(s)
 ```
 
 `python3 betatv.py --version` prints the version you installed.
 
-Then the unit tests (about 15 seconds, no model or GPU needed):
+Then the unit tests (a minute or two, no model or GPU needed):
 
 ```bash
 ./tests/run_tests.sh                                                   # Linux
@@ -445,9 +478,6 @@ changed.
 
 You can uninstall CUDA 11.4 and cuDNN 8 afterwards if nothing else on
 the machine needs them. They aren't used.
-
-`betatest.py` is left over from upstream (Windows only, old model path)
-and isn't part of setup or verification.
 
 ## Troubleshooting setup
 
@@ -480,6 +510,14 @@ copy. Run `bash setup.sh`, or `chmod +x setup.sh`.
 file is almost always a saved web page from a redirected download.
 `python3 tools/setup/fetch_models.py` moves it aside and fetches it
 again; for 640m or RetinaNet, download it in a browser if that fails too.
+
+**`reverse['person_windows'] is on but the person model ... is missing`.**
+The YOLO11-seg export didn't finish or was skipped. Re-run setup (or
+`python3 tools/setup/fetch_models.py`) and read `setup.log`, or
+`fetch_models.log` when run by hand, for the step that failed. The
+export needs network access to github.com, PyPI and download.pytorch.org;
+behind a mirror, set `BETASUITE_EXPORT_TORCH_INDEX`. Reverse mode also
+runs without person windows if you set `reverse['person_windows']['enabled'] = False`.
 
 **Anything else.** `setup.log` has the full output of every command the
 script ran. Re-run with `--log-level debug` (`-LogLevel debug`) to see

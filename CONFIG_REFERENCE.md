@@ -2367,7 +2367,7 @@ The parts on their own:
 ```bash
 python3 tools/bench/betabench.py structure-scan
 python3 tools/bench/betabench.py structure-scan --geometry-slices 3
-python3 tools/bench/betabench.py structure --write-move-script moves.sh
+python3 tools/bench/betabench.py structure --write-move-script PATH
 ```
 
 ```
@@ -2445,6 +2445,11 @@ moving anything:
   run finds the files already moved and does nothing
 - paths are shell-quoted, so a filename with an apostrophe or a space
   cannot turn into a command
+- paths are relative to the script's own folder, resolved when it runs,
+  so it works from any working directory. Leave it where it is written,
+  beside the survey's logs under `output/`; it needs no copying into the
+  source tree. If it is moved somewhere its paths no longer reach, it
+  stops before moving anything (exit status 3) and says so
 
 Read the reasons before running it.
 

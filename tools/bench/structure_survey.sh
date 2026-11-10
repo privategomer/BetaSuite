@@ -36,7 +36,9 @@
 #       scan/ geometry/ structure/   each phase's own betabench log + results.json
 #       moves.sh                the script, when any move is recommended;
 #                               moves the safety rules hold back are in it
-#                               too, made only with --include-held-back
+#                               too, made only with --include-held-back.
+#                               It finds the videos relative to itself, so
+#                               leave it here and run it from any directory
 #
 # Terminal output is filtered by LOG_LEVEL (trace|debug|info|warn|error,
 # default info). The log file keeps everything regardless.
@@ -115,7 +117,7 @@ fi
 
 if [ -f "$SURVEY_DIR/moves.sh" ]; then
     log_info "move script: $SURVEY_DIR/moves.sh"
-    log_info "read the reason above each move, then run it: bash '$SURVEY_DIR/moves.sh'"
+    log_info "read the reason above each move, then run it from anywhere, where it is: bash '$SURVEY_DIR/moves.sh'"
     if grep -q '^move_held ' "$SURVEY_DIR/moves.sh"; then
         log_info "held-back moves are in it too, and are only reported unless you add the flag: bash '$SURVEY_DIR/moves.sh' --include-held-back"
     fi

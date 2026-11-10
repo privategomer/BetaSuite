@@ -310,7 +310,7 @@ Write-Log info '=== verifying environment ==='
 & $VenvPy 'tools\setup\verify_env.py' "--$Mode" '--log-level' $LogLevel '--log-file' $LogFile
 $verifyStatus = $LASTEXITCODE
 
-$runTests = if ($Tests) { $true } elseif ($NoTests) { $false } else { Ask-YesNo 'Run the unit tests now (about 15 seconds)?' $false }
+$runTests = if ($Tests) { $true } elseif ($NoTests) { $false } else { Ask-YesNo 'Run the unit tests now (a minute or two)?' $false }
 if ($runTests) {
     if (-not (Invoke-Logged 'unit tests' $VenvPy @('-m','unittest','discover','-s','tests','-t','.','-p','test_*.py'))) {
         Write-Log warn "some tests failed; see $LogFile"
