@@ -1,12 +1,16 @@
 """
-test_fetch_person_models.py - setup's export of the YOLO11-seg person models.
+test_fetch_person_models.py - setup's export of the person models
+(YOLO11-seg and RF-DETR-Seg).
 
 What each test prevents:
   - PyTorch reaching the runtime .venv: the export must install into its
     own environment, CPU-only torch from the PyTorch index first
   - a leftover multi-GB export environment after a failure
-  - an unpinned or tampered .pt being exported
+  - an unpinned or tampered .pt/.pth being exported, or an export that
+    fetches anything else while it runs
   - a failed export reported as success, and --no-export still exporting
+  - an RF-DETR size the adapter offers with no export, no pinned weights
+    or no verify_env check, or exported with YOLO's script
 """
 
 import importlib.util
@@ -70,6 +74,10 @@ class TestExport( unittest.TestCase ):
         self.assertIn( 'torch', torch )
         self.assertTrue( any( package.startswith( 'ultralytics==' ) for package in ultralytics ),
                          "ultralytics is pinned" )
+        self.assertTrue( any( package.startswith( 'rfdetr==' ) for package in ultralytics ),
+                         "rfdetr is pinned, in the same throwaway environment" )
+        self.assertFalse( any( package.startswith( 'torch' ) for package in ultralytics ),
+                          "torch comes from the CPU index only" )
         self.assertEqual( ultralytics[ ultralytics.index( '--python' ) + 1 ], python )
 
     def test_without_uv_it_falls_back_to_venv_and_pip( self ):
@@ -138,8 +146,61 @@ class TestExport( unittest.TestCase ):
         for spec in self.fm.MODELS.values():
             if 'export' in spec:
                 self.assertEqual( len( spec['export']['pt_sha256'] ), 64 )
-        from segmenters import yolo11_seg
-        self.assertEqual( exported, { os.path.basename( v['model_path'] ) for v in yolo11_seg.VARIANTS.values() } )
+        from segmenters import rf_detr_seg, yolo11_seg
+        offered = { os.path.basename( v['model_path'] )
+                    for module in ( yolo11_seg, rf_detr_seg ) for v in module.VARIANTS.values() }
+        self.assertEqual( exported, offered )
+
+    def test_each_rf_detr_size_is_exported_by_rfdetr_from_its_own_weights( self ):
+        from segmenters import rf_detr_seg
+        specs = { spec['file']: spec for spec in self.fm.MODELS.values() if 'export' in spec }
+        urls = set()
+        for name, variant in rf_detr_seg.VARIANTS.items():
+            export = specs[ os.path.basename( variant['model_path'] ) ]['export']
+            self.assertEqual( export['tool'], 'rfdetr' )
+            self.assertEqual( export['arg'], 'RFDETRSeg' + name.capitalize() )
+            self.assertTrue( export['pt_url'].startswith( 'https://repo.roboflow.com/rfdetr/rf-detr-seg-' ) )
+            urls.add( export['pt_url'] )
+            command = self.fm.export_command( '/venv/python', export, '/w/x.pth', '/w/out.onnx' )
+            self.assertEqual( command, [ '/venv/python', '-c', self.fm.EXPORT_SCRIPTS['rfdetr'], '/w/x.pth',
+                                         '/w/out.onnx', export['arg'] ] )
+        self.assertEqual( len( urls ), len( rf_detr_seg.VARIANTS ), "no two sizes share weights" )
+        yolo = self.fm.MODELS['yolo11s-seg']['export']
+        self.assertEqual( self.fm.export_command( '/p', yolo, 'a.pt', 'b.onnx' ),
+                          [ '/p', '-c', self.fm.EXPORT_SCRIPTS['ultralytics'], 'a.pt', 'b.onnx', '640' ] )
+
+    def test_the_export_scripts_compile_and_rf_detr_keeps_a_dynamic_batch( self ):
+        for name, script in self.fm.EXPORT_SCRIPTS.items():
+            compile( script, name, 'exec' )
+        self.assertIn( 'dynamic_batch=True', self.fm.EXPORT_SCRIPTS['rfdetr'] )
+        self.assertIn( 'pretrain_weights=pt', self.fm.EXPORT_SCRIPTS['rfdetr'],
+                       "exports the pinned file, not whatever rfdetr would download" )
+
+    def test_the_export_runs_offline( self ):
+        envs = []
+
+        def fake_run( command, **kwargs ):
+            envs.append( kwargs['env'] )
+            _fake_onnx( command[4] )
+            return mock.Mock( returncode=0, stdout='' )
+        with mock.patch.object( self.fm, 'build_export_env', return_value='/venv/python' ), \
+             mock.patch.object( self.fm, 'download_checked' ), \
+             mock.patch.object( self.fm.subprocess, 'run', side_effect=fake_run ):
+            self.assertEqual( self.fm.export_person_models( self.missing( 'rf-detr-seg-small' ), self.log ), 0 )
+        for key in ( 'YOLO_OFFLINE', 'HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE' ):
+            self.assertEqual( envs[0].get( key ), '1', key )
+        self.assertEqual( os.listdir( self.model_dir ), [ 'rf-detr-seg-small.onnx' ] )
+
+    def test_verify_env_checks_every_person_model( self ):
+        spec = importlib.util.spec_from_file_location(
+            'verify_env_under_test', os.path.join( REPO_ROOT, 'tools', 'setup', 'verify_env.py' ) )
+        verify_env = importlib.util.module_from_spec( spec )
+        spec.loader.exec_module( verify_env )
+        from segmenters import rf_detr_seg, yolo11_seg
+        checked = set( verify_env.MODELS.values() )
+        for module in ( yolo11_seg, rf_detr_seg ):
+            for variant in module.VARIANTS.values():
+                self.assertIn( variant['model_path'], checked )
 
     def test_no_export_skips_the_export( self ):
         for spec in self.fm.MODELS.values():
@@ -157,7 +218,8 @@ class TestExport( unittest.TestCase ):
              mock.patch.object( self.fm, 'relaunch_in_venv' ), \
              mock.patch.object( self.fm.os.path, 'isfile', return_value=True ):
             self.assertEqual( self.fm.main(), 0 )
-        self.assertEqual( len( export.call_args[0][0] ), 3 )
+        self.assertEqual( len( export.call_args[0][0] ),
+                          sum( 1 for spec in self.fm.MODELS.values() if 'export' in spec ) )
         self.assertEqual( export.call_args[0][2], '/x/uv' )
 
 

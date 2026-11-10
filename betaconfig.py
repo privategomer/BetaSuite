@@ -429,7 +429,7 @@ reverse = {
 # --- Person segmentation (reverse mode's person_windows) ---------------
 
 person_backend = {
-    # 'yolo11_seg' | 'rf_detr_seg' (not implemented yet)
+    # 'yolo11_seg' | 'rf_detr_seg'
     'selected': 'yolo11_seg',
     'yolo11_seg': {
         # 'n' | 's' | 'm'
@@ -440,8 +440,12 @@ person_backend = {
         'batch_size': 4,
     },
     'rf_detr_seg': {
-        # 'nano' | 'small' | 'medium'
+        # 'nano' | 'small' | 'medium'. Each has its own fixed picture
+        # size (312, 384, 432), set when it is exported. On CPU,
+        # batch_size 1 is faster than 4 for this backend
         'model_variant': 'small',
+        'min_prob': 0.35,
+        'batch_size': 4,
     },
 }
 

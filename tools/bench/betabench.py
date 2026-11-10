@@ -70,7 +70,7 @@ RUNNING IT
     python3 tools/bench/betabench.py suppression --backend nudenet_v3
     python3 tools/bench/betabench.py encode --seconds 30
     python3 tools/bench/betabench.py reverse --seconds 10
-    python3 tools/bench/betabench.py persons --person-variants n s m
+    python3 tools/bench/betabench.py persons --person-variants n s m small
     python3 tools/bench/betabench.py structure --videos-per-folder 1
     python3 tools/bench/betabench.py structure-scan --first-videos 3
 
@@ -3866,8 +3866,10 @@ def bench_persons( args, logger ):
     masks drawn, so a size is chosen on this machine and this footage.
 
     Every registered backend is listed; one whose decoder is not written
-    yet (rf_detr_seg) is reported as skipped, and a variant whose model
-    file is missing is skipped with the setup step that creates it.
+    yet is reported as skipped, and a variant whose model file is missing
+    is skipped with the setup step that creates it. --person-variants
+    applies to every backend, and each backend skips the names that are
+    not its own sizes, so 's small' measures YOLO11 s beside RF-DETR small.
     """
     import cv2
     import betautils_person as bu_person
@@ -3897,7 +3899,13 @@ def bench_persons( args, logger ):
             rows.append( { 'backend': backend, 'skipped': 'not implemented' } )
             continue
         segmenter = bu_person.get_segmenter( backend )
-        for variant in ( args.person_variants or bu_person.variant_names( backend ) ):
+        own_variants = bu_person.variant_names( backend )
+        for variant in ( args.person_variants or own_variants ):
+            if variant not in own_variants:
+                logger.info( "  %s %s skipped: not one of its sizes (%s)"%(
+                    backend, variant, ', '.join( own_variants ) ) )
+                rows.append( { 'backend': backend, 'variant': variant, 'skipped': 'unknown variant' } )
+                continue
             previous = os.environ.get( bu_person.VARIANT_OVERRIDE_ENV_VAR )
             os.environ[ bu_person.VARIANT_OVERRIDE_ENV_VAR ] = variant
             try:
@@ -4089,8 +4097,8 @@ def build_parser():
         help="persons only: person backends to measure (default: every registered one; "
              "unimplemented ones are listed as skipped)" )
     parser.add_argument( '--person-variants', nargs='+', default=None,
-        help="persons only: model sizes to measure, e.g. n s m (default: every one the "
-             "backend declares)" )
+        help="persons only: model sizes to measure, e.g. n s m small (default: every one "
+             "each backend declares; a backend skips the names that are not its sizes)" )
     parser.add_argument( '--no-blur-approximation', action='store_true',
         help="force blur_fast_approximation off for this measurement" )
 

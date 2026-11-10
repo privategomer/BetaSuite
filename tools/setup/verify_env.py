@@ -54,6 +54,9 @@ MODELS = {
     'person yolo11_seg / n': '../resources/model/yolo11n-seg.onnx',
     'person yolo11_seg / s': '../resources/model/yolo11s-seg.onnx',
     'person yolo11_seg / m': '../resources/model/yolo11m-seg.onnx',
+    'person rf_detr_seg / nano':   '../resources/model/rf-detr-seg-nano.onnx',
+    'person rf_detr_seg / small':  '../resources/model/rf-detr-seg-small.onnx',
+    'person rf_detr_seg / medium': '../resources/model/rf-detr-seg-medium.onnx',
 }
 
 DIRS = [

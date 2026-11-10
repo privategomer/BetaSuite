@@ -3091,7 +3091,7 @@ Adapters live in `segmenters/`, beside the detectors in `detectors/`.
 | Backend | Variants | Status |
 |---|---|---|
 | `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0. Exported to ONNX by setup, on the user's machine |
-| `rf_detr_seg` | `nano`, `small`, `medium` | registered, decoder not written yet: selecting it is a validation error. Apache-2.0 |
+| `rf_detr_seg` | `nano`, `small` (default), `medium` | Roboflow RF-DETR-Seg, COCO class 'person'. Apache-2.0, every size. Exported to ONNX by setup, on the user's machine |
 
 | Setting (`person_backend['yolo11_seg']`) | Default | What it does |
 |---|---|---|
@@ -3100,6 +3100,24 @@ Adapters live in `segmenters/`, beside the detectors in `detectors/`.
 | `min_prob` | `0.35` | person score floor |
 | `nms_iou` | `0.5` | overlap at which two candidates are one person |
 | `batch_size` | `4` | frames per model call |
+
+| Setting (`person_backend['rf_detr_seg']`) | Default | What it does |
+|---|---|---|
+| `model_variant` | `'small'` | which size; `model_path` overrides the file. The picture size comes with it: 312, 384 or 432 pixels square for `nano`, `small`, `medium` |
+| `min_prob` | `0.35` | person score floor |
+| `batch_size` | `4` | frames per model call. Faster at 4 on a GPU, at 1 on a CPU |
+
+RF-DETR-Seg has no `picture_size` and no `nms_iou`. The picture size is
+fixed in the `.onnx` file when setup exports it (rfdetr exports no
+other way), and the adapter reads it from there; setting
+`picture_size` is a validation error rather than a silent no-op. Every
+frame is stretched to that square, the way Roboflow trains and runs the
+model: on real 16:9 footage a letterbox found fewer people and drew
+worse outlines at every size. DETR-style models give each person one
+query out of a fixed set, so nothing needs merging. Near the score floor
+two queries sometimes nest one box inside the other; they are kept,
+because merging could also swallow a second, overlapping person, and an
+outline that is not a man's has to stay to be cut out of his.
 
 **Runtime.** The models run through onnxruntime like the detectors, so
 the runtime environment has no PyTorch. Setup exports them once from
@@ -3118,6 +3136,35 @@ two runs: s 8.9 to 10.3, n 9.2 to 12.1 and m 14.7 to 16.4 ms per frame,
 with s finding as many people as m (147 and 146 on 120 frames, n 139).
 At 9 fps sampling, an hour of video is about 32,000 frames, so s adds
 about 5 minutes per hour of video where detection does not hide it.
+
+**RF-DETR-Seg against YOLO11s.** Same machine, same 96 real frames (12
+source videos, mostly 1080p), the whole pass, batch 4 unless noted, median
+of three trials:
+
+| | GPU (CUDA) | CPU (onnxruntime 1.26, 16 threads) | people found |
+|---|---|---|---|
+| `yolo11_seg` `s` | 21.6 ms | 126 ms | 240 |
+| `yolo11_seg` `n` | | 67 ms | 231 |
+| `rf_detr_seg` `nano` | 12.0 ms | 184 ms (batch 1; 242 at batch 4) | 266 |
+| `rf_detr_seg` `small` | 16.5 ms | 271 ms (batch 1; 339 at batch 4) | 260 |
+| `rf_detr_seg` `medium` | 23.0 ms | | 269 |
+
+On a GPU, RF-DETR-Seg small is about a quarter faster than YOLO11s and
+nano close to half; on a CPU, both are slower than YOLO11s (nano 1.5x,
+small 2.1x) and batching makes them slower still. Nearly all of
+RF-DETR's time is the model: decoding its masks costs about 0.2 ms per
+frame, against 16 to 24 ms for YOLO11's on a CPU.
+
+There is no ground truth for this footage, so accuracy was scored
+against the people that both of the biggest models (YOLO11m-seg and
+RF-DETR-Seg 2XL) agree on, 167 people over the 96 frames: YOLO11s found
+98.2% of them and RF-DETR-Seg small 98.8%, each at its 0.35 floor.
+RF-DETR finds 20 to 30 more people beyond those, which may be people
+YOLO missed or false finds; outline quality cannot be ranked this way,
+since each family's outlines agree best with its own big model. Check
+the preview images `betabench persons` writes before switching. The
+shipped backend stays `yolo11_seg`: RF-DETR-Seg is the faster choice on
+a GPU, not on a CPU, and not clearly more accurate.
 
 ---
 

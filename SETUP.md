@@ -32,7 +32,9 @@ BetaSuiteHome/                      any name, any location
 │   │   ├── detector_v2_default_checkpoint.onnx   retinanet_v2 (optional)
 │   │   ├── yolo11s-seg.onnx        person masks, default size (reverse mode; exported by setup)
 │   │   ├── yolo11n-seg.onnx        person masks, smaller (optional; exported by setup)
-│   │   └── yolo11m-seg.onnx        person masks, larger (optional; exported by setup)
+│   │   ├── yolo11m-seg.onnx        person masks, larger (optional; exported by setup)
+│   │   └── rf-detr-seg-*.onnx      person masks, RF-DETR-Seg nano/small/medium
+│   │                               (optional; exported by setup)
 │   ├── uncensored_vids/            videos to censor (betatv.py input)
 │   │   └── scene/, compilation/, quick-cut/, split-screen/
 │   │                               optional: the folder a video sits in picks its tuned profile
@@ -51,12 +53,16 @@ Because the paths are relative to the working directory, running
 The sticker folders ship empty. Until you add `.png` files to them,
 sticker styles render as solid bars.
 
-The three `yolo11*-seg.onnx` files are person-segmentation models. Only
-reverse mode uses them (`reverse['enabled']`, off by default), for its
-`person_windows`, so a normal run does not need them. With the shipped
-config only `yolo11s-seg.onnx` is used; `n` and `m` are alternatives you
-pick with `person_backend['yolo11_seg']['model_variant']`. Setup exports
-all three (about 12, 41 and 90 MB).
+The `yolo11*-seg.onnx` and `rf-detr-seg-*.onnx` files are
+person-segmentation models. Only reverse mode uses them
+(`reverse['enabled']`, off by default), for its `person_windows`, so a
+normal run does not need them. With the shipped config only
+`yolo11s-seg.onnx` is used. The other YOLO11 sizes (`n`, `m`) and the
+RF-DETR-Seg backend (`person_backend['selected'] = 'rf_detr_seg'`, sizes
+`nano`, `small`, `medium`) are alternatives you pick in
+`person_backend`. Setup exports all six: about 12, 41 and 90 MB for
+YOLO11 and about 125 MB for each RF-DETR-Seg size, so about 520 MB
+together.
 
 The subfolders under `uncensored_vids/` are optional. If you sort videos
 into them, `profile_by_source_dir` gives each folder its own tuned
@@ -140,8 +146,9 @@ To go back to development, `git switch main`.
    rights needed, and it doesn't touch your system Python)
 5. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
 6. Creates the `resources/` and `output/` folders beside the repository
-7. Downloads the 320n model, exports the three YOLO11-seg person models
-   (reverse mode's person windows), checks any models already present,
+7. Downloads the 320n model, exports the person models (three YOLO11-seg
+   and three RF-DETR-Seg sizes, for reverse mode's person windows), checks
+   any models already present,
    and lists the two optional ones you download yourself (see
    [Models](#6-models))
 8. Creates this machine's config, `../resources/betaconfig_machine.py`,
@@ -344,6 +351,7 @@ detector adapters look for these names, so rename the downloads.
 | 640m (optional) | `nudenet_v3`, `--variant 640m` | [640m.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.onnx) | `v3.4-640m.onnx` |
 | RetinaNet (optional) | `retinanet_v2` | [detector_v2_default_checkpoint.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint.onnx) | `detector_v2_default_checkpoint.onnx` |
 | YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | automatic: exported by `fetch_models.py` | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
+| RF-DETR-Seg nano/small/medium (person windows) | `person_backend` `rf_detr_seg` | automatic: exported by `fetch_models.py` | `rf-detr-seg-nano.onnx`, `rf-detr-seg-small.onnx`, `rf-detr-seg-medium.onnx` |
 
 **320n** is bundled in the [`nudenet` package on PyPI](https://pypi.org/project/nudenet/3.4.2/#files),
 so setup downloads it for you and checks it against a pinned hash. By
@@ -368,19 +376,27 @@ gh release download v3.4-weights -R notAI-tech/NudeNet -p 640m.onnx -O ../resour
 gh release download v0 -R notAI-tech/NudeNet -p detector_v2_default_checkpoint.onnx -D ../resources/model/
 ```
 
-**The YOLO11-seg person models are exported, not downloaded as ONNX.**
-They are for reverse mode's person windows and not needed otherwise.
-Ultralytics publishes them (AGPL-3.0; BetaSuite does not redistribute
-them) as PyTorch `.pt` files. Setup downloads each one, checks it
-against a pinned hash, and exports it to ONNX in a throwaway environment
-(ultralytics plus CPU-only PyTorch, a few hundred MB, fetched once into
-uv's cache) that is deleted afterwards. BetaSuite's own `.venv` never
-gets PyTorch: the models run through onnxruntime like the detectors. The
-export takes about a minute once the packages are downloaded, and needs
-network access to github.com, PyPI and download.pytorch.org (set
-`BETASUITE_EXPORT_TORCH_INDEX` to use a mirror of the last).
+**The person models are exported, not downloaded as ONNX.** They are for
+reverse mode's person windows and not needed otherwise. Ultralytics
+publishes YOLO11-seg (AGPL-3.0) as PyTorch `.pt` files and Roboflow
+publishes RF-DETR-Seg (Apache-2.0, every size) as PyTorch `.pth` files;
+BetaSuite redistributes neither. Setup downloads each file, checks it
+against a pinned hash, and exports it to ONNX in one throwaway
+environment (ultralytics, rfdetr and CPU-only PyTorch, a few hundred MB,
+fetched once into uv's cache) that is deleted afterwards. The export
+itself runs offline, from the checked file only. BetaSuite's own `.venv`
+never gets PyTorch: the models run through onnxruntime like the
+detectors. The exports take a few minutes once the packages are
+downloaded, and need network access to github.com, repo.roboflow.com,
+PyPI and download.pytorch.org (set `BETASUITE_EXPORT_TORCH_INDEX` to use
+a mirror of the last).
 
-The setup scripts always export whichever of the three are missing and
+An RF-DETR-Seg export has a fixed picture size, its own for each size
+(312, 384 and 432 pixels square for nano, small and medium); only the
+batch size is left free. Each frame is stretched to
+that square, the way Roboflow trains and runs the model.
+
+The setup scripts always export whichever person models are missing and
 have no switch to skip it. `python3 tools/setup/fetch_models.py
 --no-export` checks the models without exporting. A failed export is
 logged as an error and setup carries on, so the rest of the install
@@ -396,10 +412,9 @@ spots that and moves the file to `<name>.bad`.
 Only the model for the backend selected in `betaconfig.py`
 (`detector_backend['selected']`) is required, plus the selected person
 model (`person_backend['selected']`, size `model_variant`) if you use
-reverse mode with person windows. `person_backend` also names
-`rf_detr_seg`, which is registered but not implemented, so there is no
-model for it. The benchmarking and comparison tools cover whichever
-ones are present.
+reverse mode with person windows. The benchmarking and comparison tools
+cover whichever ones are present: `python3 tools/bench/betabench.py
+persons` times every person backend and size on your own footage.
 
 ### 7. This machine's config
 
@@ -512,11 +527,11 @@ file is almost always a saved web page from a redirected download.
 again; for 640m or RetinaNet, download it in a browser if that fails too.
 
 **`reverse['person_windows'] is on but the person model ... is missing`.**
-The YOLO11-seg export didn't finish or was skipped. Re-run setup (or
+The person-model export didn't finish or was skipped. Re-run setup (or
 `python3 tools/setup/fetch_models.py`) and read `setup.log`, or
 `fetch_models.log` when run by hand, for the step that failed. The
-export needs network access to github.com, PyPI and download.pytorch.org;
-behind a mirror, set `BETASUITE_EXPORT_TORCH_INDEX`. Reverse mode also
+export needs network access to github.com, repo.roboflow.com, PyPI and
+download.pytorch.org; behind a mirror, set `BETASUITE_EXPORT_TORCH_INDEX`. Reverse mode also
 runs without person windows if you set `reverse['person_windows']['enabled'] = False`.
 
 **Anything else.** `setup.log` has the full output of every command the

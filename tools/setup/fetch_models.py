@@ -13,6 +13,9 @@ repository root.
              releases (pinned by hash) exported to ONNX in a throwaway
              environment (ultralytics + CPU-only PyTorch) that is deleted
              afterwards, so the runtime .venv never gets PyTorch
+  rf-detr-seg-*  person masks for reverse mode (nano, small, medium):
+             Roboflow's .pth releases (pinned by hash) exported to
+             ONNX the same way, in the same environment (rfdetr added)
 
 Anything already present is checked. A file that isn't a real ONNX model
 (for example a GitHub sign-in page saved under a .onnx name) is moved
@@ -65,18 +68,36 @@ LEVELS = { 'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO,
 
 NUDENET_RELEASES = 'https://github.com/notAI-tech/NudeNet/releases'
 ULTRALYTICS_ASSETS = 'https://github.com/ultralytics/assets/releases/download/v8.3.0/'
+ROBOFLOW_ASSETS = 'https://repo.roboflow.com/rfdetr/'
 
 # The throwaway export environment. CPU-only PyTorch: export needs no GPU,
 # and the CPU wheels are a fraction of the CUDA ones. The environment
 # variable points it at a mirror.
 EXPORT_TORCH_INDEX = os.environ.get( 'BETASUITE_EXPORT_TORCH_INDEX', 'https://download.pytorch.org/whl/cpu' )
-EXPORT_PACKAGES = [ 'ultralytics==8.4.198', 'onnx', 'onnxslim' ]
-EXPORT_SCRIPT = (
-    "import shutil, sys\n"
-    "from ultralytics import YOLO\n"
-    "pt, out, size = sys.argv[1], sys.argv[2], int( sys.argv[3] )\n"
-    "exported = YOLO( pt ).export( format='onnx', imgsz=size, dynamic=True, simplify=True )\n"
-    "shutil.move( exported, out )\n" )
+EXPORT_PACKAGES = [ 'ultralytics==8.4.198', 'rfdetr==1.12.0', 'onnx', 'onnxslim' ]
+# One script per exporting package, each run as: script <weights> <out.onnx> <arg>.
+EXPORT_SCRIPTS = {
+    # arg: the picture size. Dynamic batch and size.
+    'ultralytics': (
+        "import shutil, sys\n"
+        "from ultralytics import YOLO\n"
+        "pt, out, size = sys.argv[1], sys.argv[2], int( sys.argv[3] )\n"
+        "exported = YOLO( pt ).export( format='onnx', imgsz=size, dynamic=True, simplify=True )\n"
+        "shutil.move( exported, out )\n" ),
+    # arg: the rfdetr model class. Dynamic batch; the picture size is the
+    # class's own and is fixed in the graph (rfdetr exports no other way).
+    'rfdetr': (
+        "import glob, os, shutil, sys, tempfile\n"
+        "import rfdetr\n"
+        "pt, out, name = sys.argv[1], sys.argv[2], sys.argv[3]\n"
+        "folder = tempfile.mkdtemp( dir=os.getcwd() )\n"
+        "getattr( rfdetr, name )( pretrain_weights=pt ).export( output_dir=folder, dynamic_batch=True,\n"
+        "                                                        verbose=False )\n"
+        "exported = glob.glob( os.path.join( folder, '*.onnx' ) )\n"
+        "if len( exported ) != 1:\n"
+        "    sys.exit( 'expected one .onnx from the export, got %r'%( exported, ) )\n"
+        "shutil.move( exported[0], out )\n" ),
+}
 
 MODELS = {
     '320n': {
@@ -114,6 +135,26 @@ MODELS = {
         'desc': 'YOLO11m-seg person masks (reverse mode person windows)',
         'export': { 'pt_url': ULTRALYTICS_ASSETS + 'yolo11m-seg.pt', 'imgsz': 640,
                     'pt_sha256': 'eb9a06f63e2206c35d68d839b08c362429ebecf933ad54c1ad68b2fd001c17cf' },
+    },
+    # Roboflow's own md5s for these files (rfdetr's model registry) match
+    # the downloads the sha256s below were taken from.
+    'rf-detr-seg-nano': {
+        'file': 'rf-detr-seg-nano.onnx',
+        'desc': 'RF-DETR-Seg nano person masks (reverse mode person windows)',
+        'export': { 'tool': 'rfdetr', 'pt_url': ROBOFLOW_ASSETS + 'rf-detr-seg-n-ft.pth', 'arg': 'RFDETRSegNano',
+                    'pt_sha256': 'a44613a4ecd6b5ba61a62002c600b0b6cb7a9da2936a45317ec4b62c635fb99b' },
+    },
+    'rf-detr-seg-small': {
+        'file': 'rf-detr-seg-small.onnx',
+        'desc': 'RF-DETR-Seg small person masks (reverse mode person windows)',
+        'export': { 'tool': 'rfdetr', 'pt_url': ROBOFLOW_ASSETS + 'rf-detr-seg-s-ft.pth', 'arg': 'RFDETRSegSmall',
+                    'pt_sha256': '6de3da31b2572cac214a1c76cce4a92a13966d56390ac2b3a3de9a8dc2b2bca3' },
+    },
+    'rf-detr-seg-medium': {
+        'file': 'rf-detr-seg-medium.onnx',
+        'desc': 'RF-DETR-Seg medium person masks (reverse mode person windows)',
+        'export': { 'tool': 'rfdetr', 'pt_url': ROBOFLOW_ASSETS + 'rf-detr-seg-m-ft.pth', 'arg': 'RFDETRSegMedium',
+                    'pt_sha256': '3ad325094735f431aee9962a8d204d68eb5bfc393d53e7e836e70998fef5ea58' },
     },
 }
 
@@ -216,7 +257,7 @@ def run_logged( description, command, log ):
 
 
 def build_export_env( workdir, uv, log ):
-    """A throwaway venv with ultralytics and CPU-only PyTorch. Returns its python."""
+    """A throwaway venv with ultralytics, rfdetr and CPU-only PyTorch. Returns its python."""
     venv = os.path.join( workdir, 'export-venv' )
     version = '%d.%d'%( sys.version_info[0], sys.version_info[1] )
     if uv:
@@ -230,8 +271,15 @@ def build_export_env( workdir, uv, log ):
         install = [ python, '-m', 'pip', 'install', '--disable-pip-version-check' ]
     run_logged( 'install CPU-only PyTorch (export only)',
                 install + [ '--index-url', EXPORT_TORCH_INDEX, 'torch', 'torchvision' ], log )
-    run_logged( 'install ultralytics (export only)', install + EXPORT_PACKAGES, log )
+    run_logged( 'install ultralytics and rfdetr (export only)', install + EXPORT_PACKAGES, log )
     return python
+
+
+def export_command( python, export, pt, out ):
+    """The command that exports one model: python -c <script> <weights> <out> <arg>."""
+    tool = export.get( 'tool', 'ultralytics' )
+    arg = export['arg'] if tool == 'rfdetr' else export['imgsz']
+    return [ python, '-c', EXPORT_SCRIPTS[tool], pt, out, str( arg ) ]
 
 
 def export_person_models( missing, log, uv=None ):
@@ -253,7 +301,8 @@ def export_person_models( missing, log, uv=None ):
         except Exception as e:
             log.error( 'could not build the export environment: %s'%( e ) )
             return len( missing )
-        env = dict( os.environ, YOLO_OFFLINE='1' )
+        # The weights are already here and checked; nothing else may be fetched.
+        env = dict( os.environ, YOLO_OFFLINE='1', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1' )
         for spec, dest in missing:
             export = spec['export']
             pt = os.path.join( workdir, os.path.basename( export['pt_url'] ) )
@@ -261,7 +310,7 @@ def export_person_models( missing, log, uv=None ):
             try:
                 download_checked( export['pt_url'], export['pt_sha256'], pt, log )
                 log.info( '=== starting: export %s ==='%( spec['file'] ) )
-                result = subprocess.run( [ python, '-c', EXPORT_SCRIPT, pt, out, str( export['imgsz'] ) ],
+                result = subprocess.run( export_command( python, export, pt, out ),
                                          cwd=workdir, env=env, stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT, text=True, errors='replace' )
                 for line in result.stdout.splitlines():

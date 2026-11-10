@@ -18,8 +18,11 @@ What each group prevents:
   - The compositor and the run: person windows not shown, shown over a
     censored label, or shown on an untriggered frame; the pass not run or
     not handed to the renderer
-  - Config: an unknown or unfinished backend, a missing model, bad
-    person_windows settings, and the censor key ignoring the person model
+  - Config: an unknown backend, a missing model, bad person_windows
+    settings, and the censor key ignoring the person model
+  - betabench persons: a backend or size left out, a size one backend
+    does not have crashing the sweep instead of being skipped
+  (RF-DETR-Seg's own decoder and settings: tests/test_rf_detr_seg.py)
 """
 
 import copy
@@ -534,14 +537,30 @@ class TestConfig( Harness ):
         self.set_reverse( person_windows={ 'enabled': False } )
         self.assertEqual( self.errors(), [] )
 
-    def test_an_unknown_or_unfinished_backend_is_named( self ):
+    def test_an_unknown_backend_is_named( self ):
         betaconfig.person_backend = { 'selected': 'sam9' }
         self.set_reverse()
         self.assertTrue( any( 'sam9' in e for e in self.errors() ) )
-        betaconfig.person_backend = { 'selected': 'rf_detr_seg', 'rf_detr_seg': {} }
-        self.assertTrue( any( 'not written yet' in e for e in self.errors() ) )
         betaconfig.person_backend = { 'selected': 'yolo11_seg', 'yolo11_sg': {} }
         self.assertTrue( any( 'yolo11_sg' in e for e in self.errors() ) )
+
+    def test_rf_detr_seg_is_a_finished_backend_that_needs_its_model( self ):
+        betaconfig.person_backend = { 'selected': 'rf_detr_seg',
+                                      'rf_detr_seg': { 'model_path': '/nowhere/rf.onnx' } }
+        self.set_reverse()
+        errors = self.errors()
+        self.assertTrue( any( '/nowhere/rf.onnx' in e and 'setup' in e for e in errors ), errors )
+        betaconfig.person_backend = { 'selected': 'rf_detr_seg', 'rf_detr_seg': {} }
+        with mock.patch( 'os.path.exists', return_value=True ):
+            self.assertEqual( self.errors(), [] )
+
+    def test_the_shipped_rf_detr_settings_validate_when_selected( self ):
+        if self._saved['person_backend'] is _MISSING:
+            self.skipTest( 'no person_backend block in betaconfig.py' )
+        betaconfig.person_backend = dict( copy.deepcopy( self._saved['person_backend'] ), selected='rf_detr_seg' )
+        self.set_reverse()
+        with mock.patch( 'os.path.exists', return_value=True ):
+            self.assertEqual( self.errors(), [] )
 
     def test_bad_yolo_settings_are_rejected( self ):
         for settings in ( { 'model_variant': 'xl' }, { 'picture_size': 650 }, { 'min_prob': 0 },
@@ -748,7 +767,7 @@ class TestPersonBench( Harness ):
               '--trials', '1', '--max-frames', '4' ] )
         args.run_dir = tmp
         frames = [ np.full( ( 90, 160, 3 ), 40 * k, np.uint8 ) for k in range( 4 ) ]
-        fake = mock.Mock( wraps=yolo11_seg )
+        fake = mock.Mock( wraps=yolo11_seg, VARIANTS=yolo11_seg.VARIANTS )
         fake.get_session.return_value = mock.Mock( **{ 'get_providers.return_value': [ 'CPUExecutionProvider' ] } )
         fake.persons_for_imgs.side_effect = lambda imgs, session, ts, config: [
             _person( 10, 10, 30, 60, t=t ) for t in ts ]
@@ -761,7 +780,8 @@ class TestPersonBench( Harness ):
         timed = [ row for row in rows if 'ms_per_frame' in row ]
         self.assertEqual( [ ( row['variant'], row['batch_size'], row['people'] ) for row in timed ],
                           [ ( 's', 1, 4 ), ( 's', 2, 4 ) ] )
-        self.assertIn( { 'backend': 'rf_detr_seg', 'skipped': 'not implemented' }, rows )
+        self.assertIn( { 'backend': 'rf_detr_seg', 'variant': 's', 'skipped': 'unknown variant' }, rows,
+                       "a size only YOLO has is skipped for RF-DETR, not a crash" )
         previews = os.listdir( os.path.join( tmp, 'person_previews', 'yolo11_seg-s' ) )
         self.assertEqual( len( previews ), 4 )
         self.assertNotIn( bu_person.VARIANT_OVERRIDE_ENV_VAR, os.environ, "the sweep's override is undone" )
@@ -777,6 +797,36 @@ class TestPersonBench( Harness ):
             result = betabench.bench_persons( args, _quiet_logger() )
         self.assertEqual( result['persons']['rows'], [ { 'backend': 'yolo11_seg', 'variant': 'n',
                                                          'skipped': 'model missing' } ] )
+
+    def test_rf_detr_seg_is_timed_beside_yolo_not_skipped( self ):
+        from tests.test_structure_bench import betabench, _quiet_logger
+        from segmenters import rf_detr_seg
+        tmp = tempfile.mkdtemp( prefix='betasuite-bench-' )
+        self.addCleanup( shutil.rmtree, tmp, True )
+        here = os.path.join( tmp, 'here.onnx' )
+        open( here, 'w' ).close()
+        betaconfig.person_backend = { 'selected': 'yolo11_seg', 'yolo11_seg': { 'model_path': here },
+                                      'rf_detr_seg': { 'model_path': here } }
+        args = betabench.build_parser().parse_args(
+            [ 'persons', '--video', 'clip.mp4', '--person-variants', 's', 'small', '--batch-sizes', '2',
+              '--trials', '1', '--max-frames', '4' ] )
+        args.run_dir = tmp
+        fakes = {}
+        for name, module in ( ( 'yolo11_seg', yolo11_seg ), ( 'rf_detr_seg', rf_detr_seg ) ):
+            fake = mock.Mock( wraps=module, VARIANTS=module.VARIANTS )
+            fake.get_session.return_value = mock.Mock( **{ 'get_providers.return_value': [ 'CPUExecutionProvider' ] } )
+            fake.persons_for_imgs.side_effect = lambda imgs, session, ts, config: [
+                _person( 10, 10, 30, 60, t=t ) for t in ts ]
+            fakes[name] = fake
+        frames = [ np.full( ( 90, 160, 3 ), 40 * k, np.uint8 ) for k in range( 4 ) ]
+        with mock.patch.object( betabench, '_sample_frames', return_value=frames ), \
+             mock.patch.object( bu_person, 'get_segmenter', side_effect=lambda name=None: fakes[name] ):
+            rows = betabench.bench_persons( args, _quiet_logger() )['persons']['rows']
+        self.assertEqual( sorted( ( row['backend'], row['variant'] ) for row in rows if 'ms_per_frame' in row ),
+                          [ ( 'rf_detr_seg', 'small' ), ( 'yolo11_seg', 's' ) ] )
+        self.assertEqual( sorted( ( row['backend'], row['variant'] ) for row in rows if 'skipped' in row ),
+                          [ ( 'rf_detr_seg', 's' ), ( 'yolo11_seg', 'small' ) ] )
+        self.assertEqual( len( os.listdir( os.path.join( tmp, 'person_previews', 'rf_detr_seg-small' ) ) ), 4 )
 
 
 class TestBetastarePersonWindows( Harness ):

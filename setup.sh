@@ -272,7 +272,7 @@ done
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). The YOLO11-seg person models are exported
+# serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
 # to ONNX in a throwaway environment that is deleted afterwards. fetch_models.py
 # checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
 FETCH_ARGS=( --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" )
