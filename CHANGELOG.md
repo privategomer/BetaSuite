@@ -2,7 +2,7 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 1.4.0 (2026-11-10)
 ### Added
 
 - `betabench structure`: the compilation boundary moves from 50% to 37.5% of runtime in sub-10s shots, the middle of the one empty stretch in a survey of 176 whole-file scans (nothing between 34.6% and 40.6%), which sorts four files that were sitting in `scene/` or recommended there into `compilation/`. New `<30s` column and `sub30_shot_fraction` in `results.json`: the share of runtime in sub-30s shots, there to be read and not used to decide, because on that survey it did not separate compilations from scenes (79 scene-folder files ran 0% to 100%, 23 of them at 67% or more). The bench's boundary is advisory; the app's profile selection and censor key are unchanged
