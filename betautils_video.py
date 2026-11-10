@@ -1043,7 +1043,8 @@ def cached_shot_cuts( file_hash, sample_fps, threshold, duration_seconds,
 
     Args:
         file_hash: Content hash of the source video.
-        sample_fps: The cadence the scan ran at (betaconfig.video_censor_fps).
+        sample_fps: The cadence the scan ran at (betaconfig.video_censor_fps),
+            or None for a scan at any cadence (see shot_cut_caches_for).
         threshold: betaconfig.shot_cut_threshold.
         duration_seconds: From probe_duration_seconds, or None. None
             leaves the window unknown, so the cuts read back unmeasured.

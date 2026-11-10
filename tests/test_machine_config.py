@@ -98,7 +98,14 @@ class TestWhereItLives( unittest.TestCase ):
                                 "c.detector_backend['nudenet_v3']['candidate_floor'])" ],
                               cwd=REPO, env=env, capture_output=True, text=True, timeout=120 )
         self.assertEqual( out.returncode, 0, out.stderr )
-        self.assertEqual( out.stdout.split(), [ 'h264_nvenc', '21', '8', '0.2' ] )
+        # candidate_floor is not in the machine file, so it keeps whatever
+        # betaconfig.py says: read from the source rather than pinned, since
+        # that file is edited by hand while tuning.
+        tree = ast.parse( open( os.path.join( REPO, 'betaconfig.py' ), encoding='utf-8' ).read() )
+        backends = [ node.value for node in tree.body if isinstance( node, ast.Assign )
+                     and getattr( node.targets[0], 'id', None ) == 'detector_backend' ][0]
+        floor = ast.literal_eval( backends )['nudenet_v3']['candidate_floor']
+        self.assertEqual( out.stdout.split(), [ 'h264_nvenc', '21', '8', str( floor ) ] )
 
 
 class TestWhatItMaySet( TempDir ):

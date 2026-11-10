@@ -812,6 +812,22 @@ how many renderable detections adding the suggested rule would remove.
 Add one pair at a time and look at the output: a suppression rule
 removes real detections when it is wrong.
 
+> **In the config: rules dropped or narrowed on the side-by-side share.**
+> On a 145-file library (640m @640) the bench put 97 to 100% of the
+> removals by four `exposed_vulva` rules side by side and found no
+> same-spot cluster for any of them: `<-face_femme` (2,407 renderable
+> removals), `<-exposed_belly` (1,953), `<-exposed_breast` (405) and
+> `<-covered_breast` (18). They were removing real vulva detections that
+> sat next to a face, a belly or a breast. `<-face_femme` was also seen
+> by eye: on lesbian oral footage the vulva showed through, or blinked
+> uncensored inside a censored track, whenever a face beside it
+> outscored it, and the run stats put 46 files behind its removals,
+> led by the lesbian and licking titles. All four are dropped, which can
+> only add censors. `exposed_breast<-exposed_buttocks` (26% of 11,384
+> removals side by side) moves to the bench's suggestion, `min_iou`
+> 0.175 and `margin` 0.133, which keeps the same-spot removals and stops
+> about 3,600 side-by-side ones.
+
 ### `class_suppression_refused` (per backend)
 
 ```python
@@ -835,8 +851,10 @@ line with every addition your verdicts turned down added to it.
 > (the penetrative case: removing that rule fixed a miss),
 > `exposed_vulva<-exposed_buttocks` (about 90% of vulva detections would
 > sit behind the gate: anatomy, not a competing claim about one object)
-> and `exposed_vulva<-exposed_feet` (the same shape, smaller). Listing
-> them keeps them out of every later round.
+> and `exposed_vulva<-exposed_feet` (the same shape, smaller), and
+> `exposed_vulva<-face_femme` (oral sex: a face beside the vulva is two
+> real things, and the rule removed the vulva censor exactly then).
+> Listing them keeps them out of every later round.
 
 **Looking at the output** is what `tools/tuning/ab_compare.sh` is for
 (`suppression_ab.sh` is the same tool with the suppression experiment
@@ -1699,6 +1717,14 @@ nothing.
 > 2,605. The five quick_cut files set `min_track_hits` in their profile,
 > so a backend `min_track_hits` change never reaches them, and
 > `confirm_score` does. `min_track_hits` stays at 2.
+>
+> **Then breast 0.5 to 0.7, by eye.** The next hub run, on 149 files,
+> had 0.7 drawing 960 fewer short breast tracks for 626 more confident
+> detections left bare. Over 14 moments in two compilation and
+> quick_cut videos the 0.7 side looked right 8 times, the 0.5 side 2
+> times (a real breast left bare for about 0.2s), and 4 the same, so
+> `exposed_breast` is 0.7. `exposed_vulva` stays 0.5: auto_tune's 0.6
+> for it has not been judged.
 
 ---
 

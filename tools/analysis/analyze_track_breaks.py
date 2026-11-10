@@ -431,6 +431,49 @@ def run_one_combo( match_mult, gap_mult, videos, hash_to_path, ns, labels_filter
     }
 
 
+def run_profiles( match_mult, gap_mult, videos, by_profile, hash_to_path, ns, labels_filter,
+                  backend_name ):
+    """
+    run_one_combo per structure profile, plus their sum.
+
+    Returns:
+        (pooled, {profile: result}). pooled is what run_one_combo over
+        every video returns; videos with no source on disk are counted
+        in its dims_missing, as run_one_combo counts them.
+    """
+    per_profile = {}
+    for name, members in sorted( by_profile.items() ):
+        per_profile[name] = run_one_combo( match_mult, gap_mult, members, hash_to_path, ns,
+                                           labels_filter, backend_name )
+    if not per_profile:
+        return run_one_combo( match_mult, gap_mult, videos, hash_to_path, ns, labels_filter,
+                              backend_name ), {}
+    pooled = bu_tuning.merge_counts( per_profile.values() )
+    grouped = set( file_hash for members in by_profile.values() for file_hash in members )
+    pooled['dims_missing'] = list( pooled.get( 'dims_missing', [] ) ) + sorted(
+        file_hash for file_hash in videos if file_hash not in grouped )
+    return pooled, per_profile
+
+
+def print_profile_breakdown( per_profile, labels ):
+    """One line per structure profile and label, when the footage runs several."""
+    if len( per_profile ) < 2:
+        return
+    print( "  by structure profile (each runs its own track_max_gap, and quick_cut its own sample rate):" )
+    for name in sorted( per_profile ):
+        result = per_profile[name]
+        for label in labels:
+            matches = len( result['match_dists_by_label'].get( label, [] ) )
+            new_tracks = result['new_track_by_label'].get( label, 0 )
+            total = matches + new_tracks
+            if not total:
+                continue
+            contention = result['contention_by_label'].get( label, { 'total': 0, 'risky': 0 } )
+            print( "    %-13s %-16s new_track=%d/%d (%.1f%%)  risky contention=%d"%(
+                name, label, new_tracks, total, 100.0*new_tracks/total, contention['risky'] ) )
+    print()
+
+
 def print_combo_result( match_mult, gap_mult, result, labels ):
     print( "=== match_distance_multiplier=%.2f  track_max_gap_multiplier=%.2f ==="%(match_mult, gap_mult) )
     if result['dims_missing']:
@@ -467,7 +510,8 @@ def main():
         help="restrict to these labels (default: everything currently in items_to_censor)" )
     parser.add_argument( '--picture-sizes', type=int, nargs='+', default=None,
         help="analyse exactly these sizes instead of discovering what is on disk. By default every tool covers EVERY model configuration that has written detections (betautils_cache_paths.configurations_to_analyse), so a variant you ran last night cannot go unanalysed because config has since moved on." )
-    parser.add_argument( '--video-censor-fps', type=float, default=float( betaconfig.video_censor_fps ) )
+    parser.add_argument( '--video-censor-fps', type=float, default=None,
+        help="only caches sampled at this rate. Default: every rate on disk, newest run per video, so quick_cut files (sampled at their profile's rate) and a run made before video_censor_fps changed are both covered" )
     parser.add_argument( '--include-preview', action='store_true',
         help="also use preview-slice caches for any video that has no real (non-preview) cache yet - see "
              "analyze_jitter.py's docstring CAVEAT (same tradeoffs apply here): safe for backend-vs-backend "
@@ -503,8 +547,8 @@ def main():
     for config in configurations:
         backend_name = config.backend_name
         sizes = config.picture_sizes
-        videos, preview_used_for = discover_full_run_videos(
-            sizes, args.video_censor_fps, global_min_prob, backend_name, include_preview=args.include_preview )
+        videos, preview_used_for, rates = bu_cache.videos_for_configuration(
+            config, args.video_censor_fps, global_min_prob, include_preview=args.include_preview )
         print( "=" * 70 )
         print( "configuration: %s"%(config.label) )
         print( "=" * 70 )
@@ -512,7 +556,7 @@ def main():
             print( "  no real (non-preview) detection caches found for this backend at "
                    "picture_sizes=%s fps=%s min_prob=%.3f - skipping (run betatv.py with "
                    "detector_backend['selected']=%r on real footage first to get data here%s)."%(
-                       sizes, args.video_censor_fps, global_min_prob, backend_name,
+                       sizes, args.video_censor_fps or 'any', global_min_prob, backend_name,
                        ", or check the preview-cache warnings above if --include-preview was used" if args.include_preview else " (or pass --include-preview to also try preview-slice caches)" ) )
             print()
             continue
@@ -526,20 +570,31 @@ def main():
                 ", ".join( "%s (%s)"%(h, preview_used_for[h]) for h in sorted(preview_used_for) ) ) )
         else:
             print( "found %d video(s) with complete real detection caches for this config"%(len(videos)) )
+            print( "  newest run of each, sampled at %s fps"%( ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         hash_to_path = build_hash_to_video_path( videos.keys() )
         missing = set(videos.keys()) - set(hash_to_path.keys())
         if missing:
             print( "  (%d of those source video file(s) could not be found under %s or %s - skipped)"%(
                 len(missing), betaconst.video_path_uncensored, betaconst.video_path_source_backup) )
+        by_profile = bu_tuning.videos_by_profile( videos, hash_to_path, backend_name )
+        print( "  by structure profile: %s"%( ", ".join(
+            "%s %d"%( name, len( members ) ) for name, members in sorted( by_profile.items() ) ) or 'none' ) )
         print()
+
+        def run_combo( match_mult, gap_mult ):
+            # Each profile replays its own videos, then the counts add up
+            # to the pooled result: per-profile rows at no extra replay.
+            return run_profiles( match_mult, gap_mult, videos, by_profile, hash_to_path, ns,
+                                 set( labels ), backend_name )
 
         print( "############################################################" )
         print( "# baseline (multiplier=1.0 for both - this IS your real,    #" )
         print( "# current smooth_boxes behavior) with reset root-cause      #" )
         print( "# classification and contention check                       #" )
         print( "############################################################" )
-        baseline = run_one_combo( 1.0, 1.0, videos, hash_to_path, ns, set(labels), backend_name )
+        baseline, per_profile = run_combo( 1.0, 1.0 )
         print_combo_result( 1.0, 1.0, baseline, labels )
+        print_profile_breakdown( per_profile, labels )
         print( "reading the reason breakdown: 'distance-blocked' means the nearest live track was close enough in time but too far away - " )
         print( "loosening match_distance_multiplier alone would fix these. 'gap-blocked' is the reverse - close enough in space but too much time " )
         print( "passed - raising track_max_gap (or video_censor_fps) would fix these. 'both-blocked' needs both loosened together. " )
@@ -562,8 +617,9 @@ def main():
         for mult in args.match_distance_multipliers:
             if mult == 1.0:
                 continue  # already shown above as the baseline
-            result = run_one_combo( mult, 1.0, videos, hash_to_path, ns, set(labels), backend_name )
+            result, per_profile = run_combo( mult, 1.0 )
             print_combo_result( mult, 1.0, result, labels )
+            print_profile_breakdown( per_profile, labels )
 
         print( "############################################################" )
         print( "# track_max_gap sweep (match-distance held at its real value) #" )
@@ -571,8 +627,9 @@ def main():
         for mult in args.track_max_gap_multipliers:
             if mult == 1.0:
                 continue  # already shown above as the baseline
-            result = run_one_combo( 1.0, mult, videos, hash_to_path, ns, set(labels), backend_name )
+            result, per_profile = run_combo( 1.0, mult )
             print_combo_result( 1.0, mult, result, labels )
+            print_profile_breakdown( per_profile, labels )
 
         print( "how to read the sweeps: the deciding number is risky contention ADDED per track reset AVOIDED, against the baseline. A " )
         print( "change that trades a few risky assignments for each reset it fixes is worth making; one that trades dozens is not, however " )
@@ -590,7 +647,7 @@ def main():
                "run betatv.py on real footage first%s."%(
                    "" if args.include_preview else "real (non-preview) ",
                    bu_cache.describe_configurations( configurations ),
-                   args.video_censor_fps, global_min_prob,
+                   args.video_censor_fps or 'any', global_min_prob,
                    "" if args.include_preview else " (not just --preview on), or pass --include-preview to also try preview-slice caches" ) )
         sys.exit(1)
 

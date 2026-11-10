@@ -578,16 +578,23 @@ def shot_cut_caches_for( file_hash, fps, threshold ):
     file is the only window that can say what the file IS; a 20-second
     slice from the start mostly measures the intro.
 
+    fps None takes a scan at any cadence, newest first within each
+    group: a replay of a run made before the configured rate changed
+    needs the cuts that run scanned.
+
     Returns:
         A list of (path, parsed) pairs, parsed as parse_shot_cut_path.
     """
-    prefix = os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f'%( file_hash, fps, threshold ) )
+    if fps is None:
+        prefix = os.path.join( betaconst.shot_cut_dir, '%s-'%( file_hash, ) )
+    else:
+        prefix = os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f'%( file_hash, fps, threshold ) )
     found = []
     for path in glob.glob( glob.escape( prefix ) + '*.gz' ):
         parsed = parse_shot_cut_path( path )
         if not parsed or parsed['file_hash'] != file_hash:
             continue
-        if abs( parsed['fps'] - float( fps ) ) > 1e-9:
+        if fps is not None and abs( parsed['fps'] - float( fps ) ) > 1e-9:
             continue
         if abs( parsed['threshold'] - float( threshold ) ) > 5e-4:
             continue
@@ -595,9 +602,12 @@ def shot_cut_caches_for( file_hash, fps, threshold ):
     # No bound means the scan ran to the end of the file. That includes
     # a '-preview+all' scan of a file shorter than its slice, which betatv
     # processes whole, so it is a whole-file measurement too.
+    newest_first = lambda item: os.path.getmtime( item[0] )
     whole = [ item for item in found if item[1]['max_seconds'] is None ]
+    if fps is None:
+        whole.sort( key=newest_first, reverse=True )
     sliced = sorted( ( item for item in found if item not in whole ),
-                     key=lambda item: os.path.getmtime( item[0] ), reverse=True )
+                     key=newest_first, reverse=True )
     return whole + sliced
 
 
@@ -833,10 +843,12 @@ class CachedConfiguration:
     """
 
     __slots__ = ( 'backend_name', 'picture_sizes', 'detection_key', 'variant',
-                  'identity', 'preview_suffix', 'file_hashes' )
+                  'identity', 'preview_suffix', 'file_hashes', 'detection_keys',
+                  'sample_rates' )
 
     def __init__( self, backend_name, picture_sizes, detection_key=None, variant=None,
-                  identity=None, preview_suffix='', file_hashes=() ):
+                  identity=None, preview_suffix='', file_hashes=(), detection_keys=None,
+                  sample_rates=() ):
         self.backend_name = backend_name
         self.picture_sizes = list( picture_sizes )
         self.detection_key = detection_key
@@ -844,6 +856,13 @@ class CachedConfiguration:
         self.identity = identity or {}
         self.preview_suffix = preview_suffix
         self.file_hashes = sorted( file_hashes )
+        # Every detection key and sample rate this configuration covers.
+        # One run can hold several: a profile samples at its own rate,
+        # and changing a detection setting starts a new key.
+        if detection_keys is None:
+            detection_keys = [ detection_key ] if detection_key else []
+        self.detection_keys = sorted( detection_keys )
+        self.sample_rates = sorted( sample_rates )
 
     @property
     def size( self ):
@@ -979,10 +998,114 @@ def discover_cached_configurations( fps=None, min_prob=None, include_preview=Fal
             variant=_variant_from_identity( identity ),
             identity=identity,
             preview_suffix=preview_suffix,
-            file_hashes=hashes ) )
+            file_hashes=hashes,
+            sample_rates=[ float( fps ) ] if fps is not None else () ) )
 
     configurations.sort( key=lambda config: config.sort_key )
     return configurations
+
+
+# The preview_suffix of a configuration that groups every preview slice.
+PREVIEW_ANY = '-preview*'
+
+
+def all_detection_caches( backend_names=None, min_prob=None, include_preview=False ):
+    """
+    [(parsed, path)] for every detection cache of these backends, any rate.
+
+    parsed is parse_any_cache_name's dict. Only caches at min_prob
+    (default: the configured global_min_prob) are listed, since a
+    different floor is a different set of raw detections.
+    """
+    if min_prob is None:
+        min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    names = set( backend_names or bu_detector.registered_backend_names() )
+    found = []
+    for path in glob.glob( os.path.join( VID_HASH_DIR, '*.gz' ) ):
+        parsed = parse_any_cache_name( path )
+        if not parsed or parsed['backend'] not in names:
+            continue
+        if parsed['box_version'] != betaconst.picture_saved_box_version:
+            continue
+        if abs( parsed['min_prob'] - float( min_prob ) ) > 5e-4:
+            continue
+        if parsed['preview_suffix'] and not include_preview:
+            continue
+        found.append( ( parsed, path ) )
+    return found
+
+
+def sample_rates_on_disk( backend_names=None, min_prob=None, include_preview=False ):
+    """Every sample rate these backends have detection caches at, sorted."""
+    return sorted( set( parsed['fps'] for parsed, _path in all_detection_caches(
+        backend_names, min_prob, include_preview ) ) )
+
+
+def merge_configurations( configurations ):
+    """
+    One configuration per model setup, however many rates and keys it ran at.
+
+    discover_cached_configurations reports one entry per (rate, detection
+    key). A single real run can hold several of those: a profile samples
+    at its own rate (quick_cut at 18 while the rest sample at 9), and
+    changing a detection setting between batches starts a new key. Read
+    per rate, a tool saw only the files detected at the configured rate
+    and skipped the rest, and once the configured rate moved it skipped
+    the whole library.
+
+    Entries merge when backend, sizes and model variant match. Without a
+    recorded variant two keys cannot be told apart, so those stay
+    separate rather than risk pooling two models. Every preview slice of
+    one setup becomes one preview configuration (PREVIEW_ANY), never one
+    per slice.
+    """
+    groups = {}
+    order = []
+    for config in configurations:
+        variant = getattr( config, 'variant', None )
+        identity_part = ( 'variant', variant ) if variant else (
+            'key', getattr( config, 'detection_key', None ) )
+        group = ( config.backend_name, tuple( config.picture_sizes ), identity_part,
+                  bool( getattr( config, 'preview_suffix', '' ) ) )
+        if group not in groups:
+            groups[group] = []
+            order.append( group )
+        groups[group].append( config )
+    merged = []
+    for group in order:
+        members = groups[group]
+        first = members[0]
+        if len( members ) == 1:
+            # Nothing to merge: hand back what discovery found, unchanged.
+            merged.append( first )
+            continue
+        keys = sorted( set( key for member in members for key in member.detection_keys ) )
+        suffixes = set( member.preview_suffix for member in members )
+        if not group[3]:
+            suffix = ''
+        elif len( suffixes ) == 1:
+            suffix = suffixes.pop()
+        else:
+            suffix = PREVIEW_ANY
+        hashes = set()
+        rates = set()
+        for member in members:
+            hashes.update( member.file_hashes )
+            rates.update( member.sample_rates )
+        merged.append( CachedConfiguration(
+            backend_name=first.backend_name,
+            picture_sizes=first.picture_sizes,
+            detection_key=keys[0] if len( keys ) == 1 else None,
+            variant=first.variant,
+            identity=first.identity,
+            preview_suffix=suffix,
+            file_hashes=hashes,
+            detection_keys=keys,
+            sample_rates=rates ) )
+    merged.sort( key=lambda config: ( config.backend_name, list( config.picture_sizes ),
+                                      getattr( config, 'variant', None ) or '',
+                                      getattr( config, 'preview_suffix', '' ) ) )
+    return merged
 
 
 def cache_paths_for_configuration( configuration, fps, min_prob ):
@@ -1015,50 +1138,105 @@ def cache_paths_for_configuration( configuration, fps, min_prob ):
 
 def videos_across_sample_rates( configuration, min_prob=None, rates=None ):
     """
-    {file_hash: cache_paths} for one configuration at every sample rate.
+    {file_hash: cache_paths} for one configuration, newest run per video.
 
-    A profile can set its own video_censor_fps (quick_cut samples at 18),
+    Covers every sample rate and detection key the configuration holds:
+    a profile can set its own video_censor_fps (quick_cut samples at 18),
     and the rate is in the cache name and the detection key, so a
-    per-rate lookup sees only the videos detected at that rate: 48 of 56
-    in one library, with every quick-cut video missing. This
-    gathers the same backend, sizes and variant at each rate in `rates`
-    (default: every rate a profile can select). A video cached at two
-    rates keeps the newer set, which is what its last run used.
+    per-rate lookup saw only the videos detected at that rate: 48 of 56
+    in one library, with every quick-cut video missing. Changing the
+    configured rate after a run hid the whole run the same way. A video
+    cached at two rates or under two keys keeps its newest complete set,
+    which is what its last run used.
+
+    Matching: same backend and sizes; the same model variant when the
+    configuration names one, else one of its detection keys when it has
+    any, else any key (an explicit --picture-sizes request, which names
+    a shape rather than a run). Real caches for a real configuration;
+    preview slices for a preview one, one slice per video.
 
     Args:
-        configuration: The CachedConfiguration found at the global rate.
+        configuration: A CachedConfiguration.
         min_prob: Confidence floor. Defaults to the configured one.
-        rates: Sample rates to look at.
+        rates: Restrict to these sample rates. Default: every rate.
 
     Returns:
         ({file_hash: [cache_path per size]}, sorted rates that had videos).
     """
+    sizes = list( configuration.picture_sizes )
+    single_key = getattr( configuration, 'detection_key', None )
+    keys = set( getattr( configuration, 'detection_keys', None ) or (
+        [ single_key ] if single_key else [] ) )
+    preview = getattr( configuration, 'preview_suffix', '' )
+    wanted_variant = getattr( configuration, 'variant', None )
+    variant_of_key = {}
+
+    def variant_for( key ):
+        if key not in variant_of_key:
+            variant_of_key[key] = _variant_from_identity( _identity_for_detection_key( key ) )
+        return variant_of_key[key]
+
+    groups = {}
+    for parsed, path in all_detection_caches(
+            [ configuration.backend_name ], min_prob, include_preview=bool( preview ) ):
+        if parsed['size'] not in sizes:
+            continue
+        if rates is not None and not any( abs( parsed['fps'] - float( rate ) ) < 1e-9
+                                          for rate in rates ):
+            continue
+        suffix = parsed['preview_suffix']
+        if bool( suffix ) != bool( preview ):
+            continue
+        if preview and preview != PREVIEW_ANY and suffix != preview:
+            continue
+        key = parsed['detection_key']
+        if wanted_variant:
+            if variant_for( key ) != wanted_variant:
+                continue
+        elif keys and key not in keys:
+            continue
+        group = ( parsed['file_hash'], parsed['fps'], key, suffix )
+        groups.setdefault( group, {} )[ parsed['size'] ] = path
+
+    chosen = {}
+    for ( file_hash, fps, _key, _suffix ), by_size in groups.items():
+        if len( by_size ) != len( sizes ):
+            continue
+        paths = [ by_size[size] for size in sizes ]
+        newest = max( os.path.getmtime( path ) for path in paths )
+        if file_hash not in chosen or newest > chosen[file_hash][0]:
+            chosen[file_hash] = ( newest, paths, fps )
+    return ( { file_hash: paths for file_hash, ( _newest, paths, _fps ) in sorted( chosen.items() ) },
+             sorted( set( fps for _newest, _paths, fps in chosen.values() ) ) )
+
+
+def videos_for_configuration( configuration, fps=None, min_prob=None, include_preview=False ):
+    """
+    The videos a replaying tool should read for one configuration.
+
+    By default the newest real run of every video, whatever rate it was
+    sampled at (videos_across_sample_rates). fps narrows to one rate.
+    include_preview keeps the older per-rate lookup, which falls back to
+    a preview slice for a video with no real cache, at fps or the
+    configured rate.
+
+    Returns:
+        (videos, preview_used_for, rates): videos is {file_hash:
+        [cache_path per size]}, preview_used_for {file_hash:
+        preview_suffix} for preview-backed entries, rates the sample
+        rates the videos came from.
+    """
     if min_prob is None:
         min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
-    if rates is None:
-        rates = bu_detector.profile_sample_rates( configuration.backend_name )
-    chosen = {}
-    rates_used = set()
-    for rate in sorted( rates ):
-        candidates = [
-            config for config in discover_cached_configurations(
-                fps=rate, min_prob=min_prob, backend_names=[ configuration.backend_name ] )
-            if config.picture_sizes == configuration.picture_sizes
-            and config.preview_suffix == configuration.preview_suffix ]
-        if configuration.variant:
-            candidates = [ config for config in candidates if config.variant == configuration.variant ]
-        elif len( candidates ) > 1:
-            # No variant to tell them apart: guessing would blend two models.
-            candidates = [ config for config in candidates
-                           if config.detection_key == configuration.detection_key ]
-        for config in candidates:
-            for file_hash, paths in cache_paths_for_configuration( config, rate, min_prob ).items():
-                newest = max( os.path.getmtime( path ) for path in paths )
-                if file_hash not in chosen or newest > chosen[file_hash][0]:
-                    chosen[file_hash] = ( newest, paths )
-                rates_used.add( rate )
-    return ( { file_hash: paths for file_hash, ( _newest, paths ) in sorted( chosen.items() ) },
-             sorted( rates_used ) )
+    if include_preview:
+        rate = fps if fps is not None else betaconfig.video_censor_fps
+        videos, preview_used_for = discover_full_run_videos(
+            configuration.picture_sizes, rate, min_prob, configuration.backend_name,
+            include_preview=True )
+        return videos, preview_used_for, ( [ float( rate ) ] if videos else [] )
+    videos, rates = videos_across_sample_rates(
+        configuration, min_prob, rates=None if fps is None else [ fps ] )
+    return videos, {}, rates
 
 
 def _size_in_cache_name( name, backend_name, fps, min_prob ):
@@ -1270,8 +1448,15 @@ def configurations_to_analyse( requested_sizes=None, backend_names=None, fps=Non
     Args:
         requested_sizes: Explicit sizes, or None/empty to discover.
         backend_names: Restrict to these backends. Defaults to all registered.
-        fps, min_prob: Run parameters to match. Default to config.
-        include_preview: Whether preview-slice caches count.
+        fps: Only caches sampled at this rate. Default None: every rate
+            on disk, merged into one configuration per model setup (see
+            merge_configurations), so a profile's own rate and a run made
+            before the configured rate changed are both covered.
+        min_prob: Confidence floor to match. Defaults to the configured one.
+        include_preview: Whether preview-slice caches count: False, True
+            (one preview configuration per setup beside the real ones),
+            or 'fallback' (a preview configuration only for a setup with
+            no real caches at all).
         logger: Optional logger for a one-line summary of what was found.
         variant_names: Restrict to these model variants (e.g. ['640m']).
             Defaults to every variant found.
@@ -1312,8 +1497,28 @@ def configurations_to_analyse( requested_sizes=None, backend_names=None, fps=Non
                 ", ".join( config.label for config in configurations ) ) )
         return configurations
 
-    discovered = discover_cached_configurations(
-        fps=fps, min_prob=min_prob, include_preview=include_preview, backend_names=names )
+    with_preview = bool( include_preview )
+    if fps is not None:
+        discovered = discover_cached_configurations(
+            fps=fps, min_prob=min_prob, include_preview=with_preview, backend_names=names )
+    else:
+        # Every rate on disk, not just the configured one: a profile
+        # samples at its own rate, and the configured rate may have
+        # moved since the run being analysed.
+        discovered = []
+        for rate in sample_rates_on_disk( names, min_prob, with_preview ):
+            discovered.extend( discover_cached_configurations(
+                fps=rate, min_prob=min_prob, include_preview=with_preview, backend_names=names ) )
+        if not discovered:
+            discovered = discover_cached_configurations(
+                fps=None, min_prob=min_prob, include_preview=with_preview, backend_names=names )
+    discovered = merge_configurations( discovered )
+    if include_preview == 'fallback':
+        real = set( ( config.backend_name, tuple( config.picture_sizes ), config.variant )
+                    for config in discovered if not config.preview_suffix )
+        discovered = [ config for config in discovered if not config.preview_suffix
+                       or ( config.backend_name, tuple( config.picture_sizes ), config.variant )
+                       not in real ]
     if discovered:
         if wanted_variants is not None:
             kept = [ config for config in discovered if _keep( config ) ]

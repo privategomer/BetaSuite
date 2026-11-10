@@ -515,16 +515,18 @@ class TestVideosAcrossSampleRates( unittest.TestCase ):
         self.assertEqual( sorted( videos ), [ 'aaaa' ] )
         self.assertEqual( rates, [ 9 ] )
 
-    def test_default_rates_come_from_the_profiles( self ):
+    def test_by_default_every_rate_on_disk_counts( self ):
+        # Not just the rates the profiles name now: a run made before the
+        # configured rate changed is still the newest run of its videos.
         self.write( 'aaaa', 9, 'k9' )
         self.write( 'bbbb', 18, 'k18' )
-        with mock.patch.object( bu_cache.bu_detector, 'profile_sample_rates', return_value={ 9, 18 } ):
+        self.write( 'cccc', 10, 'k10' )
+        with mock.patch.object( bu_cache.bu_detector, 'profile_sample_rates', return_value={ 10 } ):
             videos, rates = bu_cache.videos_across_sample_rates( self.base(), 0.2 )
-        self.assertEqual( sorted( videos ), [ 'aaaa', 'bbbb' ] )
-        self.assertEqual( rates, [ 9, 18 ] )
-        with mock.patch.object( bu_cache.bu_detector, 'profile_sample_rates', return_value={ 9 } ):
-            videos, _rates = bu_cache.videos_across_sample_rates( self.base(), 0.2 )
-        self.assertEqual( list( videos ), [ 'aaaa' ] )
+        self.assertEqual( sorted( videos ), [ 'aaaa', 'bbbb', 'cccc' ] )
+        self.assertEqual( rates, [ 9, 10, 18 ] )
+        videos, rates = bu_cache.videos_across_sample_rates( self.base(), 0.2, rates={ 9 } )
+        self.assertEqual( ( list( videos ), rates ), ( [ 'aaaa' ], [ 9 ] ) )
 
 
 class TestRawCacheReaders( unittest.TestCase ):

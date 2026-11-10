@@ -342,6 +342,32 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
     }
 
 
+def _median( values ):
+    ordered = sorted( values )
+    return ordered[ len( ordered ) // 2 ] if ordered else 0.0
+
+
+def print_profile_breakdown( per_profile, labels ):
+    """One line per structure profile and label, when the footage runs several."""
+    if len( per_profile ) < 2:
+        return
+    print( "  by structure profile:" )
+    for name in sorted( per_profile ):
+        result = per_profile[name]
+        for label in labels:
+            deltas = result['frame_deltas_by_label'].get( label, [] )
+            matches = len( result['match_dists_by_label'].get( label, [] ) )
+            new_tracks = result['new_track_by_label'].get( label, 0 )
+            if not deltas and not new_tracks:
+                continue
+            total = matches + new_tracks
+            print( "    %-13s %-16s jump median %.1fpx  absorbed median %.1fpx  new tracks %.1f%%"%(
+                name, label, _median( deltas ),
+                _median( result['match_dists_by_label'].get( label, [] ) ),
+                100.0*new_tracks/total if total else 0.0 ) )
+    print()
+
+
 def print_alpha_result( alpha, result, labels ):
     print( "=== position_smoothing (alpha) = %.2f ==="%(alpha) )
     if result['dims_missing']:
@@ -378,8 +404,8 @@ def main():
         help="restrict to these labels (default: everything currently in items_to_censor)" )
     parser.add_argument( '--picture-sizes', type=int, nargs='+', default=None,
         help="analyse exactly these sizes instead of discovering what is on disk. By default every tool covers EVERY model configuration that has written detections (betautils_cache_paths.configurations_to_analyse), so a variant you ran last night cannot go unanalysed because config has since moved on. Use this only to force a shape that discovery would not produce - for instance a backend deliberately run at several sizes at once." )
-    parser.add_argument( '--video-censor-fps', type=float, default=float( betaconfig.video_censor_fps ),
-        help="must match the video_censor_fps your real caches were built with (default: betaconfig.py's current value)" )
+    parser.add_argument( '--video-censor-fps', type=float, default=None,
+        help="only caches sampled at this rate. Default: every rate on disk, newest run per video, so quick_cut files (sampled at their profile's rate) and a run made before video_censor_fps changed are both covered" )
     parser.add_argument( '--include-preview', action='store_true',
         help="also use preview-slice caches for any video that has no real (non-preview) cache yet - see this "
              "script's docstring CAVEAT before trusting numbers this produces: safe for backend-vs-backend "
@@ -420,8 +446,8 @@ def main():
     for config in configurations:
         backend_name = config.backend_name
         sizes = config.picture_sizes
-        videos, preview_used_for = discover_full_run_videos(
-            sizes, args.video_censor_fps, global_min_prob, backend_name, include_preview=args.include_preview )
+        videos, preview_used_for, rates = bu_cache.videos_for_configuration(
+            config, args.video_censor_fps, global_min_prob, include_preview=args.include_preview )
         print( "#" * 70 )
         print( "configuration: %s"%(config.label) )
         print( "#" * 70 )
@@ -429,7 +455,7 @@ def main():
             print( "  no real (non-preview) detection caches found for this backend at "
                    "picture_sizes=%s fps=%s min_prob=%.3f - skipping (run betatv.py with "
                    "detector_backend['selected']=%r on real footage first to get data here%s)."%(
-                       sizes, args.video_censor_fps, global_min_prob, backend_name,
+                       sizes, args.video_censor_fps or 'any', global_min_prob, backend_name,
                        ", or check the preview-cache warnings above if --include-preview was used" if args.include_preview else " (or pass --include-preview to also try preview-slice caches)" ) )
             print()
             continue
@@ -444,25 +470,39 @@ def main():
                    "solid): %s"%( ", ".join( "%s (%s)"%(h, preview_used_for[h]) for h in sorted(preview_used_for) ) ) )
         else:
             print( "found %d video(s) with complete real detection caches for this config"%(len(videos)) )
+            print( "  newest run of each, sampled at %s fps"%( ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         hash_to_path = build_hash_to_video_path( videos.keys() )
         missing = set(videos.keys()) - set(hash_to_path.keys())
         if missing:
             print( "  (%d of those source video file(s) could not be found under %s or %s - probably moved/deleted "
                    "since being censored; they'll be skipped)"%(
                        len(missing), betaconst.video_path_uncensored, betaconst.video_path_source_backup ) )
+        by_profile = bu_tuning.videos_by_profile( videos, hash_to_path, backend_name )
+        print( "  by structure profile: %s"%( ", ".join(
+            "%s %d"%( name, len( members ) ) for name, members in sorted( by_profile.items() ) ) or 'none' ) )
         print()
 
         for alpha in alphas:
-            result = run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn,
-                                    apply_suppression_fn, set(labels), backend_name )
+            # Each profile replays its own videos and the counts add up to
+            # the pooled result, so the per-profile rows cost no extra replay.
+            per_profile = { name: run_one_alpha( alpha, members, hash_to_path, smooth_boxes_fn,
+                                                 apply_suppression_fn, set(labels), backend_name )
+                            for name, members in sorted( by_profile.items() ) }
+            if per_profile:
+                result = bu_tuning.merge_counts( per_profile.values() )
+                result['dims_missing'] = list( result.get( 'dims_missing', [] ) ) + sorted( missing )
+            else:
+                result = run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn,
+                                        apply_suppression_fn, set(labels), backend_name )
             print_alpha_result( alpha, result, labels )
+            print_profile_breakdown( per_profile, labels )
 
     if not any_backend_had_videos:
         print( "no %sdetection caches found for any of (%s) at fps=%s min_prob=%.3f - "
                "run betatv.py on real footage first%s."%(
                    "" if args.include_preview else "real (non-preview) ",
                    bu_cache.describe_configurations( configurations ),
-                   args.video_censor_fps, global_min_prob,
+                   args.video_censor_fps or 'any', global_min_prob,
                    "" if args.include_preview else " (not just --preview on), or pass --include-preview to also try preview-slice caches" ) )
         sys.exit(1)
 

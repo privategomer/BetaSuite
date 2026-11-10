@@ -14,7 +14,7 @@ detector_backend = {
         # '320n' | '640m'
         'model_variant': '640m',
         'nn_batch_size': 4,
-        'candidate_floor': 0.2,
+        'candidate_floor': 0.15,
         'nms_iou': 0.45,
         # 'per_class' | 'agnostic'
         'nms_mode': 'per_class',
@@ -26,16 +26,16 @@ detector_backend = {
             'variants': {
                 # Rapid cutting.
                 'quick_cut': {
-                    'min_short_shot_fraction': 0.15,
+                    'min_short_shot_fraction': 0.125,
                     'video_censor_fps': 18,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 0.20,
+                        'exposed_breast': { 'track_max_gap': 0.8,
                                             'interpolation_max_gap': 0.14,
                                             'time_safety': 0.06,
                                             'min_track_hits': 2,
                                             'paired_style_max_age': 0.25,
                                             'style_min_dwell_seconds': 2.5 },
-                        'exposed_vulva':  { 'track_max_gap': 0.20,
+                        'exposed_vulva':  { 'track_max_gap': 0.6,
                                             'interpolation_max_gap': 0.14,
                                             'time_safety': 0.06,
                                             'min_track_hits': 2,
@@ -51,7 +51,7 @@ detector_backend = {
                 'compilation': {
                     'manual_only': True,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 1.5,
+                        'exposed_breast': { 'track_max_gap': 3,
                                             'interpolation_max_gap': 0.5,
                                             'paired_style_max_age': 0.6,
                                             'style_min_dwell_seconds': 4.0 },
@@ -67,7 +67,7 @@ detector_backend = {
                 'split_screen': {
                     'manual_only': True,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 2.0,
+                        'exposed_breast': { 'track_max_gap': 12,
                                             'interpolation_max_gap': 0.8,
                                             'match_distance_multiplier': 0.8,
                                             'paired_style': True,
@@ -75,9 +75,9 @@ detector_backend = {
                                             'paired_style_tiebreak_margin': 0.12,
                                             'paired_style_max_age': 0.5,
                                             'style_min_dwell_seconds': 6.0 },
-                        'exposed_vulva':  { 'track_max_gap': 4.0,
+                        'exposed_vulva':  { 'track_max_gap': 12,
                                             'interpolation_max_gap': 4.0,
-                                            'match_distance_multiplier': 1.0,
+                                            'match_distance_multiplier': 3,
                                             'style_min_dwell_seconds': 6.0 },
                         'covered_vulva':  { 'track_max_gap': 4.0,
                                             'interpolation_max_gap': 4.0,
@@ -88,7 +88,7 @@ detector_backend = {
                 # Single continuous scene; the default.
                 'scene': {
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 3.0,
+                        'exposed_breast': { 'track_max_gap': 6,
                                             'interpolation_max_gap': 1.0,
                                             'style_min_dwell_seconds': 3.0 },
                         # Vulva bridges longer gaps than breast.
@@ -106,9 +106,9 @@ detector_backend = {
         # Class promotion: relabel a detection when corroborating evidence overlaps it.
         'class_promotion': {
             'exposed_vulva': [
-                { 'from': 'covered_vulva', 'min_prob': 0.30,
+                { 'from': 'covered_vulva', 'min_prob': 0.25,
                   'requires': [
-                      { 'label': 'exposed_penis', 'min_prob': 0.30, 'overlap': 'anywhere' },
+                      { 'label': 'exposed_penis', 'min_prob': 0.25, 'overlap': 'anywhere' },
                   ] },
             ],
         },
@@ -116,14 +116,10 @@ detector_backend = {
         # See CONFIG_REFERENCE.md -> "Re-deriving suppression rules".
         'class_suppression': {
             'exposed_breast': [
-                { 'suppressed_by': 'exposed_buttocks', 'margin': 0.119, 'min_iou': 0.010 },
+                { 'suppressed_by': 'exposed_buttocks', 'margin': 0.133, 'min_iou': 0.175 },
                 { 'suppressed_by': 'covered_breast',   'margin': 0.081, 'min_iou': 0.425 },
             ],
             'exposed_vulva': [
-                { 'suppressed_by': 'face_femme',    'margin': 0.255, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_breast','margin': 0.231, 'min_iou': 0.022 },
-                { 'suppressed_by': 'exposed_belly', 'margin': 0.293, 'min_iou': 0.015 },
-                { 'suppressed_by': 'covered_breast','margin': 0.295, 'min_iou': 0.016 },
                 { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 },
             ],
         },
@@ -133,35 +129,36 @@ detector_backend = {
             'exposed_vulva<-exposed_penis',
             'exposed_vulva<-exposed_buttocks',
             'exposed_vulva<-exposed_feet',
+            'exposed_vulva<-face_femme',
         ],
 
         # Detection- and tracking-sensitive per-label settings
         'item_overrides': {
             'exposed_vulva': {
-                'min_prob': 0.18,
+                'min_prob': 0.17,
                 'time_safety': 0.16,
-                'height_area_safety': 0.00,
+                'height_area_safety': 0.07,
                 'width_area_safety': 0.00,
                 'interpolation_max_gap': 3.6,
                 'track_max_gap': 43.2,  # set by auto_tune
-                'position_smoothing': 0.75,
+                'position_smoothing': 0.85,
                 'paired_style': False,
                 'min_track_hits': 2,
                 'confirm_score': 0.5,
                 'match_distance_multiplier': 3,  # set by auto_tune
             },
             'exposed_breast': {
-                'min_prob': 0.205,
+                'min_prob': 0.19,
                 'time_safety': 0.17,
                 'width_area_safety': 0.00,
-                'height_area_safety': 0.00,
+                'height_area_safety': 0.07,
                 'interpolation_max_gap': 0.15,
                 'track_max_gap': 0.17,
                 'paired_style': True,
                 'paired_style_max_age': 0.8,
                 'min_track_hits': 2,
-                'confirm_score': 0.5,
-                'position_smoothing': 0.60,
+                'confirm_score': 0.7,
+                'position_smoothing': 0.70,
                 'match_distance_multiplier': 2.0,  # set by auto_tune
             },
             'covered_vulva': {
@@ -296,8 +293,8 @@ item_overrides = {
             { 'type': 'bar', 'shape': 'box', 'color': (0, 0, 0), 'merge': 'none', 'thickness': 1.0,   'feather': 0.15,  'weight': 4.00, 'width_area_safety': -0.55, 'height_area_safety': 0.00 },
 
             # Sticker
-            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 2.81, 'feather': 0.25, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
-            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.15, 'width_area_safety': 0.00, 'height_area_safety': 0.00 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 2.81, 'feather': 0.25, 'width_area_safety': 0.00, 'height_area_safety': 0.00 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.15, 'width_area_safety': 0.07, 'height_area_safety': 0.07 },
             { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.20, 'width_area_safety': 0.13, 'height_area_safety': 0.13 },
             { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.25, 'width_area_safety': 0.25, 'height_area_safety': 0.25 },
         ],
@@ -312,7 +309,7 @@ detection_prefetch_frames = 0   # frames decoded ahead of the model; 0 = off
 structure_scan_workers = 0      # betabench structure-scan; 0 = auto (one per core, at most 4)
 
 # Frames per second of video that get detection and tracking.
-video_censor_fps = 9
+video_censor_fps = 10
 
 # Floor applied to every raw detection before any per-label min_prob.
 global_min_prob = 0.12
@@ -450,7 +447,7 @@ person_backend = {
 
 # --- Confidence and safety defaults -------------------------------------
 
-default_min_prob = 0.55
+default_min_prob = 0.35
 default_min_prob_continue = None   # None disables score hysteresis
 default_area_safety = 0
 default_time_safety = 0.30

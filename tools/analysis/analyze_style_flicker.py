@@ -305,7 +305,8 @@ def main():
         help="restrict to these labels (default: everything currently in items_to_censor that has paired_style set)" )
     parser.add_argument( '--picture-sizes', type=int, nargs='+', default=None,
         help="analyse exactly these sizes instead of discovering what is on disk. By default every tool covers EVERY model configuration that has written detections." )
-    parser.add_argument( '--video-censor-fps', type=float, default=float( betaconfig.video_censor_fps ) )
+    parser.add_argument( '--video-censor-fps', type=float, default=None,
+        help="only caches sampled at this rate. Default: every rate on disk, newest run per video, so quick_cut files (sampled at their profile's rate) and a run made before video_censor_fps changed are both covered" )
     parser.add_argument( '--include-preview', action='store_true',
         help="also use preview-slice caches for any video that has no real (non-preview) cache yet - see "
              "analyze_jitter.py's docstring CAVEAT (same tradeoffs apply here)." )
@@ -344,8 +345,8 @@ def main():
     for config in configurations:
         backend_name = config.backend_name
         sizes = config.picture_sizes
-        videos, preview_used_for = discover_full_run_videos(
-            sizes, args.video_censor_fps, global_min_prob, backend_name, include_preview=args.include_preview )
+        videos, preview_used_for, rates = bu_cache.videos_for_configuration(
+            config, args.video_censor_fps, global_min_prob, include_preview=args.include_preview )
         print( "#" * 70 )
         print( "configuration: %s"%(config.label) )
         print( "#" * 70 )
@@ -362,7 +363,7 @@ def main():
             print( "  no real (non-preview) detection caches found for this backend at picture_sizes=%s fps=%s "
                    "min_prob=%.3f - skipping (run betatv.py with detector_backend['selected']=%r on real footage "
                    "first to get data here%s)."%(
-                       sizes, args.video_censor_fps, global_min_prob, backend_name,
+                       sizes, args.video_censor_fps or 'any', global_min_prob, backend_name,
                        ", or check the preview-cache warnings above if --include-preview was used" if args.include_preview else " (or pass --include-preview to also try preview-slice caches)" ) )
             print()
             continue
@@ -376,6 +377,7 @@ def main():
                 ", ".join( "%s (%s)"%(h, preview_used_for[h]) for h in sorted(preview_used_for) ) ) )
         else:
             print( "found %d video(s) with complete real detection caches for this config"%(len(videos)) )
+            print( "  newest run of each, sampled at %s fps"%( ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         hash_to_path = build_hash_to_video_path( videos.keys() )
         missing = set(videos.keys()) - set(hash_to_path.keys())
         if missing:
@@ -622,7 +624,7 @@ def main():
                "betatv.py on real footage first (not just --preview on), or pass --include-preview to also "
                "try preview-slice caches."%(
                    bu_cache.describe_configurations( configurations ),
-                   args.video_censor_fps, global_min_prob ) )
+                   args.video_censor_fps or 'any', global_min_prob ) )
         sys.exit(1)
 
 

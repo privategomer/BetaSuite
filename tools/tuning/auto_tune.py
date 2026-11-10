@@ -53,7 +53,6 @@ says exactly that, and what to watch for.
 
 import argparse
 import copy
-import glob
 import json
 import os
 import statistics
@@ -70,6 +69,7 @@ import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
+import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 
 TRACE = bu_log.TRACE
@@ -135,15 +135,26 @@ class Stage:
         # caller after construction; only TrackMaxGapStage reads it, to
         # cap candidates that could only bridge across a cut.
         self.median_shot_seconds = None
+        # Set for a stage that tunes one structure profile's value of
+        # this key (profiles.variants[<name>].item_overrides) rather than
+        # the backend's. See profile_stage().
+        self.profile_name = None
 
     @property
     def title( self ):
         # Named by BACKEND, not by configuration: this key is shared by
         # every variant of the backend, so one title for one decision.
-        return "%s / %s / %s"%( self.name, self.backend_name, self.label )
+        title = "%s / %s / %s"%( self.name, self.backend_name, self.label )
+        if self.profile_name:
+            title += " [%s]"%( self.profile_name, )
+        return title
 
     def baseline_value( self ):
-        return bu_detector.get_item_overrides( self.label, self.backend_name ).get( self.key )
+        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get( self.key )
+        if self.profile_name:
+            return bu_detector.get_profile_item_overrides(
+                self.profile_name, self.label, self.backend_name ).get( self.key, backend_value )
+        return backend_value
 
     def candidates( self ):
         """[(value, human_label)], excluding the baseline."""
@@ -152,21 +163,44 @@ class Stage:
     def apply( self, value ):
         """Set this candidate in memory for the duration of a measurement."""
         block = betaconfig.detector_backend.setdefault( self.backend_name, {} )
-        overrides = copy.deepcopy( block.get( 'item_overrides', {} ) )
+        if self.profile_name:
+            profiles = copy.deepcopy( block.get( 'profiles', {} ) )
+            variant = profiles.setdefault( 'variants', {} ).setdefault( self.profile_name, {} )
+            overrides = variant.setdefault( 'item_overrides', {} )
+        else:
+            overrides = copy.deepcopy( block.get( 'item_overrides', {} ) )
         overrides[self.label] = dict( overrides.get( self.label, {} ) )
         overrides[self.label][self.key] = value
-        block['item_overrides'] = overrides
+        if self.profile_name:
+            block['profiles'] = profiles
+        else:
+            block['item_overrides'] = overrides
         bu_config.invalidate_config_caches()
 
+    def snapshot( self ):
+        """What apply() can change, for restore() to put back."""
+        block = betaconfig.detector_backend.get( self.backend_name, {} )
+        return copy.deepcopy( { key: block[key] for key in ( 'item_overrides', 'profiles' )
+                                if key in block } )
+
     def restore( self, saved ):
-        betaconfig.detector_backend[self.backend_name]['item_overrides'] = saved
+        block = betaconfig.detector_backend.setdefault( self.backend_name, {} )
+        for key in ( 'item_overrides', 'profiles' ):
+            if key in saved:
+                block[key] = saved[key]
+            else:
+                block.pop( key, None )
         bu_config.invalidate_config_caches()
 
     def decide( self, rows, options, logger ):
         raise NotImplementedError
 
     def write( self, writer, value ):
-        writer.set_item_override( self.backend_name, self.label, self.key, value )
+        if self.profile_name:
+            writer.set_profile_item_override(
+                self.backend_name, self.profile_name, self.label, self.key, value )
+        else:
+            writer.set_item_override( self.backend_name, self.label, self.key, value )
 
     def review( self, decision, rows_by_configuration ):
         """A value the numbers cannot settle, for ab_compare.py to show a person, or None."""
@@ -446,10 +480,13 @@ class MinTrackHitsStage( Stage ):
     summary = "how many real detections a track needs before it is drawn"
 
     VALUES = ( 1, 2, 3, 4 )
+    # Set by hand after tuning by eye: the tuner never proposes more.
+    CEILING = 2
 
     def candidates( self ):
         baseline = self.baseline_value() or 1
-        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES if value != baseline ]
+        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES
+                 if value != baseline and value <= self.CEILING ]
 
     @staticmethod
     def strictness( value ):
@@ -720,7 +757,6 @@ def _median_shot_seconds_for( entries, logger ):
     and "this footage has no cuts" are different facts, and only the
     second would justify an unbounded track_max_gap.
     """
-    fps = betaconfig.video_censor_fps
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
     shots = []
     seen = set()
@@ -730,16 +766,21 @@ def _median_shot_seconds_for( entries, logger ):
             if file_hash in seen:
                 continue
             seen.add( file_hash )
-            # Glob rather than an exact path: the cache key carries a
-            # preview suffix this caller does not know.
-            prefix = os.path.join( betaconst.shot_cut_dir,
-                                   '%s-%g-%.3f'%( file_hash, fps, threshold ) )
-            for path in sorted( glob.glob( prefix + '*.gz' ),
-                                key=os.path.getmtime, reverse=True )[:1]:
+            # The scan at the configured rate, else the newest at any
+            # rate: a run made before the rate changed scanned at the
+            # old one, and shot length barely depends on the cadence.
+            found = ( bu_cache.shot_cut_caches_for( file_hash, betaconfig.video_censor_fps, threshold )
+                      or bu_cache.shot_cut_caches_for( file_hash, None, threshold ) )
+            for path, _parsed in found[:1]:
                 try:
                     cuts = sorted( float( c ) for c in bu_hash.read_json( path ) )
                 except Exception:                         # noqa: BLE001
                     continue
+                # The cuts tracking stops at, with bursts merged: a fade
+                # scans as a run of cuts a frame or two apart, and counted
+                # raw those slivers set one profile's median shot at 0.2s,
+                # which capped away every track_max_gap candidate.
+                cuts = bu_track.tracking_cut_times( cuts )
                 shots.extend( b - a for a, b in zip( cuts, cuts[1:] ) if b > a )
 
     if len( shots ) < 2:
@@ -809,8 +850,7 @@ def measure_stage( stage, context, options, logger ):
         A list of rows, baseline first, each with value, label, metrics
         and coverage_loss.
     """
-    saved = copy.deepcopy(
-        betaconfig.detector_backend.get( stage.backend_name, {} ).get( 'item_overrides', {} ) )
+    saved = stage.snapshot()
     rows = []
     try:
         baseline_value = stage.baseline_value()
@@ -841,6 +881,10 @@ def measure_stage( stage, context, options, logger ):
             json.dumps(
                 betaconfig.detector_backend.get( stage.backend_name, {} ).get(
                     'item_overrides', {} ),
+                sort_keys=True, default=str ),
+            # A profile stage's accepted value moves the baseline too.
+            json.dumps(
+                betaconfig.detector_backend.get( stage.backend_name, {} ).get( 'profiles', {} ),
                 sort_keys=True, default=str ),
         )
         baseline_cache = context.setdefault( '_baseline_cache', {} )
@@ -1010,9 +1054,13 @@ def main():
     # key is written exactly once.
     contexts_by_backend = {}
     for config in configurations:
-        videos, _preview_used = bu_cache.discover_full_run_videos(
-            config.picture_sizes, betaconfig.video_censor_fps, global_min_prob,
-            config.backend_name, include_preview=args.include_preview )
+        # The newest real run of every video, at whatever rate it was
+        # sampled: quick_cut files sample at their profile's rate.
+        videos, _preview_used, rates = bu_cache.videos_for_configuration(
+            config, None, global_min_prob, include_preview=args.include_preview )
+        if rates:
+            logger.info( "%s: %d video(s), sampled at %s fps"%(
+                config.label, len( videos ), ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         if not videos:
             logger.warning( "no caches for %s - skipping"%(config.label) )
             continue
@@ -1030,6 +1078,121 @@ def main():
                       # below. A fresh dict here would empty the cache on
                       # every stage and defeat the point.
                       '_baseline_cache': {} } ) )
+
+    def measure_decide_write( entries, stages, probe, label ):
+        """Measure one stage over entries, decide it, and write it if accepted."""
+        rows_by_configuration = {}
+        for ( config, _context ), ( _same_config, stage ) in zip( entries, stages ):
+            context = dict( _context )
+            rows = measure_stage( stage, context, args, logger )
+            stage.score_rows( rows, args )
+            rows_by_configuration[config.label] = rows
+            print_stage_table( config.label, rows, logger )
+
+        decision = probe.decide( rows_by_configuration, args, logger )
+        decision.key, decision.label = probe.key, label
+        decision.review = probe.review( decision, rows_by_configuration )
+        logger.info( "  => %s"%( decision.reasoning ) )
+        if decision.review:
+            logger.info( "  worth judging by eye: %s"%( decision.review['why'], ) )
+        decisions.append( decision )
+
+        if decision.accepted and args.apply:
+            variant_of = { config.label: config.variant for config, _c in entries }
+            if decision.is_split:
+                question = "  write %s per variant (%s) to betaconfig.py?"%(
+                    probe.title,
+                    ", ".join( "%s=%s"%( name, value )
+                               for name, value in sorted( decision.per_configuration.items() ) ) )
+            else:
+                question = "  write %s = %s to betaconfig.py (governs %s)?"%(
+                    probe.title, decision.chosen,
+                    ", ".join( config.label for config, _c in entries ) )
+            if confirm( logger, question, args.yes ):
+                try:
+                    if decision.is_split and probe.profile_name:
+                        raise bu_tuning.ConfigWriteError(
+                            "a structure profile holds one value for every model variant, so "
+                            "a per-variant decision cannot be written into %s"%( probe.profile_name, ) )
+                    if decision.is_split:
+                        for name, value in sorted( decision.per_configuration.items() ):
+                            variant = variant_of.get( name )
+                            if not variant:
+                                raise bu_tuning.ConfigWriteError(
+                                    "%s has no variant name, so a per-variant value "
+                                    "cannot be written for it"%(name) )
+                            writer.set_variant_item_override(
+                                probe.backend_name, variant, label, probe.key, value )
+                    else:
+                        probe.write( writer, decision.chosen )
+                except bu_tuning.ConfigWriteError as err:
+                    logger.error( "  could not write it: %s"%(err) )
+                    decision.accepted = False
+                    decision.reasoning += " (NOT written: %s)"%(err)
+            else:
+                decision.accepted = False
+                decision.reasoning += " (declined at the prompt)"
+
+    profile_contexts = {}
+
+    def measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot ):
+        """
+        One stage per structure profile that sets this key for this label.
+
+        A profile's item_overrides win over the backend's for every file
+        that runs it, so the backend stage cannot move those files at
+        all: quick_cut's own track_max_gap 0.2 was never measured. Each
+        profile is tuned over only its own files and written into its
+        own block.
+        """
+        for profile_name in sorted( masking ):
+            files = sorted( file_hash for file_hash, profile in profiles.items()
+                            if profile == profile_name )
+            if not files:
+                continue
+            profile_entries = []
+            for config, context in entries:
+                key = ( config.label, profile_name )
+                if key not in profile_contexts:
+                    videos = { file_hash: paths for file_hash, paths in context['videos'].items()
+                               if file_hash in files }
+                    profile_contexts[key] = dict(
+                        context, videos=videos,
+                        configuration_label='%s [%s]'%( config.label, profile_name ),
+                        _profiles={ file_hash: profile_name for file_hash in videos },
+                        _baseline_cache={} )
+                if profile_contexts[key]['videos']:
+                    profile_entries.append( ( config, profile_contexts[key] ) )
+            if not profile_entries:
+                continue
+            stages = []
+            for config, _context in profile_entries:
+                stage = STAGE_TYPES[stage_name]( backend_name, label, config.label )
+                stage.profile_name = profile_name
+                stages.append( ( config, stage ) )
+            profile_shot = _median_shot_seconds_for( profile_entries, logger )
+            for _config, stage in stages:
+                stage.median_shot_seconds = profile_shot if profile_shot else median_shot
+            probe = stages[0][1]
+            if probe.baseline_value() is None and stage_name == 'track_max_gap':
+                continue
+            if not probe.candidates():
+                logger.info( "" )
+                logger.info( "-- %s: nothing to try (%d file(s) run this profile%s)"%(
+                    probe.title, len( files ),
+                    "; every candidate is past their median shot, %.2fs"%( profile_shot, )
+                    if profile_shot and stage_name == 'track_max_gap' else '' ) )
+                continue
+            logger.info( "" )
+            logger.info( "-- %s  (%s; %d file(s) run this profile)"%(
+                probe.title, probe.summary, len( files ) ) )
+            skip = probe.skip_reason( { file_hash: profile_name for file_hash in files }, args )
+            if skip:
+                logger.info( "  => %s"%( skip, ) )
+                decisions.append( bu_tuning.Decision(
+                    probe.title, probe.baseline_value(), False, skip, [] ) )
+                continue
+            measure_decide_write( profile_entries, stages, probe, label )
 
     measured_anything = bool( contexts_by_backend )
 
@@ -1057,16 +1220,6 @@ def main():
                 for _config, stage in stages:
                     stage.median_shot_seconds = median_shot
                 probe = stages[0][1]
-                if probe.baseline_value() is None and stage_name == 'track_max_gap':
-                    logger.debug( "%s/%s: no explicit baseline, skipping"%(stage_name, label) )
-                    continue
-                if not probe.candidates():
-                    logger.debug( "%s/%s: no candidates to try"%(stage_name, label) )
-                    continue
-
-                logger.info( "" )
-                logger.info( "-- %s / %s / %s  (%s)"%(
-                    stage_name, backend_name, label, probe.summary ) )
 
                 # A structure profile that sets this key for this label
                 # overrides the backend value tuned here, for every file
@@ -1079,6 +1232,27 @@ def main():
                 for _config, _context in entries:
                     profiles.update( _profiles_for( _context, backend_name ) )
                 masking = bu_tuning.profile_masking( profiles, label, probe.key, backend_name )
+
+                # No backend value, or nothing to try at that level, still
+                # leaves the profiles' own values: exposed_vulva sets
+                # track_max_gap only in its profiles, and those were never
+                # measured while this skipped the whole key.
+                if probe.baseline_value() is None and stage_name == 'track_max_gap':
+                    logger.debug( "%s/%s: no backend baseline; tuning the profiles that set it"%(
+                        stage_name, label ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
+                    continue
+                if not probe.candidates():
+                    logger.debug( "%s/%s: no candidates to try at the backend level"%( stage_name, label ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
+                    continue
+
+                logger.info( "" )
+                logger.info( "-- %s / %s / %s  (%s)"%(
+                    stage_name, backend_name, label, probe.summary ) )
+
                 masked_files = [ file_hash for file_hash, profile in profiles.items()
                                  if profile in masking ]
                 masking_text = ", ".join( "%s %s"%( name, value )
@@ -1093,65 +1267,22 @@ def main():
                     reasoning = (
                         "skipped: every file here runs a structure profile that sets %s for %s "
                         "itself (%s), so the backend value %s is never read and no candidate "
-                        "could change anything. Tune it in the profiles instead"%(
+                        "could change anything; each profile's own value is tuned below"%(
                             probe.key, label, masking_text, probe.baseline_value() ) )
                     logger.info( "  => %s"%( reasoning ) )
                     decisions.append( bu_tuning.Decision(
                         probe.title, probe.baseline_value(), False, reasoning, [] ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
                     continue
                 if masked_files:
                     logger.info( "  note: %d of %d file(s) run a profile that sets %s itself (%s); "
                                  "they ignore the values tried here, so they cannot move the "
-                                 "numbers below"%(
+                                 "numbers below (their own values are tuned after this)"%(
                                      len( masked_files ), len( profiles ), probe.key, masking_text ) )
 
-                rows_by_configuration = {}
-                for ( config, _context ), ( _same_config, stage ) in zip( entries, stages ):
-                    context = dict( _context )
-                    rows = measure_stage( stage, context, args, logger )
-                    stage.score_rows( rows, args )
-                    rows_by_configuration[config.label] = rows
-                    print_stage_table( config.label, rows, logger )
-
-                decision = probe.decide( rows_by_configuration, args, logger )
-                decision.key, decision.label = probe.key, label
-                decision.review = probe.review( decision, rows_by_configuration )
-                logger.info( "  => %s"%( decision.reasoning ) )
-                if decision.review:
-                    logger.info( "  worth judging by eye: %s"%( decision.review['why'], ) )
-                decisions.append( decision )
-
-                if decision.accepted and args.apply:
-                    variant_of = { config.label: config.variant for config, _c in entries }
-                    if decision.is_split:
-                        question = "  write %s per variant (%s) to betaconfig.py?"%(
-                            probe.key,
-                            ", ".join( "%s=%s"%( name, value )
-                                       for name, value in sorted( decision.per_configuration.items() ) ) )
-                    else:
-                        question = "  write %s = %s to betaconfig.py (governs %s)?"%(
-                            probe.key, decision.chosen,
-                            ", ".join( config.label for config, _c in entries ) )
-                    if confirm( logger, question, args.yes ):
-                        try:
-                            if decision.is_split:
-                                for name, value in sorted( decision.per_configuration.items() ):
-                                    variant = variant_of.get( name )
-                                    if not variant:
-                                        raise bu_tuning.ConfigWriteError(
-                                            "%s has no variant name, so a per-variant value "
-                                            "cannot be written for it"%(name) )
-                                    writer.set_variant_item_override(
-                                        backend_name, variant, label, probe.key, value )
-                            else:
-                                probe.write( writer, decision.chosen )
-                        except bu_tuning.ConfigWriteError as err:
-                            logger.error( "  could not write it: %s"%(err) )
-                            decision.accepted = False
-                            decision.reasoning += " (NOT written: %s)"%(err)
-                    else:
-                        decision.accepted = False
-                        decision.reasoning += " (declined at the prompt)"
+                measure_decide_write( entries, stages, probe, label )
+                measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot )
 
     if not measured_anything:
         logger.error( "nothing to tune: no detection caches found for any configuration. Run "

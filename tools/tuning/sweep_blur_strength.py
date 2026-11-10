@@ -429,15 +429,15 @@ def main():
             include_preview=True, logger=logger )
         measured_any = False
         for config in configurations:
+            # A preview configuration groups every slice; this reads one
+            # slice per video, at the configured rate as before.
+            videos, _rates = bu_cache.videos_across_sample_rates(
+                config, getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ),
+                rates=[ getattr( betaconfig, 'video_censor_fps', 9 ) ] )
             raw_boxes = []
-            for file_hash in config.file_hashes:
-                for size in config.picture_sizes:
-                    path = bu_cache.box_hash_path_for(
-                        file_hash, size, getattr( betaconfig, 'video_censor_fps', 9 ),
-                        getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ),
-                        config.backend_name, config.preview_suffix )
-                    if os.path.exists( path ):
-                        raw_boxes.extend( bu_hash.read_json( path ) )
+            for paths in videos.values():
+                for path in paths:
+                    raw_boxes.extend( bu_hash.read_json( path ) )
             if not raw_boxes:
                 continue
             boxes, _stats = bu_track.prepare_boxes_for_render(

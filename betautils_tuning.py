@@ -346,10 +346,18 @@ def replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
         tracking_cuts = shot_cuts_by_hash[file_hash]
         signals = bu_detector.structure_signals( tracking_cuts, duration_seconds )
     else:
-        cached = bu_video.cached_shot_cuts(
-            file_hash, betaconfig.video_censor_fps,
-            getattr( betaconfig, 'shot_cut_threshold', 0.5 ), duration_seconds,
-            prefer_preview_suffix=detection_name.get( 'preview_suffix', '' ) )
+        # The cuts the run being replayed scanned: at the configured
+        # rate when it still matches, else at whatever rate that run
+        # used. Betatv scans at the global rate, so after the global rate
+        # changes, every earlier run's cuts sit under the old one.
+        cached = None
+        for scan_fps in ( betaconfig.video_censor_fps, None ):
+            cached = bu_video.cached_shot_cuts(
+                file_hash, scan_fps,
+                getattr( betaconfig, 'shot_cut_threshold', 0.5 ), duration_seconds,
+                prefer_preview_suffix=detection_name.get( 'preview_suffix', '' ) )
+            if cached is not None:
+                break
         if cached is None:
             tracking_cuts, signals = None, bu_detector.structure_signals( None, None )
         else:
@@ -368,6 +376,57 @@ def replay_tracking_context( file_hash, video_path, cache_paths, backend_name,
 
 
 _QUIET_LOGGER = bu_log.silent_logger( 'betasuite.replay.quiet' )
+
+
+def videos_by_profile( videos, hash_to_path, backend_name, shot_cuts_by_hash=None ):
+    """
+    {profile_name: {file_hash: cache_paths}} as a real run would choose.
+
+    Videos whose source cannot be found are left out: their profile
+    cannot be resolved, and every replay skips them anyway. Profiles
+    sample at their own rates and set their own tracking values, so a
+    pooled number can hide a profile that behaves differently; this is
+    how the analysers report each one.
+    """
+    grouped = {}
+    for file_hash, cache_paths in sorted( videos.items() ):
+        video_path = hash_to_path.get( file_hash )
+        if not video_path:
+            continue
+        profile = replay_tracking_context(
+            file_hash, video_path, cache_paths, backend_name,
+            shot_cuts_by_hash=shot_cuts_by_hash )['profile_name']
+        grouped.setdefault( profile, {} )[file_hash] = cache_paths
+    return grouped
+
+
+def merge_counts( results ):
+    """
+    Several analyser result dicts added together, as if run on all their videos.
+
+    Numbers add, lists concatenate and dicts merge key by key, at any
+    depth. The analysers' results are made only of those, so running
+    them per profile and merging gives the pooled numbers without a
+    second replay.
+    """
+    def merge( first, second ):
+        if isinstance( first, dict ) and isinstance( second, dict ):
+            merged = dict( first )
+            for key, value in second.items():
+                merged[key] = merge( merged[key], value ) if key in merged else value
+            return merged
+        if isinstance( first, list ) and isinstance( second, list ):
+            return first + second
+        if isinstance( first, bool ) or isinstance( second, bool ):
+            return first or second
+        if isinstance( first, ( int, float ) ) and isinstance( second, ( int, float ) ):
+            return first + second
+        raise TypeError( "cannot merge %r and %r"%( type( first ).__name__, type( second ).__name__ ) )
+
+    merged = {}
+    for result in results:
+        merged = merge( merged, result )
+    return merged
 
 
 def replay_tracking_inputs( file_hash, video_path, cache_paths, raw_boxes, vid_w, vid_h,
@@ -1012,14 +1071,16 @@ class ConfigWriter:
             raise ConfigWriteError( "no detector_backend block for %r"%(backend_name) )
         backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
 
-        variants_at = source.find( "'variants'", backend_at )
-        if variants_at < 0 or variants_at > backend_end:
+        # Direct children only: profiles has a 'variants' of its own, and
+        # it comes first in the text.
+        variants_at, variants_end = self._child_block( source, backend_at, backend_end, 'variants' )
+        if variants_at is None:
             updated = self._insert_variants_block(
                 source, backend_at, backend_end, variant_name, label, key, value )
         else:
-            variants_end = self._matching_brace( source, source.index( '{', variants_at ) )
-            variant_at = source.find( "'%s': {"%(variant_name), variants_at )
-            if variant_at < 0 or variant_at > variants_end:
+            variant_at, _variant_end = self._child_block(
+                source, variants_at, variants_end, variant_name )
+            if variant_at is None:
                 updated = self._insert_into_variants(
                     source, variants_end, variant_name, label, key, value )
             else:
@@ -1032,6 +1093,142 @@ class ConfigWriter:
             value,
             "detector_backend[%r]['variants'][%r]['item_overrides'][%r][%r]"%(
                 backend_name, variant_name, label, key ) )
+
+    def set_profile_item_override( self, backend_name, profile_name, label, key, value ):
+        """
+        Set one structure profile's value of one label's key.
+
+        detector_backend[<backend>]['profiles']['variants'][<profile>]['item_overrides'][<label>][<key>]
+
+        A profile's overrides win over the backend's for every file that
+        runs it, so this is where a value tuned on that profile's files
+        has to go. The profile block itself must already exist (profiles
+        are hand-written: a tuner inventing one would be selecting
+        footage nobody asked for); its item_overrides and the label's
+        block are created when missing. Profile blocks are written in a
+        compact style, '{ 'a': 1,' with later keys on continuation lines
+        and the closing brace after the last value, so keys are matched
+        anywhere in the block, not only at a line start.
+        """
+        source = self.read()
+        backend_at = source.find( "'%s': {"%( backend_name, ) )
+        if backend_at < 0:
+            raise ConfigWriteError( "no detector_backend block for %r"%( backend_name, ) )
+        backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
+        profiles_at, profiles_end = self._child_block( source, backend_at, backend_end, 'profiles' )
+        if profiles_at is None:
+            raise ConfigWriteError( "detector_backend[%r] has no 'profiles' block"%( backend_name, ) )
+        variants_at, variants_end = self._child_block( source, profiles_at, profiles_end, 'variants' )
+        if variants_at is None:
+            raise ConfigWriteError( "detector_backend[%r]['profiles'] has no 'variants'"%( backend_name, ) )
+        profile_at, profile_end = self._child_block( source, variants_at, variants_end, profile_name )
+        if profile_at is None:
+            raise ConfigWriteError( "no structure profile %r for %r; profiles are written by hand"%(
+                profile_name, backend_name ) )
+        overrides_at, overrides_end = self._child_block( source, profile_at, profile_end, 'item_overrides' )
+        formatted = self._format( value )
+        if overrides_at is None:
+            updated = self._insert_before_close(
+                source, profile_end, "'item_overrides': { '%s': { '%s': %s } },  # set by auto_tune"%(
+                    label, key, formatted ) )
+        else:
+            label_at, label_end = self._child_block( source, overrides_at, overrides_end, label )
+            if label_at is None:
+                updated = self._insert_before_close(
+                    source, overrides_end, "'%s': { '%s': %s },  # set by auto_tune"%(
+                        label, key, formatted ) )
+            else:
+                open_at = source.index( '{', label_at )
+                pattern = re.compile( r"('%s'\s*:\s*)([^,\n}]+?)(\s*)(?=[,}\n])"%( re.escape( key ), ) )
+                # label_end + 1: the lookahead must see the closing brace.
+                matches = list( pattern.finditer( source, open_at, label_end + 1 ) )
+                if len( matches ) > 1:
+                    raise ConfigWriteError(
+                        "found %d entries for %r in profile %r's %r block"%(
+                            len( matches ), key, profile_name, label ) )
+                if matches:
+                    match = matches[0]
+                    updated = ( source[:match.start( 2 )] + formatted + source[match.end( 2 ):] )
+                else:
+                    updated = self._append_to_inline_block( source, open_at, label_end, key, formatted )
+
+        self._write_and_verify(
+            updated,
+            lambda: bu_detector.get_profile_item_overrides( profile_name, label, backend_name ).get( key ),
+            value,
+            "detector_backend[%r]['profiles']['variants'][%r]['item_overrides'][%r][%r]"%(
+                backend_name, profile_name, label, key ) )
+
+    def _child_block( self, source, parent_at, parent_end, name ):
+        """
+        (start, closing brace) of the dict value under key `name`, found
+        directly inside the block opened at parent_at, or (None, None).
+
+        Only DIRECT children count: a 'variants' nested deeper (a model
+        variants block, say) must not be mistaken for this one.
+        """
+        open_at = source.index( '{', parent_at )
+        depth = 0
+        position = open_at
+        pattern = re.compile( r"'%s'\s*:\s*\{"%( re.escape( name ), ) )
+        while position < parent_end:
+            character = source[position]
+            if character == '#':
+                position = source.find( '\n', position )
+                if position < 0:
+                    break
+                continue
+            if character in '\'"':
+                if depth == 1:
+                    match = pattern.match( source, position )
+                    if match:
+                        brace = match.end() - 1
+                        return position, self._matching_brace( source, brace )
+                closing = source.find( character, position + 1 )
+                position = closing + 1 if closing > 0 else parent_end
+                continue
+            if character == '{':
+                depth += 1
+            elif character == '}':
+                depth -= 1
+            position += 1
+        return None, None
+
+    def _insert_before_close( self, source, close_at, text ):
+        """Insert one entry on its own line just before the line holding close_at."""
+        line_start = source.rfind( '\n', 0, close_at ) + 1
+        before_brace = source[line_start:close_at]
+        if before_brace.strip():
+            # The brace shares a line with the last entry: give the entry
+            # and the brace lines of their own.
+            indent = self._indent_of_line( source, close_at ) + '    '
+            prefix = source[:close_at].rstrip()
+            comma = '' if prefix.endswith( ( ',', '{' ) ) else ','
+            return ( prefix + comma + '\n' + indent + text + '\n'
+                     + self._indent_of_line( source, close_at ) + source[close_at:] )
+        indent = before_brace + '    '
+        return source[:line_start] + indent + text + '\n' + source[line_start:]
+
+    def _append_to_inline_block( self, source, open_at, close_at, key, formatted ):
+        """
+        Add key as the last entry of a compact block: '{ 'a': 1,\n  'b': 2 }'.
+
+        The new key goes on its own line, aligned with the block's first
+        key, with a comma added after what was the last entry. The comment
+        naming its source would swallow the closing brace if it shared
+        that line, so the brace moves to the next line.
+        """
+        first_key = re.compile( r"\{\s*'" ).match( source, open_at )
+        if first_key:
+            line_start = source.rfind( '\n', 0, open_at ) + 1
+            column = first_key.end() - 1 - line_start
+        else:
+            column = len( self._indent_of_line( source, open_at ) ) + 4
+        prefix = source[:close_at].rstrip()
+        comma = '' if prefix.endswith( ( ',', '{' ) ) else ','
+        closing_indent = ' ' * max( column - 2, 0 )
+        return ( prefix + comma + '\n' + ' ' * column + "'%s': %s  # set by auto_tune\n"%( key, formatted )
+                 + closing_indent + source[close_at:] )
 
     @staticmethod
     def _matching_brace( source, open_at ):
@@ -1191,24 +1388,20 @@ class ConfigWriter:
         backend_at = source.find( "'%s': {"%(backend_name) )
         if backend_at < 0:
             raise ConfigWriteError( "no detector_backend block for %r in betaconfig.py"%(backend_name) )
-        overrides_at = source.find( "'item_overrides'", backend_at )
-        if overrides_at < 0:
+        backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
+        # The backend's own item_overrides, a direct child: the first one
+        # in the text can be a structure profile's, which comes earlier,
+        # and a write there would tune quick_cut instead of the backend.
+        overrides_at, overrides_end = self._child_block(
+            source, backend_at, backend_end, 'item_overrides' )
+        if overrides_at is None:
             raise ConfigWriteError(
                 "detector_backend[%r] has no 'item_overrides' block"%(backend_name) )
-        label_at = source.find( "'%s': {"%(label), overrides_at )
-        if label_at < 0:
+        label_at, label_end = self._child_block( source, overrides_at, overrides_end, label )
+        if label_at is None:
             raise ConfigWriteError(
                 "detector_backend[%r]['item_overrides'] has no %r block"%(backend_name, label) )
-        depth = 0
-        index = source.index( '{', label_at )
-        for position in range( index, len( source ) ):
-            if source[position] == '{':
-                depth += 1
-            elif source[position] == '}':
-                depth -= 1
-                if depth == 0:
-                    return ( label_at, position )
-        raise ConfigWriteError( "unbalanced braces after %r in betaconfig.py"%(label) )
+        return ( label_at, label_end )
 
     @staticmethod
     def _format( value ):

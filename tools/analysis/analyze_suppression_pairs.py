@@ -43,8 +43,9 @@ VID_HASH_DIR = bu_cache.VID_HASH_DIR
 PIC_HASH_DIR = bu_cache.PIC_HASH_DIR
 
 # The pairs worth checking overlap for, regardless of which backend(s)
-# currently have a class_suppression rule for them - deliberately NOT
-# read from betaconfig.py, since class_suppression is per-backend now
+# currently have a class_suppression rule for them. pairs_to_check() adds
+# every configured rule this list does not name. Not read from betaconfig.py
+# alone, since class_suppression is per-backend now
 # (see betautils_detector.get_class_suppression) and this list is meant
 # to surface candidates for a backend that has no rule yet just as much
 # as confirm ones that do. Edit this list by hand if you want to check a
@@ -83,6 +84,25 @@ PAIRS_OF_INTEREST = [
 HISTOGRAM_PAIRS = [
     ('exposed_vulva', 'exposed_penis'),
 ]
+
+
+def pairs_to_check():
+    """
+    PAIRS_OF_INTEREST, then every pair a backend's class_suppression
+    configures that the list does not already name.
+
+    The list alone missed rules that exist: the nudenet vulva rules
+    against exposed_belly, exposed_breast and covered_breast were never
+    reported, so their overlaps could not be checked here at all.
+    """
+    pairs = list( PAIRS_OF_INTEREST )
+    for backend_name in bu_detector.registered_backend_names():
+        for label, rules in sorted( ( bu_detector.get_class_suppression( backend_name ) or {} ).items() ):
+            for rule in ( [ rules ] if isinstance( rules, dict ) else rules or [] ):
+                pair = ( label, rule.get( 'suppressed_by' ) )
+                if pair[1] and pair not in pairs:
+                    pairs.append( pair )
+    return pairs
 
 def label_of(raw, classes):
     # raw['class_id'] is already BetaSuite's canonical string label
@@ -148,7 +168,7 @@ class ConfigurationReport:
         self.label_names = label_names
         self.sizes_by_label = {}
         self.pairs = {}
-        for label_a, label_b in PAIRS_OF_INTEREST:
+        for label_a, label_b in pairs_to_check():
             if label_a in label_names and label_b in label_names:
                 self.pairs[ (label_a, label_b) ] = {
                     'ious': array( 'd' ),
@@ -251,7 +271,7 @@ def _print_report( report ):
 
     # ---- for each pair of interest, find actually-overlapping instances ----
     print( "=== Overlap stats for your class_suppression pairs ===" )
-    for label_a, label_b in PAIRS_OF_INTEREST:
+    for label_a, label_b in pairs_to_check():
         if label_a not in label_names or label_b not in label_names:
             print( "%s vs %s: unknown class name, skipping"%(label_a, label_b) )
             continue

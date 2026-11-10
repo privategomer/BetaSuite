@@ -205,8 +205,12 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         stage.score_rows( rows, opts )
         return stage.decide( { 'only @640': rows }, opts, None )
 
-    def test_every_value_is_tried_with_no_cap( self ):
-        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1, 3, 4 ] )
+    def test_no_value_above_the_ceiling_is_tried( self ):
+        # min_track_hits 2 was set by hand after watching the output, and
+        # the tuner never proposes more: 3 and 4 are not tried at all.
+        self.assertEqual( [ v for v, _l in self.stage_at( 2 ).candidates() ], [ 1 ] )
+        self.assertEqual( [ v for v, _l in self.stage_at( 1 ).candidates() ], [ 2 ] )
+        self.assertEqual( [ v for v, _l in self.stage_at( 3 ).candidates() ], [ 1, 2 ] )
 
     def test_noise_only_drops_recommend_going_stricter( self ):
         decision = self.decide( self.stage_at( 2 ),
@@ -522,8 +526,8 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
         with mock.patch( 'sys.argv', argv ), \
              mock.patch.object( auto_tune.bu_cache, 'configurations_to_analyse',
                                 return_value=[ config ] ), \
-             mock.patch.object( auto_tune.bu_cache, 'discover_full_run_videos',
-                                return_value=( { 'h1': [ 'x.gz' ], 'h2': [ 'y.gz' ] }, {} ) ), \
+             mock.patch.object( auto_tune.bu_cache, 'videos_for_configuration',
+                                return_value=( { 'h1': [ 'x.gz' ], 'h2': [ 'y.gz' ] }, {}, [ 9.0 ] ) ), \
              mock.patch.object( auto_tune.bu_cache, 'build_hash_to_video_path',
                                 return_value={ 'h1': '/a.mp4', 'h2': '/b.mp4' } ), \
              mock.patch.object( auto_tune.bu_tuning, 'replay_tracking_context',
@@ -543,17 +547,23 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
         with open( _os.path.join( out_dir, 'decisions.json' ) ) as handle:
             return measured, _json.load( handle )
 
-    def test_a_key_every_profile_sets_is_not_replayed( self ):
+    def test_a_key_every_profile_sets_is_tuned_in_the_profiles( self ):
+        # The backend value is never read, so it is not replayed; each
+        # profile's own value is, over that profile's files only.
         measured, decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 },
                                                'compilation': { 'track_max_gap': 1.5 } } )
-        self.assertEqual( measured, [] )
-        self.assertEqual( len( decisions ), 1 )
+        self.assertEqual( len( measured ), 2, "one replay set per profile, none for the backend" )
+        self.assertEqual( len( decisions ), 3 )
         self.assertFalse( decisions[0]['accepted'] )
         self.assertIn( 'compilation 1.5, scene 3.0', decisions[0]['reasoning'] )
+        self.assertEqual( sorted( d['stage'] for d in decisions[1:] ),
+                          [ 'track_max_gap / nudenet_v3 / exposed_breast [compilation]',
+                            'track_max_gap / nudenet_v3 / exposed_breast [scene]' ] )
 
     def test_a_key_only_some_profiles_set_is_still_measured( self ):
+        # The backend stage for the compilation file, then scene's own.
         measured, _decisions = self.run_main( { 'scene': { 'track_max_gap': 3.0 } } )
-        self.assertEqual( len( measured ), 1 )
+        self.assertEqual( len( measured ), 2 )
 
     def test_min_track_hits_hidden_by_confirm_score_is_not_replayed( self ):
         hiding = { 'scene': { 'confirm_score': 0.5 }, 'compilation': { 'confirm_score': 0.5 } }

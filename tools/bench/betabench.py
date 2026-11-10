@@ -260,9 +260,11 @@ def load_cached_detections( backend_name, logger, preview_suffix=None, picture_s
     fps = betaconfig.video_censor_fps
     min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     if configuration is not None:
-        return _read_cached_detections(
-            bu_cache.cache_paths_for_configuration( configuration, fps, min_prob ), logger,
-            backend_name )
+        # The newest run of each video at every rate the configuration
+        # covers, and one slice per video for a preview configuration.
+        videos, _rates = bu_cache.videos_across_sample_rates(
+            configuration, min_prob, rates=getattr( configuration, 'sample_rates', None ) or None )
+        return _read_cached_detections( videos, logger, backend_name )
 
     # discover_full_run_videos returns a (result, preview_used_for)
     # pair. Unpacking it is not optional: a bare tuple is always truthy
@@ -1438,8 +1440,11 @@ def _per_configuration( kind, body ):
             args.sizes,
             backend_names=[ args.backend ] if args.backend else None,
             variant_names=getattr( args, 'variants', None ),
-            fps=args.sample_fps or betaconfig.video_censor_fps,
-            include_preview=True,
+            # Every rate on disk unless --sample-fps names one, and
+            # preview slices only for a setup with no real run: one
+            # preview group, never a section per 20-second slice.
+            fps=args.sample_fps,
+            include_preview='fallback',
             logger=logger )
         extra = {}
         loaded_any = False
@@ -3929,7 +3934,9 @@ def build_parser():
     parser.add_argument( '--slice-seconds', type=float, default=20.0,
         help="structure-scan only: length of each geometry slice (default: 20)" )
     parser.add_argument( '--sample-fps', type=float, default=None,
-        help="sampling rate to measure at (default: betaconfig.video_censor_fps)" )
+        help="sampling rate to measure at (default: betaconfig.video_censor_fps). For the "
+             "subcommands that read detection caches, only caches sampled at this rate "
+             "(default: every rate on disk, newest run per video)" )
 
     parser.add_argument( '--box-sizes', type=int, nargs='+', default=None,
         help="box sizes to measure, for 'render' (default: 120 240 400)" )
