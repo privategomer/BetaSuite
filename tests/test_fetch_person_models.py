@@ -11,6 +11,11 @@ What each test prevents:
   - a failed export reported as success, and --no-export still exporting
   - an RF-DETR size the adapter offers with no export, no pinned weights
     or no verify_env check, or exported with YOLO's script
+  - a person backend nobody chose being exported anyway, or its package
+    installed into the export environment; the default leaving out
+    yolo11_seg, or a half-exported backend left unfinished
+  - a typo in --person-backends or at the prompt silently exporting
+    nothing, and the prompt blocking setup when there is no terminal
 """
 
 import importlib.util
@@ -64,7 +69,7 @@ class TestExport( unittest.TestCase ):
     def test_the_export_env_gets_cpu_torch_first_then_ultralytics_and_never_the_venv( self ):
         commands = []
         with mock.patch.object( self.fm, 'run_logged', side_effect=lambda d, c, log: commands.append( c ) ):
-            python = self.fm.build_export_env( self.tmp, '/usr/bin/uv', self.log )
+            python = self.fm.build_export_env( self.tmp, '/usr/bin/uv', self.log, { 'ultralytics', 'rfdetr' } )
         self.assertTrue( python.startswith( os.path.join( self.tmp, 'export-venv' ) ) )
         self.assertEqual( commands[0][:2], [ '/usr/bin/uv', 'venv' ] )
         torch, ultralytics = commands[1], commands[2]
@@ -83,7 +88,7 @@ class TestExport( unittest.TestCase ):
     def test_without_uv_it_falls_back_to_venv_and_pip( self ):
         commands = []
         with mock.patch.object( self.fm, 'run_logged', side_effect=lambda d, c, log: commands.append( c ) ):
-            python = self.fm.build_export_env( self.tmp, None, self.log )
+            python = self.fm.build_export_env( self.tmp, None, self.log, { 'ultralytics' } )
         self.assertEqual( commands[0][1:3], [ '-m', 'venv' ] )
         self.assertEqual( commands[1][:4], [ python, '-m', 'pip', 'install' ] )
 
@@ -213,7 +218,7 @@ class TestExport( unittest.TestCase ):
             self.fm.main()
         export.assert_not_called()
         with mock.patch.object( self.fm, 'export_person_models', return_value=0 ) as export, \
-             mock.patch.object( self.fm.sys, 'argv', [ 'fetch_models.py', '--uv', '/x/uv',
+             mock.patch.object( self.fm.sys, 'argv', [ 'fetch_models.py', '--uv', '/x/uv', '--person-backends', 'all',
                                                        '--log-file', os.path.join( self.tmp, 'g.log' ) ] ), \
              mock.patch.object( self.fm, 'relaunch_in_venv' ), \
              mock.patch.object( self.fm.os.path, 'isfile', return_value=True ):
@@ -221,6 +226,163 @@ class TestExport( unittest.TestCase ):
         self.assertEqual( len( export.call_args[0][0] ),
                           sum( 1 for spec in self.fm.MODELS.values() if 'export' in spec ) )
         self.assertEqual( export.call_args[0][2], '/x/uv' )
+
+
+class TestPersonBackendChoice( unittest.TestCase ):
+
+    def setUp( self ):
+        self.fm = _load()
+        self.tmp = tempfile.mkdtemp( prefix='betasuite-fetch-' )
+        self.addCleanup( shutil.rmtree, self.tmp, True )
+        self.model_dir = os.path.join( self.tmp, 'model' )
+        os.makedirs( self.model_dir )
+        self.fm.MODEL_DIR = self.model_dir
+        self.log = mock.Mock()
+        # 320n present, so main() reaches the person models without the network.
+        _fake_onnx( os.path.join( self.model_dir, self.fm.MODELS['320n']['file'] ) )
+
+    def files_of( self, backend ):
+        return [ spec['file'] for spec in self.fm.MODELS.values() if spec.get( 'person_backend' ) == backend ]
+
+    def run_main( self, *argv, interactive=False, answers=() ):
+        """main() with export_person_models mocked; the files it was asked to export, or None."""
+        replies = iter( answers )
+        with mock.patch.object( self.fm, 'export_person_models', return_value=0 ) as export, \
+             mock.patch.object( self.fm.sys, 'argv', [ 'fetch_models.py', '--log-file',
+                                                       os.path.join( self.tmp, 'f.log' ) ] + list( argv ) ), \
+             mock.patch.object( self.fm, 'relaunch_in_venv' ), \
+             mock.patch.object( self.fm.sys.stdin, 'isatty', return_value=interactive ), \
+             mock.patch( 'builtins.input', side_effect=lambda prompt: next( replies ) ):
+            self.assertEqual( self.fm.main(), 0 )
+        if not export.called:
+            return None
+        return sorted( spec['file'] for spec, _dest in export.call_args[0][0] )
+
+    def test_every_person_model_names_the_backend_whose_adapter_loads_it( self ):
+        import betautils_person
+        self.assertEqual( set( self.fm.PERSON_BACKENDS ), set( betautils_person.registered_backend_names() ) )
+        self.assertEqual( self.fm.DEFAULT_PERSON_BACKENDS, [ betautils_person.DEFAULT_BACKEND ],
+                          "setup's default is the backend the app runs by default" )
+        for spec in self.fm.MODELS.values():
+            if 'export' not in spec:
+                continue
+            module = betautils_person.get_segmenter( spec['person_backend'] )
+            self.assertIn( spec['file'], { os.path.basename( v['model_path'] ) for v in module.VARIANTS.values() },
+                           spec['file'] )
+            self.assertGreater( spec['approx_mb'], 0 )
+        self.assertEqual( self.fm.PERSON_BACKENDS, [ 'yolo11_seg', 'rf_detr_seg' ] )
+
+    def test_parse_names_all_and_none( self ):
+        self.assertEqual( self.fm.parse_person_backends( 'rf_detr_seg' ), [ 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.parse_person_backends( 'rf_detr_seg, yolo11_seg' ), [ 'yolo11_seg', 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.parse_person_backends( 'all' ), [ 'yolo11_seg', 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.parse_person_backends( 'none' ), [] )
+
+    def test_parse_refuses_a_typo_naming_it_and_the_choices( self ):
+        for text in ( 'yolo11_seg,rfdetr', '', 'all,none' ):
+            with self.assertRaises( ValueError ) as caught:
+                self.fm.parse_person_backends( text )
+            self.assertIn( 'yolo11_seg, rf_detr_seg', str( caught.exception ) )
+        with self.assertRaises( ValueError ) as caught:
+            self.fm.parse_person_backends( 'yolo11_seg,rfdetr' )
+        self.assertIn( 'unknown rfdetr', str( caught.exception ) )
+
+    def test_default_is_yolo_plus_a_backend_already_partly_present( self ):
+        self.assertEqual( self.fm.default_person_backends( set() ), [ 'yolo11_seg' ] )
+        self.assertEqual( self.fm.default_person_backends( { 'rf-detr-seg-small.onnx' } ),
+                          [ 'yolo11_seg', 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.default_person_backends( { 'yolo11s-seg.onnx' } ), [ 'yolo11_seg' ] )
+
+    def test_a_typed_answer_takes_numbers_names_or_blank( self ):
+        self.assertEqual( self.fm.choose_person_backends( '', set() ), [ 'yolo11_seg' ] )
+        self.assertEqual( self.fm.choose_person_backends( '2', set() ), [ 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.choose_person_backends( '1 2', set() ), [ 'yolo11_seg', 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.choose_person_backends( '2,yolo11_seg', set() ), [ 'yolo11_seg', 'rf_detr_seg' ] )
+        self.assertEqual( self.fm.choose_person_backends( 'none', set() ), [] )
+        for answer in ( '0', '3', 'yolo' ):
+            with self.assertRaises( ValueError ):
+                self.fm.choose_person_backends( answer, set() )
+
+    def test_without_a_terminal_it_takes_the_default_and_never_asks( self ):
+        ask = mock.Mock( side_effect=AssertionError( 'asked' ) )
+        self.assertEqual( self.fm.ask_person_backends( set(), self.log, ask=ask, interactive=False ),
+                          [ 'yolo11_seg' ] )
+        ask.assert_not_called()
+
+    def test_a_bad_answer_is_asked_again_and_end_of_input_takes_the_default( self ):
+        ask = mock.Mock( side_effect=[ 'rfdetr', '2' ] )
+        self.assertEqual( self.fm.ask_person_backends( set(), self.log, ask=ask, interactive=True ),
+                          [ 'rf_detr_seg' ] )
+        self.assertEqual( ask.call_count, 2 )
+        self.log.warning.assert_called_once()
+        ask = mock.Mock( side_effect=EOFError )
+        self.assertEqual( self.fm.ask_person_backends( set(), self.log, ask=ask, interactive=True ),
+                          [ 'yolo11_seg' ] )
+
+    def test_the_menu_shows_each_backend_its_size_and_what_is_present( self ):
+        lines = self.fm.person_backend_menu( { 'rf-detr-seg-nano.onnx' } )
+        self.assertEqual( len( lines ), 2 )
+        self.assertIn( 'yolo11_seg', lines[0] )
+        self.assertIn( 'about 143 MB', lines[0] )
+        self.assertNotIn( 'present', lines[0] )
+        self.assertIn( 'about 375 MB, 1 of 3 present', lines[1] )
+
+    def test_the_export_environment_gets_only_the_chosen_tools_packages( self ):
+        commands = []
+        with mock.patch.object( self.fm, 'run_logged', side_effect=lambda d, c, log: commands.append( c ) ):
+            self.fm.build_export_env( self.tmp, '/usr/bin/uv', self.log, { 'ultralytics' } )
+        packages = commands[2]
+        self.assertTrue( any( package.startswith( 'ultralytics==' ) for package in packages ) )
+        self.assertFalse( any( package.startswith( 'rfdetr' ) for package in packages ),
+                          "rfdetr is not installed when no RF-DETR model is exported" )
+        self.assertIn( 'onnx', packages )
+        commands.clear()
+        with mock.patch.object( self.fm, 'run_logged', side_effect=lambda d, c, log: commands.append( c ) ):
+            self.fm.build_export_env( self.tmp, '/usr/bin/uv', self.log, { 'rfdetr' } )
+        self.assertFalse( any( package.startswith( 'ultralytics' ) for package in commands[2] ) )
+        self.assertTrue( any( package.startswith( 'rfdetr==' ) for package in commands[2] ) )
+
+    def test_export_person_models_builds_the_environment_for_the_tools_it_exports( self ):
+        missing = [ ( self.fm.MODELS['rf-detr-seg-nano'], os.path.join( self.model_dir, 'rf-detr-seg-nano.onnx' ) ) ]
+        with mock.patch.object( self.fm, 'build_export_env', side_effect=RuntimeError( 'stop' ) ) as build:
+            self.fm.export_person_models( missing, self.log )
+        self.assertEqual( build.call_args[0][3], { 'rfdetr' } )
+
+    def test_unattended_exports_only_the_default_backend( self ):
+        self.assertEqual( self.run_main( '--yes' ), sorted( self.files_of( 'yolo11_seg' ) ) )
+        self.assertEqual( self.run_main(), sorted( self.files_of( 'yolo11_seg' ) ), "no terminal: default" )
+        self.assertEqual( self.run_main( '--yes', interactive=True, answers=[ 'rf_detr_seg' ] ),
+                          sorted( self.files_of( 'yolo11_seg' ) ), "--yes never asks, even at a terminal" )
+
+    def test_the_flag_picks_the_backends_and_none_exports_nothing( self ):
+        self.assertEqual( self.run_main( '--person-backends', 'rf_detr_seg' ), sorted( self.files_of( 'rf_detr_seg' ) ) )
+        self.assertEqual( self.run_main( '--person-backends', 'all', '--yes' ),
+                          sorted( self.files_of( 'yolo11_seg' ) + self.files_of( 'rf_detr_seg' ) ) )
+        self.assertIsNone( self.run_main( '--person-backends', 'none' ) )
+
+    def test_a_bad_flag_value_stops_before_anything_runs( self ):
+        with mock.patch.object( self.fm, 'export_person_models' ) as export, \
+             mock.patch.object( self.fm.sys, 'argv', [ 'fetch_models.py', '--person-backends', 'rfdetr',
+                                                       '--log-file', os.path.join( self.tmp, 'f.log' ) ] ), \
+             mock.patch.object( self.fm, 'relaunch_in_venv' ), \
+             mock.patch( 'sys.stderr' ):
+            with self.assertRaises( SystemExit ) as caught:
+                self.fm.main()
+        self.assertEqual( caught.exception.code, 2 )
+        export.assert_not_called()
+
+    def test_at_a_terminal_the_answer_picks_the_backends( self ):
+        self.assertEqual( self.run_main( interactive=True, answers=[ '2' ] ), sorted( self.files_of( 'rf_detr_seg' ) ) )
+        self.assertEqual( self.run_main( interactive=True, answers=[ '' ] ), sorted( self.files_of( 'yolo11_seg' ) ) )
+
+    def test_a_present_backend_is_not_exported_again_and_a_partial_one_is_finished( self ):
+        for name in self.files_of( 'yolo11_seg' ) + [ 'rf-detr-seg-small.onnx' ]:
+            _fake_onnx( os.path.join( self.model_dir, name ) )
+        self.assertEqual( self.run_main( '--yes' ), [ 'rf-detr-seg-medium.onnx', 'rf-detr-seg-nano.onnx' ] )
+        for name in self.files_of( 'rf_detr_seg' ):
+            _fake_onnx( os.path.join( self.model_dir, name ) )
+        self.assertIsNone( self.run_main( interactive=True, answers=[ AssertionError ] ),
+                           "nothing missing: no prompt, no export" )
 
 
 if __name__ == '__main__':

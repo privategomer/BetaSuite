@@ -11,6 +11,7 @@ param(
     [switch]$Vision,               # also install betavision deps (mss, pywin32)
     [switch]$Tests,
     [switch]$NoTests,
+    [string]$PersonBackends = '',  # comma separated; '' lets fetch_models.py ask
     [switch]$Yes,
     [switch]$NoReleaseCheck,       # stay on the current branch/commit (development)
     [ValidateSet('trace','debug','info','warn','error')]
@@ -26,6 +27,8 @@ Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup
   -Python VERSION        Python version (default: from .python-version)
   -Vision                also install betavision-* dependencies (mss, pywin32)
   -Tests | -NoTests      run the unit tests at the end (default: ask, no)
+  -PersonBackends LIST   person models to export for reverse mode, comma separated:
+                         yolo11_seg, rf_detr_seg, all or none (default: ask, yolo11_seg)
   -NoReleaseCheck        stay on the current branch or commit instead of offering to switch to the latest release
   -Yes                   accept the default answer to every prompt
   -LogLevel LEVEL        console level: trace|debug|info|warn|error (default info); setup.log gets everything
@@ -291,9 +294,13 @@ foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncens
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
 # serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
-# to ONNX in a throwaway environment that is deleted afterwards. fetch_models.py
+# to ONNX in a throwaway environment that is deleted afterwards, only for the
+# person backends chosen (fetch_models.py asks; default yolo11_seg). It
 # checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
-& $VenvPy 'tools\setup\fetch_models.py' '--log-level' $LogLevel '--log-file' $LogFile '--uv' $Uv
+$fetchArgs = @('tools\setup\fetch_models.py', '--log-level', $LogLevel, '--log-file', $LogFile, '--uv', $Uv)
+if ($PersonBackends) { $fetchArgs += @('--person-backends', $PersonBackends) }
+if ($Yes -or -not [Environment]::UserInteractive) { $fetchArgs += '--yes' }
+& $VenvPy @fetchArgs
 if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
 
 # ---------------------------------------------------------------- machine config

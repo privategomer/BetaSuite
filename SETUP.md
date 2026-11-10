@@ -34,7 +34,7 @@ BetaSuiteHome/                      any name, any location
 │   │   ├── yolo11n-seg.onnx        person masks, smaller (optional; exported by setup)
 │   │   ├── yolo11m-seg.onnx        person masks, larger (optional; exported by setup)
 │   │   └── rf-detr-seg-*.onnx      person masks, RF-DETR-Seg nano/small/medium
-│   │                               (optional; exported by setup)
+│   │                               (optional; exported by setup if you choose rf_detr_seg)
 │   ├── uncensored_vids/            videos to censor (betatv.py input)
 │   │   └── scene/, compilation/, quick-cut/, split-screen/
 │   │                               optional: the folder a video sits in picks its tuned profile
@@ -60,9 +60,12 @@ normal run does not need them. With the shipped config only
 `yolo11s-seg.onnx` is used. The other YOLO11 sizes (`n`, `m`) and the
 RF-DETR-Seg backend (`person_backend['selected'] = 'rf_detr_seg'`, sizes
 `nano`, `small`, `medium`) are alternatives you pick in
-`person_backend`. Setup exports all six: about 12, 41 and 90 MB for
-YOLO11 and about 125 MB for each RF-DETR-Seg size, so about 520 MB
-together.
+`person_backend`. Setup asks which person backends to export, one or
+more, and exports every size of each one chosen: `yolo11_seg` (the
+default) is about 12, 41 and 90 MB, `rf_detr_seg` about 125 MB per
+size, so about 143 MB, 375 MB, or about 520 MB for both. Choosing only
+`yolo11_seg` also leaves `rfdetr` out of the throwaway export
+environment.
 
 The subfolders under `uncensored_vids/` are optional. If you sort videos
 into them, `profile_by_source_dir` gives each folder its own tuned
@@ -146,9 +149,10 @@ To go back to development, `git switch main`.
    rights needed, and it doesn't touch your system Python)
 5. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
 6. Creates the `resources/` and `output/` folders beside the repository
-7. Downloads the 320n model, exports the person models (three YOLO11-seg
-   and three RF-DETR-Seg sizes, for reverse mode's person windows), checks
-   any models already present,
+7. Downloads the 320n model, asks which person backends to export
+   (`yolo11_seg` by default, `rf_detr_seg`, both or neither; for reverse
+   mode's person windows) and exports every size of each, checks any
+   models already present,
    and lists the two optional ones you download yourself (see
    [Models](#6-models))
 8. Creates this machine's config, `../resources/betaconfig_machine.py`,
@@ -172,6 +176,7 @@ The console shows `info` and above unless you pass a different level.
 | `--python 3.12` | `-Python 3.12` | override `.python-version` |
 | | `-Vision` | also install `betavision-*` dependencies |
 | `--tests` / `--no-tests` | `-Tests` / `-NoTests` | run the unit tests at the end, or don't |
+| `--person-backends yolo11_seg,rf_detr_seg` | `-PersonBackends yolo11_seg,rf_detr_seg` | skip the person-model question: comma separated backends, `all` or `none` |
 | `--yes` | `-Yes` | take the default answer to every question (unattended) |
 | `--log-level debug` | `-LogLevel debug` | console verbosity; `setup.log` always gets everything |
 | `--no-release-check` | `-NoReleaseCheck` | stay on the current branch or commit instead of offering the latest release |
@@ -350,8 +355,8 @@ detector adapters look for these names, so rename the downloads.
 | 320n (default, required) | `nudenet_v3` | automatic: `python3 tools/setup/fetch_models.py` | `v3.4-320n.onnx` |
 | 640m (optional) | `nudenet_v3`, `--variant 640m` | [640m.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.onnx) | `v3.4-640m.onnx` |
 | RetinaNet (optional) | `retinanet_v2` | [detector_v2_default_checkpoint.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint.onnx) | `detector_v2_default_checkpoint.onnx` |
-| YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | automatic: exported by `fetch_models.py` | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
-| RF-DETR-Seg nano/small/medium (person windows) | `person_backend` `rf_detr_seg` | automatic: exported by `fetch_models.py` | `rf-detr-seg-nano.onnx`, `rf-detr-seg-small.onnx`, `rf-detr-seg-medium.onnx` |
+| YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | automatic, the default choice: exported by `fetch_models.py` | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
+| RF-DETR-Seg nano/small/medium (person windows) | `person_backend` `rf_detr_seg` | when chosen at setup: exported by `fetch_models.py --person-backends rf_detr_seg` | `rf-detr-seg-nano.onnx`, `rf-detr-seg-small.onnx`, `rf-detr-seg-medium.onnx` |
 
 **320n** is bundled in the [`nudenet` package on PyPI](https://pypi.org/project/nudenet/3.4.2/#files),
 so setup downloads it for you and checks it against a pinned hash. By
@@ -396,9 +401,18 @@ An RF-DETR-Seg export has a fixed picture size, its own for each size
 batch size is left free. Each frame is stretched to
 that square, the way Roboflow trains and runs the model.
 
-The setup scripts always export whichever person models are missing and
-have no switch to skip it. `python3 tools/setup/fetch_models.py
---no-export` checks the models without exporting. A failed export is
+Setup exports only the person backends you choose. At the question,
+type numbers or names (`1`, `2`, `1,2`, `rf_detr_seg`), `all` or
+`none`; Enter takes the default, `yolo11_seg` plus any backend that
+already has some of its files (a half-finished export is finished). With
+`--yes` (`-Yes`), or without a terminal, setup takes that default
+without asking. The question only appears when a model is missing, so
+re-running setup after a complete install does not ask. To add a
+backend later, run `python3 tools/setup/fetch_models.py --person-backends
+rf_detr_seg` (or re-run setup and choose it); models already present are
+only checked, whatever you choose, and nothing is deleted.
+`python3 tools/setup/fetch_models.py --no-export` checks the models
+without exporting. A failed export is
 logged as an error and setup carries on, so the rest of the install
 still completes; re-run setup or `fetch_models.py` to retry. If reverse
 mode has `person_windows` on and the selected size is missing, the

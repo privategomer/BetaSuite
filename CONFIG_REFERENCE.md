@@ -3090,8 +3090,8 @@ Adapters live in `segmenters/`, beside the detectors in `detectors/`.
 
 | Backend | Variants | Status |
 |---|---|---|
-| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0. Exported to ONNX by setup, on the user's machine |
-| `rf_detr_seg` | `nano`, `small` (default), `medium` | Roboflow RF-DETR-Seg, COCO class 'person'. Apache-2.0, every size. Exported to ONNX by setup, on the user's machine |
+| `yolo11_seg` | `n`, `s` (default), `m` | Ultralytics YOLO11-seg, COCO class 'person'. AGPL-3.0. Exported to ONNX by setup (its default choice), on the user's machine |
+| `rf_detr_seg` | `nano`, `small` (default), `medium` | Roboflow RF-DETR-Seg, COCO class 'person'. Apache-2.0, every size. Exported to ONNX by setup when chosen there (not by default), on the user's machine |
 
 | Setting (`person_backend['yolo11_seg']`) | Default | What it does |
 |---|---|---|

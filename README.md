@@ -389,7 +389,7 @@ as suppression signals and are not meant to be censored directly.
 | `reverse['censor']` | `items_to_censor`, no overrides | labels censored inside a triggered frame, keeping their normal-mode styles; `overrides` changes any key for reverse mode only |
 | `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis`, each twice the detection's width and height, as a soft-edged ellipse | never censored. Tuning keys are inherited from every tier; look keys never are |
 | `reverse['person_windows']` | on | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
-| `person_backend` | `yolo11_seg`, size `s` | the person model: `yolo11_seg` (`n`/`s`/`m`, AGPL-3.0) or `rf_detr_seg` (`nano`/`small`/`medium`, Apache-2.0). Both exported to ONNX by setup |
+| `person_backend` | `yolo11_seg`, size `s` | the person model: `yolo11_seg` (`n`/`s`/`m`, AGPL-3.0) or `rf_detr_seg` (`nano`/`small`/`medium`, Apache-2.0). Exported to ONNX by setup, for the backends you choose there (default `yolo11_seg`) |
 
 Reference: [Reverse mode](CONFIG_REFERENCE.md#reverse-mode), [Person segmentation](CONFIG_REFERENCE.md#person-segmentation)
 

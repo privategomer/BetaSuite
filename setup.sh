@@ -18,6 +18,7 @@ ASSUME_YES=0
 USE_UV=1
 PY_VERSION="$(tr -d '[:space:]' < .python-version 2>/dev/null)"
 RUN_TESTS=""            # 1 | 0 | "" (ask)
+PERSON_BACKENDS=""      # comma separated | "" (fetch_models.py asks)
 VENV_DIR="$REPO_DIR/.venv"
 MIN_DRIVER_MAJOR=525
 RELEASE_CHECK=1
@@ -33,6 +34,9 @@ Usage: ./setup.sh [options]
                          suggesting GPU when nvidia-smi finds one)
   --python VERSION       Python version (default: ${PY_VERSION:-3.12}, from .python-version)
   --tests | --no-tests   run the unit tests at the end (default: ask, no)
+  --person-backends LIST person models to export for reverse mode, comma
+                         separated: yolo11_seg, rf_detr_seg, all or none
+                         (default: ask, yolo11_seg)
   --no-uv                use an existing pythonX.Y on PATH and 'python -m venv'
                          instead of uv
   --no-release-check     stay on the current branch or commit instead of offering
@@ -51,6 +55,7 @@ while [ $# -gt 0 ]; do
         --python) PY_VERSION="$2"; shift ;;
         --tests) RUN_TESTS=1 ;;
         --no-tests) RUN_TESTS=0 ;;
+        --person-backends) PERSON_BACKENDS="$2"; shift ;;
         --no-uv) USE_UV=0 ;;
         --no-release-check) RELEASE_CHECK=0 ;;
         -y|--yes) ASSUME_YES=1 ;;
@@ -273,9 +278,12 @@ done
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
 # serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
-# to ONNX in a throwaway environment that is deleted afterwards. fetch_models.py
+# to ONNX in a throwaway environment that is deleted afterwards, only for the
+# person backends chosen (fetch_models.py asks; default yolo11_seg). It
 # checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
 FETCH_ARGS=( --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" )
+[ -n "$PERSON_BACKENDS" ] && FETCH_ARGS+=( --person-backends "$PERSON_BACKENDS" )
+[ "$ASSUME_YES" = 1 ] && FETCH_ARGS+=( --yes )
 if [ "$USE_UV" = 1 ] && [ -n "${UV:-}" ]; then FETCH_ARGS+=( --uv "$UV" ); fi
 "$VENV_PY" tools/setup/fetch_models.py "${FETCH_ARGS[@]}" \
     || log_warn "model check reported a problem; see the messages above"
