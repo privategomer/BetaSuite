@@ -1,6 +1,6 @@
 """
 test_pic_hash_path_unified.py - regression coverage for the still-photo
-side of the cache-path unification (2026-09-17): betastare.py's
+side of the cache-path unification: betastare.py's
 _raw_boxes_for_size used to build its own independent copy of the
 picture-cache path formula inline, rather than calling a shared
 implementation (unlike betatv.py's video-cache path, which already had
@@ -53,11 +53,17 @@ class TestBetastareCallsSharedPicHashPathFor( unittest.TestCase ):
         if self._had_attr:
             self._original = betaconfig.detector_backend
         betaconfig.detector_backend = { 'selected': 'nudenet_v3', 'retinanet_v2': {}, 'nudenet_v3': {} }
+        self._had_floor = hasattr( betaconfig, 'global_min_prob' )
+        self._orig_floor = getattr( betaconfig, 'global_min_prob', None )
         betaconfig.global_min_prob = 0.2
 
     def tearDown( self ):
         os.chdir( self._orig_cwd )
         shutil.rmtree( self._tmpdir, ignore_errors=True )
+        if self._had_floor:
+            betaconfig.global_min_prob = self._orig_floor
+        elif hasattr( betaconfig, 'global_min_prob' ):
+            del betaconfig.global_min_prob
         if self._had_attr:
             betaconfig.detector_backend = self._original
         elif hasattr( betaconfig, 'detector_backend' ):

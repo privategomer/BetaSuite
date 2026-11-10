@@ -53,8 +53,8 @@ slices. This only reads that cache and opens the matching source video
 (to get its real width/height, same as process_raw_box needs); it never
 runs the neural net itself.
 
---include-preview (added 2026-09-16): also reads preview-slice caches
-(the '-preview'/'-preview@<offset>s' suffixed cache files a
+--include-preview: also reads preview-slice caches
+(the '-preview[@<offset>s]+<length>s' suffixed cache files a
 'betatv.py --preview on' run writes) when no real run exists yet, or
 you specifically want to compare backends against identical short
 slices rather than wait for full real runs on every video. Read the
@@ -96,6 +96,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path, fmt_stats )
 
@@ -105,6 +106,9 @@ VID_HASH_DIR = bu_cache.VID_HASH_DIR
 # ---- module-level event buffers the instrumentation hooks write to ----
 _match_events = []
 _new_track_events = []
+# The cuts tracking stops at in the video being replayed, as smooth_boxes
+# sees them (bursts merged per the config).
+_cut_times = []
 
 def _reset_events():
     _match_events.clear()
@@ -131,9 +135,17 @@ def _record_new_track_event( label, tracks, ti, b ):
     # match/reset than a genuinely fresh appearance. This does NOT change
     # or re-run the real matching decision, which already happened before
     # this hook fires - it only flags the new track for the report.
+    #
+    # A track the box is separated from by a shot cut never counts: the
+    # tracker does not continue across a cut however close the boxes
+    # are, so a new shot's first detection beside where the last shot's
+    # track ended is not a reset. This once counted them,
+    # and on cut-dense compilations they were most of the "resets".
     cx = b['x'] + b['w']/2
     cy = b['y'] + b['h']/2
+    box_t = b.get( 't', b['start'] )
     nearest = None
+    after_cut = False
     for other_ti, prev in enumerate( tracks ):
         if other_ti == ti:
             continue
@@ -141,9 +153,15 @@ def _record_new_track_event( label, tracks, ti, b ):
         pcy = prev['y'] + prev['h']/2
         d = ( (cx-pcx)**2 + (cy-pcy)**2 ) ** 0.5
         loose_threshold = 1.5 * max( prev['w'], prev['h'], b['w'], b['h'] )
-        if d < loose_threshold and ( nearest is None or d < nearest ):
+        if d >= loose_threshold:
+            continue
+        if bu_track.cut_separates( _cut_times, prev.get( 't', prev['end'] ), box_t ):
+            after_cut = True
+            continue
+        if nearest is None or d < nearest:
             nearest = d
-    _new_track_events.append( { 'label': label, 'near_miss_dist': nearest } )
+    _new_track_events.append( { 'label': label, 'near_miss_dist': nearest,
+                                'after_cut': after_cut and nearest is None } )
 
 
 class _JitterObserver( bu_track.TrackingObserver ):
@@ -236,8 +254,6 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
     under another backend's smoothing config.
     """
     labels_to_sweep = labels_filter or set( betaconfig.items_to_censor )
-    suppression_rules = bu_detector.get_class_suppression( backend_name )
-    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     _reset_events()
     frame_deltas_by_label = {}
     dims_missing = []
@@ -248,34 +264,36 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
                 dims_missing.append( file_hash )
                 continue
 
-            flat_raw = []
-            for path in cache_paths:
-                if os.path.exists( path ):
-                    flat_raw.extend( bu_hash.read_json( path ) )
+            # Parsed once per process and kept compact; each pass gets
+            # fresh dicts, which the replay mutates. Every sweep value
+            # used to re-parse every cache, deep-copy it and reopen the
+            # video for its size.
+            flat_raw = bu_tuning._read_raw_boxes( cache_paths )
             if not flat_raw:
                 continue
 
-            cap = cv2.VideoCapture( video_path )
-            vid_w = int( cap.get( cv2.CAP_PROP_FRAME_WIDTH ) )
-            vid_h = int( cap.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
-            cap.release()
+            vid_w, vid_h = bu_tuning.frame_size_for_video( video_path )
             if not vid_w or not vid_h:
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn( raw_copy, suppression_rules, parts_to_blur )
+            # Seeded with the file hash, as betatv seeds the real render:
+            # the replay rolls the styles the render rolled, and since a
+            # style's padding moves box geometry, unseeded rolls made two
+            # runs of this tool disagree.
+            with bu_track.seeded_styles( file_hash ):
+                boxes, tracking = bu_tuning.replay_tracking_inputs(
+                    file_hash, video_path, cache_paths, flat_raw, vid_w, vid_h,
+                    backend_name, labels_filter )
+                if not boxes:
+                    continue
 
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and ( not labels_filter or res['label'] in labels_filter ):
-                    boxes.append( res )
-            if not boxes:
-                continue
-
-            with bu_track.tracking_observer( _JitterObserver() ):
-                tracked_boxes, _smoothing_stats = smooth_boxes_fn( boxes, backend_name=backend_name )
+                _cut_times[:] = bu_track.tracking_cut_times( tracking['shot_cut_times'] )
+                with bu_track.tracking_observer( _JitterObserver() ):
+                    tracked_boxes, _smoothing_stats = smooth_boxes_fn(
+                        boxes, shot_cut_times=tracking['shot_cut_times'], backend_name=backend_name,
+                        profile_name=tracking['profile_name'], sample_fps=tracking['sample_fps'],
+                                     logger=bu_tuning._QUIET_LOGGER )
 
             # group the ORIGINAL (non-interpolated) boxes by the track id
             # the instrumentation hooks tagged them with, then measure
@@ -306,18 +324,48 @@ def run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn, apply_suppressi
 
     new_track_by_label = {}
     near_miss_by_label = {}
+    after_cut_by_label = {}
     for ev in _new_track_events:
         new_track_by_label[ ev['label'] ] = new_track_by_label.get( ev['label'], 0 ) + 1
         if ev['near_miss_dist'] is not None:
             near_miss_by_label[ ev['label'] ] = near_miss_by_label.get( ev['label'], 0 ) + 1
+        if ev.get( 'after_cut' ):
+            after_cut_by_label[ ev['label'] ] = after_cut_by_label.get( ev['label'], 0 ) + 1
 
     return {
         'frame_deltas_by_label': frame_deltas_by_label,
         'match_dists_by_label': match_dists_by_label,
         'new_track_by_label': new_track_by_label,
         'near_miss_by_label': near_miss_by_label,
+        'after_cut_by_label': after_cut_by_label,
         'dims_missing': dims_missing,
     }
+
+
+def _median( values ):
+    ordered = sorted( values )
+    return ordered[ len( ordered ) // 2 ] if ordered else 0.0
+
+
+def print_profile_breakdown( per_profile, labels ):
+    """One line per structure profile and label, when the footage runs several."""
+    if len( per_profile ) < 2:
+        return
+    print( "  by structure profile:" )
+    for name in sorted( per_profile ):
+        result = per_profile[name]
+        for label in labels:
+            deltas = result['frame_deltas_by_label'].get( label, [] )
+            matches = len( result['match_dists_by_label'].get( label, [] ) )
+            new_tracks = result['new_track_by_label'].get( label, 0 )
+            if not deltas and not new_tracks:
+                continue
+            total = matches + new_tracks
+            print( "    %-13s %-16s jump median %.1fpx  absorbed median %.1fpx  new tracks %.1f%%"%(
+                name, label, _median( deltas ),
+                _median( result['match_dists_by_label'].get( label, [] ) ),
+                100.0*new_tracks/total if total else 0.0 ) )
+    print()
 
 
 def print_alpha_result( alpha, result, labels ):
@@ -340,8 +388,11 @@ def print_alpha_result( alpha, result, labels ):
                 matches, total_decisions, 100*matches/total_decisions,
                 new_tracks, total_decisions, 100*new_tracks/total_decisions ) )
         if new_tracks:
-            print( "    of new tracks, likely resets (another track was nearby but missed threshold): %d/%d (%.0f%%)"%(
-                near_misses, new_tracks, 100*near_misses/new_tracks ) )
+            after_cut = result.get( 'after_cut_by_label', {} ).get( label, 0 )
+            print( "    of new tracks, likely resets (another track in the same shot was nearby but missed threshold): "
+                   "%d/%d (%.0f%%)"%( near_misses, new_tracks, 100*near_misses/new_tracks ) )
+            print( "    of new tracks, a new shot starting beside where the last shot's track ended (never a reset: "
+                   "tracking stops at every cut): %d/%d (%.0f%%)"%( after_cut, new_tracks, 100*after_cut/new_tracks ) )
     print()
 
 
@@ -353,8 +404,8 @@ def main():
         help="restrict to these labels (default: everything currently in items_to_censor)" )
     parser.add_argument( '--picture-sizes', type=int, nargs='+', default=None,
         help="analyse exactly these sizes instead of discovering what is on disk. By default every tool covers EVERY model configuration that has written detections (betautils_cache_paths.configurations_to_analyse), so a variant you ran last night cannot go unanalysed because config has since moved on. Use this only to force a shape that discovery would not produce - for instance a backend deliberately run at several sizes at once." )
-    parser.add_argument( '--video-censor-fps', type=float, default=float( betaconfig.video_censor_fps ),
-        help="must match the video_censor_fps your real caches were built with (default: betaconfig.py's current value)" )
+    parser.add_argument( '--video-censor-fps', type=float, default=None,
+        help="only caches sampled at this rate. Default: every rate on disk, newest run per video, so quick_cut files (sampled at their profile's rate) and a run made before video_censor_fps changed are both covered" )
     parser.add_argument( '--include-preview', action='store_true',
         help="also use preview-slice caches for any video that has no real (non-preview) cache yet - see this "
              "script's docstring CAVEAT before trusting numbers this produces: safe for backend-vs-backend "
@@ -395,8 +446,8 @@ def main():
     for config in configurations:
         backend_name = config.backend_name
         sizes = config.picture_sizes
-        videos, preview_used_for = discover_full_run_videos(
-            sizes, args.video_censor_fps, global_min_prob, backend_name, include_preview=args.include_preview )
+        videos, preview_used_for, rates = bu_cache.videos_for_configuration(
+            config, args.video_censor_fps, global_min_prob, include_preview=args.include_preview )
         print( "#" * 70 )
         print( "configuration: %s"%(config.label) )
         print( "#" * 70 )
@@ -404,7 +455,7 @@ def main():
             print( "  no real (non-preview) detection caches found for this backend at "
                    "picture_sizes=%s fps=%s min_prob=%.3f - skipping (run betatv.py with "
                    "detector_backend['selected']=%r on real footage first to get data here%s)."%(
-                       sizes, args.video_censor_fps, global_min_prob, backend_name,
+                       sizes, args.video_censor_fps or 'any', global_min_prob, backend_name,
                        ", or check the preview-cache warnings above if --include-preview was used" if args.include_preview else " (or pass --include-preview to also try preview-slice caches)" ) )
             print()
             continue
@@ -419,25 +470,39 @@ def main():
                    "solid): %s"%( ", ".join( "%s (%s)"%(h, preview_used_for[h]) for h in sorted(preview_used_for) ) ) )
         else:
             print( "found %d video(s) with complete real detection caches for this config"%(len(videos)) )
+            print( "  newest run of each, sampled at %s fps"%( ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         hash_to_path = build_hash_to_video_path( videos.keys() )
         missing = set(videos.keys()) - set(hash_to_path.keys())
         if missing:
             print( "  (%d of those source video file(s) could not be found under %s or %s - probably moved/deleted "
                    "since being censored; they'll be skipped)"%(
                        len(missing), betaconst.video_path_uncensored, betaconst.video_path_source_backup ) )
+        by_profile = bu_tuning.videos_by_profile( videos, hash_to_path, backend_name )
+        print( "  by structure profile: %s"%( ", ".join(
+            "%s %d"%( name, len( members ) ) for name, members in sorted( by_profile.items() ) ) or 'none' ) )
         print()
 
         for alpha in alphas:
-            result = run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn,
-                                    apply_suppression_fn, set(labels), backend_name )
+            # Each profile replays its own videos and the counts add up to
+            # the pooled result, so the per-profile rows cost no extra replay.
+            per_profile = { name: run_one_alpha( alpha, members, hash_to_path, smooth_boxes_fn,
+                                                 apply_suppression_fn, set(labels), backend_name )
+                            for name, members in sorted( by_profile.items() ) }
+            if per_profile:
+                result = bu_tuning.merge_counts( per_profile.values() )
+                result['dims_missing'] = list( result.get( 'dims_missing', [] ) ) + sorted( missing )
+            else:
+                result = run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn,
+                                        apply_suppression_fn, set(labels), backend_name )
             print_alpha_result( alpha, result, labels )
+            print_profile_breakdown( per_profile, labels )
 
     if not any_backend_had_videos:
         print( "no %sdetection caches found for any of (%s) at fps=%s min_prob=%.3f - "
                "run betatv.py on real footage first%s."%(
                    "" if args.include_preview else "real (non-preview) ",
                    bu_cache.describe_configurations( configurations ),
-                   args.video_censor_fps, global_min_prob,
+                   args.video_censor_fps or 'any', global_min_prob,
                    "" if args.include_preview else " (not just --preview on), or pass --include-preview to also try preview-slice caches" ) )
         sys.exit(1)
 

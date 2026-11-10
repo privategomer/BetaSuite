@@ -14,7 +14,7 @@ detector_backend = {
         # '320n' | '640m'
         'model_variant': '640m',
         'nn_batch_size': 4,
-        'candidate_floor': 0.2,
+        'candidate_floor': 0.15,
         'nms_iou': 0.45,
         # 'per_class' | 'agnostic'
         'nms_mode': 'per_class',
@@ -26,16 +26,16 @@ detector_backend = {
             'variants': {
                 # Rapid cutting.
                 'quick_cut': {
-                    'min_short_shot_fraction': 0.15,
+                    'min_short_shot_fraction': 0.125,
                     'video_censor_fps': 18,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 0.20,
+                        'exposed_breast': { 'track_max_gap': 0.8,
                                             'interpolation_max_gap': 0.14,
                                             'time_safety': 0.06,
                                             'min_track_hits': 2,
                                             'paired_style_max_age': 0.25,
                                             'style_min_dwell_seconds': 2.5 },
-                        'exposed_vulva':  { 'track_max_gap': 0.20,
+                        'exposed_vulva':  { 'track_max_gap': 0.6,
                                             'interpolation_max_gap': 0.14,
                                             'time_safety': 0.06,
                                             'min_track_hits': 2,
@@ -51,7 +51,7 @@ detector_backend = {
                 'compilation': {
                     'manual_only': True,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 1.5,
+                        'exposed_breast': { 'track_max_gap': 3,
                                             'interpolation_max_gap': 0.5,
                                             'paired_style_max_age': 0.6,
                                             'style_min_dwell_seconds': 4.0 },
@@ -67,7 +67,7 @@ detector_backend = {
                 'split_screen': {
                     'manual_only': True,
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 2.0,
+                        'exposed_breast': { 'track_max_gap': 12,
                                             'interpolation_max_gap': 0.8,
                                             'match_distance_multiplier': 0.8,
                                             'paired_style': True,
@@ -75,9 +75,9 @@ detector_backend = {
                                             'paired_style_tiebreak_margin': 0.12,
                                             'paired_style_max_age': 0.5,
                                             'style_min_dwell_seconds': 6.0 },
-                        'exposed_vulva':  { 'track_max_gap': 4.0,
+                        'exposed_vulva':  { 'track_max_gap': 12,
                                             'interpolation_max_gap': 4.0,
-                                            'match_distance_multiplier': 1.0,
+                                            'match_distance_multiplier': 3,
                                             'style_min_dwell_seconds': 6.0 },
                         'covered_vulva':  { 'track_max_gap': 4.0,
                                             'interpolation_max_gap': 4.0,
@@ -88,7 +88,7 @@ detector_backend = {
                 # Single continuous scene; the default.
                 'scene': {
                     'item_overrides': {
-                        'exposed_breast': { 'track_max_gap': 3.0,
+                        'exposed_breast': { 'track_max_gap': 6,
                                             'interpolation_max_gap': 1.0,
                                             'style_min_dwell_seconds': 3.0 },
                         # Vulva bridges longer gaps than breast.
@@ -106,9 +106,9 @@ detector_backend = {
         # Class promotion: relabel a detection when corroborating evidence overlaps it.
         'class_promotion': {
             'exposed_vulva': [
-                { 'from': 'covered_vulva', 'min_prob': 0.30,
+                { 'from': 'covered_vulva', 'min_prob': 0.25,
                   'requires': [
-                      { 'label': 'exposed_penis', 'min_prob': 0.30, 'overlap': 'anywhere' },
+                      { 'label': 'exposed_penis', 'min_prob': 0.25, 'overlap': 'anywhere' },
                   ] },
             ],
         },
@@ -116,46 +116,50 @@ detector_backend = {
         # See CONFIG_REFERENCE.md -> "Re-deriving suppression rules".
         'class_suppression': {
             'exposed_breast': [
-                { 'suppressed_by': 'face_femme',       'margin': 0.105, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_belly',    'margin': 0.069, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_buttocks', 'margin': 0.119, 'min_iou': 0.010 },
-                { 'suppressed_by': 'covered_breast',   'margin': 0.045, 'min_iou': 0.029 },
+                { 'suppressed_by': 'exposed_buttocks', 'margin': 0.133, 'min_iou': 0.175 },
+                { 'suppressed_by': 'covered_breast',   'margin': 0.081, 'min_iou': 0.425 },
             ],
             'exposed_vulva': [
-                { 'suppressed_by': 'face_femme',    'margin': 0.255, 'min_iou': 0.010 },
-                { 'suppressed_by': 'exposed_breast','margin': 0.231, 'min_iou': 0.022 },
-                { 'suppressed_by': 'exposed_belly', 'margin': 0.293, 'min_iou': 0.015 },
-                { 'suppressed_by': 'covered_breast','margin': 0.295, 'min_iou': 0.016 },
-                { 'suppressed_by': 'exposed_anus',  'margin': 0.113, 'min_iou': 0.080 },
+                { 'suppressed_by': 'covered_vulva', 'margin': 0.065, 'min_iou': 0.425 },
             ],
         },
+
+        # Pairs never to propose as new suppression rules.
+        'class_suppression_refused': [
+            'exposed_vulva<-exposed_penis',
+            'exposed_vulva<-exposed_buttocks',
+            'exposed_vulva<-exposed_feet',
+            'exposed_vulva<-face_femme',
+        ],
 
         # Detection- and tracking-sensitive per-label settings
         'item_overrides': {
             'exposed_vulva': {
-                'min_prob': 0.18,
+                'min_prob': 0.17,
                 'time_safety': 0.16,
-                'height_area_safety': 0.00,
+                'height_area_safety': 0.07,
                 'width_area_safety': 0.00,
                 'interpolation_max_gap': 3.6,
-                'track_max_gap': 43.2,  # set by auto_tune 2026-09-19
-                'position_smoothing': 0.75,
+                'track_max_gap': 43.2,  # set by auto_tune
+                'position_smoothing': 0.85,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
-                'match_distance_multiplier': 3,  # set by auto_tune 2026-09-18
+                'min_track_hits': 2,
+                'confirm_score': 0.5,
+                'match_distance_multiplier': 3,  # set by auto_tune
             },
             'exposed_breast': {
-                'min_prob': 0.205,
+                'min_prob': 0.19,
                 'time_safety': 0.17,
                 'width_area_safety': 0.00,
-                'height_area_safety': 0.00,
+                'height_area_safety': 0.07,
                 'interpolation_max_gap': 0.15,
                 'track_max_gap': 0.17,
                 'paired_style': True,
                 'paired_style_max_age': 0.8,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
-                'position_smoothing': 0.60,
-                'match_distance_multiplier': 2.0,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
+                'confirm_score': 0.7,
+                'position_smoothing': 0.70,
+                'match_distance_multiplier': 2.0,  # set by auto_tune
             },
             'covered_vulva': {
                 'min_prob': 0.49,
@@ -165,7 +169,7 @@ detector_backend = {
                 'interpolation_max_gap': 3.6,
                 'track_max_gap': 43.2,
                 'paired_style': False,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-30
+                'min_track_hits': 2,
                 'match_distance_multiplier': 3,
                 'position_smoothing': 0.75,
             },
@@ -205,8 +209,8 @@ detector_backend = {
                 'interpolation_max_gap': 1.2,
                 'track_max_gap': 7.2,
                 'paired_style': True,
-                'match_distance_multiplier': 1.25,  # set by auto_tune 2026-09-18
-                'min_track_hits': 2,  # set by auto_tune 2026-09-18
+                'match_distance_multiplier': 1.25,  # set by auto_tune
+                'min_track_hits': 2,  # set by auto_tune
             },
             'exposed_breast': {
                 'min_prob': 0.37,
@@ -216,7 +220,7 @@ detector_backend = {
                 'interpolation_max_gap': 0.5,
                 'track_max_gap': 13.5,
                 'paired_style': True,
-                'min_track_hits': 3,  # set by auto_tune 2026-09-18
+                'min_track_hits': 2,
             },
         },
     },
@@ -289,21 +293,23 @@ item_overrides = {
             { 'type': 'bar', 'shape': 'box', 'color': (0, 0, 0), 'merge': 'none', 'thickness': 1.0,   'feather': 0.15,  'weight': 4.00, 'width_area_safety': -0.55, 'height_area_safety': 0.00 },
 
             # Sticker
-            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 2.81, 'feather': 0.25, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
-            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.15, 'width_area_safety': 0.00, 'height_area_safety': 0.00 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 2.81, 'feather': 0.25, 'width_area_safety': 0.00, 'height_area_safety': 0.00 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.15, 'width_area_safety': 0.07, 'height_area_safety': 0.07 },
             { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.20, 'width_area_safety': 0.13, 'height_area_safety': 0.13 },
             { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.25, 'width_area_safety': 0.25, 'height_area_safety': 0.25 },
         ],
     },
 }
 
-# --- Hardware -----------------------------------------------------------
+# --- Hardware: this machine's own values go in ../resources/betaconfig_machine.py
 
 gpu_enabled = 1
 cuda_device_id = 0
+detection_prefetch_frames = 0   # frames decoded ahead of the model; 0 = off
+structure_scan_workers = 0      # betabench structure-scan; 0 = auto (one per core, at most 4)
 
 # Frames per second of video that get detection and tracking.
-video_censor_fps = 9
+video_censor_fps = 10
 
 # Floor applied to every raw detection before any per-label min_prob.
 global_min_prob = 0.12
@@ -320,11 +326,18 @@ cross_size_dedup = {
 shot_cut_detection_enabled = True
 shot_cut_threshold = 0.40   # Bhattacharyya distance 0-1; higher = less sensitive
 
+shot_cut_burst_window = 0.35
+shot_cut_burst_max_span = None
+shot_cut_burst_keep = 'first'
+
 # --- Resumability and rendering -----------------------------------------
 
 detection_checkpoint_frames = 500
 render_chunk_seconds = 180
 render_workers = 0          # 0 = auto (CPU count / 2, capped at 8)
+render_decode_threads = None           # per worker; None = OpenCV's own, 0 = cores / workers
+render_worker_mb_per_megapixel = 200   # memory per worker per megapixel; None = no memory cap
+render_memory_reserve_mb = 2048        # left free for everything else
 render_chunk_container = 'mkv'
 render_verify_frame_counts = True
 ffmpeg_max_retries = 2
@@ -333,8 +346,8 @@ ffmpeg_retry_backoff_seconds = 5
 # --- Encoding -----------------------------------------------------------
 
 encode_video_codec = 'libx264'
-encode_crf = 17
 encode_preset = 'fast'
+encode_crf = 17
 
 # --- Source folder convention: folder -> structure profile --------------
 
@@ -367,9 +380,78 @@ items_to_censor = [
     # 'face_masc',
 ]
 
+# --- Reverse mode: obscure the frame except detected windows -----------
+
+reverse = {
+    'enabled': False,
+    # dim: share of the frame style's brightness taken off, 0 to 1
+    'frame_style': { 'type': 'blur', 'method': 'triple_box', 'strength': 7, 'dim': 0.4 },
+    # 'passthrough' | 'obscure'
+    'empty_frame': 'passthrough',
+    'fade_seconds': 0.25,
+    'trigger': {
+        # None = every censored label
+        'labels': None,
+        'min_prob': 0.30,
+        'hold_seconds': 0.5,
+    },
+    # Censored inside a triggered frame, each with its normal-mode look
+    'censor': {
+        # None = items_to_censor
+        'labels': None,
+        # {label: reverse-only item_overrides keys}
+        'overrides': {},
+    },
+    # Never censored. Area safety 1.0 doubles a window's width and height
+    'windows': {
+        'face_femme':    { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'face_masc':     { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'exposed_chest': { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+        'exposed_penis': { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                           'censor_style': { 'type': 'show', 'feather': 0.3 } },
+    },
+    # Whole male bodies, from person_backend masks
+    'person_windows': {
+        'enabled': True,
+        'male_labels': [ 'face_masc', 'exposed_chest' ],
+        'female_labels': [ 'face_femme', 'exposed_breast', 'exposed_vulva' ],
+        'evidence_min_prob': 0.40,
+        'track_iou': 0.30,
+        'track_max_gap_seconds': 1.0,
+        # Fraction of the person's shorter side trimmed off the mask edge
+        'shrink': 0.02,
+    },
+}
+
+# --- Person segmentation (reverse mode's person_windows) ---------------
+
+person_backend = {
+    # 'yolo11_seg' | 'rf_detr_seg'
+    'selected': 'yolo11_seg',
+    'yolo11_seg': {
+        # 'n' | 's' | 'm'
+        'model_variant': 's',
+        'picture_size': 640,
+        'min_prob': 0.35,
+        'nms_iou': 0.5,
+        'batch_size': 4,
+    },
+    'rf_detr_seg': {
+        # 'nano' | 'small' | 'medium'. Each has its own fixed picture
+        # size (312, 384, 432), set when it is exported. On CPU,
+        # batch_size 1 is faster than 4 for this backend
+        'model_variant': 'small',
+        'min_prob': 0.35,
+        'batch_size': 4,
+    },
+}
+
 # --- Confidence and safety defaults -------------------------------------
 
-default_min_prob = 0.55
+default_min_prob = 0.35
 default_min_prob_continue = None   # None disables score hysteresis
 default_area_safety = 0
 default_time_safety = 0.30
@@ -456,3 +538,7 @@ betavision_interpolate = False
 
 debug_mode = 0   # 0 off | 1 debug overlay | 3 also save debug output
 enable_betasuite_watermark = False
+
+# --- This machine's overrides: ../resources/betaconfig_machine.py --------
+
+__import__( 'betautils_machine' ).apply( globals() )

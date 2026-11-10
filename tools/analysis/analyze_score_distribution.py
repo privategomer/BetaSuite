@@ -42,6 +42,7 @@ betaconfig.py or runs the neural net.
 """
 
 import argparse
+from array import array
 import glob
 import gzip
 import json
@@ -206,19 +207,10 @@ def main():
 
     labels_filter = set( args.labels ) if args.labels else None
 
-    sources = []
-    for name, boxes in load_cache_dir( VID_HASH_DIR, args.include_preview ):
-        sources.append( (name, boxes) )
-    for name, boxes in load_cache_dir( PIC_HASH_DIR, args.include_preview ):
-        sources.append( (name, boxes) )
-
-    if not sources:
-        print( "No%s cache files found in %s or %s - run betatv.py/betastare.py on some footage first."%(
-            "" if args.include_preview else " real (non-preview)", VID_HASH_DIR, PIC_HASH_DIR ) )
-        if not args.include_preview:
-            print( "(pass --include-preview to also check preview-slice cache)" )
-        return
-
+    # One cache file at a time, keeping only scores (8 bytes each in an
+    # array). Holding every file's parsed detections at once took about
+    # 500 bytes a detection: 3.7 GB on a 7.3-million-detection library,
+    # and the analysis hub runs this beside other tools.
     # Grouped by CONFIGURATION (backend + size + detection key) rather
     # than by backend name. A score distribution is a property of one
     # set of model weights; pooling a 320n run and a 640m run under the
@@ -226,17 +218,30 @@ def main():
     # and those percentiles are exactly what min_prob gets derived from.
     scores_by_configuration_label = {}
     backend_of_configuration = {}
-    for name, boxes in sources:
-        configuration = bu_cache.configuration_label_of_cache_filename( name )
-        backend_of_configuration[configuration] = backend_of_cache_filename( name )
-        scores_by_configuration_label.setdefault( configuration, {} )
-        for b in boxes:
-            label = b['class_id']
-            scores_by_configuration_label[configuration].setdefault( label, [] ).append( b['score'] )
+    file_count = 0
+    for directory in ( VID_HASH_DIR, PIC_HASH_DIR ):
+        for name, boxes in load_cache_dir( directory, args.include_preview ):
+            file_count += 1
+            configuration = bu_cache.configuration_label_of_cache_filename( name )
+            backend_of_configuration[configuration] = backend_of_cache_filename( name )
+            scores = scores_by_configuration_label.setdefault( configuration, {} )
+            for b in boxes:
+                label = b['class_id']
+                if label not in scores:
+                    scores[label] = array( 'd' )
+                scores[label].append( b['score'] )
+            del boxes
+
+    if not file_count:
+        print( "No%s cache files found in %s or %s - run betatv.py/betastare.py on some footage first."%(
+            "" if args.include_preview else " real (non-preview)", VID_HASH_DIR, PIC_HASH_DIR ) )
+        if not args.include_preview:
+            print( "(pass --include-preview to also check preview-slice cache)" )
+        return
 
     configurations_found = sorted( scores_by_configuration_label.keys() )
     print( "Loaded %d cache file(s) across %d configuration(s): %s\n"%(
-        len(sources), len(configurations_found), ", ".join(configurations_found) ) )
+        file_count, len(configurations_found), ", ".join(configurations_found) ) )
 
     # The current min_prob for every (configuration, label) pair with
     # cache, so each section can show "what would happen at another

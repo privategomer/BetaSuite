@@ -51,6 +51,12 @@ MODELS = {
     'nudenet_v3 / 320n': '../resources/model/v3.4-320n.onnx',
     'nudenet_v3 / 640m': '../resources/model/v3.4-640m.onnx',
     'retinanet_v2':      '../resources/model/detector_v2_default_checkpoint.onnx',
+    'person yolo11_seg / n': '../resources/model/yolo11n-seg.onnx',
+    'person yolo11_seg / s': '../resources/model/yolo11s-seg.onnx',
+    'person yolo11_seg / m': '../resources/model/yolo11m-seg.onnx',
+    'person rf_detr_seg / nano':   '../resources/model/rf-detr-seg-nano.onnx',
+    'person rf_detr_seg / small':  '../resources/model/rf-detr-seg-small.onnx',
+    'person rf_detr_seg / medium': '../resources/model/rf-detr-seg-medium.onnx',
 }
 
 DIRS = [
@@ -186,8 +192,16 @@ def gpu_requested( args, c ):
         return False
     try:
         import betaconfig
+        import betautils_machine
+        loaded = betautils_machine.LOADED
         value = bool( getattr( betaconfig, 'gpu_enabled', 0 ) )
-        c.log.info( 'betaconfig.gpu_enabled = %d'%( int( value ) ) )
+        from_machine = loaded is not None and ( 'gpu_enabled', ) in loaded.applied
+        c.log.info( 'gpu_enabled = %d (from %s)'%(
+            int( value ), loaded.path if from_machine else 'betaconfig.py' ) )
+        if loaded is not None:
+            c.log.info( 'note  %s'%( loaded.describe(), ) )
+            for problem in loaded.problems:
+                c.fail( problem )
         return value
     except Exception as e:
         c.warn( 'could not import betaconfig.py to read gpu_enabled (%s); assuming CPU'%(e) )

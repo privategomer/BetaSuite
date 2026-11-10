@@ -13,7 +13,7 @@ standalone tools. They drifted, and the drift caused real bugs twice:
 once when the detector backend name was missing from one copy of a glob
 (corrupting the file_hash it parsed back out, so every video looked
 "not found"), and once when a video shorter than preview_start_seconds
-fell back to a plain '-preview' suffix that two tools' hand-copied
+fell back to a whole-file preview suffix that two tools' hand-copied
 formulas did not model. Both were invisible until someone noticed a
 result that made no sense.
 
@@ -64,6 +64,7 @@ import betaconst
 import betaconfig
 import betautils_hash as bu_hash
 import betautils_detector as bu_detector
+import betautils_reverse as bu_reverse
 
 
 # Legacy aliases, kept because tools import them by name.
@@ -75,28 +76,101 @@ PIC_HASH_DIR = betaconst.pic_hash_dir
 # Preview slice suffix
 # ---------------------------------------------------------------------------
 
-def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ):
+def preview_cache_suffix( preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                          duration_seconds ):
     """
-    Build the '' / '-preview' / '-preview@<offset>s' filename tail.
+    Build the filename tail for a preview slice: '' for a real run, else
+    '-preview', then '@<offset>s' when the slice does not start at 0,
+    then '+<length>s', or '+all' when the slice runs to the end of the
+    file.
 
-    An offset of exactly 0.0 lands on the plain '-preview' form, not
-    '-preview@0.0s'. That covers both "no explicit slice requested" and
-    the whole-file fallback (a preview run of a file shorter than
-    preview_start_seconds), which are the same thing on disk: not a
-    slice of anything, so no '@<offset>s' implying one.
+        -preview+20.0s    -preview@600.0s+20.0s    -preview+all
+
+    The length is in the name because a cache, scan or render of a
+    20-second slice must never be served to a 60-second one: the rest of
+    that slice would have no detections, so nothing there would be
+    censored, and in reverse mode nothing there would be shown. Names
+    without a length (written before it was added) are still read by the
+    analysis tools, and never by a run.
+
+    A slice that reaches the end of the file is '+all' whatever length
+    was asked for, because every such request reads the same frames: a
+    20- and a 60-second preview of a 15-second clip share one cache, and
+    so do they and a start past the end (the whole-file fallback).
 
     Args:
         preview_mode_enabled: Whether preview mode is on at all.
         preview_offset_seconds: The resolved slice offset in seconds.
+        preview_seconds: The slice length in seconds, or None for a
+            slice that runs to the end of the file.
+        duration_seconds: The file's length in seconds, or None when it
+            is not known (the name then carries the length as asked).
+
+    Both are required so no caller can build a name without them by
+    leaving them out: the old two-argument form is exactly how a name
+    without a length was built.
 
     Returns:
         The suffix string.
     """
     if not preview_mode_enabled:
         return ''
-    if preview_offset_seconds:
-        return '-preview@%.1fs'%(preview_offset_seconds)
-    return '-preview'
+    offset = preview_offset_seconds or 0.0
+    to_end = ( not preview_seconds
+               or ( duration_seconds is not None
+                    and offset + preview_seconds >= duration_seconds - 1e-6 ) )
+    start = '@%.1fs'%( offset, ) if offset else ''
+    length = '+all' if to_end else '+%.1fs'%( preview_seconds, )
+    return '-preview' + start + length
+
+
+_PREVIEW_SUFFIX = re.compile(
+    r'^-preview(?:@(?P<offset>[0-9.]+)s)?(?:\+(?:(?P<seconds>[0-9.]+)s|(?P<all>all)))?$' )
+
+
+def parse_preview_suffix( suffix ):
+    """
+    Pull a preview suffix apart: the inverse of preview_cache_suffix.
+
+    Returns:
+        None for '' or anything that is not a preview suffix, else a dict
+        with offset_seconds, preview_seconds (None when the slice runs to
+        the end or the length is unknown), to_end and length_known
+        (False for a name written before lengths were added).
+    """
+    match = _PREVIEW_SUFFIX.match( suffix or '' )
+    if not match:
+        return None
+    seconds = match.group( 'seconds' )
+    return {
+        'offset_seconds': float( match.group( 'offset' ) or 0.0 ),
+        'preview_seconds': float( seconds ) if seconds else None,
+        'to_end': bool( match.group( 'all' ) ),
+        'length_known': bool( seconds or match.group( 'all' ) ),
+    }
+
+
+def longest_preview_suffix( suffixes ):
+    """
+    The one preview slice to read when a video has several, or None.
+
+    Slices at more than one offset are different parts of the video, so
+    None: blending them into one "video" is worse than not reporting on
+    it. At one offset the slices overlap and the longest holds every
+    other one, so it is the most data, not a guess. A slice to the end
+    beats any length, and a name without a length (from before lengths
+    were added) loses to any name with one, since what it covers is not
+    known: it ranks as length 0.
+    """
+    parsed = [ ( suffix, parse_preview_suffix( suffix ) ) for suffix in suffixes ]
+    parsed = [ item for item in parsed if item[1] is not None ]
+    if not parsed or len( { round( info['offset_seconds'], 1 ) for _s, info in parsed } ) != 1:
+        return None
+
+    def rank( item ):
+        info = item[1]
+        return ( info['to_end'], info['preview_seconds'] or 0.0, item[0] )
+    return max( parsed, key=rank )[0]
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +189,7 @@ def record_run_key( kind, key, identity ):
     a run. Costs one small file write the first time each key is seen.
 
     Args:
-        kind: 'detection' | 'censor' | 'encode'.
+        kind: 'detection' | 'censor' | 'encode' | 'person'.
         key: The short hex key as it appears in filenames.
         identity: The dict the key was hashed from.
     """
@@ -230,7 +304,7 @@ def censor_identity( backend_name=None ):
     for label in sorted( bu_config.get_parts_to_blur( backend_name ).keys() ):
         per_label[label] = bu_config.get_label_settings( label, backend_name )
 
-    return {
+    identity = {
         'labels':                   per_label,
         'variant':                  variant_name,
         'class_suppression':        bu_detector.get_class_suppression( backend_name ),
@@ -302,6 +376,57 @@ def censor_identity( backend_name=None ):
         'profile_by_path_pattern':   getattr( betaconfig, 'profile_by_path_pattern', None ),
         'profile_by_source_dir':     getattr( betaconfig, 'profile_by_source_dir', None ),
     }
+    # Merging bursts of cuts changes which cuts tracking stops at. Keyed
+    # only while it is on, so adding the setting left every existing
+    # render's key, and so every finished output, valid; any change to
+    # it once on moves the key.
+    import betautils_track as bu_track   # deferred: bu_track imports bu_config
+    cut_bursts = bu_track.cut_burst_settings()
+    if cut_bursts:
+        identity['shot_cut_bursts'] = cut_bursts
+    # Reverse mode: the whole block (frame style, trigger, fade, empty
+    # frames, every window entry). Each window's RESOLVED settings are
+    # already in 'labels', since get_parts_to_blur follows the windows
+    # while reverse is on. Keyed only while it is on, for the same reason
+    # as cut bursts: existing renders keep their names.
+    reverse = bu_reverse.identity()
+    if reverse is not None:
+        identity['reverse'] = reverse
+        if bu_reverse.person_windows_enabled():
+            import betautils_person as bu_person   # deferred: keeps cv2 out of this import graph
+            identity['person_model'] = bu_person.identity()
+    # A feathered circle or ellipse is drawn differently since the mask
+    # fix (see betautils_censor._alpha_for), with no config change to show
+    # for it, so a render made before it would be reused as current. Keyed
+    # only while a style that the fix touches is in use, so every config
+    # without one keeps its key and its finished output.
+    if censor_uses_feathered_shape( per_label ):
+        identity['feathered_shape_mask'] = 2
+    return identity
+
+
+def censor_uses_feathered_shape( per_label ):
+    """
+    Whether any blur or pixel style in these resolved label settings is a
+    circle or ellipse with a feather, the one case the feather mask fix
+    changed. Bars and stickers are not: a bar is a box, and a sticker's
+    feather softens its own silhouette.
+
+    Args:
+        per_label: {label: resolved settings}, as get_label_settings returns.
+    """
+    import betautils_censor as bu_censor   # deferred: keeps cv2 out of this import graph
+    for settings in per_label.values():
+        styles = settings.get( 'censor_style' )
+        if isinstance( styles, dict ):
+            styles = [ styles ]
+        for style in styles or ():
+            if style.get( 'type' ) not in ( 'blur', 'pixel' ) or not style.get( 'feather' ):
+                continue
+            shape = bu_censor.resolve_censor_shape( style, settings.get( 'censor_shape', 'box' ) )
+            if shape in ( 'circle', 'ellipse' ):
+                return True
+    return False
 
 
 def censor_key( backend_name=None ):
@@ -390,6 +515,19 @@ def box_hash_path_for( file_hash, size, fps, min_prob, backend_name,
         size, fps, min_prob, det_key, preview_suffix ) )
 
 
+def person_cache_path_for( file_hash, fps, backend_name, person_identity, preview_suffix='' ):
+    """
+    Person-mask cache path for one (file, sample rate, person model).
+
+    Beside the detection caches, keyed separately: the person pass and
+    detection are independent, so retuning either leaves the other's
+    cache valid.
+    """
+    key = _keyed( 'person', person_identity, betaconst.detection_key_len )
+    return os.path.join( VID_HASH_DIR, '%s-person-%s-%g-p%s%s.npz'%(
+        file_hash, backend_name, fps, key, preview_suffix ) )
+
+
 def pic_hash_path_for( image_hash, size, min_prob, backend_name, det_key=None ):
     """
     Still-image sibling of box_hash_path_for.
@@ -429,7 +567,8 @@ def parse_shot_cut_path( path ):
     Offline tools (betabench, the tuning replay) read caches a run
     already wrote and need the WINDOW that run scanned, which the
     filename records and the cut list does not: '-max<N>s' is a
-    preview's bound and '-preview@<X>s' its offset. Before this existed
+    preview's bound and '-preview@<X>s' its offset (then '+<length>s'
+    or '+all', see preview_cache_suffix). Before this existed
     they globbed on the hash and took whichever file was newest, then
     guessed the window from the spread of their own detections.
 
@@ -459,7 +598,7 @@ def parse_shot_cut_path( path ):
 _SHOT_CUT_NAME = re.compile(
     r'^(?P<hash>[0-9a-f]+)-(?P<fps>[0-9.e+]+)-(?P<threshold>[0-9]+\.[0-9]{3})'
     r'(?:-max(?P<max>[0-9.e+]+)s)?'
-    r'(?P<preview>-preview(?:@(?P<offset>[0-9.]+)s)?)?$' )
+    r'(?P<preview>-preview(?:@(?P<offset>[0-9.]+)s)?(?:\+(?:[0-9.]+s|all))?)?$' )
 
 
 def shot_cut_caches_for( file_hash, fps, threshold ):
@@ -470,26 +609,36 @@ def shot_cut_caches_for( file_hash, fps, threshold ):
     file is the only window that can say what the file IS; a 20-second
     slice from the start mostly measures the intro.
 
+    fps None takes a scan at any cadence, newest first within each
+    group: a replay of a run made before the configured rate changed
+    needs the cuts that run scanned.
+
     Returns:
         A list of (path, parsed) pairs, parsed as parse_shot_cut_path.
     """
-    prefix = os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f'%( file_hash, fps, threshold ) )
+    if fps is None:
+        prefix = os.path.join( betaconst.shot_cut_dir, '%s-'%( file_hash, ) )
+    else:
+        prefix = os.path.join( betaconst.shot_cut_dir, '%s-%g-%.3f'%( file_hash, fps, threshold ) )
     found = []
     for path in glob.glob( glob.escape( prefix ) + '*.gz' ):
         parsed = parse_shot_cut_path( path )
         if not parsed or parsed['file_hash'] != file_hash:
             continue
-        if abs( parsed['fps'] - float( fps ) ) > 1e-9:
+        if fps is not None and abs( parsed['fps'] - float( fps ) ) > 1e-9:
             continue
         if abs( parsed['threshold'] - float( threshold ) ) > 5e-4:
             continue
         found.append( ( path, parsed ) )
     # No bound means the scan ran to the end of the file. That includes
-    # a '-preview' scan of a file shorter than its slice, which betatv
+    # a '-preview+all' scan of a file shorter than its slice, which betatv
     # processes whole, so it is a whole-file measurement too.
+    newest_first = lambda item: os.path.getmtime( item[0] )
     whole = [ item for item in found if item[1]['max_seconds'] is None ]
+    if fps is None:
+        whole.sort( key=newest_first, reverse=True )
     sliced = sorted( ( item for item in found if item not in whole ),
-                     key=lambda item: os.path.getmtime( item[0] ), reverse=True )
+                     key=newest_first, reverse=True )
     return whole + sliced
 
 
@@ -509,13 +658,24 @@ def transcode_path_for( file_hash ):
 # Output paths
 # ---------------------------------------------------------------------------
 
+def output_mode_marker():
+    """
+    '-reverse' for a reverse-mode render, '' otherwise. The censor key
+    already keeps the two apart; this is so a person can tell them apart
+    in a directory listing.
+    """
+    return '-reverse' if bu_reverse.enabled() else ''
+
+
 def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
-                           enc_key, preview_suffix='', output_label='' ):
+                           enc_key, preview_suffix='', output_label='', mode_marker='' ):
     """
     Build the identifying stem of a censored video's filename.
 
     Format:
-        <stem>-<file_hash>-<sizes>-<fps>-d<det>-c<cen>-e<enc><preview><label>
+        <stem>-<file_hash>-<sizes>-<fps>-d<det>-c<cen>-e<enc><preview><mode><label>
+
+    <mode> is output_mode_marker(): '-reverse' for reverse mode.
 
     Reading one of these tells you: which source file (hash), at what
     detection sizes and sample rate, under which detection settings
@@ -535,8 +695,8 @@ def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
     filename: anything outside [A-Za-z0-9._-] becomes '-'.
     """
     sizes_text = "+".join( str( size ) for size in sizes )
-    base = '%s-%s-%s-%g-d%s-c%s-e%s%s'%(
-        stem, file_hash, sizes_text, fps, det_key, cen_key, enc_key, preview_suffix )
+    base = '%s-%s-%s-%g-d%s-c%s-e%s%s%s'%(
+        stem, file_hash, sizes_text, fps, det_key, cen_key, enc_key, preview_suffix, mode_marker )
     return base + sanitise_output_label( output_label )
 
 
@@ -559,7 +719,7 @@ def sanitise_output_label( label ):
 
 def video_output_paths( censored_folder, stem, file_hash, sizes, fps,
                         det_key, cen_key, enc_key, preview_suffix='',
-                        chunk_container='mkv', output_label='' ):
+                        chunk_container='mkv', output_label='', mode_marker='' ):
     """
     Final and intermediate paths for one censored video.
 
@@ -570,14 +730,14 @@ def video_output_paths( censored_folder, stem, file_hash, sizes, fps,
         censored_folder.
     """
     base = video_output_basename( stem, file_hash, sizes, fps, det_key,
-                                  cen_key, enc_key, preview_suffix, output_label )
+                                  cen_key, enc_key, preview_suffix, output_label, mode_marker )
     final_path = os.path.join( censored_folder, base + '.mp4' )
     intermediate_path = os.path.join( censored_folder, base + '.video.' + chunk_container )
     return final_path, intermediate_path
 
 
 def picture_output_path( censored_folder, stem, suffix, image_hash, sizes,
-                         det_key, cen_key ):
+                         det_key, cen_key, mode_marker='' ):
     """
     Output path for one censored still image (betastare.py).
 
@@ -585,8 +745,8 @@ def picture_output_path( censored_folder, stem, suffix, image_hash, sizes,
     codec settings.
     """
     sizes_text = "+".join( str( size ) for size in sizes )
-    return os.path.join( censored_folder, '%s-%s-%s-d%s-c%s%s'%(
-        stem, image_hash, sizes_text, det_key, cen_key, suffix ) )
+    return os.path.join( censored_folder, '%s-%s-%s-d%s-c%s%s%s'%(
+        stem, image_hash, sizes_text, det_key, cen_key, mode_marker, suffix ) )
 
 
 def chunk_path_for( intermediate_path, chunk_index ):
@@ -714,10 +874,12 @@ class CachedConfiguration:
     """
 
     __slots__ = ( 'backend_name', 'picture_sizes', 'detection_key', 'variant',
-                  'identity', 'preview_suffix', 'file_hashes' )
+                  'identity', 'preview_suffix', 'file_hashes', 'detection_keys',
+                  'sample_rates' )
 
     def __init__( self, backend_name, picture_sizes, detection_key=None, variant=None,
-                  identity=None, preview_suffix='', file_hashes=() ):
+                  identity=None, preview_suffix='', file_hashes=(), detection_keys=None,
+                  sample_rates=() ):
         self.backend_name = backend_name
         self.picture_sizes = list( picture_sizes )
         self.detection_key = detection_key
@@ -725,6 +887,13 @@ class CachedConfiguration:
         self.identity = identity or {}
         self.preview_suffix = preview_suffix
         self.file_hashes = sorted( file_hashes )
+        # Every detection key and sample rate this configuration covers.
+        # One run can hold several: a profile samples at its own rate,
+        # and changing a detection setting starts a new key.
+        if detection_keys is None:
+            detection_keys = [ detection_key ] if detection_key else []
+        self.detection_keys = sorted( detection_keys )
+        self.sample_rates = sorted( sample_rates )
 
     @property
     def size( self ):
@@ -860,10 +1029,245 @@ def discover_cached_configurations( fps=None, min_prob=None, include_preview=Fal
             variant=_variant_from_identity( identity ),
             identity=identity,
             preview_suffix=preview_suffix,
-            file_hashes=hashes ) )
+            file_hashes=hashes,
+            sample_rates=[ float( fps ) ] if fps is not None else () ) )
 
     configurations.sort( key=lambda config: config.sort_key )
     return configurations
+
+
+# The preview_suffix of a configuration that groups every preview slice.
+PREVIEW_ANY = '-preview*'
+
+
+def all_detection_caches( backend_names=None, min_prob=None, include_preview=False ):
+    """
+    [(parsed, path)] for every detection cache of these backends, any rate.
+
+    parsed is parse_any_cache_name's dict. Only caches at min_prob
+    (default: the configured global_min_prob) are listed, since a
+    different floor is a different set of raw detections.
+    """
+    if min_prob is None:
+        min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    names = set( backend_names or bu_detector.registered_backend_names() )
+    found = []
+    for path in glob.glob( os.path.join( VID_HASH_DIR, '*.gz' ) ):
+        parsed = parse_any_cache_name( path )
+        if not parsed or parsed['backend'] not in names:
+            continue
+        if parsed['box_version'] != betaconst.picture_saved_box_version:
+            continue
+        if abs( parsed['min_prob'] - float( min_prob ) ) > 5e-4:
+            continue
+        if parsed['preview_suffix'] and not include_preview:
+            continue
+        found.append( ( parsed, path ) )
+    return found
+
+
+def sample_rates_on_disk( backend_names=None, min_prob=None, include_preview=False ):
+    """Every sample rate these backends have detection caches at, sorted."""
+    return sorted( set( parsed['fps'] for parsed, _path in all_detection_caches(
+        backend_names, min_prob, include_preview ) ) )
+
+
+def merge_configurations( configurations ):
+    """
+    One configuration per model setup, however many rates and keys it ran at.
+
+    discover_cached_configurations reports one entry per (rate, detection
+    key). A single real run can hold several of those: a profile samples
+    at its own rate (quick_cut at 18 while the rest sample at 9), and
+    changing a detection setting between batches starts a new key. Read
+    per rate, a tool saw only the files detected at the configured rate
+    and skipped the rest, and once the configured rate moved it skipped
+    the whole library.
+
+    Entries merge when backend, sizes and model variant match. Without a
+    recorded variant two keys cannot be told apart, so those stay
+    separate rather than risk pooling two models. Every preview slice of
+    one setup becomes one preview configuration (PREVIEW_ANY), never one
+    per slice.
+    """
+    groups = {}
+    order = []
+    for config in configurations:
+        variant = getattr( config, 'variant', None )
+        identity_part = ( 'variant', variant ) if variant else (
+            'key', getattr( config, 'detection_key', None ) )
+        group = ( config.backend_name, tuple( config.picture_sizes ), identity_part,
+                  bool( getattr( config, 'preview_suffix', '' ) ) )
+        if group not in groups:
+            groups[group] = []
+            order.append( group )
+        groups[group].append( config )
+    merged = []
+    for group in order:
+        members = groups[group]
+        first = members[0]
+        if len( members ) == 1:
+            # Nothing to merge: hand back what discovery found, unchanged.
+            merged.append( first )
+            continue
+        keys = sorted( set( key for member in members for key in member.detection_keys ) )
+        suffixes = set( member.preview_suffix for member in members )
+        if not group[3]:
+            suffix = ''
+        elif len( suffixes ) == 1:
+            suffix = suffixes.pop()
+        else:
+            suffix = PREVIEW_ANY
+        hashes = set()
+        rates = set()
+        for member in members:
+            hashes.update( member.file_hashes )
+            rates.update( member.sample_rates )
+        merged.append( CachedConfiguration(
+            backend_name=first.backend_name,
+            picture_sizes=first.picture_sizes,
+            detection_key=keys[0] if len( keys ) == 1 else None,
+            variant=first.variant,
+            identity=first.identity,
+            preview_suffix=suffix,
+            file_hashes=hashes,
+            detection_keys=keys,
+            sample_rates=rates ) )
+    merged.sort( key=lambda config: ( config.backend_name, list( config.picture_sizes ),
+                                      getattr( config, 'variant', None ) or '',
+                                      getattr( config, 'preview_suffix', '' ) ) )
+    return merged
+
+
+def cache_paths_for_configuration( configuration, fps, min_prob ):
+    """
+    {file_hash: [cache_path per size]} for exactly one CachedConfiguration.
+
+    Only that configuration's videos, detection key and preview suffix,
+    and only videos with a cache at every one of its sizes.
+    discover_full_run_videos answers a different question (the best
+    cache per video for a backend), which is why a preview configuration
+    read through it got the real caches instead of its own.
+    """
+    wanted = set( configuration.file_hashes )
+    by_hash = {}
+    for size in configuration.picture_sizes:
+        for path in glob.glob( _cache_glob( configuration.backend_name, size, fps, min_prob ) ):
+            parsed = parse_cache_name( path, configuration.backend_name, size, fps, min_prob )
+            if not parsed:
+                continue
+            file_hash, detection_key, preview_suffix = parsed
+            if file_hash not in wanted or preview_suffix != configuration.preview_suffix:
+                continue
+            if configuration.detection_key and detection_key != configuration.detection_key:
+                continue
+            by_hash.setdefault( file_hash, {} )[size] = path
+    return { file_hash: [ paths[size] for size in configuration.picture_sizes ]
+             for file_hash, paths in sorted( by_hash.items() )
+             if len( paths ) == len( configuration.picture_sizes ) }
+
+
+def videos_across_sample_rates( configuration, min_prob=None, rates=None ):
+    """
+    {file_hash: cache_paths} for one configuration, newest run per video.
+
+    Covers every sample rate and detection key the configuration holds:
+    a profile can set its own video_censor_fps (quick_cut samples at 18),
+    and the rate is in the cache name and the detection key, so a
+    per-rate lookup saw only the videos detected at that rate: 48 of 56
+    in one library, with every quick-cut video missing. Changing the
+    configured rate after a run hid the whole run the same way. A video
+    cached at two rates or under two keys keeps its newest complete set,
+    which is what its last run used.
+
+    Matching: same backend and sizes; the same model variant when the
+    configuration names one, else one of its detection keys when it has
+    any, else any key (an explicit --picture-sizes request, which names
+    a shape rather than a run). Real caches for a real configuration;
+    preview slices for a preview one, one slice per video.
+
+    Args:
+        configuration: A CachedConfiguration.
+        min_prob: Confidence floor. Defaults to the configured one.
+        rates: Restrict to these sample rates. Default: every rate.
+
+    Returns:
+        ({file_hash: [cache_path per size]}, sorted rates that had videos).
+    """
+    sizes = list( configuration.picture_sizes )
+    single_key = getattr( configuration, 'detection_key', None )
+    keys = set( getattr( configuration, 'detection_keys', None ) or (
+        [ single_key ] if single_key else [] ) )
+    preview = getattr( configuration, 'preview_suffix', '' )
+    wanted_variant = getattr( configuration, 'variant', None )
+    variant_of_key = {}
+
+    def variant_for( key ):
+        if key not in variant_of_key:
+            variant_of_key[key] = _variant_from_identity( _identity_for_detection_key( key ) )
+        return variant_of_key[key]
+
+    groups = {}
+    for parsed, path in all_detection_caches(
+            [ configuration.backend_name ], min_prob, include_preview=bool( preview ) ):
+        if parsed['size'] not in sizes:
+            continue
+        if rates is not None and not any( abs( parsed['fps'] - float( rate ) ) < 1e-9
+                                          for rate in rates ):
+            continue
+        suffix = parsed['preview_suffix']
+        if bool( suffix ) != bool( preview ):
+            continue
+        if preview and preview != PREVIEW_ANY and suffix != preview:
+            continue
+        key = parsed['detection_key']
+        if wanted_variant:
+            if variant_for( key ) != wanted_variant:
+                continue
+        elif keys and key not in keys:
+            continue
+        group = ( parsed['file_hash'], parsed['fps'], key, suffix )
+        groups.setdefault( group, {} )[ parsed['size'] ] = path
+
+    chosen = {}
+    for ( file_hash, fps, _key, _suffix ), by_size in groups.items():
+        if len( by_size ) != len( sizes ):
+            continue
+        paths = [ by_size[size] for size in sizes ]
+        newest = max( os.path.getmtime( path ) for path in paths )
+        if file_hash not in chosen or newest > chosen[file_hash][0]:
+            chosen[file_hash] = ( newest, paths, fps )
+    return ( { file_hash: paths for file_hash, ( _newest, paths, _fps ) in sorted( chosen.items() ) },
+             sorted( set( fps for _newest, _paths, fps in chosen.values() ) ) )
+
+
+def videos_for_configuration( configuration, fps=None, min_prob=None, include_preview=False ):
+    """
+    The videos a replaying tool should read for one configuration.
+
+    By default the newest real run of every video, whatever rate it was
+    sampled at (videos_across_sample_rates). fps narrows to one rate.
+    include_preview keeps the older per-rate lookup, which falls back to
+    a preview slice for a video with no real cache, at fps or the
+    configured rate.
+
+    Returns:
+        (videos, preview_used_for, rates): videos is {file_hash:
+        [cache_path per size]}, preview_used_for {file_hash:
+        preview_suffix} for preview-backed entries, rates the sample
+        rates the videos came from.
+    """
+    if min_prob is None:
+        min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    if include_preview:
+        rate = fps if fps is not None else betaconfig.video_censor_fps
+        videos, preview_used_for = discover_full_run_videos(
+            configuration.picture_sizes, rate, min_prob, configuration.backend_name,
+            include_preview=True )
+        return videos, preview_used_for, ( [ float( rate ) ] if videos else [] )
+    videos, rates = videos_across_sample_rates(
+        configuration, min_prob, rates=None if fps is None else [ fps ] )
+    return videos, {}, rates
 
 
 def _size_in_cache_name( name, backend_name, fps, min_prob ):
@@ -1075,8 +1479,15 @@ def configurations_to_analyse( requested_sizes=None, backend_names=None, fps=Non
     Args:
         requested_sizes: Explicit sizes, or None/empty to discover.
         backend_names: Restrict to these backends. Defaults to all registered.
-        fps, min_prob: Run parameters to match. Default to config.
-        include_preview: Whether preview-slice caches count.
+        fps: Only caches sampled at this rate. Default None: every rate
+            on disk, merged into one configuration per model setup (see
+            merge_configurations), so a profile's own rate and a run made
+            before the configured rate changed are both covered.
+        min_prob: Confidence floor to match. Defaults to the configured one.
+        include_preview: Whether preview-slice caches count: False, True
+            (one preview configuration per setup beside the real ones),
+            or 'fallback' (a preview configuration only for a setup with
+            no real caches at all).
         logger: Optional logger for a one-line summary of what was found.
         variant_names: Restrict to these model variants (e.g. ['640m']).
             Defaults to every variant found.
@@ -1117,8 +1528,28 @@ def configurations_to_analyse( requested_sizes=None, backend_names=None, fps=Non
                 ", ".join( config.label for config in configurations ) ) )
         return configurations
 
-    discovered = discover_cached_configurations(
-        fps=fps, min_prob=min_prob, include_preview=include_preview, backend_names=names )
+    with_preview = bool( include_preview )
+    if fps is not None:
+        discovered = discover_cached_configurations(
+            fps=fps, min_prob=min_prob, include_preview=with_preview, backend_names=names )
+    else:
+        # Every rate on disk, not just the configured one: a profile
+        # samples at its own rate, and the configured rate may have
+        # moved since the run being analysed.
+        discovered = []
+        for rate in sample_rates_on_disk( names, min_prob, with_preview ):
+            discovered.extend( discover_cached_configurations(
+                fps=rate, min_prob=min_prob, include_preview=with_preview, backend_names=names ) )
+        if not discovered:
+            discovered = discover_cached_configurations(
+                fps=None, min_prob=min_prob, include_preview=with_preview, backend_names=names )
+    discovered = merge_configurations( discovered )
+    if include_preview == 'fallback':
+        real = set( ( config.backend_name, tuple( config.picture_sizes ), config.variant )
+                    for config in discovered if not config.preview_suffix )
+        discovered = [ config for config in discovered if not config.preview_suffix
+                       or ( config.backend_name, tuple( config.picture_sizes ), config.variant )
+                       not in real ]
     if discovered:
         if wanted_variants is not None:
             kept = [ config for config in discovered if _keep( config ) ]
@@ -1219,7 +1650,8 @@ def discover_full_run_videos( picture_sizes, fps, min_prob, backend_name,
         backend_name: Backend to match. Never defaulted - pin it.
         include_preview: When True, a file_hash with no real cache is
             still included if it has a complete set of preview caches at
-            exactly ONE preview suffix. A real cache always wins over a
+            exactly one preview offset (the longest slice there, see
+            longest_preview_suffix). A real cache always wins over a
             preview one for the same file_hash, because a real run is
             strictly better data. A file_hash with preview caches at
             more than one offset is skipped rather than guessed at:
@@ -1267,20 +1699,20 @@ def discover_full_run_videos( picture_sizes, fps, min_prob, backend_name,
         for file_hash in sorted( candidates ):
             shared_suffixes = set.intersection(
                 *[ set( paths[file_hash] ) for paths in per_size_preview ] )
-            if len( shared_suffixes ) != 1:
+            preview_suffix = longest_preview_suffix( shared_suffixes )
+            if preview_suffix is None:
                 import betautils_log as bu_log
                 if not shared_suffixes:
                     bu_log.get_logger().info(
-                        "%s has preview caches for backend=%s but not at the same offset across "
+                        "%s has preview caches for backend=%s but not of the same slice across "
                         "every picture size - skipping (re-run with one consistent "
-                        "--preview-start-seconds)"%(file_hash, backend_name) )
+                        "--preview-start-seconds and --preview-seconds)"%(file_hash, backend_name) )
                 else:
                     bu_log.get_logger().info(
                         "%s has preview caches at more than one offset for backend=%s (%s) - "
                         "skipping rather than guessing which you meant"%(
                             file_hash, backend_name, sorted( shared_suffixes ) ) )
                 continue
-            preview_suffix = next( iter( shared_suffixes ) )
             result[file_hash] = [ paths[file_hash][preview_suffix] for paths in per_size_preview ]
             preview_used_for[file_hash] = preview_suffix
 

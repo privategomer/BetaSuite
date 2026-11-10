@@ -1,7 +1,7 @@
 """
 test_item_overrides_per_backend.py - regression coverage for
 bu_detector.get_item_overrides and its validation
-(betautils_config._validate_backend_item_overrides), added 2026-09-16
+(betautils_config._validate_backend_item_overrides), added
 alongside making item_overrides backend-tunable.
 
 Why this needed its own dedicated test: unlike get_class_suppression
@@ -191,12 +191,12 @@ class TestBackendItemOverridesValidation( unittest.TestCase ):
 
 class TestSharedItemOverridesRejectsBackendTunableKeys( unittest.TestCase ):
     """
-    2026-09-17: every backend-tunable key (min_prob, width_area_safety,
+    Every backend-tunable key (min_prob, width_area_safety,
     height_area_safety, time_safety, track_max_gap, interpolation_max_gap,
     paired_style, etc) moved OUT of the shared betaconfig.item_overrides
     block and into each backend's own detector_backend[<name>]
     ['item_overrides'][label] block - see betaconfig.py's own comment on
-    item_overrides for why (per-user decision: no default convention
+    item_overrides for why (by design: no default convention
     should be assumed for a genuinely per-model value). This class
     covers the other half of that change: _validate_item_overrides now
     actively FLAGS a backend-tunable key still sitting in the shared

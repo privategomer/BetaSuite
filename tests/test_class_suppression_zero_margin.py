@@ -1,7 +1,7 @@
 """
 test_class_suppression_zero_margin.py - regression coverage for
 betautils_config._validate_class_suppression_zero_margin, added
-2026-09-16 alongside the real config edit that raised every nudenet_v3
+alongside the real config edit that raised every nudenet_v3
 class_suppression rule that had been exactly margin=0.00 up to 0.10 by
 hand (one pair went to 0.15).
 
@@ -13,7 +13,7 @@ proposes when the suppressing label rarely beats the suppressed label's
 confidence at all (a positive margin there would gut the rule, not
 refine it - see CONFIG_REFERENCE.md's nudenet_v3 margin section). The
 check is deliberately margin == 0.0 exactly, not "below some floor" -
-the user's own correction (2026-09-16) was explicit: "<0 is error; ==0
+the design is explicit: "<0 is error; ==0
 is warning" - a rule someone deliberately sets to something in between,
 like 0.05, is a reviewed, in-between choice this warning has no opinion
 on, not a case it should also flag.
@@ -139,7 +139,7 @@ class TestClassSuppressionZeroMargin( unittest.TestCase ):
             self.fail( "validate_config() raised SystemExit on a warning-only condition (margin == 0.0)" )
 
     def test_real_shipped_config_has_no_zero_margin_rules( self ):
-        # regression pin: the user's 2026-09-16 hand edit raised every
+        # regression pin: a hand edit raised every
         # nudenet_v3 rule that had been exactly 0.00 up to 0.10 - the
         # live config should currently produce zero warnings from this
         # check. If this starts failing because a new rule was added at

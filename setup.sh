@@ -5,17 +5,26 @@
 #   ./setup.sh                 # interactive, picks GPU if an NVIDIA GPU is found
 #   ./setup.sh --yes --cpu     # unattended, CPU build, default answers
 #   ./setup.sh --help
+#
+# In a git checkout it first offers to switch to the latest release tag, so
+# a fresh clone of main installs the released code rather than work in progress.
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR" || exit 1
 
+ORIG_ARGS=("$@")
 MODE=""                 # gpu | cpu | "" (ask)
 ASSUME_YES=0
 USE_UV=1
 PY_VERSION="$(tr -d '[:space:]' < .python-version 2>/dev/null)"
 RUN_TESTS=""            # 1 | 0 | "" (ask)
+PERSON_BACKENDS=""      # comma separated | "" (fetch_models.py asks)
 VENV_DIR="$REPO_DIR/.venv"
 MIN_DRIVER_MAJOR=525
+RELEASE_CHECK=1
+# Set once a run has switched to (or chosen to stay off) the latest release, so
+# the restarted script, which may be an older release's copy, doesn't ask again.
+[ "${BETASUITE_RELEASE_CHECKED:-0}" = 1 ] && RELEASE_CHECK=0
 
 usage() {
     cat <<EOF
@@ -25,8 +34,13 @@ Usage: ./setup.sh [options]
                          suggesting GPU when nvidia-smi finds one)
   --python VERSION       Python version (default: ${PY_VERSION:-3.12}, from .python-version)
   --tests | --no-tests   run the unit tests at the end (default: ask, no)
+  --person-backends LIST person models to export for reverse mode, comma
+                         separated: yolo11_seg, rf_detr_seg, all or none
+                         (default: ask, yolo11_seg)
   --no-uv                use an existing pythonX.Y on PATH and 'python -m venv'
                          instead of uv
+  --no-release-check     stay on the current branch or commit instead of offering
+                         to switch to the latest release (for development)
   --yes, -y              accept the default answer to every prompt
   --log-level LEVEL      stdout level: trace|debug|info|warn|error (default info).
                          setup.log always gets everything.
@@ -41,7 +55,9 @@ while [ $# -gt 0 ]; do
         --python) PY_VERSION="$2"; shift ;;
         --tests) RUN_TESTS=1 ;;
         --no-tests) RUN_TESTS=0 ;;
+        --person-backends) PERSON_BACKENDS="$2"; shift ;;
         --no-uv) USE_UV=0 ;;
+        --no-release-check) RELEASE_CHECK=0 ;;
         -y|--yes) ASSUME_YES=1 ;;
         --log-level) export LOG_LEVEL="$2"; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -72,8 +88,53 @@ ask_yes_no() {
     case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
 }
 
+# ---------------------------------------------------------------- release
+# Offer to move a git checkout onto the newest vX.Y.Z tag. Runs before
+# anything else, and restarts setup from the release's own copy of this
+# script after switching (exec, so this copy never reads another line).
+release_check() {
+    local git=(git -C "$REPO_DIR") latest here head_desc ahead
+    if [ "$RELEASE_CHECK" != 1 ]; then
+        log_debug "release check skipped"; return 0
+    fi
+    if [ ! -d "$REPO_DIR/.git" ] || ! command -v git >/dev/null 2>&1; then
+        log_debug "not a git checkout; using the files as they are"; return 0
+    fi
+    run_logged "fetch release tags" "${git[@]}" fetch --tags --quiet \
+        || log_warn "could not fetch tags; checking against the tags already here"
+    latest="$("${git[@]}" tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -n1)"
+    if [ -z "$latest" ]; then
+        log_warn "no release tags found; installing the current checkout"; return 0
+    fi
+    head_desc="$("${git[@]}" describe --tags --exact-match HEAD 2>/dev/null || true)"
+    if [ "$head_desc" = "$latest" ]; then
+        log_info "on the latest release, $latest"; return 0
+    fi
+    here="$("${git[@]}" rev-parse --abbrev-ref HEAD)"
+    [ "$here" = HEAD ] && here="${head_desc:-commit $("${git[@]}" rev-parse --short HEAD)}"
+    ahead="$("${git[@]}" rev-list --count "$latest..HEAD" 2>/dev/null || echo 0)"
+    if [ -n "$("${git[@]}" status --porcelain --untracked-files=no)" ]; then
+        log_warn "latest release is $latest, but $here has uncommitted changes; staying on $here"
+        return 0
+    fi
+    if [ "$ahead" -gt 0 ] && "${git[@]}" merge-base --is-ancestor "$latest" HEAD; then
+        log_info "$here is $ahead commit(s) past $latest (changes not released yet)"
+    fi
+    if ! ask_yes_no "Latest release is $latest; this checkout is on $here. Switch to $latest?" y; then
+        log_info "staying on $here"; return 0
+    fi
+    run_logged "check out $latest" "${git[@]}" -c advice.detachedHead=false checkout --quiet "$latest" \
+        || die "could not check out $latest"
+    log_info "switched to $latest; restarting setup from that release"
+    export BETASUITE_RELEASE_CHECKED=1
+    exec bash "$REPO_DIR/setup.sh" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+}
+release_check
+export BETASUITE_RELEASE_CHECKED=1
+
 # ---------------------------------------------------------------- preflight
 log_info "BetaSuite setup starting in $REPO_DIR (log: $HARNESS_LOG_FILE)"
+log_info "version: $(cat "$REPO_DIR/VERSION" 2>/dev/null || echo unknown) ($(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || echo 'not a git checkout'))"
 OS="$(uname -s)"
 log_info "platform: $OS $(uname -m)"
 case "$OS" in
@@ -216,23 +277,25 @@ done
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). fetch_models.py checks whatever is there
-# and moves bad files (e.g. a saved sign-in page) aside.
-"$VENV_PY" tools/setup/fetch_models.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
+# serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
+# to ONNX in a throwaway environment that is deleted afterwards, only for the
+# person backends chosen (fetch_models.py asks; default yolo11_seg). It
+# checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
+FETCH_ARGS=( --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" )
+[ -n "$PERSON_BACKENDS" ] && FETCH_ARGS+=( --person-backends "$PERSON_BACKENDS" )
+[ "$ASSUME_YES" = 1 ] && FETCH_ARGS+=( --yes )
+if [ "$USE_UV" = 1 ] && [ -n "${UV:-}" ]; then FETCH_ARGS+=( --uv "$UV" ); fi
+"$VENV_PY" tools/setup/fetch_models.py "${FETCH_ARGS[@]}" \
     || log_warn "model check reported a problem; see the messages above"
 
-# ---------------------------------------------------------------- betaconfig.gpu_enabled
+# ---------------------------------------------------------------- machine config
+# This machine's hardware settings live in ../resources/betaconfig_machine.py,
+# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 want_flag=0; [ "$MODE" = gpu ] && want_flag=1
-current_flag="$(sed -n 's/^gpu_enabled[[:space:]]*=[[:space:]]*\([01]\).*/\1/p' betaconfig.py | head -n1)"
-if [ -n "$current_flag" ] && [ "$current_flag" != "$want_flag" ]; then
-    if ask_yes_no "betaconfig.py has gpu_enabled = $current_flag but this is a $MODE install. Set it to $want_flag?" y; then
-        sed -i.bak "s/^gpu_enabled\([[:space:]]*=[[:space:]]*\)[01]/gpu_enabled\1$want_flag/" betaconfig.py \
-            && rm -f betaconfig.py.bak
-        log_info "betaconfig.py: gpu_enabled = $want_flag"
-    else
-        log_warn "left gpu_enabled = $current_flag in betaconfig.py"
-    fi
-fi
+MACHINE_ARGS=( setup --gpu-enabled "$want_flag" )
+[ "$ASSUME_YES" = 1 ] && MACHINE_ARGS+=( --yes )
+"$VENV_PY" tools/setup/machine_config.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
+    "${MACHINE_ARGS[@]}" || log_warn "machine config step reported a problem; see the messages above"
 
 # ---------------------------------------------------------------- verify
 log_info "=== verifying environment ==="
@@ -240,7 +303,7 @@ log_info "=== verifying environment ==="
 VERIFY_STATUS=$?
 
 if [ -z "$RUN_TESTS" ]; then
-    ask_yes_no "Run the unit tests now (about 15 seconds)?" n && RUN_TESTS=1 || RUN_TESTS=0
+    ask_yes_no "Run the unit tests now (a minute or two)?" n && RUN_TESTS=1 || RUN_TESTS=0
 fi
 if [ "$RUN_TESTS" = 1 ]; then
     run_logged "unit tests" "$VENV_PY" -m unittest discover -s tests -t . -p 'test_*.py' \
@@ -259,6 +322,7 @@ Next steps:
   source .venv/bin/activate          # once per terminal
   # put videos in $(cd ../resources/uncensored_vids && pwd)
   python3 betatv.py --preview on --preview-seconds 20
+  tools/bench/tune_machine.sh        # optional: measure this machine's hardware settings
 
 A script cannot activate a venv in the shell that launched it, so the
 'source' line above is yours to run. Alternatively call .venv/bin/python

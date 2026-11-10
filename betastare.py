@@ -37,6 +37,8 @@ import betautils_censor as bu_censor
 import betautils_cli    as bu_cli
 import betautils_cache_paths as bu_cache
 import betautils_log    as bu_log
+import betautils_person as bu_person
+import betautils_reverse as bu_reverse
 import betautils_signals as bu_signals
 import betautils_track  as bu_track
 
@@ -100,7 +102,7 @@ def _censored_output_path( censored_folder, stem, suffix, image_hash ):
     return bu_cache.picture_output_path(
         censored_folder, stem, suffix, image_hash,
         bu_detector.get_picture_sizes(),
-        bu_cache.detection_key(), bu_cache.censor_key() )
+        bu_cache.detection_key(), bu_cache.censor_key(), bu_cache.output_mode_marker() )
 
 
 def _raw_boxes_for_size( image, size, session, image_hash ):
@@ -304,7 +306,17 @@ def _process_one_file( root, fname, censored_folder, file_index, total_files, se
 
         boxes = _censorable_boxes_from_raw( all_raw_boxes, img_w, img_h )
         _resolve_box_styles( boxes )
-        image = bu_censor.censor_img_for_boxes( image, boxes )
+        if bu_reverse.enabled():
+            flat_raw = [ raw for raw_boxes in all_raw_boxes for raw in raw_boxes ]
+            frame_alpha = bu_reverse.frame_alpha_for_still( flat_raw, boxes )
+            window_mask = None
+            if frame_alpha > 0 and bu_reverse.person_windows_enabled():
+                people = bu_person.persons_for_imgs( [ image ], [ 0.0 ] )
+                window_mask = bu_person.window_mask_for_still( people, flat_raw, img_w, img_h )
+            image = bu_censor.censor_img_reverse(
+                image, boxes, frame_alpha, bu_reverse.settings()['frame_style'], window_mask )
+        else:
+            image = bu_censor.censor_img_for_boxes( image, boxes )
         after_render_time = time.perf_counter()
 
         cv2.imwrite( censored_path, image )
@@ -342,6 +354,10 @@ def main():
     session = bu_detector.get_detector().get_session()
     logger.info( "BetaStare starting: backend=%s picture_sizes=%s"%(
         bu_detector.selected_backend_name(), bu_detector.get_picture_sizes() ) )
+    if bu_reverse.enabled():
+        logger.info( "REVERSE MODE: windows (uncensored) %s, censored %s, trigger labels %s"%(
+            bu_reverse.window_labels(), bu_reverse.censor_labels(),
+            sorted( bu_reverse.trigger_labels() ) ) )
 
     total_files = _count_total_files()
     file_index = 0

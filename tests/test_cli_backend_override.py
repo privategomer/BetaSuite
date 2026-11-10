@@ -1,6 +1,6 @@
 """
 test_cli_backend_override.py - regression coverage for the --backend
-CLI flag (added 2026-09-17, per-user request: "the model backend should
+CLI flag (the requirement: "the model backend should
 be configurable via config file, env var, or cli, with normal
 precedence rules"). BETASUITE_DETECTOR_BACKEND_OVERRIDE (env var) and
 betaconfig.detector_backend['selected'] (config file) already existed;

@@ -6,8 +6,13 @@
 #   ./tools/bench/structure_survey.sh
 #   LOG_LEVEL=debug ./tools/bench/structure_survey.sh      # chattier terminal
 #   SURVEY_GEOMETRY_SLICES=5 ./tools/bench/structure_survey.sh
+#   VIDEOS_FIRST=3 ./tools/bench/structure_survey.sh       # first 3 files by name
+#   VIDEOS_PER_FOLDER=1 ./tools/bench/structure_survey.sh  # first file by name in each folder
 #
-# Covers resources/uncensored_vids/ AND the staging tree resources/source/.
+# Covers resources/uncensored_vids/ AND the staging tree resources/source/,
+# or a predictable subset of them: VIDEOS_FIRST=N takes the first N by file
+# name across everything, VIDEOS_PER_FOLDER=N the first N by name in each
+# directory. Set one, not both. The chosen files are listed in the log.
 # Moves nothing. Writes a reviewable mv -n script you read, then run.
 #
 # PHASES
@@ -19,15 +24,21 @@
 #                        the only signal that identifies split-screen.
 #                        Asks first; unattended, it runs.
 #   3. structure         the per-file table, recommendations, and the move
-#                        script, holding back any move that rests on a
-#                        slice, would lower the sample rate, or would
-#                        override a manual folder on timing alone.
+#                        script. A move that rests on a slice, would lower
+#                        the sample rate, or would override a manual folder
+#                        on timing alone goes in the script's HELD BACK
+#                        section: reported on a plain run, made only with
+#                        moves.sh --include-held-back.
 #
 # OUTPUT
 #   ../output/benchmarks/structure_survey_<timestamp>/
 #       structure_survey.log    everything, every level
 #       scan/ geometry/ structure/   each phase's own betabench log + results.json
-#       moves.sh                the script, when any move passed
+#       moves.sh                the script, when any move is recommended;
+#                               moves the safety rules hold back are in it
+#                               too, made only with --include-held-back.
+#                               It finds the videos relative to itself, so
+#                               leave it here and run it from any directory
 #
 # Terminal output is filtered by LOG_LEVEL (trace|debug|info|warn|error,
 # default info). The log file keeps everything regardless.
@@ -47,6 +58,12 @@ source "$REPO_ROOT/tools/tuning/harness_lib.sh"
 : "${SURVEY_GEOMETRY_SLICES:=3}"
 BENCH="$REPO_ROOT/tools/bench/betabench.py"
 
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/bench/video_subset.sh"
+if ! video_subset_args; then
+    exit 1
+fi
+
 log_info "structure survey: output in $SURVEY_DIR"
 log_info "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
 if ! python_env_require cv2 2>>"$HARNESS_LOG_FILE"; then
@@ -56,11 +73,12 @@ fi
 
 # --- phase 1 ----------------------------------------------------------------
 if ! run_logged "phase 1: whole-file shot-cut scans (CPU)" \
-        "$PYTHON_BIN" "$BENCH" structure-scan --yes \
+        "$PYTHON_BIN" "$BENCH" structure-scan --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --out-dir "$SURVEY_DIR/scan" --console-level info; then
     log_error "phase 1 failed; the structure table would rest on whatever scans already exist. Stopping."
     exit 1
 fi
+video_subset_replay "$SURVEY_DIR/scan/betabench.log"
 
 # --- phase 2 ----------------------------------------------------------------
 run_geometry=1
@@ -74,7 +92,7 @@ else
 fi
 if [ "$run_geometry" -eq 1 ] && [ "$SURVEY_GEOMETRY_SLICES" -gt 0 ]; then
     run_logged "phase 2: geometry slices (GPU, detection only)" \
-        "$PYTHON_BIN" "$BENCH" structure-scan --yes \
+        "$PYTHON_BIN" "$BENCH" structure-scan --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --geometry-slices "$SURVEY_GEOMETRY_SLICES" \
         --out-dir "$SURVEY_DIR/geometry" --console-level info \
         || log_warn "phase 2 failed; continuing with the geometry that exists"
@@ -82,7 +100,7 @@ fi
 
 # --- phase 3 ----------------------------------------------------------------
 if ! run_logged "phase 3: structure table and move script" \
-        "$PYTHON_BIN" "$BENCH" structure --yes \
+        "$PYTHON_BIN" "$BENCH" structure --yes ${VIDEO_SUBSET_ARGS[@]+"${VIDEO_SUBSET_ARGS[@]}"} \
         --write-move-script "$SURVEY_DIR/moves.sh" \
         --out-dir "$SURVEY_DIR/structure" --console-level info; then
     log_error "phase 3 failed; see $HARNESS_LOG_FILE"
@@ -99,8 +117,11 @@ fi
 
 if [ -f "$SURVEY_DIR/moves.sh" ]; then
     log_info "move script: $SURVEY_DIR/moves.sh"
-    log_info "read the reason above each move, then run it: bash '$SURVEY_DIR/moves.sh'"
+    log_info "read the reason above each move, then run it from anywhere, where it is: bash '$SURVEY_DIR/moves.sh'"
+    if grep -q '^move_held ' "$SURVEY_DIR/moves.sh"; then
+        log_info "held-back moves are in it too, and are only reported unless you add the flag: bash '$SURVEY_DIR/moves.sh' --include-held-back"
+    fi
 else
-    log_info "no move passed the safety rules, so there is no script to run"
+    log_info "no recommended moves, so there is no script to run"
 fi
 log_info "full per-file table: $BENCH_LOG"

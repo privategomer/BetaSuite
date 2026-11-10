@@ -27,6 +27,7 @@ never shrank back.
 The shape-mask cache and the sticker cache are both safe to share.
 """
 
+import collections
 import functools
 import glob
 import math
@@ -236,15 +237,62 @@ def feather_mask( mask, feather, w, h ):
     return cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0 )
 
 
-@functools.lru_cache( maxsize=_MASK_CACHE_ENTRIES )
-def _alpha_for( shape, w, h, feather ):
+def _ramp_sigma( feather, w, h ):
+    """The Gaussian sigma feather_mask's kernel works out to (cv2's rule for sigma 0)."""
+    radius = max( 1, round( feather * min( w, h ) / 2 ) )
+    kernel_size = 2*radius + 1
+    return 0.3 * ( ( kernel_size - 1 ) * 0.5 - 1 ) + 0.8
+
+
+def feather_pad( shape, w, h, feather ):
     """
-    Cached float32 alpha plane for one (shape, size, feather).
+    How far past its box a feathered circle or ellipse ramps to nothing.
+
+    The shape's edge is the middle of the ramp, so the outer half of the
+    ramp has to go somewhere: two sigma past the edge is where the alpha
+    is down to about 2%, which reads as gone. 0 for a box, and for any
+    shape without a feather, where there is no ramp.
+    """
+    if shape not in ( 'circle', 'ellipse' ) or not feather:
+        return 0
+    return int( math.ceil( 2 * _ramp_sigma( feather, w, h ) ) )
+
+
+@functools.lru_cache( maxsize=_MASK_CACHE_ENTRIES )
+def _alpha_for( shape, w, h, feather, pad=0 ):
+    """
+    Cached float32 alpha plane for one (shape, size, feather, pad).
+
+    A feathered circle or ellipse is blurred over a canvas with 'pad'
+    pixels of room on every side and a border of zeros. The default
+    border reflects the mask at the canvas edge, and an ellipse touches
+    all four edges of its box, so the reflection doubled it there: alpha
+    stayed at 0.95 right up to the box edge and then dropped to 0 in one
+    pixel, a hard straight edge on all four sides with only the corners
+    rounded. Heavy feathers (0.55 on a 300px box) read as a square.
+
+    With pad 0 the ramp is cut by the box, so alpha is about 0.5 where
+    the shape touches the box edge. With pad = feather_pad() the ramp
+    finishes outside the box and nothing is cut. A box, and a shape with
+    no feather, take the original path unchanged.
 
     Returns:
-        A read-only (h, w, 1) float32 array in [0, 1].
+        A read-only (h + 2*pad, w + 2*pad, 1) float32 array in [0, 1].
     """
-    mask = feather_mask( make_shape_mask( shape, w, h ), feather, w, h )
+    if shape in ( 'circle', 'ellipse' ) and feather:
+        mask = np.zeros( ( h + 2*pad, w + 2*pad ), dtype=np.uint8 )
+        centre = ( pad + w//2, pad + h//2 )
+        if shape == 'circle':
+            cv2.circle( mask, centre, min( w, h )//2, 255, cv2.FILLED )
+        else:
+            cv2.ellipse( mask, centre, ( max( w//2, 1 ), max( h//2, 1 ) ),
+                         0, 0, 360, 255, cv2.FILLED )
+        radius = max( 1, round( feather * min( w, h ) / 2 ) )
+        kernel_size = 2*radius + 1
+        mask = cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0,
+                                 borderType=cv2.BORDER_CONSTANT )
+    else:
+        mask = feather_mask( make_shape_mask( shape, w, h ), feather, w, h )
     alpha = ( mask.astype( np.float32 ) / 255.0 )[ :, :, None ]
     alpha.flags.writeable = False
     return alpha
@@ -738,6 +786,20 @@ def blur_image( image, x, y, w, h, style, shape='box', feather=0,
     # Read a margin of real neighbouring pixels when asked to, so the
     # blur is not a function of where the box's edge sits. The margin is
     # read only; what gets composited back is still exactly the box.
+    #
+    # A feathered circle or ellipse ramps to nothing OUTSIDE its box, so
+    # the region blurred and composited is the box plus that ramp's room
+    # (feather_pad), clipped to the frame. Everything below then works on
+    # that rectangle; for a box, or no feather, it is the box itself and
+    # nothing here changes.
+    pad = feather_pad( shape, w, h, feather )
+    if pad:
+        image_h, image_w = image.shape[:2]
+        box_x, box_y, box_w, box_h = x, y, w, h
+        x = max( 0, box_x - pad )
+        y = max( 0, box_y - pad )
+        w = min( image_w, box_x + box_w + pad ) - x
+        h = min( image_h, box_y + box_h + pad ) - y
     use_margin = getattr( betaconfig, 'blur_edge_margin', True )
     if use_margin:
         region, offset_x, offset_y = _blur_region_with_margin(
@@ -766,6 +828,18 @@ def blur_image( image, x, y, w, h, style, shape='box', feather=0,
 
     # Crop the blurred result back to the box itself.
     censored_region = censored_region[ offset_y:offset_y+h, offset_x:offset_x+w ]
+
+    if pad:
+        # The padded alpha is laid out around the box; the rectangle
+        # blurred may be smaller where the frame cut it, so take the
+        # matching window of it.
+        alpha = _alpha_for( shape, box_w, box_h, feather, pad )[
+            y - ( box_y - pad ) : y - ( box_y - pad ) + h,
+            x - ( box_x - pad ) : x - ( box_x - pad ) + w ]
+        original_region = image[ y:y+h, x:x+w ].astype( np.float32 )
+        blended = alpha*censored_region.astype( np.float32 ) + ( 1 - alpha )*original_region
+        image[ y:y+h, x:x+w ] = blended.astype( image.dtype )
+        return image
 
     return apply_masked_region( image, x, y, w, h, censored_region, shape, feather )
 
@@ -872,6 +946,75 @@ def _load_stickers( style ):
         return loaded_images
 
 
+# Resized, cropped and feathered sticker planes, keyed by everything that
+# shapes them. A box's size holds steady across consecutive frames (the
+# render stabilises each track's size over a window), so the same planes
+# are asked for again and again. Rebuilding them was most of a sticker's
+# cost: on a 400px box with feather 0.25 the Gaussian alone took 14 of
+# 19 ms. Bounded by bytes, not entries, because one plane can be 16 MB.
+_PROCESSED_STICKER_BUDGET_BYTES = 192 * 1024 * 1024
+_processed_stickers = collections.OrderedDict()
+_processed_stickers_bytes = 0
+_processed_stickers_lock = threading.Lock()
+
+
+def clear_processed_sticker_cache():
+    """Empty the processed-sticker cache. For benchmarks timing the cold cost."""
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        _processed_stickers.clear()
+        _processed_stickers_bytes = 0
+
+
+def _processed_sticker( sticker, key, target_w, target_h, crop, feather ):
+    """
+    (premultiplied colour, 1 - alpha) for one sticker at one size and crop.
+
+    Exactly the arithmetic sticker_image used to do on every frame, done
+    once: the blend then computes premultiplied + (1 - alpha)*frame,
+    which is the same float32 operations in the same order as
+    alpha*colour + (1 - alpha)*frame, so the output is byte-identical.
+    Both planes are read-only, since threads share them.
+    """
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        cached = _processed_stickers.get( key )
+        if cached is not None:
+            _processed_stickers.move_to_end( key )
+            return cached
+
+    src_x0, src_y0, composite_w, composite_h = crop
+    resized_sticker = cv2.resize( sticker, ( target_w, target_h ), interpolation=cv2.INTER_AREA )
+    # cv2.imread always returns BGR(A) whatever the source PNG's own
+    # channel order, and the frame buffer is BGR too, so no reversal is
+    # needed here. A previous version assumed RGB and reversed, which
+    # rendered every yellow-toned emoji blue.
+    sticker_rgb = resized_sticker[ src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, :3 ]
+    sticker_alpha = resized_sticker[
+        src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, 3:4 ].astype( np.float32 ) / 255.0
+    if feather:
+        feathered = feather_mask( ( sticker_alpha[ :, :, 0 ]*255 ).astype( np.uint8 ),
+                                  feather, composite_w, composite_h )
+        sticker_alpha = ( feathered.astype( np.float32 )/255.0 )[ :, :, None ]
+    premultiplied = sticker_alpha*sticker_rgb.astype( np.float32 )
+    inverse_alpha = 1 - sticker_alpha
+    premultiplied.flags.writeable = False
+    inverse_alpha.flags.writeable = False
+    planes = ( premultiplied, inverse_alpha )
+
+    size = premultiplied.nbytes + inverse_alpha.nbytes
+    if size > _PROCESSED_STICKER_BUDGET_BYTES // 4:
+        return planes
+    with _processed_stickers_lock:
+        if key not in _processed_stickers:
+            _processed_stickers[key] = planes
+            _processed_stickers_bytes += size
+            while _processed_stickers_bytes > _PROCESSED_STICKER_BUDGET_BYTES:
+                _old_key, ( old_premultiplied, old_inverse ) = _processed_stickers.popitem( last=False )
+                _processed_stickers_bytes -= old_premultiplied.nbytes + old_inverse.nbytes
+    return planes
+
+
 def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_seed=None ):
     """
     Apply a 'sticker' censor style: composite a PNG over the box.
@@ -909,8 +1052,6 @@ def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_see
     scale = style.get( 'scale', 1.0 )
     target_w = max( 1, round( w * scale ) )
     target_h = max( 1, round( h * scale ) )
-    resized_sticker = cv2.resize( sticker, ( target_w, target_h ), interpolation=cv2.INTER_AREA )
-
     origin_x = x + w//2 - target_w//2
     origin_y = y + h//2 - target_h//2
     img_h, img_w = image.shape[:2]
@@ -922,20 +1063,14 @@ def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_see
     if composite_w <= 0 or composite_h <= 0:
         return image
 
-    # cv2.imread always returns BGR(A) whatever the source PNG's own
-    # channel order, and the frame buffer is BGR too, so no reversal is
-    # needed here. A previous version assumed RGB and reversed, which
-    # rendered every yellow-toned emoji blue.
-    sticker_rgb = resized_sticker[ src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, :3 ]
-    sticker_alpha = resized_sticker[
-        src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, 3:4 ].astype( np.float32 ) / 255.0
-    if feather:
-        feathered = feather_mask( ( sticker_alpha[ :, :, 0 ]*255 ).astype( np.uint8 ),
-                                  feather, composite_w, composite_h )
-        sticker_alpha = ( feathered.astype( np.float32 )/255.0 )[ :, :, None ]
+    crop = ( src_x0, src_y0, composite_w, composite_h )
+    key = ( style.get( 'dir' ) or tuple( style.get( 'images', [] ) ), sticker_index,
+            target_w, target_h, crop, feather )
+    premultiplied, inverse_alpha = _processed_sticker( sticker, key, target_w, target_h, crop,
+                                                       feather )
 
     destination = image[ dst_y0:dst_y1, dst_x0:dst_x1 ].astype( np.float32 )
-    blended = sticker_alpha*sticker_rgb.astype( np.float32 ) + ( 1 - sticker_alpha )*destination
+    blended = premultiplied + inverse_alpha*destination
     image[ dst_y0:dst_y1, dst_x0:dst_x1 ] = blended.astype( image.dtype )
     return image
 
@@ -967,6 +1102,10 @@ def debug_image( image, box ):
     cv2.putText( image, box['label'],         ( x+10, y+60 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     cv2.putText( image, '%.2f %.1f %.1f'%( box['score'], box['start'], box['end'] ),
                  ( x+10, y+80 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
+    if box.get( 'debug_note' ):
+        # A tool's own annotation, e.g. which suppression rule made the difference.
+        cv2.putText( image, str( box['debug_note'] ), ( x+10, y+100 ),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
     return image
 
 
@@ -1351,5 +1490,160 @@ def censor_img_for_boxes( image, boxes ):
     for piece in grouped_pieces:
         for collapsed_box in collapse_boxes_for_style( piece, img_w, img_h ):
             image = censor_image( image, collapsed_box )
+
+    return watermark_image( image )
+
+
+# ---------------------------------------------------------------------------
+# Reverse mode compositor
+# ---------------------------------------------------------------------------
+#
+# Layers, bottom to top: the frame style over the whole frame (blended by
+# frame_alpha), show windows (the original pixels back through each
+# window's shape and feather), censored windows (the window's style,
+# computed from the ORIGINAL pixels, placed in through the window's alpha
+# once), then the watermark. Censor wins overlaps because censored windows
+# go on last. Normal mode never comes through here: censor_img_for_boxes
+# is untouched, so its output stays byte-identical.
+
+def _clamped_rect( box, img_w, img_h ):
+    """A box's (x, y, w, h) clamped inside the frame, as censor_image does."""
+    x = max( 0, min( int( box['x'] ), img_w - 1 ) )
+    y = max( 0, min( int( box['y'] ), img_h - 1 ) )
+    w = max( 1, min( int( box['w'] ), img_w - x ) )
+    h = max( 1, min( int( box['h'] ), img_h - y ) )
+    return x, y, w, h
+
+
+def _blend_window( out, source, rect, shape, feather ):
+    """
+    Blend source into out over one window rectangle through the window's
+    alpha. source is the original frame (a show window) or the original
+    with this window's style rendered into it (a censored window).
+    """
+    x, y, w, h = rect
+    if shape == 'box' and not feather:
+        out[ y:y+h, x:x+w ] = source[ y:y+h, x:x+w ]
+        return
+    alpha = _alpha_for( shape, w, h, feather )
+    under = out[ y:y+h, x:x+w ].astype( np.float32 )
+    over = source[ y:y+h, x:x+w ].astype( np.float32 )
+    out[ y:y+h, x:x+w ] = ( alpha*over + ( 1.0 - alpha )*under ).astype( out.dtype )
+
+
+def _censored_windows( boxes, img_w, img_h ):
+    """Censored (non-show) windows, grouped and merged exactly as normal mode does."""
+    ordered = sorted( boxes, key=lambda box: (
+        box['label'], censor_style_sort( box['censor_style'] ) ) )
+    grouped_pieces = []
+    for box in ordered:
+        previous = grouped_pieces[-1][0] if grouped_pieces else None
+        if ( previous is not None
+                and previous['label'] == box['label']
+                and censor_style_key( previous['censor_style'] ) == censor_style_key( box['censor_style'] ) ):
+            grouped_pieces[-1].append( box )
+        else:
+            grouped_pieces.append( [ box ] )
+    windows = []
+    for piece in grouped_pieces:
+        windows.extend( collapse_boxes_for_style( piece, img_w, img_h ) )
+    return windows
+
+
+def obscure_full_frame( image, frame_style ):
+    """
+    Render frame_style over the whole of image, in place, and return it.
+
+    frame_style's optional 'dim' (0 to 1) then takes that share of the
+    brightness off the result, so windows stand out against a background
+    a lighter blur alone would leave as busy as the scene. It darkens
+    only the frame layer: windows are restored from the original after
+    this, and a fade blends the dimmed frame like any other.
+    """
+    img_h, img_w = image.shape[:2]
+    frame_box = { 'x': 0, 'y': 0, 'w': img_w, 'h': img_h,
+                  'censor_style': dict( frame_style, feather=0 ), 'censor_shape': 'box',
+                  'censor_sticker_seed': 0.5, 'label': 'reverse_frame' }
+    censor_image( image, frame_box )
+    dim = frame_style.get( 'dim' ) or 0
+    if dim:
+        # One saturating uint8 pass, rounded: about 5 ms per 4K frame.
+        cv2.convertScaleAbs( image, dst=image, alpha=1.0 - dim )
+    return image
+
+
+def censor_img_reverse( image, boxes, frame_alpha, frame_style, window_mask=None ):
+    """
+    Render one reverse-mode frame.
+
+    Args:
+        image: The frame. Mutated in place and returned.
+        boxes: This frame's windows, each with a resolved censor_style
+            ('show' or any normal style) and censor_shape. NOT mutated:
+            render workers share one box list.
+        frame_alpha: The frame style's opacity for this frame, 0 to 1,
+            from the trigger timeline.
+        frame_style: The frame style dict.
+        window_mask: Person windows, (x, y, w, h, alpha) with alpha a
+            uint8 0/255 array over that rectangle, or None. Shown like a
+            show window; censored windows still win where they overlap.
+
+    Returns:
+        The rendered frame.
+    """
+    import betautils_reverse as bu_reverse  # deferred: keeps this module's import graph as it was
+    censored = [ box for box in boxes if not bu_reverse.is_show_style( box['censor_style'] ) ]
+    if frame_alpha <= 0:
+        # Untriggered under passthrough: the frame stays clear, so show
+        # windows have nothing to undo and censored windows are exactly
+        # normal mode's boxes.
+        return censor_img_for_boxes( image, censored )
+
+    img_h, img_w = image.shape[:2]
+    original = image.copy()
+    obscure_full_frame( image, frame_style )
+    if frame_alpha < 1:
+        cv2.addWeighted( image, frame_alpha, original, 1.0 - frame_alpha, 0, dst=image )
+
+    if window_mask is not None:
+        x, y, w, h, alpha = window_mask
+        np.copyto( image[ y:y+h, x:x+w ], original[ y:y+h, x:x+w ], where=alpha[ :, :, None ] > 0 )
+
+    for box in boxes:
+        style = box['censor_style']
+        if bu_reverse.is_show_style( style ):
+            _blend_window( image, original, _clamped_rect( box, img_w, img_h ),
+                           box.get( 'censor_shape', 'box' ), style.get( 'feather', 0 ) )
+
+    # Each censored window's style is rendered into a fresh copy of the
+    # original with no shape and no feather of its own, then blended into
+    # the frame once through the window's alpha.
+    #   - Once: rendering it with its own feather and then blending again
+    #     applied the alpha twice and left a ring of clear original at a
+    #     feathered edge, which in reverse mode is a reveal.
+    #   - Except a sticker's feather, which softens the sticker's own
+    #     silhouette rather than a region mask (the sticker renderer
+    #     ignores shape). Kept, so inside the window's shape a sticker
+    #     looks exactly as it does in normal mode, like every other style.
+    #   - From the original: rendering from the frame (pixels over blur)
+    #     would censor the blur instead of the subject.
+    #   - A fresh copy per window, not a restored region: stickers with
+    #     scale > 1 and bars with thickness > 1 draw past their box, and
+    #     the next window would read those pixels as the original.
+    # The blend covers the window only, so a sticker or bar that reaches
+    # past it is clipped to the window; outside it is the frame style.
+    windows = _censored_windows( censored, img_w, img_h )
+    scratch = np.empty_like( original ) if windows else None
+    for box in windows:
+        np.copyto( scratch, original )
+        rect = _clamped_rect( box, img_w, img_h )
+        x, y, w, h = rect
+        style = box['censor_style']
+        own_feather = style.get( 'feather', 0 ) if style.get( 'type' ) == 'sticker' else 0
+        flat = dict( box, x=x, y=y, w=w, h=h, censor_shape='box',
+                     censor_style=dict( style, feather=own_feather ) )
+        censor_image( scratch, flat )
+        _blend_window( image, scratch, rect, box.get( 'censor_shape', 'box' ),
+                       style.get( 'feather', 0 ) )
 
     return watermark_image( image )

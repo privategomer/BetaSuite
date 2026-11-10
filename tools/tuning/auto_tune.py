@@ -53,9 +53,7 @@ says exactly that, and what to watch for.
 
 import argparse
 import copy
-import glob
 import json
-import logging
 import os
 import statistics
 import sys
@@ -70,13 +68,12 @@ import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_log as bu_log
+import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 
-TRACE = 5
-LEVEL_NAMES = {
-    'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO,
-    'warn': logging.WARNING, 'error': logging.ERROR,
-}
+TRACE = bu_log.TRACE
+LEVEL_NAMES = bu_log.LEVEL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -85,24 +82,8 @@ LEVEL_NAMES = {
 
 def build_logger( run_dir, log_level_name, console_level_name ):
     """Everything to run_dir/auto_tune.log; a filtered view to the terminal."""
-    logging.addLevelName( TRACE, 'TRACE' )
-    logger = logging.getLogger( 'auto_tune' )
-    logger.propagate = False
-    logger.setLevel( TRACE )
-    for handler in list( logger.handlers ):
-        logger.removeHandler( handler )
-
-    os.makedirs( run_dir, exist_ok=True )
-    file_handler = logging.FileHandler( os.path.join( run_dir, 'auto_tune.log' ), encoding='UTF-8' )
-    file_handler.setLevel( LEVEL_NAMES[ log_level_name ] )
-    file_handler.setFormatter( logging.Formatter( '%(asctime)s [%(levelname)-5s] %(message)s' ) )
-    logger.addHandler( file_handler )
-
-    console_handler = logging.StreamHandler( sys.stdout )
-    console_handler.setLevel( LEVEL_NAMES[ console_level_name ] )
-    console_handler.setFormatter( logging.Formatter( '%(message)s' ) )
-    logger.addHandler( console_handler )
-    return logger
+    return bu_log.tool_logger( 'auto_tune', os.path.join( run_dir, 'auto_tune.log' ),
+                               LEVEL_NAMES[ log_level_name ], LEVEL_NAMES[ console_level_name ] )
 
 
 def confirm( logger, question, assume_yes ):
@@ -115,6 +96,12 @@ def confirm( logger, question, assume_yes ):
         return input( "  [y/N] " ).strip().lower() in ( 'y', 'yes' )
     except EOFError:
         return False
+
+
+# The ab_compare.py experiment that puts each reviewed key in front of a person.
+REVIEW_EXPERIMENTS = { 'min_track_hits': 'min_track_hits',
+                       'confirm_score': 'confirm_score',
+                       'match_distance_multiplier': 'match_distance' }
 
 
 # ---------------------------------------------------------------------------
@@ -148,15 +135,26 @@ class Stage:
         # caller after construction; only TrackMaxGapStage reads it, to
         # cap candidates that could only bridge across a cut.
         self.median_shot_seconds = None
+        # Set for a stage that tunes one structure profile's value of
+        # this key (profiles.variants[<name>].item_overrides) rather than
+        # the backend's. See profile_stage().
+        self.profile_name = None
 
     @property
     def title( self ):
         # Named by BACKEND, not by configuration: this key is shared by
         # every variant of the backend, so one title for one decision.
-        return "%s / %s / %s"%( self.name, self.backend_name, self.label )
+        title = "%s / %s / %s"%( self.name, self.backend_name, self.label )
+        if self.profile_name:
+            title += " [%s]"%( self.profile_name, )
+        return title
 
     def baseline_value( self ):
-        return bu_detector.get_item_overrides( self.label, self.backend_name ).get( self.key )
+        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get( self.key )
+        if self.profile_name:
+            return bu_detector.get_profile_item_overrides(
+                self.profile_name, self.label, self.backend_name ).get( self.key, backend_value )
+        return backend_value
 
     def candidates( self ):
         """[(value, human_label)], excluding the baseline."""
@@ -165,21 +163,65 @@ class Stage:
     def apply( self, value ):
         """Set this candidate in memory for the duration of a measurement."""
         block = betaconfig.detector_backend.setdefault( self.backend_name, {} )
-        overrides = copy.deepcopy( block.get( 'item_overrides', {} ) )
+        if self.profile_name:
+            profiles = copy.deepcopy( block.get( 'profiles', {} ) )
+            variant = profiles.setdefault( 'variants', {} ).setdefault( self.profile_name, {} )
+            overrides = variant.setdefault( 'item_overrides', {} )
+        else:
+            overrides = copy.deepcopy( block.get( 'item_overrides', {} ) )
         overrides[self.label] = dict( overrides.get( self.label, {} ) )
         overrides[self.label][self.key] = value
-        block['item_overrides'] = overrides
+        if self.profile_name:
+            block['profiles'] = profiles
+        else:
+            block['item_overrides'] = overrides
         bu_config.invalidate_config_caches()
 
+    def snapshot( self ):
+        """What apply() can change, for restore() to put back."""
+        block = betaconfig.detector_backend.get( self.backend_name, {} )
+        return copy.deepcopy( { key: block[key] for key in ( 'item_overrides', 'profiles' )
+                                if key in block } )
+
     def restore( self, saved ):
-        betaconfig.detector_backend[self.backend_name]['item_overrides'] = saved
+        block = betaconfig.detector_backend.setdefault( self.backend_name, {} )
+        for key in ( 'item_overrides', 'profiles' ):
+            if key in saved:
+                block[key] = saved[key]
+            else:
+                block.pop( key, None )
         bu_config.invalidate_config_caches()
 
     def decide( self, rows, options, logger ):
         raise NotImplementedError
 
     def write( self, writer, value ):
-        writer.set_item_override( self.backend_name, self.label, self.key, value )
+        if self.profile_name:
+            writer.set_profile_item_override(
+                self.backend_name, self.profile_name, self.label, self.key, value )
+        else:
+            writer.set_item_override( self.backend_name, self.label, self.key, value )
+
+    def review( self, decision, rows_by_configuration ):
+        """A value the numbers cannot settle, for ab_compare.py to show a person, or None."""
+        return None
+
+    def skip_reason( self, profiles, options=None ):
+        """
+        Why no candidate could change anything for these files, or None.
+
+        profiles is {file_hash: structure profile} for every file measured.
+        """
+        return None
+
+    def effective_values( self, profiles, key, default ):
+        """Every value of key this label resolves to across the files' profiles."""
+        backend_value = bu_detector.get_item_overrides( self.label, self.backend_name ).get( key, default )
+        found = set()
+        for profile in set( profiles.values() ) or { None }:
+            overrides = bu_detector.get_profile_item_overrides( profile, self.label, self.backend_name )
+            found.add( overrides.get( key, backend_value ) )
+        return found
 
 
 class LooseningStage( Stage ):
@@ -296,6 +338,23 @@ class LooseningStage( Stage ):
     def _format_value( value ):
         return '%g'%(value) if isinstance( value, float ) else str( value )
 
+    def review( self, decision, rows_by_configuration ):
+        """
+        A tighter value that trades resets for much less ambiguity, when
+        every configuration names the same one (bu_tuning.tightening_review).
+        The price rule above only ever loosens, so this is the one way a
+        tighter value reaches a person.
+        """
+        if decision.accepted:
+            return None
+        found = [ bu_tuning.tightening_review( rows, _baseline_value_of( { name: rows } ) )
+                  for name, rows in sorted( rows_by_configuration.items() ) ]
+        if not found or any( item is None for item in found ):
+            return None
+        if len( set( item['value'] for item in found ) ) != 1:
+            return None
+        return found[0]
+
 
 class TrackMaxGapStage( LooseningStage ):
     """
@@ -379,83 +438,233 @@ class MinTrackHitsStage( Stage ):
     """
     How many real detections a track needs before anything is drawn for it.
 
-    This one runs in the opposite direction to the loosening stages: it
-    REMOVES boxes, so the coverage guard is not a formality here, it is
-    the whole constraint. A one-frame track is often a false positive
-    flickering for a ninth of a second, and dropping those is a real
-    quality win - but a one-frame track is also what a genuine, brief
-    exposure looks like, and dropping THOSE is a censoring failure.
+    A short track is either noise (a misfire for a ninth of a second) or
+    a brief real exposure, and dropped boxes look the same in either
+    case. The old rule counted every dropped box as noise removed, so it
+    always favoured the strictest value that stayed inside the area
+    coverage tolerance: it once raised the shipped 2 to 3, and at 3 a
+    full-library run withheld 23,311 breast boxes that 1 would
+    have drawn.
 
-    So the rule is strict: the highest value whose coverage loss stays
-    inside the tolerance, and no value is accepted on the strength of
-    its track-count reduction alone.
+    The evidence used now is confidence. A detection scoring at least
+    --confident-score (0.5) is probably real, so the question each value
+    is asked is how many of those it leaves uncensored. Value 1 leaves
+    the fewest. The recommendation is the strictest value that leaves no
+    more than --max-confident-loss (0.1%) of the label's confident
+    detections uncensored beyond that floor: as strict as possible, as
+    long as the boxes it drops are the low-confidence ones. It can come
+    out above or below the current value, and nothing is written without
+    --apply and a yes at the prompt.
+
+    The tolerance is a share of confident detections rather than of
+    censored area, because area hides it: 23,311 boxes was 1.2% of the
+    rendered boxes and under 0.1% of area in the run that dropped them.
+    Area still caps it: a value costing more than --max-coverage-loss is
+    rejected, as in every other stage.
+
+    WHEN THE EVIDENCE GOES BLIND
+    ----------------------------
+    confirm_score at or below --confident-score draws every track holding
+    a confident detection, whatever min_track_hits says, so every value
+    leaves the same confident detections uncensored. The rule above then
+    reads "strictest" as free: with confirm_score 0.5, it
+    recommended 4 for both labels (1,403 breast and 161 vulva uncensored
+    at every value) although 4 cost 1.71% of vulva coverage. So the stage
+    is skipped when confirm_score hides it on every file, and anywhere
+    else that every value leaves the same count, the current value stays:
+    no difference in the evidence is no reason to move.
     """
 
     name = 'min_track_hits'
     key = 'min_track_hits'
     summary = "how many real detections a track needs before it is drawn"
 
-    VALUES = ( 1, 2, 3 )
+    VALUES = ( 1, 2, 3, 4 )
+    # Set by hand after tuning by eye: the tuner never proposes more.
+    CEILING = 2
 
     def candidates( self ):
         baseline = self.baseline_value() or 1
-        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES if value != baseline ]
+        return [ ( value, '%d hit(s)'%(value) ) for value in self.VALUES
+                 if value != baseline and value <= self.CEILING ]
+
+    @staticmethod
+    def strictness( value ):
+        """How few boxes a value draws, for ordering candidates: more hits, fewer boxes."""
+        return value
+
+    def skip_reason( self, profiles, options=None ):
+        """confirm_score draws every confident short track on every file: the evidence cannot see this key."""
+        confident = _confident_score( options )
+        scores = self.effective_values( profiles, 'confirm_score',
+                                        getattr( betaconfig, 'default_confirm_score', None ) )
+        if any( score is None or score > confident for score in scores ):
+            return None
+        return ( "skipped: confirm_score is %s for %s on every file here, at or below the confident "
+                 "score %.2f, so every track holding a confident detection renders whatever "
+                 "min_track_hits says and this evidence cannot tell its values apart. Judge it by eye: "
+                 "AB_EXPERIMENT=min_track_hits bash tools/tuning/ab_compare.sh"%(
+                     ", ".join( '%g'%( score, ) for score in sorted( scores ) ), self.label, confident ) )
+
+    def _confident( self, row ):
+        """(confident detections, of them uncensored) for this stage's label."""
+        metrics = row['metrics']
+        return ( metrics.get( 'confident_by_label', {} ).get( self.label, 0 ),
+                 metrics.get( 'confident_uncovered_by_label', {} ).get( self.label, 0 ) )
 
     def score_rows( self, rows, options ):
         baseline = rows[0]
+        _total, baseline_missed = self._confident( baseline )
+        for row in rows:
+            total, missed = self._confident( row )
+            row['confident_detections'] = total
+            row['confident_uncensored'] = missed
         for row in rows[1:]:
             dropped = row['metrics']['dropped_unconfirmed'] - baseline['metrics']['dropped_unconfirmed']
             row['dropped_unconfirmed'] = dropped
             row['resets_avoided'] = dropped
+            row['boxes_changed'] = row['metrics']['rendered_boxes'] - baseline['metrics']['rendered_boxes']
+            row['confident_change'] = row['confident_uncensored'] - baseline_missed
+            row['eligible'] = None          # decided across every configuration in decide()
+            row['verdict'] = ( '%+d box(es); confident detections left uncensored %d (%+d)'%(
+                row['boxes_changed'], row['confident_uncensored'], row['confident_change'] ) )
             if row['coverage_loss'] > options.max_coverage_loss:
                 row['eligible'] = False
-                row['verdict'] = 'rejected: censor coverage fell %.2f%% (limit %.2f%%)'%(
-                    100*row['coverage_loss'], 100*options.max_coverage_loss )
-            elif dropped <= 0:
-                row['eligible'] = False
-                row['verdict'] = 'rejected: drops no unconfirmed tracks, so it changes nothing'
-            else:
-                row['eligible'] = True
-                row['verdict'] = 'eligible: drops %d box(es) from unconfirmed tracks for %.3f%% coverage'%(
-                    dropped, 100*row['coverage_loss'] )
+                row['verdict'] = 'rejected: censor coverage fell %.2f%% (limit %.2f%%); %s'%(
+                    100*row['coverage_loss'], 100*options.max_coverage_loss, row['verdict'] )
 
     def decide( self, rows_by_configuration, options, logger ):
-        eligible = _values_eligible_everywhere( rows_by_configuration )
         baseline_value = _baseline_value_of( rows_by_configuration )
-        if not eligible:
-            per_variant = _per_configuration_winners(
-                rows_by_configuration, key=lambda row: -row['value'] )
-            if per_variant:
-                return bu_tuning.Decision(
-                    self.title, None, True,
-                    "the configurations want different values, so each gets its own: %s"%(
-                        ", ".join( "%s -> %s"%( name, value )
-                                   for name, value in sorted( per_variant.items() ) ) ),
-                    _flatten_rows( rows_by_configuration ),
-                    per_configuration=per_variant )
+        by_value = {}
+        for rows in rows_by_configuration.values():
+            for row in rows:
+                entry = by_value.setdefault( row['value'], { 'missed': 0, 'total': 0, 'boxes': 0,
+                                                             'coverage_loss': 0.0 } )
+                entry['missed'] += row.get( 'confident_uncensored', 0 )
+                entry['total'] += row.get( 'confident_detections', 0 )
+                entry['boxes'] += row['metrics']['rendered_boxes']
+                entry['coverage_loss'] = max( entry['coverage_loss'], row.get( 'coverage_loss', 0.0 ) )
+        if len( by_value ) < 2:
+            return bu_tuning.Decision( self.title, baseline_value, False,
+                                       "nothing to compare against; keeping %s"%( baseline_value, ),
+                                       _flatten_rows( rows_by_configuration ) )
+        confident = _confident_score( options )
+        counts = set( entry['missed'] for entry in by_value.values() )
+        if len( counts ) == 1:
             return bu_tuning.Decision(
                 self.title, baseline_value, False,
-                "no value stayed inside the %.2f%% coverage tolerance under any "
-                "configuration this key governs (%s); keeping %s"%(
-                    100*options.max_coverage_loss, ", ".join( sorted( rows_by_configuration ) ),
-                    baseline_value ),
+                "every value leaves the same %d confident detection(s) (score >= %.2f) uncensored, so "
+                "this evidence cannot tell them apart; keeping %s"%(
+                    counts.pop(), confident, baseline_value ),
                 _flatten_rows( rows_by_configuration ) )
+        rejected = sorted( ( value for value, entry in by_value.items()
+                             if entry['coverage_loss'] > options.max_coverage_loss ),
+                           key=self.strictness )
+        usable = { value: entry for value, entry in by_value.items() if value not in rejected }
+        total = max( entry['total'] for entry in by_value.values() )
+        floor = min( entry['missed'] for entry in usable.values() )
+        allowed = floor + options.max_confident_loss * total
+        within = [ value for value, entry in usable.items() if entry['missed'] <= allowed ]
+        chosen = max( within, key=self.strictness )
+        summary = ", ".join( "%s: %d uncensored"%( value, by_value[value]['missed'] )
+                             for value in sorted( by_value, key=self.strictness ) )
+        reasoning = (
+            "confident detections (score >= %.2f) left uncensored: %s, of %d. %s is the strictest "
+            "value within %.2f%% (%d) of the fewest"%(
+                confident, summary, total, chosen,
+                100*options.max_confident_loss, round( allowed - floor ) ) )
+        if rejected:
+            reasoning += " (%s rejected: censor coverage fell more than %.2f%%)"%(
+                ", ".join( str( value ) for value in rejected ), 100*options.max_coverage_loss )
+        if chosen == baseline_value:
+            return bu_tuning.Decision( self.title, baseline_value, False,
+                                       reasoning + "; keeping %s"%( baseline_value, ),
+                                       _flatten_rows( rows_by_configuration ) )
+        boxes = by_value[chosen]['boxes'] - by_value[baseline_value]['boxes']
+        missed = by_value[chosen]['missed'] - by_value[baseline_value]['missed']
+        reasoning += "; against %s it draws %+d box(es) and leaves %+d confident detection(s) uncensored"%(
+            baseline_value, boxes, missed )
+        return bu_tuning.Decision( self.title, chosen, True, reasoning,
+                                   _flatten_rows( rows_by_configuration ) )
 
-        # The STRICTEST eligible value, not the most aggressive: this
-        # stage removes boxes, so among values that all passed the
-        # coverage guard the conservative choice is the smallest one
-        # that still does something.
-        chosen = min( eligible )
-        dropped_total = sum( _row_for_value( rows, chosen )['dropped_unconfirmed']
-                             for rows in rows_by_configuration.values() )
-        return bu_tuning.Decision(
-            self.title, chosen, True,
-            "%s removes %d box(es) in total from tracks that never reached that many real "
-            "detections, inside the %.2f%% coverage tolerance under every configuration "
-            "this key governs (%s)"%(
-                chosen, dropped_total, 100*options.max_coverage_loss,
-                ", ".join( sorted( rows_by_configuration ) ) ),
-            _flatten_rows( rows_by_configuration ) )
+    def loosens( self, decision ):
+        """True when the chosen value draws more boxes than the current one."""
+        return self.strictness( decision.chosen ) < self.strictness( self.baseline_value() )
+
+    def review( self, decision, rows_by_configuration ):
+        """
+        Every change of value goes in front of a person first. Going
+        looser, the evidence cannot see a misfire scoring above the
+        confident score; going stricter, it cannot see a real exposure
+        scoring below it.
+        """
+        if not decision.accepted or decision.is_split:
+            return None
+        if self.loosens( decision ):
+            why = ( "%s draws more boxes than %s and leaves fewer confident detections uncensored, but "
+                    "a misfire scoring at least %.2f looks the same to this metric as a real detection; "
+                    "judge the extra boxes by eye" )
+        else:
+            why = ( "%s draws fewer boxes than %s, nearly all of them from detections scoring under "
+                    "%.2f, but a real exposure scoring that low looks the same to this metric as a "
+                    "misfire; judge the boxes it removes by eye" )
+        return { 'value': decision.chosen,
+                 'why': why%( decision.chosen, self.baseline_value(), bu_tuning.CONFIDENT_SCORE ) }
+
+
+class ConfirmScoreStage( MinTrackHitsStage ):
+    """
+    The score at which one detection draws a track short of min_track_hits.
+
+    min_track_hits 2 drops every one-detection track, and with the
+    cut-burst merge on that is about 6,400 breast boxes on this library,
+    63% of them from detections under 0.5. Lowering it to 1 draws all of
+    them; confirm_score draws only the ones whose detection scores at
+    least the value, so it can only add boxes to what min_track_hits
+    keeps. The evidence and the rule are min_track_hits': the strictest
+    (highest) value that leaves no more than --max-confident-loss of the
+    label's confident detections uncensored beyond the fewest any value
+    leaves. Off (the baseline, None) draws nothing extra, so it counts
+    as the strictest of all.
+    """
+
+    name = 'confirm_score'
+    key = 'confirm_score'
+    summary = "the score at which one detection draws a track short of min_track_hits"
+
+    VALUES = ( 0.5, 0.6, 0.7 )
+
+    def candidates( self ):
+        baseline = self.baseline_value()
+        return [ ( value, '%g'%( value, ) ) for value in self.VALUES if value != baseline ]
+
+    @staticmethod
+    def strictness( value ):
+        return float( 'inf' ) if value is None else value
+
+    def skip_reason( self, profiles, options=None ):
+        """Every file confirms on one hit already: nothing for a score to admit."""
+        effective = self.effective_values( profiles, 'min_track_hits',
+                                           getattr( betaconfig, 'default_min_track_hits', 1 ) )
+        if max( effective ) > 1:
+            return None
+        return ( "skipped: min_track_hits is 1 for %s on every file here, so every track already "
+                 "renders and no confirm_score could add one"%( self.label, ) )
+
+    def review( self, decision, rows_by_configuration ):
+        if not decision.accepted or decision.is_split:
+            return None
+        if self.loosens( decision ):
+            why = ( "%s draws a short track once one detection scores at least that, more than %s "
+                    "does; a misfire scoring that high looks the same to this metric as a real "
+                    "detection, so judge the extra boxes by eye" )
+        else:
+            why = ( "%s draws fewer short tracks than %s; a real exposure whose best detection scores "
+                    "between the two looks the same to this metric as a misfire, so judge the boxes "
+                    "it removes by eye" )
+        shown = lambda value: 'off' if value is None else value
+        return { 'value': decision.chosen,
+                 'why': why%( shown( decision.chosen ), shown( self.baseline_value() ) ) }
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +757,6 @@ def _median_shot_seconds_for( entries, logger ):
     and "this footage has no cuts" are different facts, and only the
     second would justify an unbounded track_max_gap.
     """
-    fps = betaconfig.video_censor_fps
     threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
     shots = []
     seen = set()
@@ -558,16 +766,21 @@ def _median_shot_seconds_for( entries, logger ):
             if file_hash in seen:
                 continue
             seen.add( file_hash )
-            # Glob rather than an exact path: the cache key carries a
-            # preview suffix this caller does not know.
-            prefix = os.path.join( betaconst.shot_cut_dir,
-                                   '%s-%g-%.3f'%( file_hash, fps, threshold ) )
-            for path in sorted( glob.glob( prefix + '*.gz' ),
-                                key=os.path.getmtime, reverse=True )[:1]:
+            # The scan at the configured rate, else the newest at any
+            # rate: a run made before the rate changed scanned at the
+            # old one, and shot length barely depends on the cadence.
+            found = ( bu_cache.shot_cut_caches_for( file_hash, betaconfig.video_censor_fps, threshold )
+                      or bu_cache.shot_cut_caches_for( file_hash, None, threshold ) )
+            for path, _parsed in found[:1]:
                 try:
                     cuts = sorted( float( c ) for c in bu_hash.read_json( path ) )
                 except Exception:                         # noqa: BLE001
                     continue
+                # The cuts tracking stops at, with bursts merged: a fade
+                # scans as a run of cuts a frame or two apart, and counted
+                # raw those slivers set one profile's median shot at 0.2s,
+                # which capped away every track_max_gap candidate.
+                cuts = bu_track.tracking_cut_times( cuts )
                 shots.extend( b - a for a, b in zip( cuts, cuts[1:] ) if b > a )
 
     if len( shots ) < 2:
@@ -588,19 +801,46 @@ STAGE_TYPES = {
     'track_max_gap': TrackMaxGapStage,
     'match_distance': MatchDistanceStage,
     'min_track_hits': MinTrackHitsStage,
+    'confirm_score': ConfirmScoreStage,
 }
 
 # The order matters. track_max_gap first because it is the cheapest
 # lever and it changes how many resets the later stages even see;
 # match_distance second, judged against whatever gap won; min_track_hits
-# last because it removes boxes and should judge the tracks the first
-# two stages actually produce.
-STAGE_ORDER = ( 'track_max_gap', 'match_distance', 'min_track_hits' )
+# after them because it removes boxes and should judge the tracks the
+# first two stages actually produce; confirm_score last, since it only
+# admits tracks min_track_hits turned away.
+STAGE_ORDER = ( 'track_max_gap', 'match_distance', 'min_track_hits', 'confirm_score' )
 
 
 # ---------------------------------------------------------------------------
 # Running one stage
 # ---------------------------------------------------------------------------
+
+def _profiles_for( context, backend_name ):
+    """
+    {file_hash: structure profile} for one configuration's videos, cached.
+
+    Resolved exactly as a replay resolves it (bu_tuning.
+    replay_tracking_context), and stored on the shared context so every
+    stage reuses it.
+    """
+    profiles = context.get( '_profiles' )
+    if profiles is None:
+        profiles = {}
+        for file_hash, cache_paths in sorted( context.get( 'videos', {} ).items() ):
+            video_path = context.get( 'hash_to_path', {} ).get( file_hash )
+            if not video_path:
+                continue
+            profiles[file_hash] = bu_tuning.replay_tracking_context(
+                file_hash, video_path, cache_paths, backend_name )['profile_name']
+        context['_profiles'] = profiles
+    return profiles
+
+
+def _confident_score( options ):
+    return getattr( options, 'confident_score', bu_tuning.CONFIDENT_SCORE )
+
 
 def measure_stage( stage, context, options, logger ):
     """
@@ -610,8 +850,7 @@ def measure_stage( stage, context, options, logger ):
         A list of rows, baseline first, each with value, label, metrics
         and coverage_loss.
     """
-    saved = copy.deepcopy(
-        betaconfig.detector_backend.get( stage.backend_name, {} ).get( 'item_overrides', {} ) )
+    saved = stage.snapshot()
     rows = []
     try:
         baseline_value = stage.baseline_value()
@@ -638,9 +877,14 @@ def measure_stage( stage, context, options, logger ):
             stage.backend_name,
             context.get( 'configuration_label' ),
             options.replay_seed,
+            _confident_score( options ),
             json.dumps(
                 betaconfig.detector_backend.get( stage.backend_name, {} ).get(
                     'item_overrides', {} ),
+                sort_keys=True, default=str ),
+            # A profile stage's accepted value moves the baseline too.
+            json.dumps(
+                betaconfig.detector_backend.get( stage.backend_name, {} ).get( 'profiles', {} ),
                 sort_keys=True, default=str ),
         )
         baseline_cache = context.setdefault( '_baseline_cache', {} )
@@ -651,7 +895,8 @@ def measure_stage( stage, context, options, logger ):
         else:
             baseline_metrics = bu_tuning.measure_replay(
                 context['videos'], context['hash_to_path'], stage.backend_name,
-                context['labels'], seed=options.replay_seed )
+                context['labels'], seed=options.replay_seed,
+                confident_score=_confident_score( options ) )
             baseline_cache[baseline_key] = baseline_metrics
         rows.append( {
             'value': baseline_value,
@@ -666,7 +911,8 @@ def measure_stage( stage, context, options, logger ):
             stage.apply( value )
             metrics = bu_tuning.measure_replay(
                 context['videos'], context['hash_to_path'], stage.backend_name,
-                context['labels'], seed=options.replay_seed )
+                context['labels'], seed=options.replay_seed,
+                confident_score=_confident_score( options ) )
             row = {
                 'value': value,
                 'label': label,
@@ -735,6 +981,13 @@ def build_parser():
         help="the hard limit on how much censored area-seconds any candidate may cost, as a "
              "fraction. A candidate over this is rejected whatever else it improves "
              "(default: 0.005, i.e. half a percent)" )
+    parser.add_argument( '--confident-score', type=float, default=bu_tuning.CONFIDENT_SCORE,
+        help="min_track_hits: a detection at or above this score counts as probably real "
+             "(default: %(default)s)" )
+    parser.add_argument( '--max-confident-loss', type=float, default=0.001,
+        help="min_track_hits: the strictest value is recommended that leaves at most this share "
+             "of a label's confident detections uncensored beyond the fewest any value leaves "
+             "(default: 0.001, i.e. 0.1%%)" )
     parser.add_argument( '--max-risky-per-reset', type=float, default=5.0,
         help="how many risky track assignments a loosening change may add per track reset it "
              "avoids, before it stops being worth it (default: 5)" )
@@ -801,9 +1054,13 @@ def main():
     # key is written exactly once.
     contexts_by_backend = {}
     for config in configurations:
-        videos, _preview_used = bu_cache.discover_full_run_videos(
-            config.picture_sizes, betaconfig.video_censor_fps, global_min_prob,
-            config.backend_name, include_preview=args.include_preview )
+        # The newest real run of every video, at whatever rate it was
+        # sampled: quick_cut files sample at their profile's rate.
+        videos, _preview_used, rates = bu_cache.videos_for_configuration(
+            config, None, global_min_prob, include_preview=args.include_preview )
+        if rates:
+            logger.info( "%s: %d video(s), sampled at %s fps"%(
+                config.label, len( videos ), ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         if not videos:
             logger.warning( "no caches for %s - skipping"%(config.label) )
             continue
@@ -821,6 +1078,121 @@ def main():
                       # below. A fresh dict here would empty the cache on
                       # every stage and defeat the point.
                       '_baseline_cache': {} } ) )
+
+    def measure_decide_write( entries, stages, probe, label ):
+        """Measure one stage over entries, decide it, and write it if accepted."""
+        rows_by_configuration = {}
+        for ( config, _context ), ( _same_config, stage ) in zip( entries, stages ):
+            context = dict( _context )
+            rows = measure_stage( stage, context, args, logger )
+            stage.score_rows( rows, args )
+            rows_by_configuration[config.label] = rows
+            print_stage_table( config.label, rows, logger )
+
+        decision = probe.decide( rows_by_configuration, args, logger )
+        decision.key, decision.label = probe.key, label
+        decision.review = probe.review( decision, rows_by_configuration )
+        logger.info( "  => %s"%( decision.reasoning ) )
+        if decision.review:
+            logger.info( "  worth judging by eye: %s"%( decision.review['why'], ) )
+        decisions.append( decision )
+
+        if decision.accepted and args.apply:
+            variant_of = { config.label: config.variant for config, _c in entries }
+            if decision.is_split:
+                question = "  write %s per variant (%s) to betaconfig.py?"%(
+                    probe.title,
+                    ", ".join( "%s=%s"%( name, value )
+                               for name, value in sorted( decision.per_configuration.items() ) ) )
+            else:
+                question = "  write %s = %s to betaconfig.py (governs %s)?"%(
+                    probe.title, decision.chosen,
+                    ", ".join( config.label for config, _c in entries ) )
+            if confirm( logger, question, args.yes ):
+                try:
+                    if decision.is_split and probe.profile_name:
+                        raise bu_tuning.ConfigWriteError(
+                            "a structure profile holds one value for every model variant, so "
+                            "a per-variant decision cannot be written into %s"%( probe.profile_name, ) )
+                    if decision.is_split:
+                        for name, value in sorted( decision.per_configuration.items() ):
+                            variant = variant_of.get( name )
+                            if not variant:
+                                raise bu_tuning.ConfigWriteError(
+                                    "%s has no variant name, so a per-variant value "
+                                    "cannot be written for it"%(name) )
+                            writer.set_variant_item_override(
+                                probe.backend_name, variant, label, probe.key, value )
+                    else:
+                        probe.write( writer, decision.chosen )
+                except bu_tuning.ConfigWriteError as err:
+                    logger.error( "  could not write it: %s"%(err) )
+                    decision.accepted = False
+                    decision.reasoning += " (NOT written: %s)"%(err)
+            else:
+                decision.accepted = False
+                decision.reasoning += " (declined at the prompt)"
+
+    profile_contexts = {}
+
+    def measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot ):
+        """
+        One stage per structure profile that sets this key for this label.
+
+        A profile's item_overrides win over the backend's for every file
+        that runs it, so the backend stage cannot move those files at
+        all: quick_cut's own track_max_gap 0.2 was never measured. Each
+        profile is tuned over only its own files and written into its
+        own block.
+        """
+        for profile_name in sorted( masking ):
+            files = sorted( file_hash for file_hash, profile in profiles.items()
+                            if profile == profile_name )
+            if not files:
+                continue
+            profile_entries = []
+            for config, context in entries:
+                key = ( config.label, profile_name )
+                if key not in profile_contexts:
+                    videos = { file_hash: paths for file_hash, paths in context['videos'].items()
+                               if file_hash in files }
+                    profile_contexts[key] = dict(
+                        context, videos=videos,
+                        configuration_label='%s [%s]'%( config.label, profile_name ),
+                        _profiles={ file_hash: profile_name for file_hash in videos },
+                        _baseline_cache={} )
+                if profile_contexts[key]['videos']:
+                    profile_entries.append( ( config, profile_contexts[key] ) )
+            if not profile_entries:
+                continue
+            stages = []
+            for config, _context in profile_entries:
+                stage = STAGE_TYPES[stage_name]( backend_name, label, config.label )
+                stage.profile_name = profile_name
+                stages.append( ( config, stage ) )
+            profile_shot = _median_shot_seconds_for( profile_entries, logger )
+            for _config, stage in stages:
+                stage.median_shot_seconds = profile_shot if profile_shot else median_shot
+            probe = stages[0][1]
+            if probe.baseline_value() is None and stage_name == 'track_max_gap':
+                continue
+            if not probe.candidates():
+                logger.info( "" )
+                logger.info( "-- %s: nothing to try (%d file(s) run this profile%s)"%(
+                    probe.title, len( files ),
+                    "; every candidate is past their median shot, %.2fs"%( profile_shot, )
+                    if profile_shot and stage_name == 'track_max_gap' else '' ) )
+                continue
+            logger.info( "" )
+            logger.info( "-- %s  (%s; %d file(s) run this profile)"%(
+                probe.title, probe.summary, len( files ) ) )
+            skip = probe.skip_reason( { file_hash: profile_name for file_hash in files }, args )
+            if skip:
+                logger.info( "  => %s"%( skip, ) )
+                decisions.append( bu_tuning.Decision(
+                    probe.title, probe.baseline_value(), False, skip, [] ) )
+                continue
+            measure_decide_write( profile_entries, stages, probe, label )
 
     measured_anything = bool( contexts_by_backend )
 
@@ -848,60 +1220,69 @@ def main():
                 for _config, stage in stages:
                     stage.median_shot_seconds = median_shot
                 probe = stages[0][1]
+
+                # A structure profile that sets this key for this label
+                # overrides the backend value tuned here, for every file
+                # that runs it. When that is every file, no candidate can
+                # change anything: one full-library run spent 12 minutes on
+                # six identical exposed_breast track_max_gap replays,
+                # because scene, compilation and split_screen each set
+                # their own.
+                profiles = {}
+                for _config, _context in entries:
+                    profiles.update( _profiles_for( _context, backend_name ) )
+                masking = bu_tuning.profile_masking( profiles, label, probe.key, backend_name )
+
+                # No backend value, or nothing to try at that level, still
+                # leaves the profiles' own values: exposed_vulva sets
+                # track_max_gap only in its profiles, and those were never
+                # measured while this skipped the whole key.
                 if probe.baseline_value() is None and stage_name == 'track_max_gap':
-                    logger.debug( "%s/%s: no explicit baseline, skipping"%(stage_name, label) )
+                    logger.debug( "%s/%s: no backend baseline; tuning the profiles that set it"%(
+                        stage_name, label ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
                     continue
                 if not probe.candidates():
-                    logger.debug( "%s/%s: no candidates to try"%(stage_name, label) )
+                    logger.debug( "%s/%s: no candidates to try at the backend level"%( stage_name, label ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
                     continue
 
                 logger.info( "" )
                 logger.info( "-- %s / %s / %s  (%s)"%(
                     stage_name, backend_name, label, probe.summary ) )
 
-                rows_by_configuration = {}
-                for ( config, _context ), ( _same_config, stage ) in zip( entries, stages ):
-                    context = dict( _context )
-                    rows = measure_stage( stage, context, args, logger )
-                    stage.score_rows( rows, args )
-                    rows_by_configuration[config.label] = rows
-                    print_stage_table( config.label, rows, logger )
+                masked_files = [ file_hash for file_hash, profile in profiles.items()
+                                 if profile in masking ]
+                masking_text = ", ".join( "%s %s"%( name, value )
+                                          for name, value in sorted( masking.items() ) )
+                skip = probe.skip_reason( profiles, args )
+                if skip:
+                    logger.info( "  => %s"%( skip, ) )
+                    decisions.append( bu_tuning.Decision(
+                        probe.title, probe.baseline_value(), False, skip, [] ) )
+                    continue
+                if profiles and len( masked_files ) == len( profiles ):
+                    reasoning = (
+                        "skipped: every file here runs a structure profile that sets %s for %s "
+                        "itself (%s), so the backend value %s is never read and no candidate "
+                        "could change anything; each profile's own value is tuned below"%(
+                            probe.key, label, masking_text, probe.baseline_value() ) )
+                    logger.info( "  => %s"%( reasoning ) )
+                    decisions.append( bu_tuning.Decision(
+                        probe.title, probe.baseline_value(), False, reasoning, [] ) )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
+                                      median_shot )
+                    continue
+                if masked_files:
+                    logger.info( "  note: %d of %d file(s) run a profile that sets %s itself (%s); "
+                                 "they ignore the values tried here, so they cannot move the "
+                                 "numbers below (their own values are tuned after this)"%(
+                                     len( masked_files ), len( profiles ), probe.key, masking_text ) )
 
-                decision = probe.decide( rows_by_configuration, args, logger )
-                logger.info( "  => %s"%( decision.reasoning ) )
-                decisions.append( decision )
-
-                if decision.accepted and args.apply:
-                    variant_of = { config.label: config.variant for config, _c in entries }
-                    if decision.is_split:
-                        question = "  write %s per variant (%s) to betaconfig.py?"%(
-                            probe.key,
-                            ", ".join( "%s=%s"%( name, value )
-                                       for name, value in sorted( decision.per_configuration.items() ) ) )
-                    else:
-                        question = "  write %s = %s to betaconfig.py (governs %s)?"%(
-                            probe.key, decision.chosen,
-                            ", ".join( config.label for config, _c in entries ) )
-                    if confirm( logger, question, args.yes ):
-                        try:
-                            if decision.is_split:
-                                for name, value in sorted( decision.per_configuration.items() ):
-                                    variant = variant_of.get( name )
-                                    if not variant:
-                                        raise bu_tuning.ConfigWriteError(
-                                            "%s has no variant name, so a per-variant value "
-                                            "cannot be written for it"%(name) )
-                                    writer.set_variant_item_override(
-                                        backend_name, variant, label, probe.key, value )
-                            else:
-                                probe.write( writer, decision.chosen )
-                        except bu_tuning.ConfigWriteError as err:
-                            logger.error( "  could not write it: %s"%(err) )
-                            decision.accepted = False
-                            decision.reasoning += " (NOT written: %s)"%(err)
-                    else:
-                        decision.accepted = False
-                        decision.reasoning += " (declined at the prompt)"
+                measure_decide_write( entries, stages, probe, label )
+                measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot )
 
     if not measured_anything:
         logger.error( "nothing to tune: no detection caches found for any configuration. Run "
@@ -929,6 +1310,15 @@ def main():
         else:
             outcome = "-> %s"%(decision.chosen)
         logger.info( "  %-52s %s"%( decision.stage_name, outcome ) )
+    reviews = [ decision for decision in decisions if decision.review ]
+    if reviews:
+        logger.info( "" )
+        logger.info( "worth judging by eye before writing (the numbers cannot settle these):" )
+        for decision in reviews:
+            logger.info( "  %-52s %s"%( decision.stage_name, decision.review['value'] ) )
+        for key in sorted( set( decision.key for decision in reviews ) ):
+            logger.info( "  side by side on your footage: AB_EXPERIMENT=%s bash tools/tuning/ab_compare.sh"%(
+                REVIEW_EXPERIMENTS.get( key, 'tracking' ), ) )
     logger.info( "" )
     logger.info( "decisions written to %s"%( os.path.abspath( results_path ) ) )
     if writer.backups:

@@ -37,9 +37,12 @@ THREAD SAFETY REQUIREMENT
     producing chunk-order-dependent output.
 """
 
+import collections
 import math
 import bisect
 import os
+import re
+import signal
 import subprocess
 import threading
 import time
@@ -216,10 +219,118 @@ def resolve_worker_count( chunk_count ):
     return max( 1, min( cpu_count // 2 or 1, 8, chunk_count ) )
 
 
+def available_memory_bytes( meminfo_path='/proc/meminfo' ):
+    """
+    Memory a new process can have without swapping (Linux MemAvailable),
+    or None where that cannot be read (other platforms, or a kernel
+    without the field). Swap is deliberately not counted: a render
+    pushed into swap crawls, and 4 GiB of swap did not stop the
+    out-of-memory kills described in memory_worker_cap anyway.
+    """
+    try:
+        with open( meminfo_path, 'r', encoding='ascii' ) as handle:
+            for line in handle:
+                if line.startswith( 'MemAvailable:' ):
+                    return int( line.split()[1] ) * 1024
+    except ( OSError, ValueError, IndexError ):
+        return None
+    return None
+
+
+def memory_worker_cap( frame_width, frame_height, available_bytes ):
+    """
+    ( cap, per_worker_bytes ): how many render workers fit in memory at
+    this frame size, or ( None, None ) when the cap does not apply.
+
+    WHY THIS EXISTS. Worker count came from CPU count alone. A 16-CPU
+    laptop with 15 GiB of RAM (Ryzen 9 5900HS, RTX 3070 Laptop) got 8
+    workers for a 4096x2160 file, and the kernel's out-of-memory killer killed betatv
+    twice, about 25 frames per worker into the render (python held 5.4
+    and 4.2 GB; the GPU driver also failed an allocation and one chunk
+    encoder segfaulted). The 1080p file before it rendered fine with
+    the same 8. Every worker holds its own decoder, frames in flight
+    and ffmpeg encoder, all of which grow with the pixel count.
+
+    The cost model is render_worker_mb_per_megapixel times the frame's
+    megapixels per worker, plus render_memory_reserve_mb kept free for
+    everything else on the machine. UNCERTAIN: the shipped 200 MB per
+    megapixel is a lower bound read off those two kills (8 workers at
+    8.85 MP exhausted roughly 14 GiB, so at least ~1.75 GiB each), not a
+    measurement of one worker. Raise it if a render is still killed;
+    a run's stats row records what the cap saw so it can be tuned.
+
+    Option not taken: watching free memory and starting workers one at
+    a time. It adapts to any encoder, but free memory moves for reasons
+    that have nothing to do with the render, and a gate that guesses
+    wrong stalls or overcommits silently. A fixed per-pixel cost is
+    wrong in a way the log states.
+
+    Args:
+        frame_width, frame_height: The source frame size in pixels.
+        available_bytes: available_memory_bytes(), or None if unknown.
+    """
+    mb_per_megapixel = getattr( betaconfig, 'render_worker_mb_per_megapixel', 200 )
+    if not mb_per_megapixel or available_bytes is None or not ( frame_width and frame_height ):
+        return None, None
+    reserve_bytes = getattr( betaconfig, 'render_memory_reserve_mb', 2048 ) * 1024 * 1024
+    megapixels = frame_width * frame_height / 1e6
+    per_worker_bytes = int( mb_per_megapixel * megapixels * 1024 * 1024 )
+    usable_bytes = available_bytes - reserve_bytes
+    return max( 1, usable_bytes // max( 1, per_worker_bytes ) ), per_worker_bytes
+
+
+def plan_worker_count( chunk_count, frame_width, frame_height, available_bytes, logger ):
+    """
+    The render's worker count: the CPU-based count from
+    resolve_worker_count, lowered to what memory holds at this frame
+    size. The cap applies to an explicit render_workers too, with a
+    warning, because the alternative is a SIGKILL that leaves nothing
+    in the log.
+
+    Returns:
+        ( worker_count, memory_cap_or_None ).
+    """
+    by_cpu = resolve_worker_count( chunk_count )
+    cap, per_worker_bytes = memory_worker_cap( frame_width, frame_height, available_bytes )
+    if cap is None:
+        logger.debug( "render: no memory cap on workers (%s)"%(
+            "MemAvailable unknown on this platform" if available_bytes is None
+            else "render_worker_mb_per_megapixel is off" ) )
+        return by_cpu, None
+    detail = ( "%.1f GiB available, %.1f GiB kept in reserve, about %.1f GiB per worker at %dx%d"%(
+        available_bytes / 2**30, getattr( betaconfig, 'render_memory_reserve_mb', 2048 ) / 1024,
+        per_worker_bytes / 2**30, frame_width, frame_height ) )
+    if cap >= by_cpu:
+        logger.debug( "render: memory allows %d worker(s), more than the %d used (%s)"%(
+            cap, by_cpu, detail ) )
+        return by_cpu, cap
+    if getattr( betaconfig, 'render_workers', 0 ):
+        logger.warning( "render: render_workers asks for %d but memory holds %d; using %d (%s)"%(
+            by_cpu, cap, cap, detail ) )
+    else:
+        logger.info( "render: memory caps workers at %d of %d (%s)"%( cap, by_cpu, detail ) )
+    return cap, cap
+
+
 def _encoder_threads( worker_count ):
     """x264 threads per worker, so N workers do not oversubscribe the box."""
     cpu_count = os.cpu_count() or 1
     return max( 1, cpu_count // max( 1, worker_count ) )
+
+
+def decode_threads( worker_count ):
+    """
+    Decoder threads per render worker, from render_decode_threads: None
+    leaves OpenCV's own (one per core, for every worker), 0 shares the
+    cores out (cores / workers), a number is used as given. Returns None
+    for OpenCV's own. See betautils_video.open_capture_with_threads.
+    """
+    configured = getattr( betaconfig, 'render_decode_threads', None )
+    if configured is None:
+        return None
+    if configured == 0:
+        return _encoder_threads( worker_count )
+    return max( 1, int( configured ) )
 
 
 # ---------------------------------------------------------------------------
@@ -588,14 +699,255 @@ def boxes_for_chunk( boxes, chunk_start_time ):
 # Chunk rendering
 # ---------------------------------------------------------------------------
 
+def _ffmpeg_prints_errors_only():
+    """
+    Whether render ffmpeg runs at -loglevel error, so anything it prints
+    is an error. debug_mode bit 1 turns that off and ffmpeg prints its
+    normal chatter, which is not worth a warning.
+    """
+    return not ( getattr( betaconfig, 'debug_mode', 0 ) & 1 )
+
+
 def _ffmpeg_base_command():
     """The ffmpeg prefix every render command shares."""
-    if getattr( betaconfig, 'debug_mode', 0 ) & 1:
+    if not _ffmpeg_prints_errors_only():
         return [ 'ffmpeg', '-y' ]
     return [ 'ffmpeg', '-y', '-loglevel', 'error' ]
 
 
-def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_threads ):
+def ffmpeg_error_line( text, keyword=None ):
+    """
+    The line of ffmpeg's stderr that says what went wrong: the first one
+    naming `keyword` (usually the encoder), else the first line. ffmpeg's
+    LAST line is usually a generic consequence ("Nothing was written into
+    output file") rather than the cause ("Cannot load libcuda.so.1").
+
+    Lived in betabench until the render needed it too; betabench now
+    imports it from here.
+    """
+    lines = [ line.strip() for line in text.strip().splitlines() if line.strip() ]
+    if keyword:
+        for line in lines:
+            if keyword.lower() in line.lower():
+                return line
+    return lines[0] if lines else None
+
+
+_STDERR_LINE_BREAK = re.compile( rb'[\r\n]' )
+
+
+class FfmpegStderr:
+    """
+    One ffmpeg process's stderr, drained on a thread, with its first and
+    last lines kept.
+
+    Render ffmpeg used to inherit the terminal's stderr, so its reason for
+    failing never reached betasuite.log. Two 4K files in one run
+    each lost one chunk to an encoder that quit within seconds, three
+    attempts running, and all the log could say was BrokenPipeError: the
+    encoder's own message went to a terminal nobody kept.
+
+    Drained on a thread rather than read after wait(): a pipe nobody
+    reads blocks ffmpeg once the OS buffer fills (64 KB on Linux), and the
+    chunk writer, blocked on ffmpeg's stdin, would wait forever. A temp
+    file beside the output (what betabench does for its throwaway
+    encodes) was the other option, rejected because a killed run would
+    leave it in the output folder for resume and cleanup to trip over.
+
+    Bounded: with debug_mode bit 1 ffmpeg prints a progress line twice a
+    second for the whole encode, so only the first HEAD_LINES (where the
+    cause usually is) and the last TAIL_LINES are kept, and \\r counts as
+    a line break because the progress line rewrites itself with it.
+    """
+    HEAD_LINES = 10
+    TAIL_LINES = 30
+    MAX_LINE_BYTES = 4096
+
+    def __init__( self, stream ):
+        self._head = []
+        self._tail = collections.deque( maxlen=self.TAIL_LINES )
+        self.line_count = 0
+        self._thread = threading.Thread( target=self._drain, args=( stream, ),
+                                         name='ffmpeg-stderr', daemon=True )
+        self._thread.start()
+
+    def _keep( self, raw ):
+        line = raw.decode( 'utf-8', 'replace' ).strip()
+        if not line:
+            return
+        self.line_count += 1
+        if len( self._head ) < self.HEAD_LINES:
+            self._head.append( line )
+        else:
+            self._tail.append( line )
+
+    def _drain( self, stream ):
+        pending = b''
+        try:
+            while True:
+                block = stream.read1( 65536 )
+                if not block:
+                    break
+                pending += block
+                parts = _STDERR_LINE_BREAK.split( pending )
+                pending = parts.pop()
+                for part in parts:
+                    self._keep( part )
+                # A line with no break past MAX_LINE_BYTES keeps its start
+                # and drops the rest: ffmpeg never writes one, so this is
+                # only a bound on memory, not a case worth reassembling.
+                if len( pending ) > self.MAX_LINE_BYTES:
+                    self._keep( pending[:self.MAX_LINE_BYTES] )
+                    pending = b''
+            if pending:
+                self._keep( pending )
+        except ( OSError, ValueError ):
+            pass
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+    def finish( self, timeout_seconds=10.0 ):
+        """
+        Wait for the drain to reach end of stream. Call once the process
+        has exited; safe to call more than once.
+        """
+        self._thread.join( timeout_seconds )
+        return self
+
+    def lines( self ):
+        """The kept lines in order, with a marker where some were dropped."""
+        dropped = self.line_count - len( self._head ) - len( self._tail )
+        middle = [ '... %d line(s) not kept ...'%( dropped, ) ] if dropped > 0 else []
+        return self._head + middle + list( self._tail )
+
+    def error_line( self, keyword=None ):
+        """The kept line that best says what went wrong; see ffmpeg_error_line."""
+        return ffmpeg_error_line( '\n'.join( self._head + list( self._tail ) ), keyword )
+
+
+_CRASH_SIGNALS = frozenset( getattr( signal, name ) for name in
+                            ( 'SIGSEGV', 'SIGBUS', 'SIGILL', 'SIGFPE', 'SIGABRT' )
+                            if hasattr( signal, name ) )
+
+
+def describe_exit_status( returncode ):
+    """
+    How a process ended, in words: 'exited 1', 'crashed (SIGSEGV)',
+    'was killed (SIGKILL)'.
+
+    A negative returncode is a signal, and printing it as "exited -11"
+    hid the one fact that mattered in a 4K out-of-memory render: a chunk encoder
+    segfaulted when the GPU driver ran out of host memory, and ffmpeg
+    prints nothing when it segfaults, so the signal is the whole story.
+    """
+    if returncode is not None and returncode < 0:
+        number = -returncode
+        try:
+            name = signal.Signals( number ).name
+        except ValueError:
+            name = "signal %d"%( number, )
+        if number in _CRASH_SIGNALS:
+            return "crashed (%s)"%( name, )
+        return "was killed (%s)"%( name, )
+    return "exited %d"%( returncode, )
+
+
+def describe_ffmpeg_failure( returncode, captured_stderr, keyword=None ):
+    """'ffmpeg exited N: <the line that says why>', or just how it ended when ffmpeg said nothing."""
+    line = captured_stderr.error_line( keyword ) if captured_stderr is not None else None
+    reason = "ffmpeg %s"%( describe_exit_status( returncode ), )
+    return "%s: %s"%( reason, line ) if line else reason
+
+
+def _command_codec( command ):
+    """The encoder a command actually asks for (the value after -c:v), or None."""
+    for index, argument in enumerate( command[:-1] ):
+        if argument == '-c:v':
+            return command[index + 1]
+    return None
+
+
+def _log_ffmpeg_stderr( logger, what, returncode, captured_stderr ):
+    """
+    Put what ffmpeg printed into the log file.
+
+    Everything kept goes in at debug, success or failure. A FAILURE's
+    reason is already carried by the retry warning and the RenderError,
+    so it gets no second warning here. A SUCCESS that printed anything at
+    -loglevel error is degraded but proceeding, which is a warning; under
+    debug_mode the same output is ordinary chatter and stays at debug.
+    """
+    lines = captured_stderr.lines()
+    if not lines:
+        return
+    logger.debug( "%s: ffmpeg exited %d, stderr (%d line(s)):\n  %s"%(
+        what, returncode, captured_stderr.line_count, '\n  '.join( lines ) ) )
+    if returncode == 0 and _ffmpeg_prints_errors_only():
+        logger.warning( "%s: ffmpeg succeeded but reported: %s"%(
+            what, captured_stderr.error_line() ) )
+
+
+def _run_ffmpeg( command ):
+    """
+    Run an ffmpeg command that needs no stdin to completion.
+
+    Returns:
+        ( returncode, FfmpegStderr ) with the stderr fully drained.
+    """
+    process = subprocess.Popen( command, stderr=subprocess.PIPE )
+    captured_stderr = FfmpegStderr( process.stderr )
+    process.wait()
+    return process.returncode, captured_stderr.finish()
+
+
+NVENC_CODECS = ( 'h264_nvenc', 'hevc_nvenc', 'av1_nvenc' )
+
+# x264 preset names mapped onto NVENC's p1 (fastest) to p7 (best), so a
+# preset written for x264, including preview's 'ultrafast', still means
+# something to NVENC instead of failing the encode.
+X264_TO_NVENC_PRESET = {
+    'ultrafast': 'p1', 'superfast': 'p1', 'veryfast': 'p1', 'faster': 'p2',
+    'fast': 'p3', 'medium': 'p4', 'slow': 'p5', 'slower': 'p6',
+    'veryslow': 'p7', 'placebo': 'p7',
+}
+
+
+def encoder_options( codec, quality, preset, threads ):
+    """
+    The codec arguments of one chunk encode.
+
+    x264 takes quality as CRF and its thread count as -threads. NVENC has
+    no CRF: handed -crf it ignores it without an error and encodes at its
+    default bitrate. Its quality therefore goes in as constant quality
+    (-cq) with the bitrate cap off (-b:v 0), the nearest NVENC
+    equivalent. The two scales do not line up number for number;
+    `betabench encode` measures which cq matches a given crf. NVENC
+    encodes on the GPU, so -threads does not apply to it.
+
+    Args:
+        codec: ffmpeg encoder name, e.g. 'libx264' or 'h264_nvenc'.
+        quality: CRF for x264, cq for NVENC. Lower is better.
+        preset: The encoder's preset; x264 names are translated for NVENC.
+        threads: Encoder threads, for CPU encoders.
+
+    Returns:
+        A list of ffmpeg arguments.
+    """
+    if codec in NVENC_CODECS:
+        return [ '-c:v', codec,
+                 '-preset', X264_TO_NVENC_PRESET.get( str( preset ), str( preset ) ),
+                 '-rc', 'vbr', '-cq', str( quality ), '-b:v', '0' ]
+    return [ '-c:v', codec,
+             '-crf', str( quality ),
+             '-preset', str( preset ),
+             '-threads', str( threads ) ]
+
+
+def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_threads,
+                           codec=None, quality=None ):
     """
     ffmpeg command that reads raw BGR frames on stdin and writes H.264.
 
@@ -603,7 +955,15 @@ def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_thre
     than at a later re-encode: every chunk pads identically, so the
     concatenated stream has consistent parameters and can be copied
     rather than re-encoded.
+
+    codec and quality default to encode_video_codec and encode_crf;
+    `betabench encode` passes its own to time other encoders through
+    this exact command.
     """
+    if codec is None:
+        codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
+    if quality is None:
+        quality = getattr( betaconfig, 'encode_crf', 17 )
     return _ffmpeg_base_command() + [
         '-f', 'rawvideo',
         '-vcodec', 'rawvideo',
@@ -612,25 +972,41 @@ def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_thre
         '-r', '%.6f'%(vid_fps),
         '-i', '-',
         '-an',
-        '-c:v', getattr( betaconfig, 'encode_video_codec', 'libx264' ),
-        '-crf', str( getattr( betaconfig, 'encode_crf', 17 ) ),
-        '-preset', preset,
-        '-threads', str( encoder_threads ),
+    ] + encoder_options( codec, quality, preset, encoder_threads ) + [
         '-pix_fmt', 'yuv420p',
         '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
         tmp_path,
     ]
 
 
-def _write_chunk_metadata( plan, frames_written ):
-    """Record a completed chunk's real frame count beside it."""
+def _write_chunk_metadata( plan, frames_written, ended_at_eof=False ):
+    """
+    Record a completed chunk's real frame count beside it.
+
+    ended_at_eof marks a last chunk that was accepted short because the
+    file really ended there, so a resume can honour that verdict instead
+    of re-rendering the chunk to reach it again.
+    """
     bu_hash.write_json_plain( {
         'index': plan.index,
         'start_frame': plan.start_frame,
         'end_frame': plan.end_frame,
         'expected_frames': plan.expected_frames,
         'frames_written': frames_written,
+        'ended_at_eof': bool( ended_at_eof ),
     }, plan.meta_path )
+
+
+def eof_shortfall_tolerance( vid_fps ):
+    """
+    Frames a last chunk may come up short and still be routine.
+
+    OpenCV derives an MKV's frame count from its duration, and the
+    duration includes the stream's start offset, so a file that starts at
+    0.067s over-reports by about two frames. One second's worth covers
+    that rounding with room to spare; a bigger gap is not explained by it.
+    """
+    return max( 1, int( math.ceil( vid_fps or 0 ) ) )
 
 
 def chunk_is_complete( plan, verify_frame_counts=True ):
@@ -665,7 +1041,17 @@ def chunk_is_complete( plan, verify_frame_counts=True ):
         metadata = bu_hash.read_json_plain( plan.meta_path )
     except Exception:
         return False
-    return metadata.get( 'frames_written' ) == metadata.get( 'expected_frames' )
+    written = metadata.get( 'frames_written' )
+    expected = metadata.get( 'expected_frames' )
+    if written == expected:
+        return True
+    # A last chunk accepted short at the real end of the file. Before this
+    # was recorded, every resume re-rendered that chunk only to accept the
+    # same shortfall again. Only the last chunk, only when the verdict was
+    # recorded, and only for the plan it was recorded against.
+    return bool( plan.is_last and metadata.get( 'ended_at_eof' )
+                 and expected == plan.expected_frames
+                 and isinstance( written, int ) and 0 < written < expected )
 
 
 def _motion_settings( source ):
@@ -695,8 +1081,43 @@ def _motion_settings( source ):
              None if window is None else float( window ) )
 
 
+def chunk_failure_reason( returncode, frames_written, write_error, captured_stderr, codec ):
+    """
+    Why one chunk attempt failed, or None when it did not.
+
+    BUG FIX: when the encoder quits mid-chunk, the next frame write raises
+    BrokenPipeError, and that consequence used to be the whole report.
+    One 4K AV1 file logged "render chunk 5 failed after 3
+    attempt(s): BrokenPipeError(32, 'Broken pipe')" while ffmpeg's exit
+    status went unread and its message went to the terminal. An encoder
+    that exited non-zero is the cause, so its exit code and the line
+    naming the encoder lead. A frame-loop error other than the broken
+    pipe is kept beside it, because then two separate things went wrong.
+
+    Args:
+        returncode: The encoder's exit status, None if it never started.
+        frames_written: Frames handed to the encoder before the end.
+        write_error: The exception the frame loop raised, or None.
+        captured_stderr: The encoder's FfmpegStderr, or None.
+        codec: The encoder the command asked for, to find its own line.
+    """
+    if returncode not in ( None, 0 ):
+        reason = "ffmpeg %s after %d frame(s) written"%( describe_exit_status( returncode ),
+                                                          frames_written )
+        line = captured_stderr.error_line( codec ) if captured_stderr is not None else None
+        if line:
+            reason += ": " + line
+        if write_error is not None and not isinstance( write_error, BrokenPipeError ):
+            reason += "; the frame loop also raised %r"%( write_error, )
+        return reason
+    if write_error is not None:
+        return repr( write_error )
+    return None
+
+
 def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
-                      retry_backoff, progress, logger, motion_timelines=None ):
+                      retry_backoff, progress, logger, motion_timelines=None, reverse=None,
+                      decoder_threads=None ):
     """
     Render one chunk to its own file, retrying on failure.
 
@@ -717,6 +1138,10 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             the whole video, shared read-only across workers. None means
             build it here, which every worker would then do redundantly
             over the same box list - correct, just wasteful.
+        reverse: A betautils_reverse.ReverseRender for a reverse-mode
+            video, or None for normal mode. Read-only, shared.
+        decoder_threads: This chunk's decoder thread count, or None for
+            OpenCV's own (decode_threads()).
 
     Returns:
         The number of frames written.
@@ -745,8 +1170,10 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 plan.index, attempt, max_retries, last_error ) )
             time.sleep( retry_backoff )
 
-        capture = source.open_capture()
+        capture = source.open_capture( decoder_threads )
         process = None
+        captured_stderr = None
+        command = None
         frames_written = 0
         write_error = None
         try:
@@ -754,7 +1181,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             command = _chunk_encode_command(
                 tmp_path, source.width, source.height, source.vid_fps, preset, encoder_threads )
             logger.trace( "render chunk %d command: %s"%(plan.index, ' '.join( command )) )
-            process = subprocess.Popen( command, stdin=subprocess.PIPE )
+            process = subprocess.Popen( command, stdin=subprocess.PIPE, stderr=subprocess.PIPE )
+            captured_stderr = FfmpegStderr( process.stderr )
 
             live_boxes = list( base_live )
             pending_boxes = base_pending
@@ -785,7 +1213,15 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                                     live_boxes, motion_timelines, current_time, motion_max_span,
                                     motion_collapse_growth, motion_size_window )
                                 if motion_enabled else live_boxes )
-                frame = bu_censor.censor_img_for_boxes( frame, frame_boxes )
+                if reverse is None:
+                    frame = bu_censor.censor_img_for_boxes( frame, frame_boxes )
+                else:
+                    frame_alpha = reverse.frame_alpha( current_time )
+                    # Person windows only matter where the frame style is on.
+                    window_mask = ( reverse.window_mask( current_time, frame.shape[1], frame.shape[0] )
+                                    if frame_alpha > 0 else None )
+                    frame = bu_censor.censor_img_reverse(
+                        frame, frame_boxes, frame_alpha, reverse.frame_style, window_mask )
                 # memoryview avoids copying the whole frame just to hand
                 # its bytes to the pipe. Frames from cv2 are contiguous.
                 process.stdin.write( memoryview( frame ) if frame.flags['C_CONTIGUOUS']
@@ -817,29 +1253,44 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 except Exception:
                     pass
                 process.wait()
+            if captured_stderr is not None:
+                captured_stderr.finish()
 
-        if write_error is not None:
-            last_error = repr( write_error )
-            continue
-        if process.returncode != 0:
-            last_error = "ffmpeg exited %d"%(process.returncode)
+        returncode = process.returncode if process is not None else None
+        if captured_stderr is not None:
+            _log_ffmpeg_stderr( logger, "render chunk %d attempt %d"%( plan.index, attempt + 1 ),
+                                returncode, captured_stderr )
+        failure = chunk_failure_reason( returncode, frames_written, write_error, captured_stderr,
+                                        _command_codec( command ) if command else None )
+        if failure is not None:
+            last_error = failure
             continue
         if not bu_video.probe_video_ok( tmp_path ):
             last_error = "chunk failed the container sanity check"
             continue
 
+        ended_at_eof = False
         if frames_written < plan.expected_frames:
             shortfall = plan.expected_frames - frames_written
             if plan.is_last:
                 # The very last chunk may legitimately come up short:
                 # container metadata over-reports the frame count on some
-                # files. Accept it, but say so, because the alternative -
-                # silently accepting a short chunk anywhere - is the
-                # truncation bug this check exists to catch.
-                logger.warning( "render chunk %d (last): decoder ran out %d frame(s) before the planned "
-                    "end (%d of %d). Container metadata over-reporting the frame count is the usual "
-                    "cause; the output is complete to the real end of the file."%(
-                        plan.index, shortfall, frames_written, plan.expected_frames ) )
+                # files (every MKV with a non-zero start time). Accept it,
+                # because the file really ends there, and record it. A
+                # small gap is routine and goes to the log file; a gap
+                # rounding cannot explain is a warning, because a decoder
+                # that died near the end looks the same from here.
+                ended_at_eof = True
+                if shortfall <= eof_shortfall_tolerance( source.vid_fps ):
+                    logger.debug( "render chunk %d (last): file ended %d frame(s) before the "
+                        "container's estimate (%d of %d), the usual MKV start-offset rounding"%(
+                            plan.index, shortfall, frames_written, plan.expected_frames ) )
+                else:
+                    logger.warning( "render chunk %d (last): decoder stopped %d frame(s) (%.1fs) "
+                        "before the container's estimate (%d of %d), more than metadata rounding "
+                        "explains. If the source plays past that point, check the end of the output."%(
+                            plan.index, shortfall, shortfall / ( source.vid_fps or 1.0 ),
+                            frames_written, plan.expected_frames ) )
             else:
                 last_error = ( "chunk is %d frame(s) short (%d of %d) and is not the last chunk, so the "
                                "decoder failed mid-file rather than reaching EOF"%(
@@ -847,7 +1298,7 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
                 continue
 
         os.replace( tmp_path, plan.path )  # atomic promote: only now is it trusted
-        _write_chunk_metadata( plan, frames_written )
+        _write_chunk_metadata( plan, frames_written, ended_at_eof )
         logger.debug( "render chunk %d complete: %d frame(s)"%(plan.index, frames_written) )
         return frames_written
 
@@ -899,10 +1350,11 @@ def concat_chunks( plans, intermediate_path, max_retries, retry_backoff, logger 
         if attempt > 0:
             logger.warning( "chunk concat: retry %d/%d after %s"%(attempt, max_retries, last_error) )
             time.sleep( retry_backoff )
-        process = subprocess.Popen( command )
-        process.wait()
-        if process.returncode != 0:
-            last_error = "ffmpeg exited %d"%(process.returncode)
+        returncode, captured_stderr = _run_ffmpeg( command )
+        _log_ffmpeg_stderr( logger, "chunk concat attempt %d"%( attempt + 1, ),
+                            returncode, captured_stderr )
+        if returncode != 0:
+            last_error = describe_ffmpeg_failure( returncode, captured_stderr )
             continue
         if not bu_video.probe_video_ok( tmp_path ):
             last_error = "concatenated output failed the container sanity check"
@@ -1002,10 +1454,11 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
                     strategy_name, attempt, max_retries, last_error ) )
                 time.sleep( retry_backoff )
             logger.trace( "final mux command: %s"%(' '.join( command )) )
-            process = subprocess.Popen( command )
-            process.wait()
-            if process.returncode != 0:
-                last_error = "ffmpeg exited %d"%(process.returncode)
+            returncode, captured_stderr = _run_ffmpeg( command )
+            _log_ffmpeg_stderr( logger, "final mux (%s) attempt %d"%( strategy_name, attempt + 1 ),
+                                returncode, captured_stderr )
+            if returncode != 0:
+                last_error = describe_ffmpeg_failure( returncode, captured_stderr )
                 continue
             if not bu_video.probe_video_ok( tmp_path ):
                 last_error = "final output failed the container sanity check"
@@ -1028,7 +1481,7 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
 
 def render_video( source, boxes, intermediate_path, final_path, preset,
                   preview_mode_enabled, preview_window_unlimited,
-                  preview_offset_seconds, preview_max_seconds, logger=None ):
+                  preview_offset_seconds, preview_max_seconds, logger=None, reverse=None ):
     """
     Render, concatenate and mux one video, resuming whatever a previous
     run already finished.
@@ -1045,10 +1498,13 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         preview_offset_seconds: Where the preview slice starts.
         preview_max_seconds: Preview window length.
         logger: Optional logger.
+        reverse: A betautils_reverse.ReverseRender, or None for normal
+            mode.
 
     Returns:
         A stats dict with 'chunks', 'chunks_rendered', 'chunks_reused',
-        'frames_written' and 'render_workers'.
+        'frames_written', 'render_workers', 'memory_available_mb' and
+        'memory_worker_cap' (None when no cap applied).
 
     Raises:
         RenderError: the render could not be completed.
@@ -1061,7 +1517,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
     if os.path.exists( final_path ) and bu_video.probe_video_ok( final_path ):
         logger.info( "final output already present and valid, nothing to render: %s"%(final_path) )
         return { 'chunks': 0, 'chunks_rendered': 0, 'chunks_reused': 0,
-                 'frames_written': 0, 'render_workers': 0 }
+                 'frames_written': 0, 'render_workers': 0,
+                 'memory_available_mb': None, 'memory_worker_cap': None }
 
     plans = plan_chunks( intermediate_path, source.vid_fps, source.num_frames,
                          preview_mode_enabled, preview_window_unlimited,
@@ -1074,12 +1531,18 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         if reused:
             logger.info( "render: reusing %d of %d chunk(s) from a previous run"%(reused, len( plans )) )
 
-        worker_count = resolve_worker_count( max( 1, len( outstanding ) ) )
+        memory_available = available_memory_bytes()
+        worker_count, memory_cap = plan_worker_count(
+            max( 1, len( outstanding ) ), source.width, source.height, memory_available, logger )
         encoder_threads = _encoder_threads( worker_count )
+        decoder_threads = decode_threads( worker_count )
         total_frames = sum( plan.expected_frames for plan in outstanding )
 
-        logger.info( "render: %d chunk(s) to build, %d worker(s), %d encoder thread(s) each, "
-                     "%d frame(s) total"%(len( outstanding ), worker_count, encoder_threads, total_frames) )
+        logger.info( "render: %d chunk(s) to build, %d worker(s), %d encoder thread(s) and %s "
+                     "decoder thread(s) each, %d frame(s) total"%(
+                         len( outstanding ), worker_count, encoder_threads,
+                         decoder_threads if decoder_threads else "OpenCV's default",
+                         total_frames ) )
 
         frames_written = 0
         if outstanding:
@@ -1098,7 +1561,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
                 try:
                     return render_one_chunk( plan, source, boxes, preset, encoder_threads,
                                              max_retries, retry_backoff, progress, logger,
-                                             motion_timelines=shared_timelines )
+                                             motion_timelines=shared_timelines, reverse=reverse,
+                                             decoder_threads=decoder_threads )
                 except Exception as err:
                     with failures_lock:
                         failures.append( err )
@@ -1123,6 +1587,8 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         reused = len( plans )
         worker_count = 0
         frames_written = 0
+        memory_available = None
+        memory_cap = None
 
     mux_audio( intermediate_path, source.original_path, final_path,
                max_retries, retry_backoff, logger,
@@ -1134,4 +1600,9 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
         'chunks_reused': reused,
         'frames_written': frames_written,
         'render_workers': worker_count,
+        # What the memory cap saw, so the per-megapixel estimate can be
+        # checked against runs that did and did not run out.
+        'memory_available_mb': ( round( memory_available / 2**20 )
+                                 if memory_available is not None else None ),
+        'memory_worker_cap': memory_cap,
     }

@@ -267,7 +267,7 @@ class TestVectorisedDecodeMatchesTheReference( unittest.TestCase ):
             candidate_floor=floor, nms_iou=1.0, nms_mode='agnostic' )
 
     def test_matches_on_randomised_input( self ):
-        generator = np.random.default_rng( 20260917 )
+        generator = np.random.default_rng( 917 )
         for trial in range( 25 ):
             anchors = int( generator.integers( 1, 400 ) )
             raw_output = ( generator.random( ( 22, anchors ) ).astype( np.float32 ) * 0.4 )

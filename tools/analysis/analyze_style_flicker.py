@@ -52,7 +52,7 @@ Prerequisite: same as analyze_jitter.py - real (non-preview) detection
 caches must already exist for each backend's resolved picture_sizes (per
 backend, not the shared betaconfig.picture_sizes) at your video_censor_fps.
 
-As of 2026-09-16 this reports every registered backend with real (or, with
+This reports every registered backend with real (or, with
 --include-preview, preview-slice) cache for this config as its own
 section, same as analyze_jitter.py/analyze_track_breaks.py - previously
 single-backend, and previously had a real bug (see box_hash_path_for's
@@ -62,7 +62,7 @@ file_hash (backend name stuck to the end of it) and made every source
 video look "not found" regardless of which directory was actually
 searched - not a resources/source/ lookup problem, a cache-parsing one.
 
---include-preview (added 2026-09-16): same opt-in/CAVEAT as
+--include-preview: same opt-in/CAVEAT as
 analyze_jitter.py's flag of the same name.
 
 Usage:
@@ -90,6 +90,7 @@ import betautils_censor as bu_censor
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_track as bu_track
+import betautils_tuning as bu_tuning
 from betautils_cache_paths import (
     box_hash_path_for, discover_full_run_videos, build_hash_to_video_path )
 
@@ -304,7 +305,8 @@ def main():
         help="restrict to these labels (default: everything currently in items_to_censor that has paired_style set)" )
     parser.add_argument( '--picture-sizes', type=int, nargs='+', default=None,
         help="analyse exactly these sizes instead of discovering what is on disk. By default every tool covers EVERY model configuration that has written detections." )
-    parser.add_argument( '--video-censor-fps', type=float, default=float( betaconfig.video_censor_fps ) )
+    parser.add_argument( '--video-censor-fps', type=float, default=None,
+        help="only caches sampled at this rate. Default: every rate on disk, newest run per video, so quick_cut files (sampled at their profile's rate) and a run made before video_censor_fps changed are both covered" )
     parser.add_argument( '--include-preview', action='store_true',
         help="also use preview-slice caches for any video that has no real (non-preview) cache yet - see "
              "analyze_jitter.py's docstring CAVEAT (same tradeoffs apply here)." )
@@ -343,8 +345,8 @@ def main():
     for config in configurations:
         backend_name = config.backend_name
         sizes = config.picture_sizes
-        videos, preview_used_for = discover_full_run_videos(
-            sizes, args.video_censor_fps, global_min_prob, backend_name, include_preview=args.include_preview )
+        videos, preview_used_for, rates = bu_cache.videos_for_configuration(
+            config, args.video_censor_fps, global_min_prob, include_preview=args.include_preview )
         print( "#" * 70 )
         print( "configuration: %s"%(config.label) )
         print( "#" * 70 )
@@ -361,7 +363,7 @@ def main():
             print( "  no real (non-preview) detection caches found for this backend at picture_sizes=%s fps=%s "
                    "min_prob=%.3f - skipping (run betatv.py with detector_backend['selected']=%r on real footage "
                    "first to get data here%s)."%(
-                       sizes, args.video_censor_fps, global_min_prob, backend_name,
+                       sizes, args.video_censor_fps or 'any', global_min_prob, backend_name,
                        ", or check the preview-cache warnings above if --include-preview was used" if args.include_preview else " (or pass --include-preview to also try preview-slice caches)" ) )
             print()
             continue
@@ -375,6 +377,7 @@ def main():
                 ", ".join( "%s (%s)"%(h, preview_used_for[h]) for h in sorted(preview_used_for) ) ) )
         else:
             print( "found %d video(s) with complete real detection caches for this config"%(len(videos)) )
+            print( "  newest run of each, sampled at %s fps"%( ", ".join( "%g"%( rate, ) for rate in rates ) ) )
         hash_to_path = build_hash_to_video_path( videos.keys() )
         missing = set(videos.keys()) - set(hash_to_path.keys())
         if missing:
@@ -391,38 +394,36 @@ def main():
                 dims_missing.append( file_hash )
                 continue
 
-            flat_raw = []
-            for path in cache_paths:
-                if os.path.exists( path ):
-                    flat_raw.extend( bu_hash.read_json( path ) )
+            # Parsed once per process and kept compact; each pass gets
+            # fresh dicts, which the replay mutates. Every sweep value
+            # used to re-parse every cache, deep-copy it and reopen the
+            # video for its size.
+            flat_raw = bu_tuning._read_raw_boxes( cache_paths )
             if not flat_raw:
                 continue
 
-            cap = cv2.VideoCapture( video_path )
-            vid_w = int( cap.get( cv2.CAP_PROP_FRAME_WIDTH ) )
-            vid_h = int( cap.get( cv2.CAP_PROP_FRAME_HEIGHT ) )
-            cap.release()
+            vid_w, vid_h = bu_tuning.frame_size_for_video( video_path )
             if not vid_w or not vid_h:
                 dims_missing.append( file_hash )
                 continue
 
-            raw_copy = copy.deepcopy( flat_raw )
-            surviving, _ = apply_suppression_fn(
-                raw_copy,
-                bu_detector.get_class_suppression( backend_name ),
-                bu_config.get_parts_to_blur( backend_name ) )
+            # Seeded with the file hash, as betatv seeds the real render:
+            # the replay rolls the styles the render rolled, and since a
+            # style's padding moves box geometry, unseeded rolls made two
+            # runs of this tool disagree.
+            with bu_track.seeded_styles( file_hash ):
+                boxes, tracking = bu_tuning.replay_tracking_inputs(
+                    file_hash, video_path, cache_paths, flat_raw, vid_w, vid_h,
+                    backend_name, labels )
+                if not boxes:
+                    continue
 
-            boxes = []
-            for r in surviving:
-                res = bu_censor.process_raw_box( r, vid_w, vid_h )
-                if res and res['label'] in labels:
-                    boxes.append( res )
-            if not boxes:
-                continue
-
-            _current_video = os.path.basename( video_path )
-            with bu_track.tracking_observer( ns['observer'] ):
-                smooth_boxes_fn( boxes, backend_name=backend_name )
+                _current_video = os.path.basename( video_path )
+                with bu_track.tracking_observer( ns['observer'] ):
+                    smooth_boxes_fn( boxes, shot_cut_times=tracking['shot_cut_times'],
+                                     backend_name=backend_name, profile_name=tracking['profile_name'],
+                                     sample_fps=tracking['sample_fps'],
+                                     logger=bu_tuning._QUIET_LOGGER )
 
         if dims_missing:
             print( "  (skipped %d video(s) - source file no longer found)"%(len(dims_missing)) )
@@ -623,7 +624,7 @@ def main():
                "betatv.py on real footage first (not just --preview on), or pass --include-preview to also "
                "try preview-slice caches."%(
                    bu_cache.describe_configurations( configurations ),
-                   args.video_censor_fps, global_min_prob ) )
+                   args.video_censor_fps or 'any', global_min_prob ) )
         sys.exit(1)
 
 

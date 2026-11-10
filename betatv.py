@@ -55,7 +55,9 @@ import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
 import betautils_log as bu_log
+import betautils_person as bu_person
 import betautils_render as bu_render
+import betautils_reverse as bu_reverse
 import betautils_signals as bu_signals
 import betautils_track as bu_track
 import betautils_video as bu_video
@@ -122,6 +124,26 @@ def _log_run_banner( logger ):
         betaconfig.video_censor_fps,
         bu_detector.get_nn_batch_size( backend ),
         getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ) ) )
+
+    if bu_reverse.enabled():
+        reverse = bu_reverse.settings()
+        logger.info( "REVERSE MODE: frame style %s while triggered (labels %s above min_prob %s, "
+                     "hold %ss, and wherever a censored box is on screen; fade %ss, empty frames %s); "
+                     "windows (uncensored) %s; censored with their own styles %s."%(
+            reverse['frame_style'], sorted( bu_reverse.trigger_labels() ),
+            reverse['trigger']['min_prob'], reverse['trigger']['hold_seconds'],
+            reverse['fade_seconds'], reverse['empty_frame'], bu_reverse.window_labels(),
+            bu_reverse.censor_labels() ) )
+        if bu_reverse.person_windows_enabled():
+            logger.info( "REVERSE MODE: male bodies windowed from person masks (%s %s); male "
+                         "evidence %s, female evidence %s, at min_prob %s"%(
+                bu_person.selected_backend_name(), bu_person.resolve_config().get( 'model_variant' ),
+                reverse['person_windows']['male_labels'], reverse['person_windows']['female_labels'],
+                reverse['person_windows']['evidence_min_prob'] ) )
+        for label in bu_reverse.rendered_labels():
+            logger.debug( "reverse %s %s resolves to: %s"%(
+                'window' if bu_reverse.window_entry( label ) is not None else 'censored label',
+                label, bu_config.get_label_settings( label ) ) )
 
     if getattr( betaconfig, 'preview_mode_enabled', False ):
         preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
@@ -191,8 +213,8 @@ def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_sec
 
 
 def _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                  preview_mode_enabled, preview_offset_seconds, sample_fps=None,
-                  output_label='' ):
+                  preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                  duration_seconds, sample_fps=None, output_label='' ):
     """
     Every path this file needs, from the one module that owns naming.
 
@@ -209,7 +231,8 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
         previous output and left nothing to compare.
     """
     sample_fps = sample_fps or betaconfig.video_censor_fps
-    preview_suffix = bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds )
+    preview_suffix = bu_cache.preview_cache_suffix(
+        preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
     detection_key = bu_cache.detection_key( fps=sample_fps )
     censor_key = bu_cache.censor_key()
     encode_key = bu_cache.encode_key( preview_mode_enabled )
@@ -218,7 +241,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     final_path, intermediate_path = bu_cache.video_output_paths(
         censored_folder, stem, file_hash, picture_sizes, sample_fps,
         detection_key, censor_key, encode_key, preview_suffix, container,
-        output_label )
+        output_label, bu_cache.output_mode_marker() )
 
     return {
         'final': final_path,
@@ -322,14 +345,18 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
     sample_index = start_sample_index
     next_t = bu_video.sample_time( start_sample_index, preview_offset_seconds,
                                    sample_fps )
+    # Decoded on a second thread while the model runs; closed before the
+    # capture is released (see betautils_video.Prefetched).
+    frames = bu_video.prefetched( bu_video.iter_sampled_frames(
+                                      capture, source.vid_fps, sample_fps,
+                                      offset_seconds=preview_offset_seconds,
+                                      num_frames=source.num_frames,
+                                      max_seconds=preview_max_seconds,
+                                      start_sample_index=start_sample_index ),
+                                  getattr( betaconfig, 'detection_prefetch_frames', 0 ) )
     try:
         with bu_log.ProgressReporter( "detect %d"%(size), total=total_samples ) as progress:
-            for sample_index, timestamp, frame in bu_video.iter_sampled_frames(
-                    capture, source.vid_fps, sample_fps,
-                    offset_seconds=preview_offset_seconds,
-                    num_frames=source.num_frames,
-                    max_seconds=preview_max_seconds,
-                    start_sample_index=start_sample_index ):
+            for sample_index, timestamp, frame in frames:
                 bu_signals.check()
 
                 frame_buffer.append( frame )
@@ -357,6 +384,7 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
             size, len( raw_boxes ), sample_index + 1 ) )
         raise
     finally:
+        frames.close()
         capture.release()
 
     bu_hash.write_json( raw_boxes, cache_path )
@@ -492,12 +520,17 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         return 'skipped'
 
     started_at = time.perf_counter()
+    person_pass = None
     try:
         preview_offset_seconds, preview_window_unlimited = _resolve_preview_slice(
             fname, source, preview_mode_enabled, preview_max_seconds, logger )
         effective_preview_seconds = ( preview_max_seconds
                                       if preview_mode_enabled and not preview_window_unlimited
                                       else None )
+        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
+        preview_suffix = bu_video.preview_suffix_for_slice(
+            source.vid_fps, source.num_frames, preview_mode_enabled, preview_max_seconds,
+            preview_offset_seconds, preview_window_unlimited )
 
         picture_sizes = bu_detector.get_picture_sizes()
 
@@ -526,13 +559,11 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         shot_cut_args = (
             source, file_hash, betaconfig.video_censor_fps,
             getattr( betaconfig, 'shot_cut_threshold', 0.5 ),
-            preview_offset_seconds, effective_preview_seconds,
-            bu_cache.preview_cache_suffix( preview_mode_enabled, preview_offset_seconds ) )
+            preview_offset_seconds, effective_preview_seconds, preview_suffix )
         shot_cut_kwargs = {
             'enabled': getattr( betaconfig, 'shot_cut_detection_enabled', True ),
             'logger': logger,
         }
-        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
         scanned_seconds = bu_detector.scanned_window_seconds(
             duration_seconds, preview_offset_seconds, effective_preview_seconds )
 
@@ -549,7 +580,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
                           if declared is not None else None )
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                                  preview_mode_enabled, preview_offset_seconds, early_fps,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, early_fps,
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -592,11 +624,19 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
 
         if paths is None or paths['sample_fps'] != sample_fps:
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
-                                  preview_mode_enabled, preview_offset_seconds, sample_fps,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, sample_fps,
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
                 return 'skipped'
+
+        # Reverse mode's person masks: same frames as detection, in a
+        # thread alongside it, so its decode and model time overlap.
+        if bu_reverse.person_windows_enabled():
+            person_pass = bu_person.BackgroundPersonPass(
+                source, fname, file_hash, paths['preview_suffix'], preview_offset_seconds,
+                effective_preview_seconds, logger, sample_fps )
 
         raw_boxes = detect_boxes_for_video(
             source, fname, session, file_hash, picture_sizes, paths['preview_suffix'],
@@ -611,7 +651,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         boxes, track_stats = bu_track.prepare_boxes_for_render(
             raw_boxes, source.width, source.height,
             bu_video.absolute_cut_times( shot_cut_times, preview_offset_seconds ),
-            logger=logger, profile_name=profile_name, sample_fps=sample_fps )
+            logger=logger, profile_name=profile_name, sample_fps=sample_fps, style_seed=file_hash )
         track_stats['structure_profile'] = profile_name
         track_stats['cuts_per_min'] = ( round( signals.cuts_per_min, 2 )
                                         if signals.cuts_per_min is not None else None )
@@ -620,12 +660,37 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         track_stats['short_shot_fraction'] = ( round( signals.short_shot_fraction, 4 )
                                               if signals.short_shot_fraction is not None else None )
 
+        reverse = None
+        if bu_reverse.enabled():
+            trigger_times = bu_track.trigger_detection_times(
+                raw_boxes, source.width, source.height )
+            reverse = bu_reverse.render_plan_for_detections( trigger_times, sample_fps, boxes )
+            triggered_seconds = reverse.timeline.triggered_seconds()
+            censored_spans = len( bu_reverse.censored_box_spans( boxes ) )
+            track_stats['reverse_trigger_detections'] = len( trigger_times )
+            track_stats['reverse_censored_boxes'] = censored_spans
+            track_stats['reverse_trigger_intervals'] = len( reverse.timeline.intervals )
+            track_stats['reverse_triggered_seconds'] = round( triggered_seconds, 2 )
+            logger.info( "reverse: trigger on for %.1fs in %d interval(s) from %d detection(s) and %d "
+                         "censored box(es)%s"%(
+                triggered_seconds, len( reverse.timeline.intervals ), len( trigger_times ),
+                censored_spans, ' (empty frames obscured too)' if reverse.timeline.always_on else '' ) )
+            if person_pass is not None:
+                sample_times, people = person_pass.result()
+                reverse.window_masks = bu_person.window_masks_for_video(
+                    sample_times, people, raw_boxes, source.width, source.height, sample_fps )
+                windowed = reverse.window_masks.windowed_samples()
+                track_stats['reverse_person_masks'] = len( people )
+                track_stats['reverse_male_person_samples'] = windowed
+                logger.info( "reverse: %d person mask(s) over %d sample(s); male bodies windowed in "
+                             "%d sample(s)"%( len( people ), len( sample_times ), windowed ) )
+
         detection_finished_at = time.perf_counter()
 
         render_stats = bu_render.render_video(
             source, boxes, paths['intermediate'], paths['final'], active_encode_preset,
             preview_mode_enabled, preview_window_unlimited,
-            preview_offset_seconds, preview_max_seconds, logger )
+            preview_offset_seconds, preview_max_seconds, logger, reverse=reverse )
 
         finished_at = time.perf_counter()
 
@@ -652,9 +717,44 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
     except Exception as err:
         logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
         logger.debug( "failure detail", exc_info=True )
+        # Recording the failure must never turn one bad file into a
+        # stopped run, so a problem building the record is logged here.
+        try:
+            bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
+                                                   time.perf_counter() - started_at ) )
+        except Exception as record_err:
+            logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
         return 'failed'
     finally:
+        # On a failure or Ctrl-C, the person pass checkpoints before the
+        # run moves on or exits; after a normal finish this returns at once.
+        if person_pass is not None:
+            person_pass.stop()
         source.release()
+
+
+def _failure_record( fname, preview_mode_enabled, source, err, elapsed_seconds ):
+    """
+    The JSON-Lines failures row for one file that did not finish.
+
+    Only what is known however early the failure came: the file, the
+    reason exactly as the warning logged it, and the run identity
+    summarize_run groups by. Detection keys and track stats may not
+    exist yet, so they are not here.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    return {
+        'file': fname,
+        'error': repr( err ),
+        'preview_mode': preview_mode_enabled,
+        'elapsed_seconds': round( elapsed_seconds, 3 ),
+        'betasuite_version': bu_version.get_version(),
+        'detector_backend': backend_name,
+        'detector_variant': bu_detector.selected_variant_name( backend_name ),
+        'video_width': source.width,
+        'video_height': source.height,
+        'video_fps': round( source.vid_fps, 4 ) if source.vid_fps else None,
+    }
 
 
 def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
@@ -731,13 +831,21 @@ def main():
     preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
     active_encode_preset = _resolve_active_encode_preset()
 
-    session = bu_detector.get_detector().get_session()
+    run_marker = bu_log.RunMarker(
+        bu_log.run_marker_path_for( getattr( betaconfig, 'stats_path', None )
+                                    or bu_log.DEFAULT_STATS_PATH ),
+        logger, boot_id=bu_log.current_boot_id() )
+    run_marker.report_previous()
+    run_marker.start()
 
     counts = { 'processed': 0, 'skipped': 0, 'failed': 0 }
     exit_code = 0
     run_started_at = time.perf_counter()
 
     try:
+        # Inside the try, so a model that fails to load (or a Ctrl-C
+        # while it loads) still removes the run marker on the way out.
+        session = bu_detector.get_detector().get_session()
         for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
             censored_folder = root.replace(
                 betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
@@ -746,6 +854,7 @@ def main():
 
             for file_index, fname in enumerate( sorted( file_names ) ):
                 bu_signals.check()
+                run_marker.now_processing( fname, preview_mode_enabled )
                 outcome = process_one_video(
                     root, fname, censored_folder, file_index, len( file_names ), session,
                     preview_mode_enabled, preview_max_seconds, active_encode_preset, logger )
@@ -756,6 +865,9 @@ def main():
         exit_code = 130
     finally:
         bu_hash.flush_file_hash_memo()
+        # Every ending this process can still act on removes the marker,
+        # so one left behind means the run died without a chance to log.
+        run_marker.finish()
 
     logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(
         bu_log.format_duration( time.perf_counter() - run_started_at ),

@@ -206,6 +206,17 @@ class TestShotCutCacheNames( unittest.TestCase ):
         self.assertEqual( parsed['offset_seconds'], 30.0 )
         self.assertEqual( parsed['preview_suffix'], '-preview@30.0s' )
 
+    def test_a_preview_length_in_the_name_parses( self ):
+        import betautils_cache_paths as bu_cache
+        for suffix in ( '-preview@30.0s+20.0s', '-preview+all', '-preview+20.0s' ):
+            parsed = bu_cache.parse_shot_cut_path(
+                bu_cache.shot_cut_path_for( 'feedface', 9, 0.5, suffix, 20 ) )
+            self.assertEqual( parsed['preview_suffix'], suffix )
+            self.assertEqual( parsed['max_seconds'], 20.0 )
+        self.assertEqual( bu_cache.parse_shot_cut_path(
+            bu_cache.shot_cut_path_for( 'feedface', 9, 0.5, '-preview@30.0s+20.0s', 20 ) )['offset_seconds'],
+            30.0 )
+
     def test_a_whole_file_scan_has_no_bound_or_offset( self ):
         import betautils_cache_paths as bu_cache
         parsed = bu_cache.parse_shot_cut_path( bu_cache.shot_cut_path_for( 'feedface', 9, 0.5 ) )

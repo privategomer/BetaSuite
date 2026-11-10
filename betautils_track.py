@@ -46,6 +46,7 @@ import betautils_censor as bu_censor
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_log as bu_log
+import betautils_reverse as bu_reverse
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +478,7 @@ def apply_class_suppression( raw_boxes, suppression_rules=None, parts_to_blur=No
                     if other['score'] - raw['score'] >= rule.get( 'margin', 0.0 ):
                         suppressed.add( index )
                         rule_key = '%s<-%s'%( raw['class_id'], other['class_id'] )
+                        _notify( 'on_suppressed', raw, rule_key, other )
                         entry = suppression_counts.setdefault(
                             rule_key, { 'total': 0, 'renderable': 0 } )
                         entry['total'] += 1
@@ -708,6 +710,13 @@ class TrackingObserver:
     def on_independent_style_resolve( self, label, box, tracks, settings ):
         """A new track rolled its own style rather than sharing a pair's."""
 
+    def on_suppressed( self, raw, rule_key, suppressor ):
+        """
+        apply_class_suppression dropped raw under rule_key ('L<-S'),
+        because of the suppressor detection. Lets a tool say which rule
+        removed a censor without re-implementing the rule.
+        """
+
 
 _tracking_observer = None
 
@@ -752,7 +761,7 @@ class _LabelSettings:
                   'max_gap', 'match_distance_multiplier', 'time_safety', 'item_x_safety',
                   'item_y_safety', 'paired_style', 'paired_style_max_distance',
                   'paired_style_tiebreak_margin', 'paired_style_max_age',
-                  'min_track_hits', 'unresolved_censor_style', 'size_alpha',
+                  'min_track_hits', 'confirm_score', 'unresolved_censor_style', 'size_alpha',
                   'style_min_dwell_seconds', 'profile_name' )
 
     def __init__( self, label, backend_name, frame_step, profile_name=None ):
@@ -763,6 +772,17 @@ class _LabelSettings:
         # footage is cut. See betautils_detector.get_profiles.
         overrides.update(
             bu_detector.get_profile_item_overrides( profile_name, label, backend_name ) )
+        # Reverse mode's own keys (a window entry, a censored label's
+        # overrides) win over the profile too: they are reverse-specific
+        # tuning (a window wants precision where the normal censor wants
+        # recall), and a profile written for normal mode must not quietly
+        # undo them.
+        window = bu_reverse.window_entry( label )
+        if window is not None:
+            overrides.update( { key: value for key, value in window.items()
+                                if key not in bu_reverse.LOOK_KEYS } )
+        else:
+            overrides.update( bu_reverse.censor_override( label ) or {} )
         self.profile_name = profile_name
 
         # The UNRESOLVED censor_style (the weighted list), kept so a shot
@@ -778,8 +798,14 @@ class _LabelSettings:
             'style_min_dwell_seconds',
             getattr( betaconfig, 'default_style_min_dwell_seconds', 0.0 ) )
 
-        self.unresolved_censor_style = betaconfig.item_overrides.get(
-            label, {} ).get( 'censor_style', betaconfig.default_censor_style )
+        # Read from the resolved overrides rather than the shared block
+        # directly: in normal mode that is the same value (no lower tier
+        # may set a look key), and in reverse mode it is the window's
+        # style, or a censored label's override. Reading the shared block
+        # re-rolled a window into the label's normal-mode look at every
+        # shot cut.
+        self.unresolved_censor_style = overrides.get(
+            'censor_style', betaconfig.default_censor_style )
 
         self.alpha = overrides.get(
             'position_smoothing', betaconfig.default_position_smoothing )
@@ -833,6 +859,10 @@ class _LabelSettings:
 
         self.min_track_hits = max( 1, int( overrides.get(
             'min_track_hits', getattr( betaconfig, 'default_min_track_hits', 1 ) ) ) )
+        # A track short of min_track_hits still renders once one of its
+        # real detections scores at least this. None: hits alone decide.
+        self.confirm_score = overrides.get(
+            'confirm_score', getattr( betaconfig, 'default_confirm_score', None ) )
 
 
 def _apply_style_area_safety( box, resolved_style, item_x_safety, item_y_safety ):
@@ -853,8 +883,64 @@ def _apply_style_area_safety( box, resolved_style, item_x_safety, item_y_safety 
         box['_vid_w'], box['_vid_h'], style_x_safety, style_y_safety )
 
 
+def cut_burst_settings():
+    """
+    The configured shot-cut burst merge, or None when it is off.
+
+    shot_cut_burst_window above 0 turns it on: cuts each less than that
+    many seconds after the one before form a burst, and a burst spanning
+    at most shot_cut_burst_max_span (None: any length) collapses to its
+    shot_cut_burst_keep cut ('first' or 'last'). See
+    betautils_video.merge_cut_bursts for why a fade arrives as a burst.
+    """
+    window = getattr( betaconfig, 'shot_cut_burst_window', 0.0 ) or 0.0
+    if window <= 0:
+        return None
+    max_span = getattr( betaconfig, 'shot_cut_burst_max_span', None )
+    return { 'window': float( window ),
+             'max_span': None if max_span is None else float( max_span ),
+             'keep': getattr( betaconfig, 'shot_cut_burst_keep', 'first' ) }
+
+
+def tracking_cut_times( shot_cut_times, cut_bursts=None ):
+    """
+    The cuts tracking stops at.
+
+    shot_cut_times with bursts merged per cut_bursts: None reads the
+    config (cut_burst_settings), False leaves the cuts as scanned, and a
+    {'window', 'max_span', 'keep'} dict is used as given, which is how
+    an analyser compares merge variants against the scanned cuts. Only
+    tracking reads the result; the structure profile is always chosen
+    from the cuts as scanned.
+    """
+    cuts = list( shot_cut_times or [] )
+    settings = cut_burst_settings() if cut_bursts is None else cut_bursts
+    if not cuts or not settings:
+        return cuts
+    import betautils_video as bu_video   # deferred: cv2 is a heavy import for a pure helper
+    return bu_video.merge_cut_bursts( cuts, settings['window'], max_span=settings.get( 'max_span' ),
+                                      keep=settings.get( 'keep', 'first' ) )
+
+
+def cut_separates( cut_times, earlier_time, later_time ):
+    """
+    Whether a cut in sorted cut_times falls in (earlier_time, later_time].
+
+    A cut AT later_time counts: later_time is the first moment of the
+    new shot. A cut AT earlier_time does not, because it already forced
+    a reset when earlier_time's own box was matched. O(log n) via
+    bisect, since smooth_boxes asks this for every candidate pairing.
+    Shared with the analysers so their idea of "across a cut" is the
+    tracker's.
+    """
+    if not cut_times:
+        return False
+    index = bisect.bisect_right( cut_times, earlier_time )
+    return index < len( cut_times ) and cut_times[index] <= later_time
+
+
 def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=None,
-                  sample_fps=None ):
+                  sample_fps=None, logger=None, cut_bursts=None ):
     """
     Match detections into per-instance tracks, then smooth, style,
     interpolate and confirm them.
@@ -912,6 +998,9 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
         otherwise paint a censor blob for time_safety seconds.
         min_track_hits defaults to 1, which admits every track and is
         exactly the earlier behaviour.
+      - confirm_score, when set, admits a track short of min_track_hits
+        anyway once one of its real detections scores at least that:
+        it can only add boxes to what min_track_hits keeps.
 
     Args:
         boxes: Censorable boxes from process_raw_box, any order, all
@@ -920,28 +1009,26 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             interpolated ones.
         shot_cut_times: Sorted cut timestamps in seconds, or None.
         backend_name: Backend whose per-label settings apply.
+        profile_name: Structure profile whose overrides apply, or None.
+        sample_fps: Rate the detections were sampled at, or None.
+        logger: Where per-label lines go; the shared run log by default.
+        cut_bursts: How bursts of cuts are merged first; see
+            tracking_cut_times. None follows the config.
 
     Returns:
         A (rendered_boxes, stats) pair. stats is a dict with
-        'interpolated', 'dropped_provisional', 'dropped_unconfirmed' and
-        'tracks'.
+        'interpolated', 'dropped_provisional', 'dropped_unconfirmed',
+        'tracks' and 'cuts_merged' (cuts the burst merge removed).
     """
-    shot_cut_times = shot_cut_times or []
-    logger = bu_log.get_logger()
+    scanned_cut_count = len( shot_cut_times or [] )
+    shot_cut_times = tracking_cut_times( shot_cut_times, cut_bursts )
+    logger = logger or bu_log.get_logger()
+    if scanned_cut_count > len( shot_cut_times ):
+        logger.debug( "shot-cut bursts: %d of %d cut(s) merged away before tracking"%(
+            scanned_cut_count - len( shot_cut_times ), scanned_cut_count ) )
 
     def cut_between( earlier_time, later_time ):
-        """
-        Whether a recorded cut falls in (earlier_time, later_time].
-
-        A cut AT later_time counts: later_time is the first moment of
-        the new shot. A cut AT earlier_time does not, because it already
-        forced a reset when earlier_time's own box was matched. O(log n)
-        via bisect, since this runs for every candidate pairing.
-        """
-        if not shot_cut_times:
-            return False
-        index = bisect.bisect_right( shot_cut_times, earlier_time )
-        return index < len( shot_cut_times ) and shot_cut_times[index] <= later_time
+        return cut_separates( shot_cut_times, earlier_time, later_time )
 
     by_label = {}
     for box in boxes:
@@ -956,7 +1043,8 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
     output_boxes = []
     stats = { 'interpolated': 0, 'dropped_provisional': 0,
-              'dropped_unconfirmed': 0, 'tracks': 0 }
+              'dropped_unconfirmed': 0, 'tracks': 0, 'confirmed_by_score': 0,
+              'cuts_merged': scanned_cut_count - len( shot_cut_times ) }
 
     for label, boxes_for_label in by_label.items():
         settings = _LabelSettings( label, backend_name, frame_step, profile_name )
@@ -979,6 +1067,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
         tracks = []              # live tracks only; pruned every frame
         track_hits = {}          # track id -> real (non-interpolated) hit count
+        track_best = {}          # track id -> best score among those real hits
         boxes_by_track = {}      # track id -> [box, ...] including interpolated
         next_track_id = 0
 
@@ -1006,7 +1095,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             # claims the nearest track and no single track is pulled
             # toward two simultaneous detections.
             candidates = []
-            for box in frame_boxes:
+            for box_index, box in enumerate( frame_boxes ):
                 centre_x = box['x'] + box['w']/2
                 centre_y = box['y'] + box['h']/2
                 for track_index, track in enumerate( tracks ):
@@ -1031,19 +1120,25 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                         track['w'], track['h'], box['w'], box['h'] )
                     if distance >= reach:
                         continue
-                    candidates.append( ( distance, id( box ), box, track_index ) )
+                    candidates.append( ( distance, box_index, box, track_index ) )
             if _tracking_observer is not None:
                 _notify( 'on_frame_candidates', label,
                          [ ( distance, box, track_index )
-                           for distance, _box_id, box, track_index in candidates ],
+                           for distance, _box_index, box, track_index in candidates ],
                          tracks, settings )
+            # Ties on distance go to the box earlier in the frame. They
+            # went to the box at the lower memory address, so the same
+            # detections could track differently from one run to the next
+            # (and a replay differently from the run it replays) whenever
+            # two boxes sat exactly as far from a track.
             candidates.sort( key=lambda candidate: ( candidate[0], candidate[1] ) )
 
             matched_box_ids = set()
             matched_track_indices = set()
             box_track_index = {}
 
-            for distance, box_id, box, track_index in candidates:
+            for distance, _box_index, box, track_index in candidates:
+                box_id = id( box )
                 if box_id in matched_box_ids or track_index in matched_track_indices:
                     continue
                 matched_box_ids.add( box_id )
@@ -1213,6 +1308,8 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                 boxes_by_track.setdefault( track['id'], [] ).append( box )
                 if not box.get( 'provisional' ):
                     track_hits[ track['id'] ] = track_hits.get( track['id'], 0 ) + 1
+                    track_best[ track['id'] ] = max( track_best.get( track['id'], 0.0 ),
+                                                     box.get( 'score', 0.0 ) )
 
                 tracks[track_index] = {
                     'id': track['id'],
@@ -1451,6 +1548,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                 box['_track_id'] = track_id
                 boxes_by_track.setdefault( track_id, [] ).append( box )
                 track_hits[track_id] = 1
+                track_best[track_id] = box.get( 'score', 0.0 )
                 # The size blur/pixel STRENGTH is scaled from, fixed for
                 # this track's lifetime. Position and extent still track
                 # the subject frame by frame; only the strength multiplier
@@ -1474,50 +1572,60 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
 
         # Track confirmation: a track that never reached min_track_hits
         # real detections contributes nothing, including its synthetic
-        # interpolated boxes.
+        # interpolated boxes, unless one of those detections scored
+        # confirm_score or more. A single confident detection is a brief
+        # real exposure far more often than a misfire; the hit count
+        # exists for the low-scoring single hits.
+        dropped_here = 0
         for track_id, track_boxes in boxes_by_track.items():
             if track_hits.get( track_id, 0 ) >= settings.min_track_hits:
                 output_boxes.extend( track_boxes )
                 stats['tracks'] += 1
+            elif ( settings.confirm_score is not None
+                   and track_best.get( track_id, 0.0 ) >= settings.confirm_score ):
+                output_boxes.extend( track_boxes )
+                stats['tracks'] += 1
+                stats['confirmed_by_score'] += 1
             else:
-                stats['dropped_unconfirmed'] += len( track_boxes )
+                dropped_here += len( track_boxes )
+        stats['dropped_unconfirmed'] += dropped_here
 
+        # This label's own count: stats is shared across labels, so its
+        # running total would credit the second label with the first's.
         if settings.min_track_hits > 1:
             logger.debug( "%s: min_track_hits=%d dropped %d box(es) from unconfirmed tracks"%(
-                label, settings.min_track_hits, stats['dropped_unconfirmed'] ) )
+                label, settings.min_track_hits, dropped_here ) )
 
     return output_boxes, stats
 
 
-def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
-                             backend_name=None, logger=None, profile_name=None,
-                             sample_fps=None ):
+def filter_raw_detections( raw_boxes, vid_w, vid_h, labels, backend_name=None, logger=None,
+                           parts_to_blur=None ):
     """
-    The whole detection -> renderable-boxes pipeline, in one call.
+    Cross-size dedup, class promotion, the geometry filter, the relevance
+    filter and class suppression, in production order.
 
-    One function so betatv.py, betastare.py and the replay tooling all
-    run the same stages in the same order with the same settings. Previously
-    this sequence was open-coded in betatv.py and re-derived by
-    exec-ing betatv.py's source in the replay tool.
+    One sequence for every consumer: tracking (via
+    prepare_tracking_inputs) and reverse mode's trigger
+    (trigger_detection_times) both read detections that went through
+    exactly these stages, so a stage added here reaches both.
 
     Args:
-        raw_boxes: Raw detections across every configured picture size.
+        raw_boxes: Raw detections. Not mutated: every stage returns new
+            lists, and promotion and clamping copy the boxes they change.
         vid_w, vid_h: Frame size in pixels.
-        shot_cut_times: Sorted cut timestamps, or None.
+        labels: The labels the caller reads afterwards. With every
+            suppressor, they are what the relevance filter keeps.
         backend_name: Backend whose settings apply.
-        logger: Optional logger.
-        profile_name: Structure profile whose overrides apply, or None.
-        sample_fps: Rate the detections were sampled at. None means the
-            global video_censor_fps.
+        logger: Optional logger, for the promotion summary lines.
+        parts_to_blur: Optional resolved settings, only for suppression's
+            renderable counts.
 
     Returns:
-        A (boxes, stats) pair. boxes is sorted by 'start' ascending,
-        ready for the renderer. stats carries per-stage counts for the
-        run's stats line.
+        A (surviving_raw_boxes, stats) pair.
     """
     logger = logger or bu_log.get_logger()
     backend_name = backend_name or bu_detector.selected_backend_name()
-    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
     suppression_rules = bu_detector.get_class_suppression( backend_name )
 
     stats = { 'raw_detections': len( raw_boxes ) }
@@ -1547,7 +1655,7 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
     # suppression comparison. A label that is neither censored nor a
     # suppressor is invisible to every later stage, so this is a pure
     # speedup with no behavioural change.
-    relevant = relevant_labels_for_suppression( suppression_rules, parts_to_blur.keys() )
+    relevant = relevant_labels_for_suppression( suppression_rules, labels )
     before_relevance = len( raw_boxes )
     raw_boxes = [ raw for raw in raw_boxes if raw['class_id'] in relevant ]
     stats['irrelevant_labels_dropped'] = before_relevance - len( raw_boxes )
@@ -1556,6 +1664,28 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         raw_boxes, suppression_rules, parts_to_blur )
     stats['suppression_counts'] = suppression_counts
     stats['after_suppression'] = len( raw_boxes )
+    return raw_boxes, stats
+
+
+def prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name=None, logger=None ):
+    """
+    Everything prepare_boxes_for_render does before tracking.
+
+    filter_raw_detections (dedup, promotion, geometry, relevance,
+    suppression), then conversion to censorable boxes, in production
+    order. Split out so the replay analysers feed tracking exactly what a
+    real run feeds it; they used to rebuild this sequence by hand and had
+    silently lost promotion and the geometry filter.
+
+    Returns:
+        A (boxes, stats) pair: censorable boxes ready for smooth_boxes,
+        and the per-stage counts prepare_boxes_for_render reports.
+    """
+    logger = logger or bu_log.get_logger()
+    backend_name = backend_name or bu_detector.selected_backend_name()
+    parts_to_blur = bu_config.get_parts_to_blur( backend_name )
+    raw_boxes, stats = filter_raw_detections( raw_boxes, vid_w, vid_h, parts_to_blur.keys(),
+                                              backend_name, logger, parts_to_blur )
 
     label_counts = {}
     for raw in raw_boxes:
@@ -1568,12 +1698,113 @@ def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
         if censorable:
             boxes.append( censorable )
     stats['censorable_boxes'] = len( boxes )
+    return boxes, stats
+
+
+def trigger_detection_times( raw_boxes, vid_w, vid_h, backend_name=None ):
+    """
+    When reverse mode's trigger fires: the time of every detection of a
+    trigger label scoring above the trigger's min_prob, after the same
+    dedup, promotion, geometry and suppression stages tracking sees.
+
+    Deliberately NOT after each label's own min_prob or tracking: the
+    trigger wants recall (a miss leaves the whole frame clear) while a
+    window wants precision, so the trigger reads detections a strict
+    window rejects. Tracking observers are switched off for this pass, so
+    an analysis tool watching suppression does not count every rule
+    twice.
+
+    Returns:
+        A sorted list of times in seconds.
+    """
+    labels = bu_reverse.trigger_labels()
+    if not labels:
+        return []
+    min_prob = bu_reverse.settings()['trigger']['min_prob']
+    with tracking_observer( None ):
+        survivors, _stats = filter_raw_detections( raw_boxes, vid_w, vid_h, labels, backend_name,
+                                                   bu_log.silent_logger( 'betasuite.reverse_trigger' ) )
+    return sorted( raw['t'] for raw in survivors
+                   if raw['class_id'] in labels and raw['score'] > min_prob )
+
+
+def prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times=None,
+                             backend_name=None, logger=None, profile_name=None,
+                             sample_fps=None, cut_bursts=None, style_seed=None ):
+    """
+    The whole detection -> renderable-boxes pipeline, in one call.
+
+    One function so betatv.py, betastare.py and the replay tooling all
+    run the same stages in the same order with the same settings. Previously
+    this sequence was open-coded in betatv.py and re-derived by
+    exec-ing betatv.py's source in the replay tool.
+
+    Args:
+        raw_boxes: Raw detections across every configured picture size.
+        vid_w, vid_h: Frame size in pixels.
+        shot_cut_times: Sorted cut timestamps, or None.
+        backend_name: Backend whose settings apply.
+        logger: Optional logger.
+        profile_name: Structure profile whose overrides apply, or None.
+        sample_fps: Rate the detections were sampled at. None means the
+            global video_censor_fps.
+        cut_bursts: How bursts of cuts merge before tracking; see
+            tracking_cut_times. None follows the config.
+        style_seed: Seeds every style roll and sticker choice, so the
+            same video and settings always get the same looks. betatv
+            passes the file hash: a render resumed from chunks a
+            previous run finished then matches them, where an unseeded
+            re-roll could switch a track's style at the chunk boundary.
+            The replay tools pass it too, so they roll what the render
+            rolled. None leaves the rolls unseeded.
+
+    Returns:
+        A (boxes, stats) pair. boxes is sorted by 'start' ascending,
+        ready for the renderer. stats carries per-stage counts for the
+        run's stats line.
+    """
+    with seeded_styles( style_seed ):
+        return _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name,
+                                          logger, profile_name, sample_fps, cut_bursts )
+
+
+@contextlib.contextmanager
+def seeded_styles( style_seed ):
+    """
+    Seed every style roll and sticker choice inside the block with
+    style_seed (betatv passes the file hash), and put the random state
+    back after. None leaves the rolls unseeded.
+
+    The rolls draw from the random module (bu_censor.resolve_censor_style,
+    sticker seeds). Nothing else in the process draws from it while a
+    video is prepared: the shot-cut scan has finished, and the person
+    pass and render never touch it. A replay tool that tracks a video
+    under the same seed rolls the styles the render rolled, and a
+    style's padding moves box geometry, so without it two runs of the
+    same analysis disagreed.
+    """
+    if style_seed is None:
+        yield
+        return
+    state = random.getstate()
+    random.seed( 'betasuite-styles:%s'%( style_seed, ) )
+    try:
+        yield
+    finally:
+        random.setstate( state )
+
+
+def _prepare_boxes_for_render( raw_boxes, vid_w, vid_h, shot_cut_times, backend_name, logger,
+                               profile_name, sample_fps, cut_bursts ):
+    logger = logger or bu_log.get_logger()
+    backend_name = backend_name or bu_detector.selected_backend_name()
+    boxes, stats = prepare_tracking_inputs( raw_boxes, vid_w, vid_h, backend_name, logger )
 
     logger.debug( "tracking %d censorable box(es) from %d raw detection(s), %d shot cut(s)"%(
         len( boxes ), stats['raw_detections'], len( shot_cut_times or [] ) ) )
 
     boxes, smoothing_stats = smooth_boxes( boxes, shot_cut_times, backend_name, profile_name,
-                                           sample_fps )
+                                           sample_fps, logger=logger, cut_bursts=cut_bursts )
     stats.update( smoothing_stats )
     boxes.sort( key=lambda box: box['start'] )
     stats['rendered_boxes'] = len( boxes )

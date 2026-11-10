@@ -174,12 +174,42 @@ class TestSmoothBoxesTrackMatching( _UnconfirmedTracksRenderMixin, unittest.Test
         self.assertEqual( result, [] )
         self.assertEqual( _stats['interpolated'], 0 )
 
+    def test_a_distance_tie_goes_to_the_earlier_box_whatever_the_addresses( self ):
+        # Two boxes exactly as far from one track. The tie used to be
+        # broken by id(), a memory address, so the same detections
+        # tracked one way in one run and the other way in the next (a
+        # replay differed from the run it replayed). Reversing what id()
+        # returns must not change who continues the track: the earlier
+        # box in the frame does.
+        import builtins
+        from unittest import mock
+
+        def track_of( reverse_addresses ):
+            boxes = [
+                _box( 'exposed_breast', 0.0, 0.3, 0.1, 100, 100, 50, 50 ),
+                _box( 'exposed_breast', 0.11, 0.41, 0.21, 110, 100, 50, 50 ),
+                _box( 'exposed_breast', 0.11, 0.41, 0.21, 90, 100, 50, 50 ),
+            ]
+            if reverse_addresses:
+                with mock.patch.object( bu_track, 'id', create=True,
+                                        new=lambda thing: -builtins.id( thing ) ):
+                    result, _stats = bu_track.smooth_boxes( boxes )
+            else:
+                result, _stats = bu_track.smooth_boxes( boxes )
+            real = { box['_raw_x']: box['_track_id'] for box in result if not box.get( 'interpolated' ) }
+            return real
+
+        for reverse_addresses in ( False, True ):
+            tracks = track_of( reverse_addresses )
+            self.assertEqual( tracks[110], tracks[100], reverse_addresses )
+            self.assertNotEqual( tracks[90], tracks[100], reverse_addresses )
+
 
 class TestPairedStyleUnambiguousNearest( _UnconfirmedTracksRenderMixin, unittest.TestCase ):
     """
     paired_style (exposed_breast has it on) used to require EXACTLY ONE
     other live track nearby to share style - real data from
-    analyze_style_flicker.py (2026-09-13) showed that gate almost never
+    analyze_style_flicker.py showed that gate almost never
     actually applied: 79% of independent-resolve events had 2+ candidates
     nearby, because two breasts on the SAME person plus any other
     already-live track nearby routinely puts the count above 1. Fixed to
@@ -262,7 +292,7 @@ class TestPairedStyleDonorFreshness( _UnconfirmedTracksRenderMixin, unittest.Tes
     survive an occlusion.
 
     Style pairing asks a different question: "is this the other breast
-    of the person on screen right now?" On the 2026-09-19 overnight run
+    of the person on screen right now?" On one overnight run
     the structure bench measured 53.5 cuts/min on one compilation and
     74.7 on another - a shot every 0.8-1.1 seconds. At 27s of donor
     eligibility that leaves roughly two dozen departed subjects

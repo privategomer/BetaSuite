@@ -1,6 +1,7 @@
 # setup.ps1 - one-shot BetaSuite environment setup for Windows.
 # Double-click setup.cmd, or run: powershell -ExecutionPolicy Bypass -File setup.ps1
 # Safe to re-run: every step checks before it acts. See SETUP.md.
+# In a git checkout it first offers to switch to the latest release tag.
 
 [CmdletBinding()]
 param(
@@ -10,7 +11,9 @@ param(
     [switch]$Vision,               # also install betavision deps (mss, pywin32)
     [switch]$Tests,
     [switch]$NoTests,
+    [string]$PersonBackends = '',  # comma separated; '' lets fetch_models.py ask
     [switch]$Yes,
+    [switch]$NoReleaseCheck,       # stay on the current branch/commit (development)
     [ValidateSet('trace','debug','info','warn','error')]
     [string]$LogLevel = 'info',
     [switch]$Help
@@ -24,6 +27,9 @@ Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup
   -Python VERSION        Python version (default: from .python-version)
   -Vision                also install betavision-* dependencies (mss, pywin32)
   -Tests | -NoTests      run the unit tests at the end (default: ask, no)
+  -PersonBackends LIST   person models to export for reverse mode, comma separated:
+                         yolo11_seg, rf_detr_seg, all or none (default: ask, yolo11_seg)
+  -NoReleaseCheck        stay on the current branch or commit instead of offering to switch to the latest release
   -Yes                   accept the default answer to every prompt
   -LogLevel LEVEL        console level: trace|debug|info|warn|error (default info); setup.log gets everything
 '@ | Write-Host
@@ -99,13 +105,83 @@ function Ask-YesNo([string]$Prompt, [bool]$Default) {
     return ($reply -match '^(y|yes)$')
 }
 
+# Runs git for its output only and never stops setup; callers read
+# $LASTEXITCODE. Windows PowerShell 5.1 (what setup.cmd starts) turns each
+# redirected stderr line of a native command into an error record, and the
+# script's 'Stop' preference makes the first one end setup. `git describe
+# --exact-match` writes one whenever HEAD isn't on a tag, so a fresh clone of
+# main died in the release check. Reproduced on PowerShell 7 with
+# $PSNativeCommandUseErrorActionPreference; not yet run on 5.1 itself.
+# Invoke-Logged avoids the same thing the same way.
+function Get-GitOutput([string[]]$Arguments) {
+    $ErrorActionPreference = 'Continue'
+    & git -C $RepoDir @Arguments 2>$null
+}
+
 function Update-SessionPath {
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                 [Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
+# ---------------------------------------------------------------- release
+# Offer to move a git checkout onto the newest vX.Y.Z tag, then restart setup
+# from that release's own copy of this script. BETASUITE_RELEASE_CHECKED stops
+# the restarted copy (possibly an older release's) from asking again.
+$BoundAtStart = $PSBoundParameters
+function Invoke-ReleaseCheck {
+    if ($NoReleaseCheck -or $env:BETASUITE_RELEASE_CHECKED -eq '1') { Write-Log debug 'release check skipped'; return }
+    if (-not (Test-Path (Join-Path $RepoDir '.git')) -or -not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Log debug 'not a git checkout; using the files as they are'; return
+    }
+    if (-not (Invoke-Logged 'fetch release tags' 'git' @('-C', $RepoDir, 'fetch', '--tags', '--quiet'))) {
+        Write-Log warn 'could not fetch tags; checking against the tags already here'
+    }
+    $latest = Get-GitOutput @('tag', '--list', 'v[0-9]*', '--sort=-v:refname') |
+        Where-Object { $_ -notmatch '-' } | Select-Object -First 1
+    if (-not $latest) { Write-Log warn 'no release tags found; installing the current checkout'; return }
+    $headTag = Get-GitOutput @('describe', '--tags', '--exact-match', 'HEAD')
+    if ($LASTEXITCODE -ne 0) { $headTag = $null }
+    if ($headTag -eq $latest) { Write-Log info "on the latest release, $latest"; return }
+    $here = Get-GitOutput @('rev-parse', '--abbrev-ref', 'HEAD')
+    if ($here -eq 'HEAD') { $here = if ($headTag) { $headTag } else { 'commit ' + (Get-GitOutput @('rev-parse', '--short', 'HEAD')) } }
+    $ahead = [int](Get-GitOutput @('rev-list', '--count', "$latest..HEAD"))
+    if (Get-GitOutput @('status', '--porcelain', '--untracked-files=no')) {
+        Write-Log warn "latest release is $latest, but $here has uncommitted changes; staying on $here"; return
+    }
+    if ($ahead -gt 0) {
+        $null = Get-GitOutput @('merge-base', '--is-ancestor', $latest, 'HEAD')
+        if ($LASTEXITCODE -eq 0) { Write-Log info "$here is $ahead commit(s) past $latest (changes not released yet)" }
+    }
+    if (-not (Ask-YesNo "Latest release is $latest; this checkout is on $here. Switch to $latest?" $true)) {
+        Write-Log info "staying on $here"; return
+    }
+    if (-not (Invoke-Logged "check out $latest" 'git' @('-C', $RepoDir, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', $latest))) {
+        Stop-Setup "could not check out $latest"
+    }
+    Write-Log info "switched to $latest; restarting setup from that release"
+    $env:BETASUITE_RELEASE_CHECKED = '1'
+    $passArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $RepoDir 'setup.ps1'))
+    foreach ($kv in $BoundAtStart.GetEnumerator()) {
+        if ($kv.Value -is [System.Management.Automation.SwitchParameter]) { if ($kv.Value) { $passArgs += "-$($kv.Key)" } }
+        else { $passArgs += @("-$($kv.Key)", "$($kv.Value)") }
+    }
+    # Pass the release's exit code on as-is. Under 'Stop', a PowerShell that
+    # treats native exit codes as errors would throw on a failed release run
+    # instead of returning its code.
+    $ErrorActionPreference = 'Continue'
+    & (Get-Process -Id $PID).Path @passArgs
+    exit $LASTEXITCODE
+}
+Invoke-ReleaseCheck
+$env:BETASUITE_RELEASE_CHECKED = '1'
+
 # ---------------------------------------------------------------- preflight
 Write-Log info "BetaSuite setup starting in $RepoDir (log: $LogFile)"
+$versionFile = Join-Path $RepoDir 'VERSION'
+$version = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { 'unknown' }
+$described = if (Get-Command git -ErrorAction SilentlyContinue) { Get-GitOutput @('describe', '--tags', '--always', '--dirty') }
+if (-not $described) { $described = 'not a git checkout' }
+Write-Log info "version: $version ($described)"
 Write-Log info ("platform: Windows {0} {1}, PowerShell {2}" -f [Environment]::OSVersion.Version, $env:PROCESSOR_ARCHITECTURE, $PSVersionTable.PSVersion)
 
 $HaveGpu = $false
@@ -217,32 +293,31 @@ foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncens
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). fetch_models.py checks whatever is there
-# and moves bad files (e.g. a saved sign-in page) aside.
-& $VenvPy 'tools\setup\fetch_models.py' '--log-level' $LogLevel '--log-file' $LogFile
+# serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
+# to ONNX in a throwaway environment that is deleted afterwards, only for the
+# person backends chosen (fetch_models.py asks; default yolo11_seg). It
+# checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
+$fetchArgs = @('tools\setup\fetch_models.py', '--log-level', $LogLevel, '--log-file', $LogFile, '--uv', $Uv)
+if ($PersonBackends) { $fetchArgs += @('--person-backends', $PersonBackends) }
+if ($Yes -or -not [Environment]::UserInteractive) { $fetchArgs += '--yes' }
+& $VenvPy @fetchArgs
 if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
 
-# ---------------------------------------------------------------- betaconfig.gpu_enabled
+# ---------------------------------------------------------------- machine config
+# This machine's hardware settings live in ..\resources\betaconfig_machine.py,
+# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 $wantFlag = if ($Mode -eq 'gpu') { '1' } else { '0' }
-$cfgPath = Join-Path $RepoDir 'betaconfig.py'
-$cfg = [IO.File]::ReadAllText($cfgPath)
-$match = [regex]::Match($cfg, '(?m)^gpu_enabled(\s*=\s*)([01])')
-if ($match.Success -and $match.Groups[2].Value -ne $wantFlag) {
-    if (Ask-YesNo "betaconfig.py has gpu_enabled = $($match.Groups[2].Value) but this is a $Mode install. Set it to $wantFlag?" $true) {
-        $cfg = [regex]::Replace($cfg, '(?m)^gpu_enabled(\s*=\s*)[01]', "gpu_enabled`${1}$wantFlag")
-        [IO.File]::WriteAllText($cfgPath, $cfg, (New-Object Text.UTF8Encoding $false))
-        Write-Log info "betaconfig.py: gpu_enabled = $wantFlag"
-    } else {
-        Write-Log warn "left gpu_enabled = $($match.Groups[2].Value) in betaconfig.py"
-    }
-}
+$machineArgs = @('tools\setup\machine_config.py', '--log-level', $LogLevel, '--log-file', $LogFile, 'setup', '--gpu-enabled', $wantFlag)
+if ($Yes) { $machineArgs += '--yes' }
+& $VenvPy @machineArgs
+if ($LASTEXITCODE -ne 0) { Write-Log warn 'machine config step reported a problem; see the messages above' }
 
 # ---------------------------------------------------------------- verify
 Write-Log info '=== verifying environment ==='
 & $VenvPy 'tools\setup\verify_env.py' "--$Mode" '--log-level' $LogLevel '--log-file' $LogFile
 $verifyStatus = $LASTEXITCODE
 
-$runTests = if ($Tests) { $true } elseif ($NoTests) { $false } else { Ask-YesNo 'Run the unit tests now (about 15 seconds)?' $false }
+$runTests = if ($Tests) { $true } elseif ($NoTests) { $false } else { Ask-YesNo 'Run the unit tests now (a minute or two)?' $false }
 if ($runTests) {
     if (-not (Invoke-Logged 'unit tests' $VenvPy @('-m','unittest','discover','-s','tests','-t','.','-p','test_*.py'))) {
         Write-Log warn "some tests failed; see $LogFile"

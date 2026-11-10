@@ -5,7 +5,7 @@ class_suppression rules for a backend, instead of eyeballing the printed
 stats by hand the way retinanet_v2's original values were derived.
 
 Why this exists: nudenet_v3's class_suppression block is deliberately
-empty ({}) as of the 2026-09-15 per-backend migration (see
+empty ({}) as of the per-backend migration (see
 CONFIG_REFERENCE.md's "class_suppression is per-backend" section) -
 retinanet_v2's tuned min_iou values don't transfer, because nudenet_v3's
 boxes run structurally smaller/tighter and its IoU distributions for the
@@ -37,8 +37,8 @@ value to trust blindly and paste in unread.
 Limitations, stated plainly:
 - This can only derive rules for pairs that HAVE overlap data in
   whatever footage is currently cached. A small/biased sample (see the
-  caution both analyze_suppression_pairs.py's own docstring and the user
-  gave about a single breast-heavy test video) produces a small/biased
+  caution in analyze_suppression_pairs.py's own docstring about a single
+  breast-heavy test video) produces a small/biased
   ruleset - re-run as more, more varied footage gets cached, don't treat
   a first pass as final.
 - The heuristics below (min-data thresholds, the bimodal-split

@@ -283,6 +283,35 @@ class TestTrackConfirmationValidation( ConfigHarness ):
         self.assert_no_errors()
 
 
+class TestConfirmScoreValidation( ConfigHarness ):
+
+    def _with_confirm_score( self, value, where='item_overrides' ):
+        backend = copy.deepcopy( betaconfig.detector_backend )
+        name = backend['selected']
+        backend[name].setdefault( where, {} ).setdefault(
+            'exposed_breast', {} )['confirm_score'] = value
+        self.set_config( 'detector_backend', backend )
+
+    def test_a_score_validates( self ):
+        for value in ( 0.5, 1, 0.01 ):
+            self._with_confirm_score( value )
+            self.assert_no_errors()
+
+    def test_none_validates( self ):
+        self._with_confirm_score( None )
+        self.assert_no_errors()
+
+    def test_out_of_range_is_an_error( self ):
+        for value in ( 0, -0.1, 1.01 ):
+            self._with_confirm_score( value )
+            self.assert_error_mentioning( 'confirm_score' )
+
+    def test_a_non_number_is_an_error( self ):
+        for value in ( 'high', True ):
+            self._with_confirm_score( value )
+            self.assert_error_mentioning( 'confirm_score' )
+
+
 class TestGeometryFilterValidation( ConfigHarness ):
 
     def _with_limits( self, **keys ):
@@ -326,6 +355,26 @@ class TestRenderAndEncodeValidation( ConfigHarness ):
         self.set_config( 'render_workers', 0 )
         self.assert_no_errors()
 
+    def test_a_bad_memory_cost_per_megapixel_is_an_error( self ):
+        for bad in ( 0, -5, 'lots', True ):
+            with self.subTest( value=bad ):
+                self.set_config( 'render_worker_mb_per_megapixel', bad )
+                self.assert_error_mentioning( 'render_worker_mb_per_megapixel' )
+
+    def test_none_turns_the_memory_cap_off_and_validates( self ):
+        for good in ( None, 200, 150.5 ):
+            with self.subTest( value=good ):
+                self.set_config( 'render_worker_mb_per_megapixel', good )
+                self.assert_no_errors()
+
+    def test_a_bad_memory_reserve_is_an_error( self ):
+        for bad in ( -1, 'some', None, False ):
+            with self.subTest( value=bad ):
+                self.set_config( 'render_memory_reserve_mb', bad )
+                self.assert_error_mentioning( 'render_memory_reserve_mb' )
+        self.set_config( 'render_memory_reserve_mb', 0 )
+        self.assert_no_errors()
+
     def test_an_unsupported_chunk_container_is_an_error( self ):
         self.set_config( 'render_chunk_container', 'avi' )
         self.assert_error_mentioning( 'render_chunk_container' )
@@ -342,6 +391,36 @@ class TestRenderAndEncodeValidation( ConfigHarness ):
     def test_an_unknown_encode_preset_is_an_error( self ):
         self.set_config( 'encode_preset', 'turbo' )
         self.assert_error_mentioning( 'encode_preset' )
+
+    def test_an_nvenc_preset_validates_for_an_nvenc_codec( self ):
+        # 'p5' is what betabench encode recommends for h264_nvenc; the
+        # check used to know only x264's names and rejected it.
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'encode_preset', 'p5' )
+        self.assert_no_errors()
+
+    def test_an_x264_preset_still_validates_for_an_nvenc_codec( self ):
+        # encoder_options translates x264 names for NVENC.
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'encode_preset', 'slow' )
+        self.assert_no_errors()
+
+    def test_an_nvenc_preset_is_an_error_for_x264( self ):
+        self.set_config( 'encode_video_codec', 'libx264' )
+        self.set_config( 'encode_preset', 'p5' )
+        self.assert_error_mentioning( 'encode_preset', 'libx264' )
+
+    def test_nvenc_presets_run_p1_to_p7( self ):
+        self.assertEqual( bu_config.valid_encode_presets( 'hevc_nvenc' ) - bu_config.VALID_ENCODE_PRESETS,
+                          { 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7' } )
+
+    def test_a_preview_preset_follows_the_codec_too( self ):
+        self.set_config( 'preview_mode_enabled', True )
+        self.set_config( 'encode_video_codec', 'h264_nvenc' )
+        self.set_config( 'preview_encode_preset', 'p1' )
+        self.assert_no_errors()
+        self.set_config( 'encode_video_codec', 'libx264' )
+        self.assert_error_mentioning( 'preview_encode_preset' )
 
 
 class TestCrossSizeDedupValidation( ConfigHarness ):
@@ -586,6 +665,34 @@ class TestProgressReporter( unittest.TestCase ):
             thread.join()
         progress.finish()
         self.assertIn( '400', logger.records[-1][1] )
+
+    def test_advance_loses_no_count_when_threads_switch_constantly( self ):
+        # The test above only fails when the scheduler happens to switch
+        # threads between advance()'s read and its write, which it did on
+        # one machine in a full-suite run (177 of 400) and on another never.
+        # Forcing a switch every microsecond makes the race certain.
+        import sys
+        import threading
+        logger = self._CountingLogger()
+        progress = bu_log.ProgressReporter( 'test', total=800, logger=logger,
+                                            log_interval=3600 )
+
+        def worker():
+            for _ in range( 200 ):
+                progress.advance()
+
+        previous = sys.getswitchinterval()
+        sys.setswitchinterval( 1e-6 )
+        try:
+            threads = [ threading.Thread( target=worker ) for _ in range( 4 ) ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        finally:
+            sys.setswitchinterval( previous )
+        progress.finish()
+        self.assertIn( 'done, 800 in', logger.records[-1][1] )
 
     def test_it_works_as_a_context_manager( self ):
         logger = self._CountingLogger()

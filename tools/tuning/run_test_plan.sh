@@ -43,7 +43,9 @@ echo "=== step 1/4: clearing cached detections for preview_start_seconds=$PREVIE
 # whether PREVIEW_START_SECONDS was passed as e.g. "450" or "450.5"
 PREVIEW_SUFFIX=$(printf '%.1f' "$PREVIEW_START_SECONDS")
 CLEARED=0
-for f in output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s.gz; do
+# Every length at this offset ('+<length>s' / '+all'), and names written
+# before the length was part of them.
+for f in output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s.gz output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s+*.gz; do
     [ -e "$f" ] || continue
     rm -f "$f"
     CLEARED=$((CLEARED + 1))

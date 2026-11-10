@@ -103,7 +103,7 @@ class TestStructureScan( BetaTvHarness ):
         offsets = betabench.geometry_slice_offsets( 6.0, 2.0, 2 )
         self.assertEqual( len( offsets ), 2 )
         for offset in offsets:
-            suffix = bu_cache.preview_cache_suffix( True, offset )
+            suffix = bu_cache.preview_cache_suffix( True, offset, 2.0, 6.0 )
             self.assertTrue( any( name.startswith( file_hash ) and name.endswith( suffix + '.gz' )
                                   for name in names ), ( suffix, names ) )
         self.assertEqual( self.outputs(), [], "geometry slices must never render" )
