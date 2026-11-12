@@ -692,26 +692,11 @@ def _dir_key_parts( key ):
                   if part not in ( '', '.' ) )
 
 
-def source_dir_parts( source_path, uncensored_root=None ):
+def _dir_parts_under( source_path, root ):
     """
-    Where a source file sits relative to the uncensored-video root.
-
-    Args:
-        source_path: Path to the source video, absolute or relative.
-        uncensored_root: Root of the source tree. Defaults to
-            betaconst.video_path_uncensored.
-
-    Returns:
-        A tuple of lowercased directory segments between the root and
-        the file, empty for a file sitting directly in the root, or None
-        when the file is outside the tree or the root is unknown. None
-        and () are different facts: () means "in the root", which takes
-        automatic selection, while None means the question does not
-        apply.
+    The directory segments between root and source_path, or None when
+    the file is not under root (or root is unknown).
     """
-    if not source_path:
-        return None
-    root = uncensored_root or getattr( betaconst, 'video_path_uncensored', None )
     if not root:
         return None
     try:
@@ -724,6 +709,40 @@ def source_dir_parts( source_path, uncensored_root=None ):
     if parts and parts[0] == '..':
         return None
     return parts
+
+
+def source_dir_parts( source_path, uncensored_root=None ):
+    """
+    Where a source file sits relative to its source-video root.
+
+    Args:
+        source_path: Path to the source video, absolute or relative.
+        uncensored_root: Root of the source tree. When given, it is the
+            only root tried. When omitted, betaconst.video_path_uncensored
+            is tried first and then betaconst.video_path_source_backup,
+            because the same folder names mean the same profiles in both
+            trees: a file moved from uncensored_vids/scene/ to
+            source/scene/ keeps its profile, so analysis that replays a
+            finished run still reads it under the profile it was
+            rendered with.
+
+    Returns:
+        A tuple of lowercased directory segments between the root and
+        the file, empty for a file sitting directly in the root, or None
+        when the file is outside every tree tried or no root is known.
+        None and () are different facts: () means "in the root", which
+        takes automatic selection, while None means the question does
+        not apply.
+    """
+    if not source_path:
+        return None
+    if uncensored_root:
+        return _dir_parts_under( source_path, uncensored_root )
+    for root_name in ( 'video_path_uncensored', 'video_path_source_backup' ):
+        parts = _dir_parts_under( source_path, getattr( betaconst, root_name, None ) )
+        if parts is not None:
+            return parts
+    return None
 
 
 def profile_for_source_dir( source_path, backend_name=None, uncensored_root=None ):

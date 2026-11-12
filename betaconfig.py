@@ -519,6 +519,8 @@ logging_enabled = True
 log_path = '../output/logs/betasuite.log'
 log_level = 'debug'      # the log FILE's level
 console_level = 'info'   # the TERMINAL's level
+console_color = 'auto'   # 'auto' | 'always' | 'never'
+console_palette = 'deuteranopia'   # 'standard' | 'deuteranopia' | 'protanopia' | 'monochrome'
 
 stats_enabled = True
 stats_path = '../output/stats/betasuite_stats.jsonl'

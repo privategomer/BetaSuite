@@ -2042,6 +2042,14 @@ def _validate_logging_settings( errors ):
     if console_level not in bu_log.LEVEL_NAMES:
         errors.append( "console_level = %r is not one of %s"%(console_level, valid_levels) )
 
+    console_color = getattr( betaconfig, 'console_color', 'auto' )
+    if console_color not in bu_log.COLOR_MODES:
+        errors.append( "console_color = %r is not one of %s"%(console_color, list( bu_log.COLOR_MODES )) )
+
+    console_palette = getattr( betaconfig, 'console_palette', 'standard' )
+    if console_palette not in bu_log.PALETTE_NAMES:
+        errors.append( "console_palette = %r is not one of %s"%(console_palette, list( bu_log.PALETTE_NAMES )) )
+
     if not getattr( betaconfig, 'logging_enabled', False ):
         return
     log_level = getattr( betaconfig, 'log_level', 'info' )

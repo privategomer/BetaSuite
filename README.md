@@ -464,6 +464,8 @@ Reference: [Preview mode](CONFIG_REFERENCE.md#preview-mode)
 | `log_path` | `../output/logs/betasuite.log` | where |
 | `log_level` | `'debug'` | the **log file's** level |
 | `console_level` | `'info'` | the **terminal's** level |
+| `console_palette` | `'standard'` | colors for the terminal view: `'standard'`, `'deuteranopia'` or `'protanopia'` (no red against green), `'monochrome'` (bold, dim, underline only) |
+| `console_color` | `'auto'` | color the terminal view: `'auto'` (a terminal only), `'always'`, `'never'`. `NO_COLOR` and `FORCE_COLOR` are honoured under `'auto'` |
 | `stats_enabled` | `True` | write one JSON-Lines row per processed file |
 | `stats_path` | `../output/stats/betasuite_stats.jsonl` | where |
 

@@ -3751,6 +3751,8 @@ logging_enabled = True
 log_path = '../output/logs/betasuite.log'
 log_level = 'debug'      # the log FILE
 console_level = 'info'   # the TERMINAL
+console_color = 'auto'   # color on the TERMINAL view
+console_palette = 'standard'   # which colors
 stats_enabled = True
 stats_path = '../output/stats/betasuite_stats.jsonl'
 ```
@@ -3767,6 +3769,43 @@ drown a debug log.
 > 90-second video produced a 16 KB single-line log. Progress is now
 > rate-limited: an in-place line on a tty, and a bounded number of real
 > log records either way.
+
+**`console_color`** (`'auto'`) is a highlighter pen for the terminal view
+only. A file's start line (`processing 3/53: name`) is bold cyan, and its
+finish line (`done 3/53: name  detect=...`) is bold green with the numbers
+in plain green, so you can find where each file begins and ends in a long
+scroll. `skipping` is dim, `failed` is bold red, other warnings are yellow,
+errors red, and debug and trace dim. The log file never gets a color code:
+the file's handler formats the same record on its own.
+
+- `'auto'`: color only when the output is a terminal. Piped into `tee` or a
+  file it stays plain. `NO_COLOR` set to anything turns it off, and
+  `FORCE_COLOR` turns it on even when piped (useful for `| tee run.log` when
+  you still want color on screen)
+- `'always'` and `'never'` ignore the terminal check and both variables
+
+The tools' own loggers follow the same rule. On Windows, `'auto'` asks the
+console to understand the codes and stays plain if it will not.
+
+Lines that belong to a phase of the run are colored by phase, and the
+in-place progress line follows the same colors: detection (`size N: ...`,
+`detect N`), structure (shot cuts, shot structure, structure profile,
+promotion, tracking), reverse (`reverse:`, `person pass:`, `persons`),
+render (`render ...`) and prep (transcode and preview slice). A line that
+fits no phase keeps the terminal's own color.
+
+**`console_palette`** (`'standard'`) picks the colors:
+
+- `'standard'`: conventional hues. Green for done and red for failed, which
+  are the pair red-green colorblindness cannot tell apart, so it is the
+  wrong choice if that is you
+- `'deuteranopia'` and `'protanopia'` (the same palette): blue, purple,
+  bluish green and vermillion, never red against green. The phases were
+  checked against a deuteranopia and protanopia simulation so no two read as
+  one color, and failed and error lines are also reverse video, so they do
+  not depend on hue at all
+- `'monochrome'`: weight only (bold, dim, underline, reverse), for any
+  terminal or any eyes
 
 Set both to `trace` when something is going wrong and you want
 everything:

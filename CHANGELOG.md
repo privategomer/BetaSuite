@@ -2,6 +2,16 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Added
+
+- `console_palette` (`'standard'`): `'deuteranopia'` / `'protanopia'` (no red against green) and `'monochrome'` (weight only) for the terminal colors, and lines are now colored by run phase (detect, structure, reverse, render, prep), including the in-place progress line
+- `console_color` (`'auto'`): the terminal view colors each file's `processing` line (bold cyan) and `done` line (bold green, numbers in green), `skipping` dim, `failed` bold red, warnings yellow and errors red. The log file never carries color codes. `'auto'` colors only a terminal and honours `NO_COLOR` and `FORCE_COLOR`; `'always'` and `'never'` force it either way. The tools' own loggers follow the same rule
+
+### Fixed
+
+- The folder convention (`profile_by_source_dir`) now reads a video's folder under `video_path_source_backup` (`resources/source/`) as well as `video_path_uncensored`, trying the working tree first. A finished video moved from `uncensored_vids/scene/` to `source/scene/` used to read as outside the tree in every replay (the analysis hub's jitter, track-break, style-flicker and cut-burst steps, `auto_tune`, the A/B tools), so it fell through to measured selection and was analyzed under a different profile than the one that rendered it, with no message. An explicit `uncensored_root` is still the only root tried, which `betabench structure` relies on
+
 ## 1.4.0 (2026-11-10)
 ### Added
 
