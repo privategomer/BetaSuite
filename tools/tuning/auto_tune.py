@@ -2,8 +2,8 @@
 """
 auto_tune.py - derive config values from your own footage, one at a time.
 
-One command. It measures, decides, writes the decision into
-betaconfig.py, and moves to the next question. Nothing to remember, no
+One command. It measures, decides, writes the decision into your
+local config (betaconfig_local.py, never betaconfig.py), and moves to the next question. Nothing to remember, no
 per-model or per-variant invocations to get right, and a full log of why
 every value was chosen.
 
@@ -954,7 +954,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter )
     parser.add_argument( '--apply', action='store_true',
-        help="write accepted values into betaconfig.py. Without this the run measures and "
+        help="write accepted values into betaconfig_local.py. Without this the run measures and "
              "reports and changes nothing, which is the right way to see what it would do" )
     parser.add_argument( '--yes', action='store_true',
         help="accept every prompt - what an unattended run wants" )
@@ -1025,7 +1025,7 @@ def main():
 
     logger.info( "auto_tune starting" )
     logger.info( "output directory: %s"%( os.path.abspath( run_dir ) ) )
-    logger.info( "mode: %s"%( "APPLY - accepted values will be written to betaconfig.py"
+    logger.info( "mode: %s"%( "APPLY - accepted values will be written to betaconfig_local.py"
                               if args.apply else "measure and report only (pass --apply to write)" ) )
     logger.info( "safety: reject any candidate costing more than %.2f%% censor coverage"%(
         100*args.max_coverage_loss ) )
@@ -1039,10 +1039,11 @@ def main():
         variant_names=args.variants, logger=logger )
     logger.info( "configurations: %s"%( bu_cache.describe_configurations( configurations ) ) )
 
+    # Into the local config, never betaconfig.py: the shipped file is
+    # the defaults, and a local line for the same setting would hide it.
     writer = bu_tuning.ConfigWriter(
-        config_path=os.path.join( os.path.dirname( os.path.dirname( os.path.dirname(
-            os.path.abspath( __file__ ) ) ) ), 'betaconfig.py' ),
-        backup_dir=run_dir, logger=logger )
+        backup_dir=run_dir, logger=logger,
+        comment='set by auto_tune %s'%( os.path.basename( os.path.normpath( run_dir ) ), ) )
 
     stage_names = args.stages or list( STAGE_ORDER )
     decisions = []
@@ -1100,12 +1101,12 @@ def main():
         if decision.accepted and args.apply:
             variant_of = { config.label: config.variant for config, _c in entries }
             if decision.is_split:
-                question = "  write %s per variant (%s) to betaconfig.py?"%(
+                question = "  write %s per variant (%s) to betaconfig_local.py?"%(
                     probe.title,
                     ", ".join( "%s=%s"%( name, value )
                                for name, value in sorted( decision.per_configuration.items() ) ) )
             else:
-                question = "  write %s = %s to betaconfig.py (governs %s)?"%(
+                question = "  write %s = %s to betaconfig_local.py (governs %s)?"%(
                     probe.title, decision.chosen,
                     ", ".join( config.label for config, _c in entries ) )
             if confirm( logger, question, args.yes ):
@@ -1322,7 +1323,7 @@ def main():
     logger.info( "" )
     logger.info( "decisions written to %s"%( os.path.abspath( results_path ) ) )
     if writer.backups:
-        logger.info( "config backups: %s"%( ", ".join( os.path.basename( b ) for b in writer.backups ) ) )
+        logger.info( "local config backups: %s"%( ", ".join( os.path.basename( b ) for b in writer.backups ) ) )
 
     logger.info( "" )
     if accepted and args.apply:

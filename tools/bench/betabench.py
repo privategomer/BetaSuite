@@ -1180,7 +1180,10 @@ def _bench_suppression_one( args, logger, config, raw_boxes ):
             if same_spot_wins < ADDITION_MIN_WIN_RATE:
                 logger.info( "      NOTE: even on the same spot the suppressor rarely wins, so this "
                              "rule would almost never fire. Consider leaving the pair out." )
-            if key in refused:
+            if key in bu_detector.UNSAFE_SUPPRESSION_PAIRS:
+                logger.info( "      refused, built in: never proposed as an addition (%s)"%(
+                    bu_detector.UNSAFE_SUPPRESSION_PAIRS[key], ) )
+            elif key in refused:
                 logger.info( "      refused in class_suppression_refused: never proposed as an addition" )
             suggested_rules.setdefault( label, [] ).append(
                 { 'suppressed_by': suppressor, 'min_iou': min_iou, 'margin': margin } )
@@ -1262,7 +1265,8 @@ def _log_suppression_impact( logger, raw_boxes, configured, suggested_rules, cur
     if additions:
         logger.info( "  not configured: a same-spot pair with no rule yet; its last column is what "
                      "adding the suggested rule would remove. The suppression A/B proposes these "
-                     "as additions; class_suppression_refused keeps a pair out for good." )
+                     "as additions, except the built-in unsafe pairs; class_suppression_refused keeps "
+                     "a pair of your own out for good." )
     return rows
 
 
@@ -2295,7 +2299,7 @@ def _default_scan_workers():
     leaves cores idle and parallel files win. The cap of 4 is a judgment
     call, not a measurement: it keeps a spinning disk from seeking itself
     to death on several multi-GB files at once. structure_scan_workers
-    (the machine config's, measured by `concurrency`) replaces the
+    (set in betaconfig_local.py, measured by `concurrency`) replaces the
     guess; --workers overrides both.
     """
     configured = getattr( betaconfig, 'structure_scan_workers', 0 )
@@ -2631,7 +2635,7 @@ def _measure_scan_workers( args, logger, video_paths, caches ):
             '   <- use this' if row is choice else '' ) )
         for error in row['errors']:
             logger.warning( "    scan failed: %s"%( error, ) )
-    logger.info( "  default is %d; to use the measured best, `python tools/setup/machine_config.py "
+    logger.info( "  default is %d; to use the measured best, `python tools/setup/local_config.py "
                  "set structure_scan_workers=%d` (or pass --workers %d to structure-scan once)"%(
                      _default_scan_workers(), choice['workers'], choice['workers'] ) )
     if untested and choice['workers'] == max( counts ):
@@ -3209,7 +3213,7 @@ def bench_encode( args, logger ):
     if choice is baseline:
         logger.info( "  keep the current encoder: nothing faster matched its quality" )
     else:
-        logger.info( "  to switch, set in the machine config (tools/setup/machine_config.py set NAME=VALUE):" )
+        logger.info( "  to switch, set in betaconfig_local.py (tools/setup/local_config.py set NAME=VALUE):" )
         logger.info( "    encode_video_codec = '%s'"%( choice['codec'], ) )
         logger.info( "    encode_preset = '%s'"%( choice['preset'], ) )
         logger.info( "    encode_crf = %s%s"%( choice['quality'],

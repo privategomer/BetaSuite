@@ -55,7 +55,7 @@ import threading
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
-import betautils_machine as bu_machine
+import betautils_local as bu_local
 import betautils_reverse as bu_reverse
 
 
@@ -200,6 +200,42 @@ def rendered_labels():
     if bu_reverse.enabled():
         return bu_reverse.rendered_labels()
     return list( betaconfig.items_to_censor )
+
+
+CENSOR_SOMETHING_HINT = ( "python tools/setup/local_config.py set "
+                          "\"items_to_censor=['exposed_vulva', 'exposed_breast']\"" )
+
+
+def nothing_to_render_reason():
+    """
+    Why this run would leave every frame as it is, or None when it would not.
+
+    betaconfig.py ships items_to_censor = [] and reverse mode with no
+    windows, so a fresh install censors nothing until the user says what.
+    Run like that, detection and rendering take their full time and
+    produce a copy of the input, which reads as a broken censor rather
+    than a missing setting.
+    """
+    if bu_reverse.enabled():
+        if ( bu_reverse.rendered_labels() or bu_reverse.trigger_labels()
+                or bu_reverse.settings()['empty_frame'] == 'obscure' ):
+            return None
+        return ( "reverse mode is on with no windows, no censored labels and no trigger labels, "
+                 "and empty_frame is 'passthrough', so no frame would change" )
+    if betaconfig.items_to_censor:
+        return None
+    return "items_to_censor is empty, so nothing would be censored"
+
+
+def exit_if_nothing_to_render( logger ):
+    """Stop before any detection when the run would change no frame (exit 0: nothing failed)."""
+    reason = nothing_to_render_reason()
+    if reason is None:
+        return
+    logger.warning( "%s. Nothing was processed. Choose what to censor in betaconfig_local.py, for "
+                    "example: %s (CONFIG_REFERENCE.md, \"Example local config\")"%(
+                        reason, CENSOR_SOMETHING_HINT ) )
+    raise SystemExit( 0 )
 
 
 def get_parts_to_blur( backend_name=None ):
@@ -989,9 +1025,13 @@ def _validate_class_promotion( errors, valid_classes ):
     direction of censoring things the author never meant to.
 
     A target that is not rendered (items_to_censor, or reverse mode's
-    windows and censored labels while it is on) is also an error: the rule would relabel
-    boxes into a label nothing renders, which DELETES the source
-    detection's censor if the source label was being censored.
+    windows and censored labels while it is on) is an error only while
+    a source label IS rendered: the rule would relabel that label's
+    boxes into one nothing renders, which DELETES their censor. With
+    neither rendered nothing is lost, and the check used to stop every
+    run of a config that censors nothing (items_to_censor = [], as
+    betaconfig.py ships), because the shipped covered_vulva promotion
+    targets a label that config does not render.
     """
     import betautils_track as bu_track  # deferred: bu_track imports this module
     censored = set( rendered_labels() )
@@ -1008,11 +1048,15 @@ def _validate_class_promotion( errors, valid_classes ):
             where_base = "detector_backend[%r]['class_promotion']['%s']"%( backend_name, target )
             if target not in valid_classes:
                 errors.append( "%s: '%s' is not a known class"%( where_base, target ) )
-            elif target not in censored:
-                errors.append( "%s: '%s' is not in %s, so promoted boxes would "
-                               "never be rendered - and a censored source label would lose its "
-                               "censor"%( where_base, target, censored_name ) )
             rule_list = rules if isinstance( rules, list ) else [ rules ]
+            if target in valid_classes and target not in censored:
+                losing = sorted( { rule.get( 'from' ) for rule in rule_list
+                                   if isinstance( rule, dict ) and rule.get( 'from' ) in censored } )
+                if losing:
+                    errors.append( "%s: '%s' is not in %s, so %s boxes promoted to it would lose "
+                                   "their censor. Render '%s' too, or remove the rule"%(
+                                       where_base, target, censored_name,
+                                       ', '.join( repr( label ) for label in losing ), target ) )
             for index, rule in enumerate( rule_list ):
                 where = "%s[%d]"%( where_base, index ) if isinstance( rules, list ) else where_base
                 if not isinstance( rule, dict ):
@@ -1322,6 +1366,25 @@ def _validate_class_suppression_zero_margin( warnings, valid_classes ):
                         "answer), no action needed - this is a warning, not an error."%(where, suppressed_by) )
 
 
+def _warn_unsafe_suppression_rules( warnings ):
+    """
+    A hand-written rule for one of bu_detector.UNSAFE_SUPPRESSION_PAIRS.
+    The tools never propose these, so one in the config was typed in;
+    a warning rather than an error, because it is the person's call.
+    """
+    for backend_name in bu_detector.registered_backend_names():
+        for label, rules in bu_detector.get_class_suppression( backend_name ).items():
+            for rule in ( rules if isinstance( rules, list ) else [ rules ] ):
+                if not isinstance( rule, dict ):
+                    continue
+                pair = "%s<-%s"%( label, rule.get( 'suppressed_by' ) )
+                reason = bu_detector.UNSAFE_SUPPRESSION_PAIRS.get( pair )
+                if reason:
+                    warnings.append( "detector_backend[%r]['class_suppression'] has the rule %s, which "
+                                     "removes the censor when both are really there: %s"%(
+                                         backend_name, pair, reason ) )
+
+
 def _collect_validation_warnings():
     """
     Non-fatal checks: things worth flagging but not worth aborting a
@@ -1336,8 +1399,9 @@ def _collect_validation_warnings():
     valid_classes = _valid_class_names()
     _validate_class_suppression_zero_margin( warnings, valid_classes )
     _warn_promotion_evidence_also_suppresses( warnings )
+    _warn_unsafe_suppression_rules( warnings )
     _warn_reverse( warnings )
-    _warn_machine_config( warnings )
+    _warn_local_config( warnings )
     return warnings
 
 
@@ -1875,6 +1939,38 @@ def _validate_blur_approximation( errors ):
 
 
 
+def _validate_label_defaults( errors ):
+    """
+    Check the label defaults that were read with a code fallback and
+    unvalidated until betaconfig.py listed them. A per-label value is
+    checked in _check_item_override_values; the default is the value
+    every label without one falls back to, so a typo here was wrong for
+    every label at once, silently.
+    """
+    import betautils_track as bu_track  # deferred: bu_track imports this module
+    action = getattr( betaconfig, 'default_geometry_action', bu_track.DEFAULT_GEOMETRY_ACTION )
+    valid = sorted( bu_track.GEOMETRY_ACTIONS )
+    if isinstance( action, dict ):
+        unknown_bounds = sorted( set( action ) - { 'min', 'max' } )
+        bad = [ value for value in action.values() if value not in bu_track.GEOMETRY_ACTIONS ]
+        if unknown_bounds:
+            errors.append( "default_geometry_action keys must be 'min'/'max', got %s"%( unknown_bounds, ) )
+        if bad:
+            errors.append( "default_geometry_action values must be one of %s, got %r"%( valid, bad ) )
+    elif action not in bu_track.GEOMETRY_ACTIONS:
+        errors.append( "default_geometry_action must be one of %s, or a {'min':..,'max':..} "
+                       "mapping, got %r"%( valid, action ) )
+    for name, meaning in ( ( 'default_confirm_score', 'a track score above 0 and at most 1' ),
+                           ( 'default_size_smoothing', 'a weight above 0 and at most 1 (None = a '
+                                                       'third of position_smoothing)' ) ):
+        value = getattr( betaconfig, name, None )
+        if value is None:
+            continue
+        if ( not isinstance( value, (int, float) ) or isinstance( value, bool )
+                or not ( 0 < value <= 1 ) ):
+            errors.append( "%s must be None or %s, got %r"%( name, meaning, value ) )
+
+
 def _validate_cross_size_dedup( errors ):
     """Check the cross-size dedup settings."""
     settings = getattr( betaconfig, 'cross_size_dedup', {} )
@@ -1934,7 +2030,7 @@ def _whole_number( value ):
 
 
 def _validate_hardware_settings( errors ):
-    """The hardware settings that came with the machine config."""
+    """Settings that describe the computer, which tune_machine writes to the local config."""
     threads = getattr( betaconfig, 'render_decode_threads', None )
     if threads is not None and not ( _whole_number( threads ) and threads >= 0 ):
         errors.append( "render_decode_threads must be None (OpenCV's own thread count), 0 (the cores "
@@ -1958,18 +2054,20 @@ def _validate_hardware_settings( errors ):
         errors.append( "cuda_device_id must be a GPU index (0 for the first), got %r"%(device,) )
 
 
-def _validate_machine_config( errors ):
-    """Lines of ../resources/betaconfig_machine.py that could not be applied."""
-    loaded = bu_machine.LOADED
+def _validate_local_config( errors ):
+    """Lines of betaconfig_local.py that could not be applied, each naming its file and line."""
+    loaded = bu_local.LOADED
     if loaded is None:
         return
     errors.extend( loaded.problems )
 
 
-def _warn_machine_config( warnings ):
-    warning = bu_machine.encoder_scale_warning( bu_machine.LOADED )
-    if warning:
-        warnings.append( warning )
+def _warn_local_config( warnings ):
+    loaded = bu_local.LOADED
+    for warning in [ bu_local.legacy_warning( loaded ), bu_local.encoder_scale_warning( loaded ) ]:
+        if warning:
+            warnings.append( warning )
+    warnings.extend( bu_local.new_key_warnings( loaded ) )
 
 
 def _validate_input_delete_probability_range( errors ):
@@ -2238,13 +2336,14 @@ def _collect_validation_errors():
     _validate_min_prob_floor_consistency( errors )
     _validate_checkpoint_and_chunk_settings( errors )
     _validate_blur_approximation( errors )
+    _validate_label_defaults( errors )
     _validate_cross_size_dedup( errors )
     _validate_render_settings( errors )
     _validate_hardware_settings( errors )
     _validate_detector_backend( errors )
     _validate_reverse( errors, valid_classes )
     _validate_person_backend( errors )
-    _validate_machine_config( errors )
+    _validate_local_config( errors )
 
     return errors
 
@@ -2271,8 +2370,11 @@ def validate_config():
     import betautils_log as bu_log
     logger = bu_log.get_logger()
 
-    if bu_machine.LOADED is not None:
-        logger.info( bu_machine.LOADED.describe() )
+    # The run-start line that says which of this person's own settings
+    # are in effect, so a result that differs from someone else's has
+    # its reason in the log.
+    if bu_local.LOADED is not None:
+        logger.info( bu_local.LOADED.describe() )
 
     warnings = _collect_validation_warnings()
     if warnings:
@@ -2285,7 +2387,7 @@ def validate_config():
         logger.error( "betaconfig.py failed validation, fix the following and re-run:" )
         for err in errors:
             logger.error( "  - %s"%(err) )
-        loaded = bu_machine.LOADED
+        loaded = bu_local.LOADED
         if loaded is not None and loaded.applied:
             logger.error( "  (%s sets %s; an error naming one of those is about its value there, "
                           "not betaconfig.py's)"%( loaded.path, ', '.join( loaded.set_names() ) ) )

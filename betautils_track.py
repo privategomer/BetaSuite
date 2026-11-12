@@ -813,10 +813,12 @@ class _LabelSettings:
         # itself: size jitter is what flickers the censor's edge, and
         # nothing about following a moving subject requires the box to
         # resize as fast as it translates. An explicit per-label
-        # size_smoothing overrides this.
-        self.size_alpha = overrides.get(
-            'size_smoothing',
-            getattr( betaconfig, 'default_size_smoothing', self.alpha/3.0 ) )
+        # size_smoothing overrides this. None means that third, so
+        # betaconfig.py can list the setting without fixing a number that
+        # would stop following position_smoothing.
+        size_alpha = overrides.get(
+            'size_smoothing', getattr( betaconfig, 'default_size_smoothing', None ) )
+        self.size_alpha = self.alpha/3.0 if size_alpha is None else size_alpha
         self.interpolation_enabled = overrides.get(
             'interpolation_enabled', betaconfig.default_interpolation_enabled )
         self.interpolation_max_gap = overrides.get(

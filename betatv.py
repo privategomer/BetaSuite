@@ -54,6 +54,7 @@ import betautils_cli as bu_cli
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_local as bu_local
 import betautils_log as bu_log
 import betautils_person as bu_person
 import betautils_render as bu_render
@@ -94,6 +95,7 @@ def _startup():
     bu_signals.install_handler( logger )
 
     bu_config.validate_config()
+    bu_config.exit_if_nothing_to_render( logger )
     bu_config.verify_input_delete_probability()
     return logger
 
@@ -791,6 +793,10 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
         'detection_key': paths['detection_key'],
         'censor_key': paths['censor_key'],
         'encode_key': paths['encode_key'],
+        # Which settings came from this person's betaconfig_local.py, so
+        # two machines' rows that differ say why. The values themselves
+        # are in the fields above and in the keys.
+        'local_overrides': bu_local.LOADED.overridden_names() if bu_local.LOADED is not None else [],
         'transcoded_source': source.transcoded,
         'video_width': source.width,
         'video_height': source.height,

@@ -52,8 +52,6 @@ import contextlib
 import copy
 import json
 import os
-import re
-import shutil
 import time
 
 import betaconfig
@@ -943,7 +941,7 @@ def worst_coverage_loss( baseline, candidate ):
 
 
 # ---------------------------------------------------------------------------
-# Writing decisions back into betaconfig.py
+# Writing decisions into the local config
 # ---------------------------------------------------------------------------
 
 class ConfigWriteError( Exception ):
@@ -952,524 +950,176 @@ class ConfigWriteError( Exception ):
 
 class ConfigWriter:
     """
-    Edits betaconfig.py in place, surgically, and proves the edit took.
+    Writes a tuned value into the local config (betaconfig_local.py) and
+    proves it took.
 
-    Editing a live config file from a script is a thing to do carefully
-    rather than cleverly. The rules here:
+    This used to edit betaconfig.py itself with brace-matching regexes.
+    betaconfig.py is the shipped defaults and is never edited, and a
+    local line for the same setting hid the edit, so the read-back failed
+    and the tune could not be applied. The local config is plain
+    `name = value` literals, so an edit goes through the same editor as
+    `local_config.py set` (bu_local.edit_text): it targets one setting
+    path, keeps every other line and comment, and refuses a file that
+    does not parse.
 
-      - every write takes a timestamped backup first
-      - an edit targets exactly one assignment, located by its enclosing
-        block, and is refused if the pattern matches zero times or more
-        than once, rather than picking one
-      - after writing, the value is read back through the real resolver
-        in a fresh interpreter. A config file that parses but resolves
-        to the wrong value is worse than a failed write, because the
-        next stage would measure against a setting nobody chose
-      - a refused edit raises. It never falls back to "close enough"
+    Each write:
+      - keeps a timestamped copy of the file it replaces, in backup_dir
+      - applies the value to the running betaconfig, so later stages
+        measure it, and asks the real resolver for it back
+      - restores the file and the value if the resolver disagrees, or
+        if validation reports an error it did not report before
 
-    Formatting, comments and key order are preserved: only the value
-    text between the ':' or '=' and the following ',' or newline moves.
+    A refused edit raises. It never falls back to "close enough".
     """
 
-    def __init__( self, config_path=None, backup_dir=None, logger=None ):
-        self.config_path = config_path or os.path.join(
-            os.path.dirname( os.path.abspath( __file__ ) ), 'betaconfig.py' )
+    def __init__( self, local_path=None, backup_dir=None, logger=None, comment='set by auto_tune' ):
+        import betautils_local as bu_local
+        self.local_path = local_path or bu_local.configured_path()
         self.backup_dir = backup_dir
         self.logger = logger
+        self.comment = comment
         self.backups = []
 
-    def _backup( self ):
-        stamp = time.strftime( '%Y%m%d_%H%M%S' )
-        directory = self.backup_dir or os.path.dirname( self.config_path )
-        os.makedirs( directory, exist_ok=True )
-        target = os.path.join( directory, 'betaconfig.py.%s.bak'%(stamp) )
-        suffix = 0
-        while os.path.exists( target ):
-            suffix += 1
-            target = os.path.join( directory, 'betaconfig.py.%s.%d.bak'%(stamp, suffix) )
-        shutil.copy2( self.config_path, target )
-        self.backups.append( target )
-        if self.logger:
-            self.logger.debug( "config backed up to %s"%(target) )
-        return target
-
     def read( self ):
-        with open( self.config_path, 'r', encoding='UTF-8' ) as fin:
+        """The local config's text, or '' when it does not exist yet."""
+        if not self.local_path or not os.path.isfile( self.local_path ):
+            return ''
+        with open( self.local_path, 'r', encoding='UTF-8' ) as fin:
             return fin.read()
 
     def set_item_override( self, backend_name, label, key, value ):
-        """
-        Set detector_backend[<backend>]['item_overrides'][<label>][<key>],
-        adding the key if that block does not have it yet.
-
-        An UPSERT, not an update. The first version of this refused a
-        missing key on the grounds that a tuner should not invent config
-        structure. That was the wrong call in practice: the tuner's most
-        useful decisions are about keys a label has never had set -
-        min_track_hits and match_distance_multiplier both default
-        implicitly and therefore appear nowhere - so refusing them meant
-        the tool measured carefully, decided correctly, and then told
-        you to go and type it in yourself.
-
-        An inserted key is placed as the LAST entry of that label's
-        block, indented to match its siblings, with a trailing comma,
-        and with a short comment naming the run that put it there. That
-        last part matters: a value that appeared in your config without
-        you typing it should say where it came from.
-
-        Args:
-            backend_name, label, key: Which setting.
-            value: The value to set.
-        """
-        source = self.read()
-        start, end = self._locate_label_block( source, backend_name, label )
-        pattern = re.compile( r"(^\s*'%s'\s*:\s*)([^,\n]+)(,?)"%( re.escape( key ) ), re.M )
-        matches = list( pattern.finditer( source, start, end ) )
-
-        if len( matches ) > 1:
-            raise ConfigWriteError(
-                "found %d entries for '%s' inside detector_backend[%r]['item_overrides'][%r] - "
-                "a duplicated key is ambiguous, so nothing was written; remove the duplicate "
-                "and re-run"%( len( matches ), key, backend_name, label ) )
-
-        if matches:
-            match = matches[0]
-            updated = ( source[:match.start()] + match.group(1) + self._format( value )
-                        + ( match.group(3) or ',' ) + source[match.end():] )
-        else:
-            updated = self._insert_item_override( source, start, end, key, value )
-
-        self._write_and_verify(
-            updated,
-            lambda: bu_detector.get_item_overrides( label, backend_name ).get( key ),
-            value,
-            "detector_backend[%r]['item_overrides'][%r][%r]"%( backend_name, label, key ) )
+        """detector_backend[<backend>]['item_overrides'][<label>][<key>]."""
+        self._check_backend( backend_name )
+        self._check_label( label )
+        self._write( ( 'detector_backend', backend_name, 'item_overrides', label, key ), value,
+                     lambda: bu_detector.get_item_overrides( label, backend_name ).get( key ) )
 
     def set_variant_item_override( self, backend_name, variant_name, label, key, value ):
         """
-        Set a value on ONE variant, creating whatever blocks it needs.
-
         detector_backend[<backend>]['variants'][<variant>]['item_overrides'][<label>][<key>]
 
-        This is the escape hatch for variants that genuinely disagree.
-        Two sets of weights detect differently, so their tracking wants
-        different settings, and the first real tuning run showed it: at
-        match_distance_multiplier 2.0, nudenet_v3's 640m was better on
-        BOTH axes while 320n rejected every candidate. With only a
-        backend tier, that value simply could not be written.
-
-        Unlike the backend tier, this creates the intermediate
-        structure - 'variants', the variant's own block, its
-        'item_overrides', and the label - because a variant block is
-        pure tuning output with no hand-maintained content to preserve.
-        The backend tier is the one that is hand-written and therefore
-        only ever edited in place.
+        For model variants that genuinely disagree: two sets of weights
+        detect differently, so their tracking wants different settings.
+        At match_distance_multiplier 2.0 nudenet_v3's 640m was better on
+        both axes while 320n rejected every candidate, and with only a
+        backend tier that value could not be written.
         """
-        source = self.read()
-        backend_at = source.find( "'%s': {"%(backend_name) )
-        if backend_at < 0:
-            raise ConfigWriteError( "no detector_backend block for %r"%(backend_name) )
-        backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
-
-        # Direct children only: profiles has a 'variants' of its own, and
-        # it comes first in the text.
-        variants_at, variants_end = self._child_block( source, backend_at, backend_end, 'variants' )
-        if variants_at is None:
-            updated = self._insert_variants_block(
-                source, backend_at, backend_end, variant_name, label, key, value )
-        else:
-            variant_at, _variant_end = self._child_block(
-                source, variants_at, variants_end, variant_name )
-            if variant_at is None:
-                updated = self._insert_into_variants(
-                    source, variants_end, variant_name, label, key, value )
-            else:
-                updated = self._set_within_variant(
-                    source, variant_at, variant_name, label, key, value )
-
-        self._write_and_verify(
-            updated,
-            lambda: bu_detector.get_item_overrides( label, backend_name, variant_name ).get( key ),
-            value,
-            "detector_backend[%r]['variants'][%r]['item_overrides'][%r][%r]"%(
-                backend_name, variant_name, label, key ) )
+        self._check_backend( backend_name )
+        self._check_label( label )
+        self._write( ( 'detector_backend', backend_name, 'variants', variant_name, 'item_overrides',
+                       label, key ), value,
+                     lambda: bu_detector.get_item_overrides( label, backend_name, variant_name ).get( key ) )
 
     def set_profile_item_override( self, backend_name, profile_name, label, key, value ):
         """
-        Set one structure profile's value of one label's key.
-
         detector_backend[<backend>]['profiles']['variants'][<profile>]['item_overrides'][<label>][<key>]
 
         A profile's overrides win over the backend's for every file that
-        runs it, so this is where a value tuned on that profile's files
-        has to go. The profile block itself must already exist (profiles
-        are hand-written: a tuner inventing one would be selecting
-        footage nobody asked for); its item_overrides and the label's
-        block are created when missing. Profile blocks are written in a
-        compact style, '{ 'a': 1,' with later keys on continuation lines
-        and the closing brace after the last value, so keys are matched
-        anywhere in the block, not only at a line start.
+        runs it, so a value tuned on that profile's files goes here. The
+        profile must already exist: a tuner inventing one would be
+        selecting footage nobody asked for.
         """
-        source = self.read()
-        backend_at = source.find( "'%s': {"%( backend_name, ) )
-        if backend_at < 0:
-            raise ConfigWriteError( "no detector_backend block for %r"%( backend_name, ) )
-        backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
-        profiles_at, profiles_end = self._child_block( source, backend_at, backend_end, 'profiles' )
-        if profiles_at is None:
-            raise ConfigWriteError( "detector_backend[%r] has no 'profiles' block"%( backend_name, ) )
-        variants_at, variants_end = self._child_block( source, profiles_at, profiles_end, 'variants' )
-        if variants_at is None:
-            raise ConfigWriteError( "detector_backend[%r]['profiles'] has no 'variants'"%( backend_name, ) )
-        profile_at, profile_end = self._child_block( source, variants_at, variants_end, profile_name )
-        if profile_at is None:
+        self._check_backend( backend_name )
+        self._check_label( label )
+        if profile_name not in ( bu_detector.get_profiles( backend_name ).get( 'variants' ) or {} ):
             raise ConfigWriteError( "no structure profile %r for %r; profiles are written by hand"%(
                 profile_name, backend_name ) )
-        overrides_at, overrides_end = self._child_block( source, profile_at, profile_end, 'item_overrides' )
-        formatted = self._format( value )
-        if overrides_at is None:
-            updated = self._insert_before_close(
-                source, profile_end, "'item_overrides': { '%s': { '%s': %s } },  # set by auto_tune"%(
-                    label, key, formatted ) )
-        else:
-            label_at, label_end = self._child_block( source, overrides_at, overrides_end, label )
-            if label_at is None:
-                updated = self._insert_before_close(
-                    source, overrides_end, "'%s': { '%s': %s },  # set by auto_tune"%(
-                        label, key, formatted ) )
-            else:
-                open_at = source.index( '{', label_at )
-                pattern = re.compile( r"('%s'\s*:\s*)([^,\n}]+?)(\s*)(?=[,}\n])"%( re.escape( key ), ) )
-                # label_end + 1: the lookahead must see the closing brace.
-                matches = list( pattern.finditer( source, open_at, label_end + 1 ) )
-                if len( matches ) > 1:
-                    raise ConfigWriteError(
-                        "found %d entries for %r in profile %r's %r block"%(
-                            len( matches ), key, profile_name, label ) )
-                if matches:
-                    match = matches[0]
-                    updated = ( source[:match.start( 2 )] + formatted + source[match.end( 2 ):] )
-                else:
-                    updated = self._append_to_inline_block( source, open_at, label_end, key, formatted )
-
-        self._write_and_verify(
-            updated,
-            lambda: bu_detector.get_profile_item_overrides( profile_name, label, backend_name ).get( key ),
-            value,
-            "detector_backend[%r]['profiles']['variants'][%r]['item_overrides'][%r][%r]"%(
-                backend_name, profile_name, label, key ) )
-
-    def _child_block( self, source, parent_at, parent_end, name ):
-        """
-        (start, closing brace) of the dict value under key `name`, found
-        directly inside the block opened at parent_at, or (None, None).
-
-        Only DIRECT children count: a 'variants' nested deeper (a model
-        variants block, say) must not be mistaken for this one.
-        """
-        open_at = source.index( '{', parent_at )
-        depth = 0
-        position = open_at
-        pattern = re.compile( r"'%s'\s*:\s*\{"%( re.escape( name ), ) )
-        while position < parent_end:
-            character = source[position]
-            if character == '#':
-                position = source.find( '\n', position )
-                if position < 0:
-                    break
-                continue
-            if character in '\'"':
-                if depth == 1:
-                    match = pattern.match( source, position )
-                    if match:
-                        brace = match.end() - 1
-                        return position, self._matching_brace( source, brace )
-                closing = source.find( character, position + 1 )
-                position = closing + 1 if closing > 0 else parent_end
-                continue
-            if character == '{':
-                depth += 1
-            elif character == '}':
-                depth -= 1
-            position += 1
-        return None, None
-
-    def _insert_before_close( self, source, close_at, text ):
-        """Insert one entry on its own line just before the line holding close_at."""
-        line_start = source.rfind( '\n', 0, close_at ) + 1
-        before_brace = source[line_start:close_at]
-        if before_brace.strip():
-            # The brace shares a line with the last entry: give the entry
-            # and the brace lines of their own.
-            indent = self._indent_of_line( source, close_at ) + '    '
-            prefix = source[:close_at].rstrip()
-            comma = '' if prefix.endswith( ( ',', '{' ) ) else ','
-            return ( prefix + comma + '\n' + indent + text + '\n'
-                     + self._indent_of_line( source, close_at ) + source[close_at:] )
-        indent = before_brace + '    '
-        return source[:line_start] + indent + text + '\n' + source[line_start:]
-
-    def _append_to_inline_block( self, source, open_at, close_at, key, formatted ):
-        """
-        Add key as the last entry of a compact block: '{ 'a': 1,\n  'b': 2 }'.
-
-        The new key goes on its own line, aligned with the block's first
-        key, with a comma added after what was the last entry. The comment
-        naming its source would swallow the closing brace if it shared
-        that line, so the brace moves to the next line.
-        """
-        first_key = re.compile( r"\{\s*'" ).match( source, open_at )
-        if first_key:
-            line_start = source.rfind( '\n', 0, open_at ) + 1
-            column = first_key.end() - 1 - line_start
-        else:
-            column = len( self._indent_of_line( source, open_at ) ) + 4
-        prefix = source[:close_at].rstrip()
-        comma = '' if prefix.endswith( ( ',', '{' ) ) else ','
-        closing_indent = ' ' * max( column - 2, 0 )
-        return ( prefix + comma + '\n' + ' ' * column + "'%s': %s  # set by auto_tune\n"%( key, formatted )
-                 + closing_indent + source[close_at:] )
-
-    @staticmethod
-    def _matching_brace( source, open_at ):
-        depth = 0
-        for position in range( open_at, len( source ) ):
-            if source[position] == '{':
-                depth += 1
-            elif source[position] == '}':
-                depth -= 1
-                if depth == 0:
-                    return position
-        raise ConfigWriteError( "unbalanced braces in betaconfig.py" )
-
-    def _insert_variants_block( self, source, backend_at, backend_end,
-                                variant_name, label, key, value ):
-        indent = self._indent_of_line( source, backend_at ) + '    '
-        block = (
-            "%s'variants': {\n"
-            "%s    # Per-variant overrides, written by auto_tune. These merge\n"
-            "%s    # ON TOP of this backend's own item_overrides, so a variant only\n"
-            "%s    # names what it genuinely wants to differ on.\n"
-            "%s    '%s': {\n"
-            "%s        'item_overrides': {\n"
-            "%s            '%s': {\n"
-            "%s                '%s': %s,\n"
-            "%s            },\n"
-            "%s        },\n"
-            "%s    },\n"
-            "%s},\n"
-        )%( indent,
-            indent, indent, indent,
-            indent, variant_name, indent, indent, label,
-            indent, key, self._format( value ),
-            indent, indent, indent, indent )
-        insert_at = source.rfind( '\n', 0, backend_end ) + 1
-        return source[:insert_at] + block + source[insert_at:]
-
-    def _insert_into_variants( self, source, variants_end, variant_name, label, key, value ):
-        indent = self._indent_of_line( source, variants_end ) + '    '
-        block = (
-            "%s'%s': {\n"
-            "%s    'item_overrides': {\n"
-            "%s        '%s': {\n"
-            "%s            '%s': %s,  # set by auto_tune\n"
-            "%s        },\n"
-            "%s    },\n"
-            "%s},\n"
-        )%( indent, variant_name, indent, indent, label,
-            indent, key, self._format( value ),
-            indent, indent, indent )
-        insert_at = source.rfind( '\n', 0, variants_end ) + 1
-        return source[:insert_at] + block + source[insert_at:]
-
-    def _set_within_variant( self, source, variant_at, variant_name, label, key, value ):
-        variant_end = self._matching_brace( source, source.index( '{', variant_at ) )
-        overrides_at = source.find( "'item_overrides'", variant_at )
-        if overrides_at < 0 or overrides_at > variant_end:
-            indent = self._indent_of_line( source, variant_at ) + '    '
-            block = (
-                "%s'item_overrides': {\n"
-                "%s    '%s': {\n"
-                "%s        '%s': %s,  # set by auto_tune\n"
-                "%s    },\n"
-                "%s},\n"
-            )%( indent, indent, label, indent, key, self._format( value ),
-                indent, indent )
-            insert_at = source.rfind( '\n', 0, variant_end ) + 1
-            return source[:insert_at] + block + source[insert_at:]
-
-        overrides_end = self._matching_brace( source, source.index( '{', overrides_at ) )
-        label_at = source.find( "'%s': {"%(label), overrides_at )
-        if label_at < 0 or label_at > overrides_end:
-            indent = self._indent_of_line( source, overrides_at ) + '    '
-            block = (
-                "%s'%s': {\n"
-                "%s    '%s': %s,  # set by auto_tune\n"
-                "%s},\n"
-            )%( indent, label, indent, key, self._format( value ),
-                indent )
-            insert_at = source.rfind( '\n', 0, overrides_end ) + 1
-            return source[:insert_at] + block + source[insert_at:]
-
-        label_end = self._matching_brace( source, source.index( '{', label_at ) )
-        pattern = re.compile( r"(^\s*'%s'\s*:\s*)([^,\n]+)(,?)"%( re.escape( key ) ), re.M )
-        matches = list( pattern.finditer( source, label_at, label_end ) )
-        if len( matches ) > 1:
-            raise ConfigWriteError(
-                "found %d entries for %r inside %s's %r block"%(
-                    len( matches ), key, variant_name, label ) )
-        if matches:
-            match = matches[0]
-            return ( source[:match.start()] + match.group(1) + self._format( value )
-                     + ( match.group(3) or ',' ) + source[match.end():] )
-        return self._insert_item_override( source, label_at, label_end, key, value )
-
-    @staticmethod
-    def _indent_of_line( source, position ):
-        line_start = source.rfind( '\n', 0, position ) + 1
-        line = source[line_start:position]
-        return line[ : len( line ) - len( line.lstrip() ) ]
-
-    def _insert_item_override( self, source, start, end, key, value ):
-        """
-        Add a key as the last entry of a label's override block.
-
-        `end` is the offset of that block's closing brace. The new line
-        goes immediately before it, indented to match whatever the block
-        already uses, so the result reads as if it had been typed there.
-
-        Indentation is COPIED from an existing sibling rather than
-        assumed, because this file is hand-maintained and a tuner that
-        reformats it is a tuner people stop trusting with the file. A
-        block with no siblings to copy from falls back to the closing
-        brace's own indent plus four spaces.
-        """
-        block = source[start:end]
-        sibling = re.search( r"^([ \t]+)'[^']+'\s*:", block, re.M )
-        if sibling:
-            indent = sibling.group(1)
-        else:
-            brace_line_start = source.rfind( '\n', 0, end ) + 1
-            indent = source[brace_line_start:end] + '    '
-
-        line = "%s'%s': %s,  # set by auto_tune\n"%(
-            indent, key, self._format( value ) )
-
-        # Insert before the closing brace's own line, not before the
-        # brace character, so a block written as "}" on its own line
-        # keeps its shape.
-        insert_at = source.rfind( '\n', 0, end ) + 1
-        return source[:insert_at] + line + source[insert_at:]
+        self._write( ( 'detector_backend', backend_name, 'profiles', 'variants', profile_name,
+                       'item_overrides', label, key ), value,
+                     lambda: bu_detector.get_profile_item_overrides( profile_name, label, backend_name ).get( key ) )
 
     def set_module_scalar( self, name, value ):
-        """Set a top-level `name = value` assignment in betaconfig.py."""
-        source = self.read()
-        pattern = re.compile( r"^(%s\s*=\s*)([^\n#]+)"%( re.escape( name ) ), re.M )
-        matches = list( pattern.finditer( source ) )
-        if len( matches ) != 1:
-            raise ConfigWriteError(
-                "expected exactly one top-level '%s =' in betaconfig.py, found %d"%(
-                    name, len( matches ) ) )
-        match = matches[0]
-        trailing = match.group(2)
-        comment = ''
-        if '#' in trailing:
-            comment = '  ' + trailing[ trailing.index( '#' ): ].strip()
-        updated = ( source[:match.start()] + match.group(1) + self._format( value )
-                    + comment + source[match.end():] )
-        self._write_and_verify(
-            updated, lambda: getattr( betaconfig, name, None ), value, name )
-
-    def _locate_label_block( self, source, backend_name, label ):
-        """
-        The (start, end) offsets of one label's dict inside a backend's
-        item_overrides, so a key edit cannot stray into another label.
-        """
-        backend_at = source.find( "'%s': {"%(backend_name) )
-        if backend_at < 0:
-            raise ConfigWriteError( "no detector_backend block for %r in betaconfig.py"%(backend_name) )
-        backend_end = self._matching_brace( source, source.index( '{', backend_at ) )
-        # The backend's own item_overrides, a direct child: the first one
-        # in the text can be a structure profile's, which comes earlier,
-        # and a write there would tune quick_cut instead of the backend.
-        overrides_at, overrides_end = self._child_block(
-            source, backend_at, backend_end, 'item_overrides' )
-        if overrides_at is None:
-            raise ConfigWriteError(
-                "detector_backend[%r] has no 'item_overrides' block"%(backend_name) )
-        label_at, label_end = self._child_block( source, overrides_at, overrides_end, label )
-        if label_at is None:
-            raise ConfigWriteError(
-                "detector_backend[%r]['item_overrides'] has no %r block"%(backend_name, label) )
-        return ( label_at, label_end )
+        """A top-level setting."""
+        if not hasattr( betaconfig, name ):
+            raise ConfigWriteError( "%r is not a setting betaconfig.py has"%( name, ) )
+        self._write( ( name, ), value, lambda: getattr( betaconfig, name, None ) )
 
     @staticmethod
-    def _format( value ):
-        if isinstance( value, bool ):
-            return 'True' if value else 'False'
-        if isinstance( value, float ):
-            text = ( '%.6f'%(value) ).rstrip( '0' ).rstrip( '.' )
-            return text or '0'
-        return repr( value )
+    def _check_backend( backend_name ):
+        if not isinstance( betaconfig.detector_backend.get( backend_name ), dict ):
+            raise ConfigWriteError( "no detector_backend block for %r"%( backend_name, ) )
 
-    def _invalidate_bytecode( self ):
-        """
-        Drop any compiled copy of betaconfig before reloading it.
+    @staticmethod
+    def _check_label( label ):
+        if label not in bu_config._valid_class_names():
+            raise ConfigWriteError( "%r is not a label any detector knows"%( label, ) )
 
-        Python decides a cached .pyc is still valid by comparing the
-        source's mtime and SIZE. A config edit that replaces one value
-        with another of the same length - 27.0 for 40.5, say - within
-        the same second changes neither, so the interpreter serves the
-        stale bytecode and the reloaded module still holds the old
-        value. That is not a hypothetical: it is what this writer's own
-        verification caught on its first live run, and without the
-        verification it would have been a tuner that reported writing a
-        value the next stage could not see.
-        """
-        import importlib
-        importlib.invalidate_caches()
-        cache_path = getattr( betaconfig, '__cached__', None )
-        if cache_path and os.path.exists( cache_path ):
-            try:
-                os.remove( cache_path )
-            except OSError:
-                pass
-
-    def _write_and_verify( self, updated_source, resolve, expected, description ):
-        backup = self._backup()
-        with open( self.config_path, 'w', encoding='UTF-8' ) as fout:
-            fout.write( updated_source )
-
-        # Reload in THIS process so later stages measure the new value,
-        # and check the real resolver agrees. A file that parses but
-        # resolves to something else is the failure mode worth catching,
-        # and the only way to catch it is to ask the resolver rather
-        # than to trust the write.
-        import importlib
-        self._invalidate_bytecode()
-        try:
-            importlib.reload( betaconfig )
-        except Exception as err:
-            shutil.copy2( backup, self.config_path )
-            self._invalidate_bytecode()
-            importlib.reload( betaconfig )
-            bu_config.invalidate_config_caches()
-            raise ConfigWriteError(
-                "writing %s produced a betaconfig.py that will not import (%s); the original "
-                "has been restored from %s"%( description, err, os.path.basename( backup ) ) )
-
-        bu_config.invalidate_config_caches()
-        actual = resolve()
-        if actual is None or abs( float( actual ) - float( expected ) ) > 1e-9:
-            shutil.copy2( backup, self.config_path )
-            self._invalidate_bytecode()
-            importlib.reload( betaconfig )
-            bu_config.invalidate_config_caches()
-            raise ConfigWriteError(
-                "wrote %s = %r but the resolver reports %r; the original has been restored "
-                "from %s"%( description, expected, actual, os.path.basename( backup ) ) )
+    def _backup( self, text ):
+        stamp = time.strftime( '%Y%m%d_%H%M%S' )
+        directory = self.backup_dir or os.path.dirname( self.local_path )
+        os.makedirs( directory, exist_ok=True )
+        base = os.path.basename( self.local_path )
+        target = os.path.join( directory, '%s.%s.bak'%( base, stamp ) )
+        suffix = 0
+        while os.path.exists( target ):
+            suffix += 1
+            target = os.path.join( directory, '%s.%s.%d.bak'%( base, stamp, suffix ) )
+        with open( target, 'w', encoding='UTF-8' ) as fout:
+            fout.write( text )
+        self.backups.append( target )
         if self.logger:
-            self.logger.info( "config: %s = %s"%( description, self._format( expected ) ) )
+            self.logger.debug( "local config backed up to %s"%( target, ) )
+
+    def _write( self, path, value, resolve ):
+        import betautils_local as bu_local
+        description = bu_local.format_setting_path( path )
+        if not self.local_path:
+            raise ConfigWriteError( "the local config is turned off (%s=none), so %s has nowhere to "
+                                    "go"%( bu_local.ENV_VAR, description ) )
+        existed = os.path.isfile( self.local_path )
+        before = self.read()
+        try:
+            updated = bu_local.edit_text( before or bu_local.template_text(), { path: value },
+                                          comment=self.comment )
+        except ValueError as err:
+            raise ConfigWriteError( "cannot edit %s: %s"%( self.local_path, err ) )
+        # The written file must say what was decided: read it back the
+        # way betaconfig.py's hook will, not the way it was meant.
+        namespace = vars( betaconfig )
+        entries, problems = bu_local.parse( updated, os.path.basename( self.local_path ) )
+        _updates, _new, resolve_problems = bu_local.resolve( entries, namespace )
+        if problems or resolve_problems:
+            raise ConfigWriteError( "the edited %s would not load: %s"%(
+                self.local_path, '; '.join( problems + resolve_problems ) ) )
+        written = dict( ( name, item ) for name, item, _line in entries ).get( path[0], bu_local.MISSING )
+        for part in path[1:]:
+            written = written.get( part, bu_local.MISSING ) if isinstance( written, dict ) else bu_local.MISSING
+        if written != value:
+            raise ConfigWriteError( "the edited %s holds %r for %s, not %r"%(
+                self.local_path, written, description, value ) )
+
+        errors_before = set( bu_config._collect_validation_errors() )
+        saved = copy.deepcopy( namespace.get( path[0] ) )
+        if existed:
+            self._backup( before )
+        bu_local.write_text( self.local_path, updated )
+        bu_local._set( namespace, path, copy.deepcopy( value ) )
+        bu_config.invalidate_config_caches()
+
+        actual = resolve()
+        new_errors = [ error for error in bu_config._collect_validation_errors()
+                       if error not in errors_before ]
+        if not _same_value( actual, value ) or new_errors:
+            if existed:
+                bu_local.write_text( self.local_path, before )
+            else:
+                bu_local.write_text( self.local_path, bu_local.template_text() )
+            namespace[ path[0] ] = saved
+            bu_config.invalidate_config_caches()
+            if new_errors:
+                raise ConfigWriteError( "%s = %r fails validation (%s); %s is as it was"%(
+                    description, value, '; '.join( new_errors ), self.local_path ) )
+            raise ConfigWriteError( "wrote %s = %r but the resolver reports %r; %s is as it was"%(
+                description, value, actual, self.local_path ) )
+        if self.logger:
+            self.logger.info( "config: %s = %r (in %s)"%( description, value, self.local_path ) )
+
+
+def _same_value( actual, expected ):
+    if isinstance( expected, ( int, float ) ) and not isinstance( expected, bool ) \
+            and isinstance( actual, ( int, float ) ) and not isinstance( actual, bool ):
+        return abs( float( actual ) - float( expected ) ) <= 1e-9
+    return actual == expected
 
 
 # ---------------------------------------------------------------------------

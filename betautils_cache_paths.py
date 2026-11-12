@@ -341,11 +341,7 @@ def censor_identity( backend_name=None ):
         # render and reports it as the new result. Caught by
         # tests/test_censor_key_coverage.py on a real tuned config, where
         # all three censored labels pinned position_smoothing.
-        'global_defaults': {
-            name: getattr( betaconfig, name )
-            for name in sorted( dir( betaconfig ) )
-            if name.startswith( 'default_' ) and not callable( getattr( betaconfig, name ) )
-        },
+        'global_defaults': _global_defaults_identity(),
         'watermark':                bool( getattr( betaconfig, 'enable_betasuite_watermark', False ) ),
         'debug_overlay':            bool( getattr( betaconfig, 'debug_mode', 0 ) & 1 ),
 
@@ -403,6 +399,36 @@ def censor_identity( backend_name=None ):
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
     return identity
+
+
+def _defaults_keyed_once_changed():
+    """
+    { name: the value the code used before betaconfig.py listed it }.
+
+    These were read with a code fallback, then listed in betaconfig.py at
+    that same value so they can be overridden. Every default_* name is
+    keyed, so listing them moved the censor key and would have
+    re-rendered every finished output with nothing about it changed. Each
+    is keyed only once it differs from that value.
+    """
+    import betautils_track as bu_track   # deferred: bu_track imports bu_config
+    return { 'default_confirm_score': None,
+             'default_size_smoothing': None,
+             'default_geometry_action': bu_track.DEFAULT_GEOMETRY_ACTION }
+
+
+def _global_defaults_identity():
+    """Every default_* setting in betaconfig, as censor_identity keys it."""
+    unchanged = _defaults_keyed_once_changed()
+    keyed = {}
+    for name in sorted( dir( betaconfig ) ):
+        if not name.startswith( 'default_' ) or callable( getattr( betaconfig, name ) ):
+            continue
+        value = getattr( betaconfig, name )
+        if name in unchanged and value == unchanged[name]:
+            continue
+        keyed[name] = value
+    return keyed
 
 
 def censor_uses_feathered_shape( per_label ):

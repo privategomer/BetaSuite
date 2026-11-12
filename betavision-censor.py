@@ -24,6 +24,8 @@ import betaconst
 import betautils_vision as bu_vision
 import betautils_censor as bu_censor
 import betautils_reverse as bu_reverse
+import betautils_config as bu_config
+import betautils_log as bu_log
 
 
 def open_detection_shared_memory():
@@ -221,6 +223,7 @@ def main():
     # Reverse mode is not built for the live path yet (plan phase 3). Run
     # here, it would draw only the censored windows and leave the rest of
     # the screen clear: the largest reveal reverse mode can make.
+    bu_config.exit_if_nothing_to_render( bu_log.get_logger() )
     if bu_reverse.enabled():
         raise SystemExit( "betavision does not support reverse mode yet, and would show the screen "
                           "unobscured. Set betaconfig.reverse['enabled'] = False to use betavision." )

@@ -297,12 +297,14 @@ class TestValidation( unittest.TestCase ):
 
     def setUp( self ):
         self._saved = copy.deepcopy( betaconfig.detector_backend )
+        self._saved_items = list( betaconfig.items_to_censor )
         self.backend = betaconfig.detector_backend['selected']
         betaconfig.detector_backend = copy.deepcopy( betaconfig.detector_backend )
         bu_config.invalidate_config_caches()
 
     def tearDown( self ):
         betaconfig.detector_backend = self._saved
+        betaconfig.items_to_censor = self._saved_items
         bu_config.invalidate_config_caches()
 
     def _errors_for( self, promotion ):
@@ -334,11 +336,13 @@ class TestValidation( unittest.TestCase ):
         rule = { 'exposed_vulva': [ { 'from': 'covred_vulva' } ] }
         self.assertTrue( self._errors_for( rule ) )
 
-    def test_an_uncensored_target_is_an_error( self ):
-        # Relabelling into a label nothing renders deletes the source's
-        # censor if the source was censored.
-        rule = { 'exposed_anus': [ { 'from': 'covered_vulva' } ] }
-        self.assertTrue( self._errors_for( rule ) )
+    def test_an_uncensored_target_is_an_error_only_when_the_source_is_censored( self ):
+        # Relabelling a censored label into one nothing renders deletes
+        # its censor. With the source uncensored too nothing is lost, and
+        # treating that as an error stopped every run of an all-off config.
+        betaconfig.items_to_censor = [ 'exposed_breast' ]
+        self.assertTrue( self._errors_for( { 'exposed_anus': [ { 'from': 'exposed_breast' } ] } ) )
+        self.assertFalse( self._errors_for( { 'exposed_anus': [ { 'from': 'covered_vulva' } ] } ) )
 
     def test_an_out_of_range_threshold_is_an_error( self ):
         rule = { 'exposed_vulva': [ { 'from': 'covered_vulva', 'min_prob': 30 } ] }

@@ -19,14 +19,18 @@ around actually re-rendering and watching the output for this kind of
 question.
 
 What this script does, once per variant:
-  1. Rewrites betaconfig.py's item_overrides['exposed_breast']['censor_style']
-     and/or default_position_smoothing to the variant's values (always
-     computed fresh from the REAL original file content, never cumulative
-     from the previous variant's edit).
-  2. Validates the rewritten file (ast.parse, then betautils_config.
-     validate_config()) before ever touching betatv.py - a variant that
-     fails validation is skipped (logged, not silently ignored) rather
-     than aborting the whole run.
+  1. Writes a local config for the variant: your betaconfig_local.py
+     with item_overrides['exposed_breast']['censor_style'] and/or
+     default_position_smoothing set to the variant's values, into
+     ../bar_smoothing_test_results/<variant_name>.betaconfig_local.py.
+     betaconfig.py and your own betaconfig_local.py are never written:
+     betatv.py reads the variant's file through BETASUITE_LOCAL_CONFIG.
+     This used to rewrite betaconfig.py in place and restore it after,
+     so a crash or a killed run left the shipped file on a test variant.
+  2. Validates the variant (betautils_config.validate_config() with that
+     file) before ever touching betatv.py - a variant that fails
+     validation is skipped (logged, not silently ignored) rather than
+     aborting the whole run.
   3. Quarantines (moves, never deletes) any existing preview output for
      this video already sitting in the censored folder. This matters even
      for variants that only change censor_style, and is CRITICAL for the
@@ -50,17 +54,14 @@ What this script does, once per variant:
      ../bar_smoothing_test_results/<variant_name>.mp4 - the original stays
      in the normal censored folder too, this just also gives you one
      clearly-labeled copy per variant, side by side, for easy comparison.
-  6. Restores betaconfig.py to its real original content, every time,
-     whether the variant succeeded, failed, or was skipped.
 
-At the very end (or if you Ctrl-C partway through), betaconfig.py is
-guaranteed back to byte-for-byte what it was before this script ran -
-review the final log line confirming that rather than just assuming it.
+Nothing to restore afterwards, whether a variant succeeded, failed, was
+skipped or the run was interrupted: no config file was edited.
 
 Prerequisite: exactly one video under ../uncensored_vids (this script
 tests against a single file on purpose - see the conversation this was
 built from). picture_sizes/video_censor_fps/min_prob come from whatever
-betaconfig.py currently has live for exposed_breast/exposed_vulva - the
+your config currently has live for exposed_breast/exposed_vulva - the
 first variant run will do real neural-net detection once (if no matching
 cache exists yet for this exact preview window) and every variant after
 that reuses the same cache (censor_style/position_smoothing changes never
@@ -80,7 +81,6 @@ hardcoded here.
 import glob
 import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -96,8 +96,6 @@ SCRIPT_DIR = os.path.dirname( os.path.abspath( __file__ ) )
 # still need to be resolved/run relative to the app root, not to
 # tools/tuning/.
 BASE_DIR = os.path.abspath( os.path.join( SCRIPT_DIR, '..', '..' ) )
-BETACONFIG_PATH = os.path.join( BASE_DIR, 'betaconfig.py' )
-BACKUP_PATH = BETACONFIG_PATH + '.bar_test_backup'
 RESULTS_DIR = os.path.join( BASE_DIR, '..', 'bar_smoothing_test_results' )
 QUARANTINE_DIR = os.path.join( BASE_DIR, '..', 'bar_smoothing_test_quarantine' )
 
@@ -129,97 +127,48 @@ def _setup_logging():
     return logger
 
 
-log = _setup_logging()
+# Handlers are attached in main(): importing this module (a test does)
+# must not write into the real output/logs.
+log = logging.getLogger( 'bar_smoothing_test' )
 
 
-def _read_original_betaconfig():
-    if os.path.exists( BACKUP_PATH ):
-        log.error( "%s already exists - this means an earlier run of this script did not finish cleanly "
-                   "(crashed, was killed, or the machine restarted mid-run) and betaconfig.py may currently "
-                   "be sitting on a TEST VARIANT, not your real config. Refusing to proceed automatically: "
-                   "compare betaconfig.py against %s yourself, restore whichever is actually correct, delete "
-                   "%s once you've confirmed betaconfig.py is right, then re-run this script."%(
-                       BACKUP_PATH, BACKUP_PATH, BACKUP_PATH ) )
-        sys.exit(1)
-    with open( BETACONFIG_PATH, 'r', encoding='UTF-8' ) as f:
-        text = f.read()
-    with open( BACKUP_PATH, 'w', encoding='UTF-8' ) as f:
-        f.write( text )
-    log.debug( "backed up current betaconfig.py to %s before making any changes"%(BACKUP_PATH) )
-    return text
+def _local_config_text():
+    """Your local config's text (betaconfig_local.py, or BETASUITE_LOCAL_CONFIG's file), or ''."""
+    sys.path.insert( 0, BASE_DIR )
+    import betautils_local as bu_local
+    path = bu_local.configured_path()
+    if path and os.path.isfile( path ):
+        with open( path, 'r', encoding='UTF-8' ) as handle:
+            return handle.read()
+    return ''
 
 
-def _restore_betaconfig( original_text ):
-    with open( BETACONFIG_PATH, 'w', encoding='UTF-8' ) as f:
-        f.write( original_text )
-    with open( BETACONFIG_PATH, 'r', encoding='UTF-8' ) as f:
-        written_back = f.read()
-    if written_back != original_text:
-        log.error( "betaconfig.py restore did not verify byte-for-byte after writing - "
-                   "DO NOT trust betaconfig.py right now. The untouched original is preserved at %s - "
-                   "copy it over betaconfig.py by hand."%(BACKUP_PATH) )
-        sys.exit(1)
-    log.debug( "betaconfig.py restored and verified against the backup" )
-
-
-CENSOR_STYLE_PATTERN = re.compile(
-    r"(    'exposed_breast': \{\n        'censor_shape': 'circle',\n        'censor_style': \[\n)(.*?)(\n        \],\n)",
-    re.S )
-SMOOTHING_PATTERN = re.compile( r'^default_position_smoothing = [0-9.]+(\s*#.*)?$', re.M )
-
-
-def _format_style_entry( entry ):
-    parts = []
-    for key in ( 'type', 'shape', 'color', 'merge', 'span_extend', 'thickness', 'feather', 'weight', 'width_area_safety', 'height_area_safety' ):
-        if key in entry:
-            parts.append( "%r: %r"%(key, entry[key]) )
-    return( "            { %s },"%(", ".join( parts )) )
-
-
-def build_variant_text( original_text, variant ):
-    text = original_text
-
+def build_variant_text( base_text, variant ):
+    """The local config for one variant: base_text with its values set, as local_config.py set would."""
+    sys.path.insert( 0, BASE_DIR )
+    import betautils_local as bu_local
+    updates = {}
     if variant.get( 'censor_style' ) is not None:
-        m = CENSOR_STYLE_PATTERN.search( text )
-        if not m:
-            raise RuntimeError(
-                "could not find item_overrides['exposed_breast']['censor_style'] in betaconfig.py at its "
-                "expected anchor - betaconfig.py's structure has changed since this script was written "
-                "against it. Ask Claude to regenerate run_bar_smoothing_test.py against the current betaconfig.py." )
-        new_body = "\n".join( _format_style_entry( e ) for e in variant['censor_style'] )
-        text = text[:m.start()] + m.group(1) + new_body + m.group(3) + text[m.end():]
-
+        updates[ ( 'item_overrides', 'exposed_breast', 'censor_style' ) ] = list( variant['censor_style'] )
     if variant.get( 'position_smoothing' ) is not None:
-        m = SMOOTHING_PATTERN.search( text )
-        if not m:
-            raise RuntimeError(
-                "could not find default_position_smoothing in betaconfig.py at its expected anchor - "
-                "betaconfig.py's structure has changed since this script was written against it. "
-                "Ask Claude to regenerate run_bar_smoothing_test.py against the current betaconfig.py." )
-        comment = m.group(1) or "  # 0-1: lower = smoother, higher = snappier/more jitter"
-        replacement = "default_position_smoothing = %s%s"%(variant['position_smoothing'], comment)
-        text = text[:m.start()] + replacement + text[m.end():]
-
-    return text
+        updates[ ( 'default_position_smoothing', ) ] = variant['position_smoothing']
+    try:
+        return bu_local.edit_text( base_text or bu_local.template_text(), updates,
+                                   comment='bar smoothing variant %s'%( variant['name'], ) )
+    except ValueError as err:
+        raise RuntimeError( "your local config cannot be edited: %s"%( err, ) )
 
 
-def _validate_betaconfig():
-    # two separate subprocess checks, cheapest/most-diagnostic first: a
-    # syntax error should never even try to import betaconfig (clearer
-    # error, no chance of a partial/confusing traceback from deeper in
-    # validate_config)
-    syntax_check = subprocess.run(
-        [ sys.executable, '-c', 'import ast; ast.parse(open("betaconfig.py").read())' ],
-        cwd=BASE_DIR, capture_output=True, text=True )
-    if syntax_check.returncode != 0:
-        return( False, "betaconfig.py has a syntax error after patching:\n%s"%(syntax_check.stderr) )
+def _variant_environment( local_path ):
+    return dict( os.environ, BETASUITE_LOCAL_CONFIG=local_path )
 
+
+def _validate_variant( local_path ):
     config_check = subprocess.run(
         [ sys.executable, '-c', 'import betautils_config as c; c.validate_config(); print("OK")' ],
-        cwd=BASE_DIR, capture_output=True, text=True )
+        cwd=BASE_DIR, capture_output=True, text=True, env=_variant_environment( local_path ) )
     if config_check.returncode != 0 or 'OK' not in config_check.stdout:
-        return( False, "betaconfig.py failed validate_config() after patching:\n%s%s"%(config_check.stdout, config_check.stderr) )
-
+        return( False, "the variant failed validate_config():\n%s%s"%( config_check.stdout, config_check.stderr ) )
     return( True, None )
 
 
@@ -283,12 +232,13 @@ def _collect_fresh_output( file_hash, variant_name ):
     return( dest )
 
 
-def _run_betatv_preview( preview_start_seconds, preview_seconds ):
+def _run_betatv_preview( preview_start_seconds, preview_seconds, local_path ):
     cmd = [ sys.executable, 'betatv.py', '--preview', 'on',
             '--preview-start-seconds', str(preview_start_seconds),
             '--preview-seconds', str(preview_seconds) ]
     log.info( "running: %s"%(" ".join(cmd)) )
-    proc = subprocess.Popen( cmd, cwd=BASE_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1 )
+    proc = subprocess.Popen( cmd, cwd=BASE_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                             env=_variant_environment( local_path ) )
     for line in proc.stdout:
         log.log( TRACE, "betatv.py: %s"%(line.rstrip()) )
     returncode = proc.wait()
@@ -298,6 +248,7 @@ def _run_betatv_preview( preview_start_seconds, preview_seconds ):
 
 
 def main():
+    _setup_logging()
     try:
         import bar_smoothing_variants
     except ImportError as err:
@@ -312,14 +263,12 @@ def main():
                 "video's real duration; if 10s isn't a representative point in the clip, Ctrl-C now and "
                 "re-run with PREVIEW_START_SECONDS=<seconds> set to something better" )
 
-    original_text = _read_original_betaconfig()
+    base_text = _local_config_text()
 
     try:
         video_path, video_name = _find_single_uncensored_video()
     except Exception as err:
         log.error( str(err) )
-        _restore_betaconfig( original_text )
-        os.remove( BACKUP_PATH )
         sys.exit(1)
     log.info( "testing against: %s"%(video_name) )
 
@@ -329,54 +278,46 @@ def main():
     log.debug( "file_hash=%s"%(file_hash) )
 
     results = []
-    try:
-        for idx, variant in enumerate( bar_smoothing_variants.VARIANTS ):
-            name = variant['name']
-            log.info( "" )
-            log.info( "=== variant %d/%d: %s ==="%(idx+1, len(bar_smoothing_variants.VARIANTS), name) )
-            log.info( variant.get( 'description', '(no description)' ) )
-            t0 = time.time()
-
-            try:
-                patched_text = build_variant_text( original_text, variant )
-            except RuntimeError as err:
-                log.error( "skipping %s: %s"%(name, err) )
-                results.append( ( name, 'skipped', str(err) ) )
-                continue
-
-            with open( BETACONFIG_PATH, 'w', encoding='UTF-8' ) as f:
-                f.write( patched_text )
-
-            ok, reason = _validate_betaconfig()
-            if not ok:
-                log.error( "skipping %s - patched betaconfig.py failed validation: %s"%(name, reason) )
-                results.append( ( name, 'skipped', reason ) )
-                _restore_betaconfig( original_text )
-                continue
-
-            _quarantine_existing_previews( file_hash, name )
-
-            success = _run_betatv_preview( preview_start_seconds, preview_seconds )
-            if not success:
-                results.append( ( name, 'betatv.py failed', None ) )
-                _restore_betaconfig( original_text )
-                continue
-
-            dest = _collect_fresh_output( file_hash, name )
-            _restore_betaconfig( original_text )
-
-            elapsed = time.time() - t0
-            if dest:
-                log.info( "%s done in %.1fs"%(name, elapsed) )
-                results.append( ( name, 'ok', dest ) )
-            else:
-                results.append( ( name, 'no output found', None ) )
-    finally:
-        _restore_betaconfig( original_text )
-        if os.path.exists( BACKUP_PATH ):
-            os.remove( BACKUP_PATH )
+    for idx, variant in enumerate( bar_smoothing_variants.VARIANTS ):
+        name = variant['name']
         log.info( "" )
-        log.info( "betaconfig.py confirmed restored to its original content - backup file removed" )
+        log.info( "=== variant %d/%d: %s ==="%(idx+1, len(bar_smoothing_variants.VARIANTS), name) )
+        log.info( variant.get( 'description', '(no description)' ) )
+        t0 = time.time()
+
+        try:
+            variant_text = build_variant_text( base_text, variant )
+        except RuntimeError as err:
+            log.error( "skipping %s: %s"%(name, err) )
+            results.append( ( name, 'skipped', str(err) ) )
+            continue
+
+        os.makedirs( RESULTS_DIR, exist_ok=True )
+        local_path = os.path.abspath( os.path.join( RESULTS_DIR, '%s.betaconfig_local.py'%( name, ) ) )
+        with open( local_path, 'w', encoding='UTF-8' ) as f:
+            f.write( variant_text )
+        log.info( "variant config: %s"%( local_path, ) )
+
+        ok, reason = _validate_variant( local_path )
+        if not ok:
+            log.error( "skipping %s - %s"%(name, reason) )
+            results.append( ( name, 'skipped', reason ) )
+            continue
+
+        _quarantine_existing_previews( file_hash, name )
+
+        success = _run_betatv_preview( preview_start_seconds, preview_seconds, local_path )
+        if not success:
+            results.append( ( name, 'betatv.py failed', None ) )
+            continue
+
+        dest = _collect_fresh_output( file_hash, name )
+        elapsed = time.time() - t0
+        if dest:
+            log.info( "%s done in %.1fs"%(name, elapsed) )
+            results.append( ( name, 'ok', dest ) )
+        else:
+            results.append( ( name, 'no output found', None ) )
 
     log.info( "" )
     log.info( "=== summary ===" )

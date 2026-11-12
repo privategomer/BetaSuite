@@ -353,20 +353,47 @@ def get_class_suppression( backend_name=None ):
     return {}
 
 
-def get_class_suppression_refused( backend_name=None ):
+# Suppression pairs ('label<-suppressor') never proposed, for any backend
+# or user, each with the reason. Every one is two real body parts that
+# share a spot. The bench sees only overlap and scores, so it cannot tell
+# these from a mislabel, and a rule here removes the censor exactly when
+# it is needed. They shipped as config once, which left a user's tuner
+# one deleted line away from proposing them; the anatomy is the same for
+# everyone, so it lives here. Validation warns if a hand-written rule
+# names one.
+UNSAFE_SUPPRESSION_PAIRS = {
+    'exposed_vulva<-exposed_penis':
+        "in penetration the penis sits on the vulva; removing this rule fixed a missed censor",
+    'exposed_vulva<-face_femme':
+        "in oral sex a face beside the vulva is two real things, and the rule removed the vulva censor then",
+    'exposed_vulva<-exposed_buttocks':
+        "anatomy, not a competing claim: about 90% of vulva detections would sit behind the gate",
+    'exposed_vulva<-exposed_feet':
+        "the same shape as exposed_buttocks, smaller",
+}
+
+
+def get_configured_class_suppression_refused( backend_name=None ):
     """
-    Suppression pairs ('label<-suppressor') a person has decided against.
-
-    The bench suggests a rule for every pair whose overlaps form a
-    same-spot cluster, and it cannot tell a mislabel from two body parts
-    that genuinely share a spot (exposed_vulva<-exposed_penis during
-    penetration). A pair named here is never proposed as an addition
-    again, so a decision made once stays made. It changes nothing a run
-    renders.
-
-    Resolution: backend block -> detector_backend['defaults'] -> [].
+    The person's own refused pairs: class_suppression_refused, resolved
+    backend block -> detector_backend['defaults'] -> [].
     """
     return list( resolve_backend_setting( 'class_suppression_refused', backend_name, None ) or [] )
+
+
+def get_class_suppression_refused( backend_name=None ):
+    """
+    Every suppression pair never to propose: UNSAFE_SUPPRESSION_PAIRS,
+    then the person's own (class_suppression_refused), without repeats.
+
+    The bench suggests a rule for every pair whose overlaps form a
+    same-spot cluster. A pair named here is never proposed as an
+    addition, so a decision made once stays made. It changes nothing a
+    run renders.
+    """
+    refused = list( UNSAFE_SUPPRESSION_PAIRS )
+    return refused + [ pair for pair in get_configured_class_suppression_refused( backend_name )
+                       if pair not in refused ]
 
 
 def get_class_promotion( backend_name=None ):

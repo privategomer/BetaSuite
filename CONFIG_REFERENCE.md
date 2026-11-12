@@ -122,65 +122,246 @@ changes rendered output, add it to `censor_identity()` and to that file.
 
 ---
 
-## Machine config: this computer's hardware settings
+## Local config: your own settings
 
-`betaconfig.py` describes what to censor and how. A few of its settings
-describe the computer instead: which encoder its GPU has, how many
-render workers its memory holds, the detection batch its GPU likes.
-Those have no value that suits every machine, and while they lived only
-in `betaconfig.py` one machine's tuning (NVENC at cq 21) became every
-checkout's default, and pulling a branch could undo a machine's tuning.
+`betaconfig.py` is the shipped defaults. Do not edit it. Your own
+values (this computer's encoder, a terminal palette, a batch size) go in
+**`betaconfig_local.py`**, beside `betaconfig.py` in the repo folder.
+Git ignores it, a fresh clone has none (setup creates one holding only
+a header), and it holds only the settings you changed. The one rule:
 
-So they can also be set in **`../resources/betaconfig_machine.py`**,
-beside the models and footage, which the repo never touches. A setting
-there replaces the same setting in `betaconfig.py` on that machine only;
-anything it leaves out uses `betaconfig.py`'s value. Precedence, lowest
-first:
+> Copy a setting into `betaconfig_local.py` to change it. Delete the
+> line to go back to the default.
 
-    betaconfig.py  <  ../resources/betaconfig_machine.py  <  command-line flags
+Why: the same person is often both developer and user, and personal
+values in `betaconfig.py` were either committed as everyone's defaults
+(NVENC at cq 21 once was) or cleaned out of every commit by hand. The
+local config replaces the old machine config
+(`../resources/betaconfig_machine.py`), which split settings by "is it
+hardware". The split that matters is "is it mine or shipped":
+`console_palette` is a taste, not a property of the machine, and had
+nowhere to go.
 
-**What it may set.** Hardware settings only: `gpu_enabled`,
-`cuda_device_id`, `nn_batch_size` per backend (`detector_backend =
-{ 'nudenet_v3': { 'nn_batch_size': 8 } }`, `'defaults'` for every
-backend), the person backend's `batch_size` the same way,
-`detection_prefetch_frames`, `render_workers`, `render_decode_threads`,
-`render_worker_mb_per_megapixel`, `render_memory_reserve_mb`,
-`render_chunk_seconds`, `encode_video_codec`, `encode_preset`,
-`encode_crf`, `preview_encode_preset`, `structure_scan_workers`, and the
-BetaVision screen region (`vision_cap_*`). Anything else is refused by
-name. That is deliberate: a detection setting that differs per machine
-makes two machines' output, and every A/B comparison between them,
-disagree for a reason no log explains.
+Precedence, lowest first:
+
+    betaconfig.py  <  betaconfig_local.py  <  command-line flags
+
+**What it may set.** Any setting `betaconfig.py` has. A name it does not
+have is an error with the closest real name (`render_worker` gets "did
+you mean render_workers?"), since nothing would read it. That includes
+tuning settings: a local `min_prob` is allowed. The cost is that two
+people's runs can now differ for a reason outside git, so the
+difference is made visible instead of banned (see below).
+
+**How a value merges.**
+
+| the local value is | effect |
+|---|---|
+| a number, string, `None`, list or tuple | replaces the default whole |
+| a dict, over a dict in `betaconfig.py` | merges key by key, at every depth |
+| a complete censor style (a dict with a `'type'` key) | replaces the default style whole |
+
+So `detector_backend = { 'nudenet_v3': { 'nn_batch_size': 8 } }`
+changes one number and keeps the rest of that block, and
+`default_censor_style = { 'strength': 80 }` tweaks one key, while
+`default_censor_style = { 'type': 'pixel', 'pattern': 'mosaic',
+'strength': 20 }` replaces the style, so a blur's `'method'` never
+carries into a pixel style. A list such as a `censor_style` list or
+`items_to_censor` is always replaced whole.
+
+A key inside a dict that `betaconfig.py`'s dict does not have is merged
+in. Where validation does not check that block's keys (a detector
+backend's own block, `person_backend`), it is warned about, with the
+closest existing key when there is one, since a misspelt key there would
+otherwise be silently ignored. Inside `item_overrides`, reverse mode's
+`windows` and `overrides`, validation already rejects a misspelt key, so
+a new label or per-label key there (the tuners write them) is not warned
+about; `tests/test_shipped_defaults.py` checks each of those maps is
+validated.
+
+A key cannot be removed from one of `betaconfig.py`'s dicts here; set
+it to its off value instead.
+
+**Visibility.** Every validated run logs one info line,
+`local overrides active: encode_crf=21, console_palette='deuteranopia',
+detector_backend['nudenet_v3']['nn_batch_size']=8 (from ...)`, with a
+value shown when it is short (40 characters or fewer) and its kind
+otherwise (`<list of 4>`). The overrides change the effective values
+that the cache keys and the stats record read, so a local
+`encode_crf` changes the encode key, a local per-label tracking setting
+(`min_track_hits`, say) the censor key, and a local `global_min_prob`
+the detection key, exactly as editing `betaconfig.py` would
+(`tests/test_local_config.py` checks each). Each stats row also lists the overridden names in
+`local_overrides`.
 
 **Format.** Plain `name = value` lines in Python syntax, read with
-`ast.literal_eval` and never executed. A line that is not allowed, or a
-file that does not parse, is skipped and printed when anything imports
+`ast.literal_eval` and never executed. A line that cannot be applied (an
+unknown name, an expression, an `import`, a setting set twice) or a file
+that does not parse is skipped and printed when anything imports
 `betaconfig`, and stops `betatv.py` at validation with the file's name
-and line. Every validated run logs one line naming the file and what it
-set.
+and line. Importing never fails because of it, since every tool imports
+`betaconfig`, including the one that explains the problem.
 
 **Working with it.**
 
 ```
-python tools/setup/machine_config.py              every hardware setting, its value, and where it comes from
-python tools/setup/machine_config.py init         a new file, every setting commented out at betaconfig.py's value
-python tools/setup/machine_config.py set encode_video_codec=h264_nvenc encode_preset=p5 encode_crf=21
-python tools/setup/machine_config.py set detector_backend.nudenet_v3.nn_batch_size=8
-python tools/setup/machine_config.py unset encode_crf
+python tools/setup/local_config.py                every setting, its value, and where it came from (default, local, CLI)
+python tools/setup/local_config.py show --backend retinanet_v2 --render-workers 3
+                                                  the same with betatv.py's flags applied on top
+python tools/setup/local_config.py init           an empty file with a short header (never rewrites one)
+python tools/setup/local_config.py set console_palette=deuteranopia encode_crf=21
+python tools/setup/local_config.py set detector_backend.nudenet_v3.nn_batch_size=8
+python tools/setup/local_config.py unset encode_crf
+python tools/setup/local_config.py check          exit 1 if the file has a problem
+python tools/setup/local_config.py migrate        move the old machine config in
 tools/bench/tune_machine.sh                        measure this machine, then offer to write the results
 ```
 
 `set` checks a change the way `betatv.py` would and writes nothing if it
-would fail; edits keep your own lines and comments. Setup creates the
-file and sets `gpu_enabled` in it to match the install.
+would fail; edits keep your own lines and comments, and `unset` deletes
+the line. A dotted name sets one key inside a dict setting. Setup
+creates the file (header only) and sets `gpu_enabled` in it when the
+install does not match `betaconfig.py`'s value. Setup, `tune_machine.sh`
+and `migrate` write under a `# --- hardware (written by tune_machine)`
+header, so their lines stay apart from yours. `auto_tune.py --apply`
+writes its accepted values here too (comment `set by auto_tune <run>`),
+and `ab_compare.sh decide` prints the `local_config.py set` command
+that adopts its result. No tool writes `betaconfig.py`. The old name
+`tools/setup/machine_config.py` still works: it forwards to
+`local_config.py` with a one-line note.
 
-**Moving an encoder.** NVENC's quality scale is not x264's, so a machine
+**Moving an encoder.** NVENC's quality scale is not x264's, so a local
 config that switches between them should set `encode_crf` too, or the
-repo's x264 CRF is read as NVENC's cq. Validation warns when it does not.
+shipped x264 CRF is read as NVENC's cq. Validation warns when it does
+not.
 
-`BETASUITE_MACHINE_CONFIG` points at another file, or `none` to ignore
-it. The test suite sets `none`, so tests see the repo's own defaults on
-every machine.
+**Migrating from the machine config.** `../resources/betaconfig_machine.py`
+is no longer read. While it exists, validation, `show`, `check` and
+`verify_env.py` print one line naming it and the command:
+
+```
+python tools/setup/local_config.py migrate
+```
+
+It copies each setting that differs from `betaconfig.py` into the
+hardware section, keeping each line's trailing comment, skips the ones
+equal to the default, keeps the local value (and says so) where the
+local config already sets a different one, validates the result, and
+renames the old file to `betaconfig_machine.py.migrated`. It never
+overwrites an earlier `.migrated` file. A second run, or a run after an
+interrupted one, is a success that changes nothing more.
+
+`BETASUITE_LOCAL_CONFIG` points at another file, or `none` (or empty) to
+ignore it, along with the old-file check. The test suite sets `none`, so
+tests see the shipped defaults on every machine, and then censors
+`exposed_vulva` and `exposed_breast` (`tests/__init__.py`), since most of
+it is about censoring.
+
+### Example local config
+
+**Basic censoring.** A fresh install censors nothing: `items_to_censor`
+ships empty, and `betatv.py` stops before any detection with a message
+naming the setting. One line in `betaconfig_local.py` gives the
+censoring the shipped tuning was built for, with the shipped styles
+(blur, mosaic, hex and bars, no stickers):
+
+```python
+items_to_censor = [ 'exposed_vulva', 'exposed_breast' ]
+```
+
+or, without opening the file:
+
+```bash
+python tools/setup/local_config.py set "items_to_censor=['exposed_vulva', 'exposed_breast']"
+```
+
+**A real one.** One user's whole file, as a template. Each line is a
+choice the shipped defaults leave to you; copy the ones you want.
+
+```python
+# BetaSuite local config: your own settings, kept out of git.
+# (the header local_config.py init writes)
+
+console_palette = 'deuteranopia'
+log_level = 'debug'
+detector_backend = { 'nudenet_v3': { 'model_variant': '640m' } }
+items_to_censor = [ 'exposed_vulva', 'exposed_breast' ]
+
+reverse = {
+    'windows': {
+        'face_femme': { 'width_area_safety': 1.0, 'height_area_safety': 1.0, 'censor_shape': 'ellipse',
+                        'censor_style': { 'type': 'show', 'feather': 0.3 } },
+    },
+    'person_windows': { 'enabled': True },
+}
+
+item_overrides = {
+    'exposed_vulva': {
+        'censor_style': [
+            { 'type': 'blur', 'method': 'box', 'strength': 70, 'feather': 0.10, 'weight': 21.98, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
+            { 'type': 'blur', 'method': 'box', 'strength': 85, 'feather': 0.15, 'weight': 21.98, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
+            { 'type': 'blur', 'method': 'box', 'strength': 85, 'feather': 0.20, 'weight': 12.09, 'width_area_safety': -0.25, 'height_area_safety': 0.00 },
+            { 'type': 'blur', 'method': 'box', 'strength': 100, 'feather': 0.20, 'weight': 21.98, 'width_area_safety': 0.00, 'height_area_safety': 0.10 },
+
+            { 'type': 'sticker', 'dir': '../resources/stickers/vulva/', 'weight': 7.25, 'feather': 0.15, 'width_area_safety': 0.10, 'height_area_safety': 0.10 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/vulva/', 'weight': 7.25, 'feather': 0.20, 'width_area_safety': 0.25, 'height_area_safety': 0.25 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/vulva/', 'weight': 7.47, 'feather': 0.25, 'width_area_safety': 0.50, 'height_area_safety': 0.50 },
+        ],
+    },
+    'exposed_breast': {
+        'censor_style': [
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 40, 'feather': 0.25, 'weight': 2.12, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 50, 'feather': 0.27, 'weight': 4.54, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 60, 'feather': 0.45, 'weight': 4.54, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 70, 'feather': 0.55, 'weight': 4.54, 'width_area_safety': -0.05, 'height_area_safety': -0.05 },
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 50, 'feather': 0.27, 'weight': 2.12, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+            { 'type': 'blur',  'method': 'triple_box', 'shape': 'ellipse', 'strength': 60, 'feather': 0.45, 'weight': 2.12, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 20, 'feather': 0.25, 'weight': 2.78, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 30, 'feather': 0.27, 'weight': 5.56, 'width_area_safety':  0.10, 'height_area_safety':  0.10 },
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 40, 'feather': 0.35, 'weight': 5.56, 'width_area_safety':  0.05, 'height_area_safety':  0.05 },
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 50, 'feather': 0.45, 'weight': 5.56, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 30, 'feather': 0.27, 'weight': 2.78, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+            { 'type': 'pixel', 'pattern': 'mosaic',  'shape': 'ellipse', 'strength': 40, 'feather': 0.35, 'weight': 2.78, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 20, 'feather': 0.25, 'weight': 2.78, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 30, 'feather': 0.27, 'weight': 5.56, 'width_area_safety':  0.10, 'height_area_safety':  0.10 },
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 40, 'feather': 0.35, 'weight': 5.56, 'width_area_safety':  0.05, 'height_area_safety':  0.05 },
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 50, 'feather': 0.45, 'weight': 5.56, 'width_area_safety':  0.00, 'height_area_safety':  0.00 },
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 30, 'feather': 0.27, 'weight': 2.78, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+            { 'type': 'pixel', 'pattern': 'hex',     'shape': 'ellipse', 'strength': 40, 'feather': 0.35, 'weight': 2.78, 'width_area_safety': -0.10, 'height_area_safety': -0.10 },
+
+            { 'type': 'bar', 'shape': 'box', 'color': (0, 0, 0), 'merge': 'none', 'thickness': 1.0,   'feather': 0.15,  'weight': 4.00, 'width_area_safety': -0.35, 'height_area_safety': 0.00 },
+            { 'type': 'bar', 'shape': 'box', 'color': (0, 0, 0), 'merge': 'none', 'thickness': 1.0,   'feather': 0.15,  'weight': 4.00, 'width_area_safety': -0.45, 'height_area_safety': 0.00 },
+            { 'type': 'bar', 'shape': 'box', 'color': (0, 0, 0), 'merge': 'none', 'thickness': 1.0,   'feather': 0.15,  'weight': 4.00, 'width_area_safety': -0.55, 'height_area_safety': 0.00 },
+
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 2.81, 'feather': 0.25, 'width_area_safety': 0.00, 'height_area_safety': 0.00 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.15, 'width_area_safety': 0.07, 'height_area_safety': 0.07 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.20, 'width_area_safety': 0.13, 'height_area_safety': 0.13 },
+            { 'type': 'sticker', 'dir': '../resources/stickers/breasts/', 'weight': 5.06, 'feather': 0.25, 'width_area_safety': 0.25, 'height_area_safety': 0.25 },
+        ],
+    },
+}
+
+# --- hardware (written by tune_machine) --------------------------------
+gpu_enabled = 1  # set by setup
+render_decode_threads = 0  # tune_machine <run>
+render_worker_mb_per_megapixel = 230  # tune_machine <run>
+encode_video_codec = 'h264_nvenc'
+encode_preset = 'p5'
+encode_crf = 21
+```
+
+What each part does:
+
+| lines | effect |
+|---|---|
+| `console_palette`, `log_level` | taste: colors without red against green, and a log file that keeps debug lines |
+| `model_variant = '640m'` | the larger model (103 MB, a manual download, see SETUP.md). The dict merges, so the rest of `nudenet_v3`'s block stays as shipped |
+| `items_to_censor` | what gets a censor. Everything else detected is a suppression or promotion signal only |
+| `reverse` | reverse mode, when turned on (`--reverse on`, or `'enabled': True` here): only a woman's face and whole male bodies show through the obscured frame. Both dicts merge into the shipped block, so the frame style, trigger and fade stay as shipped |
+| `item_overrides` | the shipped style mixes with sticker entries added. A `censor_style` list replaces the shipped one whole, so the list has every entry, not only the stickers. The sticker folders must hold your own `.png` files first |
+| the hardware section | written by setup and `tune_machine.sh`, so it fits one machine; measure yours rather than copying these |
 
 ### `tools/bench/tune_machine.sh`
 
@@ -191,7 +372,7 @@ run, the load average or the GPU says the machine is busy.
 
 | stage | what it times | proposes |
 |---|---|---|
-| inventory | nothing: CPU, memory, GPU and driver, hardware encoders, onnxruntime providers, OpenCV's decoders, the settings in effect | |
+| inventory | nothing: CPU, memory, GPU and driver, hardware encoders, onnxruntime providers, OpenCV's decoders, the settings in effect | `gpu_enabled`: 1 when onnxruntime has CUDAExecutionProvider and nvidia-smi sees a GPU, 0 when either is missing. Decided, not timed; the later stages run with it |
 | detect | ms per frame at batch 1, 2, 4, 8, 16 on the same frames, and whether the detections stay the same | `nn_batch_size` |
 | prefetch | the real detection loop with 0, 1, 2 and 4 batches decoded ahead | `detection_prefetch_frames` |
 | render | decode + the real chunk encode at several worker counts, each with OpenCV's decoder threads and with the cores shared out, memory sampled | `render_workers`, `render_decode_threads`, `render_worker_mb_per_megapixel` |
@@ -279,6 +460,12 @@ strokes, each one perfectly sharp, none of them a word.
 systematically smaller and tighter than the same model at 320, because
 it is finding sub-features rather than whole objects. Every IoU-based
 threshold derived from that output inherits the distortion.
+
+**The shipped default is `320n`**, the model setup downloads. Most of
+the shipped per-label tuning (suppression rules, `min_prob`, track gaps,
+profiles) was measured on 640m caches, so at 320n it is a starting
+point, not a measured optimum; `auto_tune` and `derive_suppression_rules`
+re-derive it on your own caches.
 
 **How to pick.** Start at `320n` because it is fast. Move to `640m` when
 `320n` misses detections you care about, and measure both:
@@ -694,7 +881,8 @@ suggested cap.
 
 A single string applies to every violation; the `{'min':…, 'max':…}`
 mapping form exists because the right answer genuinely differs by
-direction.
+direction. `default_geometry_action` in `betaconfig.py` is the value for
+every label that does not set its own.
 
 **The analogy.** A smoke alarm that cuts power to the whole house when it
 smells smoke. It technically responds, but the failure mode is worse than
@@ -828,33 +1016,45 @@ removes real detections when it is wrong.
 > 0.175 and `margin` 0.133, which keeps the same-spot removals and stops
 > about 3,600 side-by-side ones.
 
-### `class_suppression_refused` (per backend)
+### Pairs never proposed: built in, and `class_suppression_refused`
+
+The bench suggests a rule wherever a pair's overlaps form a same-spot
+cluster, and it cannot tell a mislabel from two body parts that really
+do share a spot: it sees overlap and scores, nothing else. So some pairs
+are never proposed, by the bench, the suppression A/B or
+`derive_suppression_rules.py`.
+
+**Built in, for every backend and every user**
+(`betautils_detector.UNSAFE_SUPPRESSION_PAIRS`, each with its reason):
+
+| pair | why a rule here is wrong |
+|---|---|
+| `exposed_vulva<-exposed_penis` | in penetration the penis sits on the vulva; removing this rule fixed a missed censor |
+| `exposed_vulva<-face_femme` | in oral sex a face beside the vulva is two real things, and the rule removed the vulva censor then |
+| `exposed_vulva<-exposed_buttocks` | anatomy, not a competing claim about one object: about 90% of vulva detections would sit behind the gate |
+| `exposed_vulva<-exposed_feet` | the same shape as buttocks, smaller |
+
+These were once shipped as config, one deleted line away from being
+proposed again; the anatomy is the same for everyone, so they are code.
+A rule for one of them can still be written by hand in
+`class_suppression`, and validation warns on every run that it removes
+the censor when both are really there. `retinanet_v2` shipped two of
+them (`face_femme` and `exposed_penis` suppressing `exposed_vulva`),
+which are removed for that reason.
+
+**Your own**, per backend:
 
 ```python
-detector_backend['nudenet_v3']['class_suppression_refused'] = [
-    'exposed_vulva<-exposed_penis',
-]
+detector_backend = { 'nudenet_v3': { 'class_suppression_refused': [ 'exposed_breast<-exposed_chest' ] } }
 ```
 
-Pairs, written `'label<-suppressor'`, that you have decided should never
-get a rule. **Empty** by default. The bench suggests a rule wherever a
-pair's overlaps form a same-spot cluster, and it cannot tell a mislabel
-from two body parts that really do share a spot: `exposed_vulva` and
-`exposed_penis` overlap on the same spot during penetration, and a rule
-there removes the vulva censor exactly when it is needed. A pair listed
-here is never proposed as an addition by the suppression A/B and is
-marked "refused" in the bench report. It changes nothing a run renders,
-so it is not part of the censor key. `ab_compare.sh decide` prints this
-line with every addition your verdicts turned down added to it.
-
-> **In the config: the earlier hand decisions.** `exposed_vulva<-exposed_penis`
-> (the penetrative case: removing that rule fixed a miss),
-> `exposed_vulva<-exposed_buttocks` (about 90% of vulva detections would
-> sit behind the gate: anatomy, not a competing claim about one object)
-> and `exposed_vulva<-exposed_feet` (the same shape, smaller), and
-> `exposed_vulva<-face_femme` (oral sex: a face beside the vulva is two
-> real things, and the rule removed the vulva censor exactly then).
-> Listing them keeps them out of every later round.
+Pairs, written `'label<-suppressor'`, that you have decided against,
+added to the built-in ones. Empty as shipped. A pair listed here is
+never proposed as an addition and is marked "refused" in the bench
+report. It changes nothing a run renders, so it is not part of the
+censor key. `ab_compare.sh decide` prints the `local_config.py set`
+command for this list with every addition your verdicts turned down
+added to it (the built-in pairs are never repeated there).
 
 **Looking at the output** is what `tools/tuning/ab_compare.sh` is for
 (`suppression_ab.sh` is the same tool with the suppression experiment
@@ -1065,6 +1265,13 @@ size and score do not. It is then filtered, suppressed, tracked and
 styled entirely as the target label. Promotion runs first, before the
 geometry filter and suppression, so the target's own rules all apply.
 
+**A target nothing renders.** Validation stops a run where a rendered
+label would be promoted into one that is not rendered (not in
+`items_to_censor`, or in reverse mode not a window or censored label):
+those boxes would lose their censor. A rule whose source and target are
+both unrendered loses nothing and is not an error, so a config that
+censors nothing still validates with the shipped `covered_vulva` rule.
+
 **Two overlap measures, and why.** IoU divides by the union, so a size
 mismatch drags it down even when one box fully covers the other:
 
@@ -1186,6 +1393,11 @@ context does.
 > Turning up `min_prob` here is deciding whether to bring an umbrella
 > from how confidently you can see the sky. The confidence is not the
 > question; whether there are clouds is.
+
+**Its style applies only if you censor it directly.** The shipped
+`item_overrides['covered_vulva']` style is used when `covered_vulva` is
+in `items_to_censor`. Promoted boxes are `exposed_vulva` by then and take
+that label's style.
 
 **Why its style list is blur only.** A sticker reads as a deliberate,
 playful cover-up. `covered_vulva` also fires on ordinary clothed crotches,
@@ -2249,6 +2461,13 @@ resources/uncensored_vids/
 └── loose_file.mp4  -> in the root, so MEASURED
 ```
 
+Every variant named here must exist in the selected backend's
+`profiles`, or validation stops the run. `retinanet_v2` ships the same
+four names with the timing parts only (`quick_cut`'s threshold and 18fps
+sampling, the two manual ones, an empty `scene`): its per-label tuning
+was never measured per structure, so those variants change the sampling
+rate and nothing else.
+
 **Why a folder and not a measurement.** Two reasons. The useful
 distinctions are not all measurable: nothing available before detection
 runs can see a split-screen layout, because panes coexist rather than
@@ -2352,7 +2571,7 @@ It runs three phases, logs everything to
    source file in `uncensored_vids/` and `source/` that lacks one, on the
    CPU, files in parallel (one worker per core, at most 4; 2 workers ran
    1.36x faster than 1 on a 2-core box). `structure_scan_workers` sets
-   the count for this machine (in its machine config; `betabench
+   the count for this machine (in `betaconfig_local.py`; `betabench
    concurrency` and `tune_machine.sh` measure it), since the cap of 4 is
    for spinning disks. The scans land in the cache betatv's full run
    reads, so the real run reuses them
@@ -2858,14 +3077,19 @@ unchanged byte for byte.
 | `reverse['trigger']['hold_seconds']` | `0.5` | how long the frame stays obscured after each trigger detection |
 | `reverse['censor']['labels']` | `None` | labels censored inside a triggered frame, each with its own style. `None` means `items_to_censor` |
 | `reverse['censor']['overrides']` | `{}` | `{label: keys}` for reverse mode only: any `item_overrides` key, look keys included, e.g. a different style list while the frame is blurred |
-| `reverse['windows']` | `face_femme`, `face_masc`, `exposed_chest`, `exposed_penis`, each with area safety 1.0 (twice the detection's width and height), an ellipse and feather 0.3 | `{label: entry}`, never censored. `{}` inherits every tuning key |
-| `reverse['person_windows']['enabled']` | `True` (shipped; `False` when the key is absent) | whole male bodies left uncensored, from [person masks](#person-segmentation) |
+| `reverse['windows']` | `{}`: none. Which labels show through is taste, so it is yours to set; the [example local config](#example-local-config) shows `face_femme` with area safety 1.0 (twice the detection's width and height), an ellipse and feather 0.3 | `{label: entry}`, never censored. An entry of `{}` inherits every tuning key |
+| `reverse['person_windows']['enabled']` | `False` | whole male bodies left uncensored, from [person masks](#person-segmentation) |
 | `reverse['person_windows']['male_labels']` | `face_masc`, `exposed_chest` | detections that make a person male |
 | `reverse['person_windows']['female_labels']` | `face_femme`, `exposed_breast`, `exposed_vulva` | detections that count against it |
 | `reverse['person_windows']['evidence_min_prob']` | `0.40` | how sure a detection must be to count as evidence |
 | `reverse['person_windows']['track_iou']` | `0.30` | box overlap that links a person to the same person in the next sample |
 | `reverse['person_windows']['track_max_gap_seconds']` | `1.0` | how long a person can go undetected and still be the same track |
 | `reverse['person_windows']['shrink']` | `0.02` | fraction of the person's shorter side trimmed off the mask edge |
+
+As shipped, reverse mode has no windows and censors `items_to_censor`,
+which is empty, so turning it on with nothing else set would change no
+frame, and `betatv.py` stops before detection saying so. Mirror what you
+choose for normal mode: set `items_to_censor`, then the windows.
 
 A label is a window or censored, never both (validation error). A window
 entry takes `censor_shape`, any backend-tunable key (`min_prob`,
@@ -3049,8 +3273,8 @@ shipped style, the same without `dim`, and strength 20. `box` or
   drawn over the original before it goes into the frame, so a sticker's
   transparent areas, and a bar thinner than its box (`thickness` < 1),
   show the original pixels there, not the frame style. Validation warns
-  per label, and the shipped censored labels both include stickers, so it
-  warns on every run with reverse on. Give the label a reverse-only
+  per label, so a label you give sticker styles warns on every run with
+  reverse on. Give the label a reverse-only
   `censor_style` without them in `reverse['censor']['overrides']` if
   they show too much. A future option could draw them over the frame
   style instead
@@ -3617,8 +3841,8 @@ same verdict, which every resume did before.
 ### `encode_video_codec`, `encode_crf`, `encode_preset`, `render_chunk_container`
 
 `'libx264'`, **17**, `'fast'`, `'mkv'`. These work on any machine; a
-machine with a faster encoder sets its own in its machine config (see
-"Machine config"), which is where `betabench encode` and
+machine with a faster encoder sets its own in `betaconfig_local.py` (see
+"Local config"), which is where `betabench encode` and
 `tune_machine.sh` put a recommendation.
 
 CRF is quality: lower is better and larger, 17 is visually lossless for
@@ -3749,7 +3973,7 @@ histogram scan.
 ```python
 logging_enabled = True
 log_path = '../output/logs/betasuite.log'
-log_level = 'debug'      # the log FILE
+log_level = 'info'       # the log FILE
 console_level = 'info'   # the TERMINAL
 console_color = 'auto'   # color on the TERMINAL view
 console_palette = 'standard'   # which colors
@@ -3967,6 +4191,16 @@ coverage instead of surviving as a longer blank gap.
 working well for `retinanet_v2` specifically.
 
 ### Style weights and how often a style actually appears
+
+**The shipped styles carry no stickers.** No sticker images ship, and
+there is no licence to ship any, so a sticker entry would render as a
+solid bar on a fresh install. Dropping them rescaled what was left in
+proportion: `exposed_vulva` is blur only (the four blur entries, same
+ratios), `exposed_breast` is blur 24.4, mosaic 30.5, hex 30.5, bar 14.6
+(was 20, 25, 25, 12, sticker 18). The history below describes the mix
+when stickers were in it. To use stickers, add your images and put the
+whole `censor_style` list, sticker entries included, in
+`betaconfig_local.py`: a list replaces the shipped one whole.
 
 A style's share of resolves is its `weight` divided by the sum of every
 weight in that label's `censor_style` list, so weights are relative
@@ -4215,8 +4449,10 @@ Not added, and the reasoning matters more than the list:
 That distinction is the standing limit on this tool. It measures
 same-instant overlap and score margin; it cannot tell a misclassification
 from two body parts that are genuinely both present. Pairs whose overlap
-is anatomical get excluded by hand, and the exclusions are listed in
-`betaconfig.py` so they are not silently re-added by the next pass.
+is anatomical are excluded: the unsafe ones are built in
+(`betautils_detector.UNSAFE_SUPPRESSION_PAIRS`) and a person's own go in
+`class_suppression_refused`, so neither is silently re-added by the next
+pass.
 
 **`time_safety` was lowered** to 0.22 (`exposed_breast`, from 0.35) and
 0.20 (`exposed_vulva`, from 0.27), for censoring that appears before or
