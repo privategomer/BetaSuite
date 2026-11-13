@@ -101,7 +101,7 @@ class TestFreshInstall( unittest.TestCase ):
         self.assertEqual( shipped['detector_backend']['nudenet_v3']['model_variant'], '320n' )
         # setup and tune_machine set 1 in the local config on a GPU install.
         self.assertEqual( shipped['gpu_enabled'], 0 )
-        self.assertEqual( shipped['log_level'], 'info' )
+        self.assertEqual( shipped['log_level'], 'debug' )
         # No sticker images ship, so a sticker style renders as a solid bar.
         stickers = [ label for label, override in shipped['item_overrides'].items()
                      for style in override.get( 'censor_style', [] ) if style['type'] == 'sticker' ]
