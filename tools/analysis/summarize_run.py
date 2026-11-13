@@ -61,6 +61,14 @@ import betautils_log as bu_log
 
 DEFAULT_STATS_PATH = '../output/stats/betasuite_stats.jsonl'
 
+# A file whose detection took under this many seconds per minute of
+# source read its detections from cache rather than running the model.
+# Counted in, those near-zero rows pulled a configuration's detect/min
+# down by however many files a re-run reused. On a 420-row stats file the
+# cache hits sat at 0.01 to 0.17 s/min and every real detection at 1.8
+# s/min or more, so the cut sits in the gap.
+REUSED_DETECTION_SECONDS_PER_MINUTE = 1.0
+
 
 def load_rows( stats_path ):
     """
@@ -180,6 +188,20 @@ def video_seconds( row ):
     return 0.0
 
 
+def detection_was_reused( row ):
+    """Whether this row's detections came from cache (see REUSED_DETECTION_SECONDS_PER_MINUTE)."""
+    minutes = video_seconds( row ) / 60.0
+    if not minutes:
+        return False
+    return ( row.get( 'detection_seconds' ) or 0.0 ) / minutes < REUSED_DETECTION_SECONDS_PER_MINUTE
+
+
+def detect_per_minute( totals ):
+    """Detection seconds per source minute over the files that ran the model, or None."""
+    minutes = totals['detected_video_seconds'] / 60.0
+    return totals['detected_seconds'] / minutes if minutes else None
+
+
 def summarise_group( rows ):
     """Aggregate one configuration's rows into the numbers worth printing."""
     totals = {
@@ -197,6 +219,9 @@ def summarise_group( rows ):
         'cross_size_deduped': 0,
         'dropped_provisional': 0,
         'dropped_unconfirmed': 0,
+        'detection_reused': 0,
+        'detected_seconds': 0.0,
+        'detected_video_seconds': 0.0,
     }
     worker_counts = {}
     label_counts = {}
@@ -216,6 +241,11 @@ def summarise_group( rows ):
         totals['cross_size_deduped'] += row.get( 'track_cross_size_deduped' ) or 0
         totals['dropped_provisional'] += row.get( 'track_dropped_provisional' ) or 0
         totals['dropped_unconfirmed'] += row.get( 'track_dropped_unconfirmed' ) or 0
+        if detection_was_reused( row ):
+            totals['detection_reused'] += 1
+        else:
+            totals['detected_seconds'] += row.get( 'detection_seconds' ) or 0.0
+            totals['detected_video_seconds'] += video_seconds( row )
 
         workers = row.get( 'render_render_workers' )
         if workers is not None:
@@ -254,6 +284,14 @@ def print_group( key, rows ):
             print( "  !! no GPU provider in that list - this ran on CPU. Everything below is a "
                    "CPU number and is not comparable to a GPU run." )
     print( "  files: %d   source video: %s"%(totals['files'], fmt( totals['video_seconds'] )) )
+    if totals['detection_reused']:
+        print( "  %d of those file(s) read their detections from cache (under %.0fs of detection per "
+               "source minute), so the detection share below is lower than a fresh run's. Detection "
+               "per source minute over the %d that ran the model: %s"%(
+                   totals['detection_reused'], REUSED_DETECTION_SECONDS_PER_MINUTE,
+                   totals['files'] - totals['detection_reused'],
+                   "%.1fs"%( detect_per_minute( totals ), ) if detect_per_minute( totals ) is not None
+                   else "none did" ) )
     print()
 
     def stage( name, seconds ):
@@ -339,15 +377,63 @@ def print_comparison( groups ):
         if not minutes:
             continue
         detections = sum( totals['label_counts'].values() )
-        print( "  %-42s %9.1fs %9.1fs %9.0f"%(
+        detect = detect_per_minute( totals )
+        print( "  %-42s %10s %9.1fs %9.0f"%(
             describe_key( key )[:42],
-            totals['detection_seconds'] / minutes,
+            "%9.1fs"%( detect, ) if detect is not None else "cached",
             totals['encode_seconds'] / minutes,
             detections / minutes ) )
+    print()
+    print( "  detect/min counts only the files that ran the model; files that read their "
+           "detections from cache are left out of it." )
     print()
     print( "  More detections per minute is not automatically better - it is only better if the "
            "extra ones are real. Confirm with tools/bench/betabench.py hysteresis (are the extra "
            "detections low-confidence?) and by watching the output." )
+    print()
+
+
+def week_of( row ):
+    """The Monday a row's timestamp falls in, as YYYY-MM-DD."""
+    moment = datetime.datetime.fromtimestamp( row.get( 'timestamp' ) or 0 )
+    return ( moment.date() - datetime.timedelta( days=moment.weekday() ) ).isoformat()
+
+
+def print_by_week( groups ):
+    """
+    Each configuration's cost per source minute, week by week.
+
+    A configuration's totals pool every row it ever wrote, so a change of
+    machine, encoder or worker count sits inside one average. A large
+    run's 9 fps group read 27 s/min of render: its October rows ran 45 to
+    66 s/min before a hardware encoder and a new machine, its recent rows
+    11 to 20. The week table shows which one today's number is.
+    """
+    lines = []
+    for key in sorted( groups, key=describe_key ):
+        weeks = {}
+        for row in groups[key]:
+            weeks.setdefault( week_of( row ), [] ).append( row )
+        if len( weeks ) < 2:
+            continue
+        lines.append( "  %s"%( describe_key( key ), ) )
+        for week in sorted( weeks ):
+            totals = summarise_group( weeks[week] )
+            minutes = totals['video_seconds'] / 60.0
+            if not minutes:
+                continue
+            detect = detect_per_minute( totals )
+            lines.append( "    week of %s  %4d file(s)  detect/min %9s  render/min %6.1fs"%(
+                week, totals['files'], "%.1fs"%( detect, ) if detect is not None else "cached",
+                totals['encode_seconds'] / minutes ) )
+    if not lines:
+        return
+    print( "=" * 78 )
+    print( "BY WEEK (the same configuration over time: a new machine, encoder or worker count" )
+    print( "shows here and is averaged away above)" )
+    print( "=" * 78 )
+    for line in lines:
+        print( line )
     print()
 
 
@@ -435,6 +521,7 @@ def main():
 
     if len( groups ) > 1:
         print_comparison( groups )
+    print_by_week( groups )
 
     print_failures( failures_to_report( failures, all_rows, args.include_preview, cutoff,
                                         window_start ), failures_path )

@@ -51,6 +51,7 @@ and no scoring function gets to trade that away.
 import contextlib
 import copy
 import json
+import math
 import os
 import time
 
@@ -614,7 +615,33 @@ def label_content( raw_boxes, labels, sample_fps, confident_score=CONFIDENT_SCOR
         'seconds': { label: round( len( samples ) / rate, 1 ) for label, samples in sorted( times.items() ) },
         'mixed_seconds': round( mixed / rate, 1 ),
         'pair_seconds': { pair: round( count / rate, 1 ) for pair, count in sorted( pairs.items() ) },
+        'box_timeline': box_timeline( raw_boxes, labels, rate, confident_score ),
     }
+
+
+# Width of one box_timeline bucket, in seconds of footage.
+TIMELINE_BUCKET_SECONDS = 10.0
+
+
+def box_timeline( raw_boxes, labels, sample_fps, confident_score=CONFIDENT_SCORE ):
+    """
+    Confident boxes of `labels` per sample, averaged over each
+    TIMELINE_BUCKET_SECONDS of footage: [mean, ...] from the start.
+
+    What two copies of one video share and two different videos do not.
+    Totals alone could not tell apart two volumes of one series: both
+    600s long and breast on screen in nearly every sample.
+    """
+    rate = float( sample_fps or 0 ) or 1.0
+    per_bucket = rate * TIMELINE_BUCKET_SECONDS
+    counts = {}
+    for raw in raw_boxes:
+        if raw.get( 'class_id' ) in labels and raw.get( 'score', 0.0 ) >= confident_score:
+            bucket = int( round( raw['t'] * rate ) // per_bucket )
+            counts[bucket] = counts.get( bucket, 0 ) + 1
+    if not counts:
+        return []
+    return [ round( counts.get( bucket, 0 ) / per_bucket, 3 ) for bucket in range( max( counts ) + 1 ) ]
 
 
 def cache_sample_rate( cache_paths ):
@@ -649,6 +676,13 @@ DUPLICATE_DURATION_SHARE = 0.02
 DUPLICATE_SECONDS_SHARE = 0.06
 DUPLICATE_SECONDS_FLOOR = 2.0     # seconds, for a label a video barely shows
 DUPLICATE_MIN_LABELLED = 30.0     # seconds of labelled footage; less says too little
+# Two copies' box timelines differ by at most this share of their boxes,
+# at the best shift within DUPLICATE_DURATION_SHARE of the runtime. On a
+# large run's caches: four real copies (container swaps, a 4K and an HD
+# encode) at 0.000 to 0.031; two different videos that passed every
+# other check at 0.19 and 0.30. Six pairs, so the cut is in the gap
+# rather than tuned to an edge.
+DUPLICATE_TIMELINE_SHARE = 0.10
 
 
 def content_signature( duration, content ):
@@ -662,7 +696,28 @@ def content_signature( duration, content ):
         return None
     return { 'duration': float( duration ),
              'seconds': dict( content.get( 'seconds', {} ) ),
-             'mixed': content.get( 'mixed_seconds', 0.0 ) }
+             'mixed': content.get( 'mixed_seconds', 0.0 ),
+             'timeline': list( content.get( 'box_timeline' ) or [] ) }
+
+
+def timeline_difference( first, second, max_shift_buckets ):
+    """
+    Least share of boxes two box timelines disagree on, over shifts of
+    up to max_shift_buckets either way (a trim moves one against the
+    other). 0.0 is identical. None when they share no bucket.
+    """
+    best = None
+    for shift in range( -max_shift_buckets, max_shift_buckets + 1 ):
+        pairs = [ ( first[index], second[index + shift] ) for index in range( len( first ) )
+                  if 0 <= index + shift < len( second ) ]
+        if not pairs:
+            continue
+        scale = max( sum( a for a, _b in pairs ), sum( b for _a, b in pairs ) )
+        if scale <= 0:
+            continue
+        difference = sum( abs( a - b ) for a, b in pairs ) / scale
+        best = difference if best is None else min( best, difference )
+    return best
 
 
 def _close( first, second, share, floor=0.0 ):
@@ -690,8 +745,19 @@ def same_content( first, second ):
         if not _close( first['seconds'].get( label, 0.0 ), second['seconds'].get( label, 0.0 ),
                        DUPLICATE_SECONDS_SHARE, DUPLICATE_SECONDS_FLOOR ):
             return False
-    return _close( first.get( 'mixed', 0.0 ), second.get( 'mixed', 0.0 ),
-                   DUPLICATE_SECONDS_SHARE, DUPLICATE_SECONDS_FLOOR )
+    if not _close( first.get( 'mixed', 0.0 ), second.get( 'mixed', 0.0 ),
+                   DUPLICATE_SECONDS_SHARE, DUPLICATE_SECONDS_FLOOR ):
+        return False
+    # Totals agree. A timeline on both sides settles it: two volumes of one
+    # series matched on every total and were reported as copies. Without
+    # a timeline on both (a signature from an older caller), the totals
+    # stand, as before.
+    if not first.get( 'timeline' ) or not second.get( 'timeline' ):
+        return True
+    shift = int( math.ceil( DUPLICATE_DURATION_SHARE * max( first['duration'], second['duration'] )
+                            / TIMELINE_BUCKET_SECONDS ) )
+    difference = timeline_difference( first['timeline'], second['timeline'], shift )
+    return difference is not None and difference <= DUPLICATE_TIMELINE_SHARE
 
 
 def near_duplicates( signatures ):

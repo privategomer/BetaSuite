@@ -537,6 +537,38 @@ class TestInterruptHandling( BetaTvHarness ):
                           repr( RuntimeError( 'a bad file, not a user interrupt' ) ) )
         self.assertFalse( records[0]['preview_mode'] )
 
+    def test_a_full_disk_is_recognised_in_either_form( self ):
+        self.assertTrue( betatv.is_out_of_space( OSError( 28, 'No space left on device' ) ) )
+        self.assertTrue( betatv.is_out_of_space( RuntimeError(
+            'chunk concatenation failed after 3 attempt(s): ffmpeg exited 228: Error submitting a '
+            'packet to the muxer: No space left on device' ) ) )
+        try:
+            try:
+                raise OSError( 28, 'full' )
+            except OSError as inner:
+                raise RuntimeError( 'render chunk 3 failed' ) from inner
+        except RuntimeError as outer:
+            self.assertTrue( betatv.is_out_of_space( outer ), "the cause chain counts" )
+        self.assertFalse( betatv.is_out_of_space( OSError( 2, 'No such file or directory' ) ) )
+        self.assertFalse( betatv.is_out_of_space( RuntimeError( 'a bad file' ) ) )
+
+    def test_a_full_disk_stops_the_run_instead_of_failing_every_file( self ):
+        for name in ( 'a.mp4', 'b.mp4', 'c.mp4' ):
+            _build_clip( os.path.join( self.uncensored, name ) )
+        calls = []
+
+        def full_disk( *args, **kwargs ):
+            calls.append( args[1] )
+            raise OSError( 28, 'No space left on device' )
+
+        with mock.patch.object( betatv, 'detect_boxes_for_video', full_disk ), \
+                self.assertLogs( self.logger, level='ERROR' ) as logged:
+            self.assertEqual( self._run_main(), 1 )
+        self.assertEqual( calls, [ 'a.mp4' ], "the queue stops at the first full-disk failure" )
+        self.assertTrue( any( 'disk is full' in record.getMessage() for record in logged.records ) )
+        with open( bu_log.failures_path_for( betaconfig.stats_path ), encoding='UTF-8' ) as handle:
+            self.assertEqual( [ json.loads( line )['file'] for line in handle ], [ 'a.mp4' ] )
+
     def _run_main( self ):
         with mock.patch.object( betatv, '_startup', return_value=self.logger ):
             return betatv.main()

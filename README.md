@@ -756,6 +756,13 @@ neither. Two backends in one file therefore produce two reports plus a
 per-source-minute comparison table that survives each configuration
 having processed different files.
 
+A file that read its detections from cache (under 1 second of detection
+per source minute) is counted in the wall clock but left out of
+detect/min, which covers only files that ran the model. When a
+configuration's rows span more than one week, a week-by-week table
+follows, so a new machine, encoder or worker count shows up instead of
+being averaged into one number.
+
 Read it before acting on anything else here. Tuning the stage that took
 16% of a run caps the possible saving at 16%, whatever else the tuning
 output says.

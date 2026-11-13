@@ -124,8 +124,9 @@ class TestFocus( unittest.TestCase ):
                                     { 'exposed_breast', 'exposed_vulva' }, 4.0, 3,
                                     replay=lambda *args, **kwargs: [],
                                     duration_of=lambda path: 100.0 )[0]
+        # One box in each of the 90 samples of the first 10-second bucket.
         self.assertEqual( row['signature'], { 'duration': 100.0, 'mixed': 0.0, 'seconds': {
-            'exposed_breast': 10.0, 'exposed_vulva': 0.0 } } )
+            'exposed_breast': 10.0, 'exposed_vulva': 0.0 }, 'timeline': [ 1.0 ] } )
 
     def test_focused_keeps_all_without_a_focus( self ):
         boxes = [ _box( 0, 1, 'a' ), _box( 0, 1, 'b' ) ]

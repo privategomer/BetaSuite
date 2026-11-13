@@ -249,22 +249,19 @@ class TestShotCutsFromAnEarlierRate( CacheDir ):
         self.assertEqual( context['shot_cut_times'], [ 5.0 ] )
 
 
-class TestMedianShotSeesMergedBursts( CacheDir ):
+class TestTrackMaxGapIsNotCappedByShotLength( unittest.TestCase ):
+    """
+    Tracking ends every track at a cut, so a gap longer than a shot cannot
+    bridge one; the risky-per-reset price judges the larger values. The
+    old median-shot cap removed every larger candidate on a profile whose
+    median was set by one fast-cut file.
+    """
 
-    def test_a_fade_counts_as_one_cut( self ):
-        auto_tune = _load( 'tools/tuning/auto_tune.py', '_auto_tune_shots_under_test' )
-        threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-        # Four 10-second shots, every cut but the first scanned as a fade:
-        # a burst of cuts 0.1s apart.
-        cuts = [ 10.0, 20.0, 20.1, 20.2, 30.0, 30.1, 30.2, 40.0 ]
-        bu_tuning.bu_hash.write_json( cuts, bu_cache.shot_cut_path_for( 'aaaa', 9, threshold ) )
-        entries = [ ( None, { 'videos': { 'aaaa': [] } } ) ]
-        with mock.patch.object( betaconfig, 'video_censor_fps', 10 ), \
-             mock.patch.object( betaconfig, 'shot_cut_burst_window', 0.35, create=True ), \
-             mock.patch.object( betaconfig, 'shot_cut_burst_max_span', None, create=True ), \
-             mock.patch.object( betaconfig, 'shot_cut_burst_keep', 'first', create=True ):
-            median = auto_tune._median_shot_seconds_for( entries, mock.Mock() )
-        self.assertGreater( median, 9.0, "raw slivers would put the median at 0.1s" )
+    def test_every_multiplier_is_offered_both_ways( self ):
+        auto_tune = _load( 'tools/tuning/auto_tune.py', '_auto_tune_uncapped_under_test' )
+        stage = auto_tune.TrackMaxGapStage( 'nudenet_v3', 'exposed_breast' )
+        stage.baseline_value = lambda: 12
+        self.assertEqual( [ value for value, _label in stage.candidates() ], [ 6.0, 9.0, 18.0, 24.0, 36.0 ] )
 
 
 class TestPerProfileHelpers( unittest.TestCase ):
@@ -424,8 +421,7 @@ class TestProfileStages( unittest.TestCase ):
              mock.patch.object( self.auto_tune, 'print_stage_table' ), \
              mock.patch.object( self.auto_tune.TrackMaxGapStage, 'score_rows', create=True ), \
              mock.patch.object( self.auto_tune.TrackMaxGapStage, 'decide',
-                                side_effect=lambda rows, *a: bu_tuning.Decision( 'x', None, False, 'kept', [] ) ), \
-             mock.patch.object( self.auto_tune, '_median_shot_seconds_for', return_value=None ):
+                                side_effect=lambda rows, *a: bu_tuning.Decision( 'x', None, False, 'kept', [] ) ):
             self.auto_tune.main()
         self.assertEqual( seen, [
             ( 'quick_cut', [ 'h2', 'h3' ], 'nudenet_v3/640m @640 [quick_cut]' ),
@@ -469,8 +465,7 @@ class TestProfileStages( unittest.TestCase ):
              mock.patch.object( self.auto_tune, 'measure_stage', side_effect=measure ), \
              mock.patch.object( self.auto_tune, 'print_stage_table' ), \
              mock.patch.object( self.auto_tune.TrackMaxGapStage, 'decide',
-                                side_effect=lambda rows, *a: bu_tuning.Decision( 'x', None, False, 'kept', [] ) ), \
-             mock.patch.object( self.auto_tune, '_median_shot_seconds_for', return_value=None ):
+                                side_effect=lambda rows, *a: bu_tuning.Decision( 'x', None, False, 'kept', [] ) ):
             self.auto_tune.main()
         return seen
 

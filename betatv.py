@@ -43,7 +43,9 @@ the two function bodies out of it to be sure it was testing the real
 code.
 """
 
+import errno
 import os
+import shutil
 import time
 
 import betaconst
@@ -494,7 +496,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             names a person can read. Never reaches a cache path.
 
     Returns:
-        'processed', 'skipped' or 'failed'.
+        'processed', 'skipped', 'failed', or 'out_of_space' for a failure
+        because a disk filled (see is_out_of_space).
 
     Raises:
         betautils_signals.Interrupted: the user asked to stop. Deliberately
@@ -726,6 +729,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                                                    time.perf_counter() - started_at ) )
         except Exception as record_err:
             logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
+        if is_out_of_space( err ):
+            return 'out_of_space'
         return 'failed'
     finally:
         # On a failure or Ctrl-C, the person pass checkpoints before the
@@ -733,6 +738,40 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         if person_pass is not None:
             person_pass.stop()
         source.release()
+
+
+# ffmpeg reports a full disk in its own words, inside a RenderError.
+_OUT_OF_SPACE_TEXT = 'No space left on device'
+
+
+def is_out_of_space( err ):
+    """
+    Whether a failure was a full disk, anywhere in its cause chain.
+
+    One file failing is that file's problem, and the run goes on. A full
+    disk is every remaining file's problem: on one large run the disk
+    filled and the next nine files each failed within seconds, two
+    minutes of the queue spent producing nothing but failure records.
+    An OSError carries ENOSPC; a RenderError carries ffmpeg's message.
+    """
+    seen = set()
+    while err is not None and id( err ) not in seen:
+        seen.add( id( err ) )
+        if isinstance( err, OSError ) and err.errno == errno.ENOSPC:
+            return True
+        if _OUT_OF_SPACE_TEXT in str( err ):
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
+def _free_space_note( folder ):
+    """'N GB free in <folder>', or '' when it cannot be read."""
+    try:
+        free = shutil.disk_usage( folder ).free
+    except OSError:
+        return ''
+    return "%.1f GB free in %s"%( free / 1e9, folder )
 
 
 def _failure_record( fname, preview_mode_enabled, source, err, elapsed_seconds ):
@@ -822,13 +861,22 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
 # Entry point
 # ---------------------------------------------------------------------------
 
+class _OutOfSpace( Exception ):
+    """Raised inside main's loop to stop the run when a disk fills."""
+
+    def __init__( self, folder ):
+        super().__init__( folder )
+        self.folder = folder
+
+
 def main():
     """
     Walk betaconst.video_path_uncensored and censor everything in it.
 
     Returns:
-        A process exit code: 0 for a clean finish, 130 for a user
-        interrupt (the conventional 128 + SIGINT).
+        A process exit code: 0 for a clean finish, 1 for a run stopped
+        by a full disk, 130 for a user interrupt (the conventional
+        128 + SIGINT).
     """
     logger = _startup()
     _log_run_banner( logger )
@@ -864,7 +912,19 @@ def main():
                 outcome = process_one_video(
                     root, fname, censored_folder, file_index, len( file_names ), session,
                     preview_mode_enabled, preview_max_seconds, active_encode_preset, logger )
+                if outcome == 'out_of_space':
+                    counts['failed'] += 1
+                    raise _OutOfSpace( censored_folder )
                 counts[outcome] += 1
+    except _OutOfSpace as stop:
+        # Stopping is the resumable choice: finished outputs are skipped
+        # next time, the file that failed is rebuilt, and detections
+        # already cached are not run again.
+        note = _free_space_note( stop.folder )
+        logger.error( "stopping the run: a disk is full%s. Free some space and run again; finished "
+                      "files are skipped and the one that failed is rebuilt."%(
+                          " (%s)"%( note, ) if note else "" ) )
+        exit_code = 1
     except bu_signals.Interrupted:
         logger.warning( "run stopped by user after %s"%(
             bu_log.format_duration( time.perf_counter() - run_started_at ) ) )

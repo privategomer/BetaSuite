@@ -198,10 +198,12 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
             rows.append( _row( value, '%d hit(s)'%( value, ), metrics, base ) )
         return rows
 
-    def decide( self, stage, rows, loss=0.001 ):
+    def decide( self, stage, rows, loss=0.001, growth=None ):
         opts = _Options()
         opts.confident_score = 0.5
         opts.max_confident_loss = loss
+        if growth is not None:
+            opts.max_confident_growth = growth
         stage.score_rows( rows, opts )
         return stage.decide( { 'only @640': rows }, opts, None )
 
@@ -234,16 +236,22 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertIn( 'keeping 2', decision.reasoning )
 
     def test_the_tolerance_is_a_share_of_confident_detections( self ):
+        # The growth limit is lifted here: this is the absolute rule alone.
         uncensored = { 1: 50, 2: 50, 3: 160, 4: 400 }
-        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001 )
-        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002 )
+        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001, growth=10 )
+        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002, growth=10 )
         self.assertEqual( tight.chosen, 2, "110 more bare is over 0.1% of 100,000" )
         self.assertEqual( loose.chosen, 3, "and under 0.2%" )
 
     def test_a_value_exactly_at_the_tolerance_is_within_it( self ):
         # 100,000 confident detections at 0.1% allows exactly 100 more bare.
-        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ),
+                                growth=10 )
         self.assertEqual( decision.chosen, 3 )
+
+    def test_by_default_a_stricter_value_may_not_triple_what_is_left_bare( self ):
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        self.assertEqual( decision.chosen, 2, "150 bare against 50 today is far past 25% more" )
 
     def test_rows_report_boxes_and_confident_changes( self ):
         rows = self.rows( 2, { 1: 40, 2: 50 }, boxes_by_value={ 1: 10400, 2: 10000 } )
@@ -465,6 +473,47 @@ class TestConfirmScoreRecommendation( unittest.TestCase ):
         decision = bu_tuning.Decision( stage.title, None, True, '', [], per_configuration={ 'a': 0.6 } )
         self.assertIsNone( stage.review( decision, {} ) )
 
+    def _from_baseline( self, uncensored_by_value, growth=None ):
+        # A real run's vulva shape: 0.5 today, 556,205 confident detections.
+        base = _metrics( uncensored=uncensored_by_value[0.5], confident=556205 )
+        rows = [ dict( _row( 0.5, 'baseline (0.5)', base, base ), verdict='baseline' ) ]
+        for value in ( 0.6, 0.7 ):
+            rows.append( _row( value, '%g'%( value, ),
+                               _metrics( uncensored=uncensored_by_value[value], confident=556205 ), base ) )
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = 0.001
+        if growth is not None:
+            opts.max_confident_growth = growth
+        stage = self.stage( 0.5 )
+        stage.score_rows( rows, opts )
+        return stage.decide( { 'only @640': rows }, opts, None )
+
+    def test_a_stricter_score_may_not_much_grow_what_is_left_bare( self ):
+        # Within 0.1% of all confident detections, but 384 against 198 today.
+        decision = self._from_baseline( { 0.5: 198, 0.6: 285, 0.7: 384 } )
+        self.assertFalse( decision.accepted )
+        self.assertEqual( decision.chosen, 0.5 )
+        self.assertIn( 'held back', decision.reasoning )
+
+    def test_a_small_step_stricter_still_goes_through( self ):
+        decision = self._from_baseline( { 0.5: 198, 0.6: 240, 0.7: 384 } )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 0.6 )
+
+    def test_the_growth_limit_is_the_options( self ):
+        decision = self._from_baseline( { 0.5: 198, 0.6: 285, 0.7: 384 }, growth=1.0 )
+        self.assertEqual( decision.chosen, 0.7 )
+
+    def test_yes_never_writes_a_value_flagged_for_the_eye( self ):
+        flagged = bu_tuning.Decision( 'confirm_score', 0.7, True, '', [] )
+        flagged.review = { 'value': 0.7, 'why': 'judge by eye' }
+        plain = bu_tuning.Decision( 'track_max_gap', 0.9, True, '', [] )
+        plain.review = None
+        self.assertTrue( auto_tune.unattended_write_refused( flagged, True ) )
+        self.assertFalse( auto_tune.unattended_write_refused( flagged, False ), "asked, a person decides" )
+        self.assertFalse( auto_tune.unattended_write_refused( plain, True ) )
+
     def test_it_runs_after_min_track_hits( self ):
         order = auto_tune.STAGE_ORDER
         self.assertEqual( order.index( 'confirm_score' ), order.index( 'min_track_hits' ) + 1 )
@@ -539,8 +588,7 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
              mock.patch.object( auto_tune, 'measure_stage',
                                 side_effect=lambda *a, **k: measured.append( 1 ) or [
                                     dict( _row( 0.17, 'baseline', _metrics(), _metrics() ),
-                                          verdict='baseline' ) ] ), \
-             mock.patch.object( auto_tune, '_median_shot_seconds_for', return_value=None ):
+                                          verdict='baseline' ) ] ):
             auto_tune.main()
         import json as _json
         import os as _os

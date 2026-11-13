@@ -42,6 +42,19 @@ class TestDiscoverFullRunVideos( unittest.TestCase ):
             json.dump( content if content is not None else [], f )
         return path
 
+    def test_the_pooled_tools_read_each_videos_newest_run_once( self ):
+        # One video run at 9 fps, then again at 10: both caches stay on disk.
+        box = [ { 'class_id': 'exposed_breast', 'score': 0.9, 't': 0.0, 'x': 0, 'y': 0, 'w': 9, 'h': 9 } ]
+        old = self._write_cache( 'abc123', 640, 'nudenet_v3', fps=9, content=box )
+        new = self._write_cache( 'abc123', 640, 'nudenet_v3', fps=10, content=box )
+        other = self._write_cache( 'def456', 640, 'nudenet_v3', fps=9, content=box )
+        os.utime( old, ( 1000, 1000 ) )
+        os.utime( new, ( 2000, 2000 ) )
+        names = [ name for name, _boxes in bu_cache.iter_newest_cache_files( self._tmpdir ) ]
+        self.assertEqual( sorted( names ), sorted( os.path.basename( path ) for path in ( new, other ) ) )
+        self.assertEqual( len( list( bu_cache.iter_cache_files( self._tmpdir ) ) ), 3,
+                          "the unfiltered walk still sees every file" )
+
     def test_real_cache_found_for_matching_backend( self ):
         self._write_cache( 'abc123', 800, 'nudenet_v3' )
         self._write_cache( 'abc123', 1280, 'nudenet_v3' )

@@ -1474,6 +1474,47 @@ def iter_cache_files( directory, include_preview=False ):
             yield ( name, boxes )
 
 
+def iter_newest_cache_files( directory, include_preview=False ):
+    """
+    iter_cache_files, keeping each video's newest run per configuration.
+
+    A video re-run at another sample rate or detection key leaves its
+    older cache on disk, and reading every file counted that video once
+    per run: on a large library the pooled tools read 326 files for 182
+    videos while the replaying tools, through videos_across_sample_rates,
+    read one run each. The same footage weighed two or three times in
+    the score, geometry and confusion-pair numbers and once everywhere
+    else. Grouped by configuration, video, size and preview slice, newest
+    by modification time, as videos_across_sample_rates picks. A file
+    whose name this module cannot parse (a picture cache, a legacy name)
+    is kept, as before.
+    """
+    if not os.path.isdir( directory ):
+        return
+    newest = {}
+    kept = set()
+    for path in glob.glob( os.path.join( directory, '*.gz' ) ):
+        name = os.path.basename( path )
+        if not include_preview and is_preview_cache_filename( name ):
+            continue
+        parsed = parse_any_cache_name( name )
+        if not parsed:
+            kept.add( name )
+            continue
+        group = ( configuration_label_of_cache_filename( name ), parsed['file_hash'],
+                  parsed['size'], parsed['preview_suffix'] )
+        try:
+            modified = os.path.getmtime( path )
+        except OSError:
+            continue
+        if group not in newest or modified > newest[group][0]:
+            newest[group] = ( modified, name )
+    kept.update( name for _modified, name in newest.values() )
+    for name, boxes in iter_cache_files( directory, include_preview ):
+        if name in kept:
+            yield ( name, boxes )
+
+
 def configurations_to_analyse( requested_sizes=None, backend_names=None, fps=None,
                                min_prob=None, include_preview=False, logger=None,
                                variant_names=None ):

@@ -1841,6 +1841,15 @@ never confirmed contributes nothing at all.
 > censored area because area hides the loss: the 23,311 boxes were 1.2%
 > of rendered boxes and under 0.1% of area. A recommendation is a
 > report; nothing is written without `--apply` and a yes.
+>
+> A value stricter than the current one must also leave no more than
+> `--max-confident-growth` (25%) more confident detections uncensored
+> than the current one does. On a large library the 0.1% share alone
+> passed `exposed_vulva` `confirm_score` 0.5 to 0.7, which nearly
+> doubled the confident detections left bare (198 to 384 of 556,205).
+> A looser value is never held back by it. A value flagged "worth
+> judging by eye" is offered at the `--apply` prompt with the reason,
+> and `--yes` does not write it.
 
 > **auto_tune recommends 1, the config stays at 2.** With
 > no cap, the stage picked 1 for both labels: 7,022 fewer confident
@@ -1902,7 +1911,8 @@ never confirms a track. It has no effect where `min_track_hits` is 1.
 0.7 against off and recommends the strictest (highest) value that
 leaves no more than `--max-confident-loss` (0.1%) of the label's
 confident detections uncensored beyond the fewest any value leaves, the
-same rule as `min_track_hits`. A misfire scoring above the value looks
+same rule as `min_track_hits`, including the `--max-confident-growth`
+limit on a stricter value. A misfire scoring above the value looks
 like a real detection to that metric, so every change it recommends is
 marked "worth judging by eye":
 `AB_EXPERIMENT=confirm_score bash tools/tuning/ab_compare.sh` (0.5 for
