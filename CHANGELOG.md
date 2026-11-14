@@ -2,7 +2,7 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 1.5.0 (2026-11-14)
 ### Added
 
 - `move_completed_sources` (False): after a file renders, or is skipped because its output is already there, its source moves from `uncensored_vids/<folder>/` to `../resources/source/completed/<folder>/`. Failures, previews and existing targets stay put. The folder rule reads `source/completed/<folder>/` as `<folder>`. Upgrade cost: none
