@@ -88,7 +88,39 @@ def person_caches( directory ):
         parsed = parse_person_cache_name( os.path.basename( path ) )
         if parsed is not None:
             found.append( ( path, parsed ) )
-    return found
+    return without_superseded_legacy( found )
+
+
+def _slice_of( suffix ):
+    """(offset, length or None) of a preview suffix; length None for a legacy name without one."""
+    match = re.match( r'^-preview(?:@(?P<offset>[0-9.]+)s)?(?:\+(?P<length>[0-9.]+s|all))?$', suffix )
+    if not match:
+        return None
+    return ( float( match.group( 'offset' ) or 0.0 ), match.group( 'length' ) )
+
+
+def without_superseded_legacy( caches ):
+    """
+    caches less every legacy preview name (no length, '-preview') that a
+    named-length cache of the same video, model and offset replaces.
+
+    Both were read, so one preview counted twice: every video in the
+    report appeared as '-preview' and '-preview+20.0s' with the same
+    numbers, and every total doubled.
+    """
+    named = set()
+    for _path, parsed in caches:
+        window = _slice_of( parsed['suffix'] ) if parsed['suffix'] else None
+        if window and window[1] is not None:
+            named.add( ( parsed['hash'], parsed['backend'], parsed['key'], parsed['fps'], window[0] ) )
+    kept = []
+    for path, parsed in caches:
+        window = _slice_of( parsed['suffix'] ) if parsed['suffix'] else None
+        if ( window and window[1] is None
+                and ( parsed['hash'], parsed['backend'], parsed['key'], parsed['fps'], window[0] ) in named ):
+            continue
+        kept.append( ( path, parsed ) )
+    return kept
 
 
 def model_label( backend, key ):

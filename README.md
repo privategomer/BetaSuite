@@ -13,7 +13,11 @@ Three entry points, one configuration file, one engine:
 | `betastare.py` | censors still images |
 | `betavision-*.py` | live screen-capture censoring (needs `gpu_enabled`) |
 
-- **`betaconfig.py`**: every setting. Values and one-line headers only.
+- **`betaconfig.py`**: every setting, at its shipped default. Values and
+  one-line headers only. Never edit it: copy a setting into
+  **`betaconfig_local.py`** (beside it, ignored by git) to change it, and
+  delete the line to go back. See
+  [Local config](CONFIG_REFERENCE.md#local-config-your-own-settings).
 - **[`CONFIG_REFERENCE.md`](CONFIG_REFERENCE.md)**: what each setting
   does, with analogies and worked examples, and why the shipped values
   are what they are.
@@ -51,6 +55,10 @@ Linux and Windows).
 ## Quick start
 
 ```bash
+# first, choose what to censor: a fresh install censors nothing, and
+# betatv.py stops with this hint until you do
+python3 tools/setup/local_config.py set "items_to_censor=['exposed_vulva', 'exposed_breast']"
+
 # censor everything under ../resources/uncensored_vids/
 python3 betatv.py
 
@@ -196,7 +204,7 @@ rejects it at startup.
 | `nms_iou` *(nudenet_v3)* | `0.45` | overlap at which NMS drops the lower score |
 | `nms_mode` *(nudenet_v3)* | `'per_class'` | `'per_class'` leaves cross-label overlaps for `class_suppression`; `'agnostic'` is NudeNet's upstream behaviour |
 | `class_suppression` *(per-backend)* | per model | which labels suppress which, and how strictly |
-| `class_suppression_refused` *(per-backend)* | `[]` | `'label<-suppressor'` pairs you decided never get a rule; the suppression A/B never proposes them |
+| `class_suppression_refused` *(per-backend)* | `[]` | `'label<-suppressor'` pairs you decided never get a rule, on top of four built-in unsafe `exposed_vulva` pairs that are never proposed ([Pairs never proposed](CONFIG_REFERENCE.md#pairs-never-proposed-built-in-and-class_suppression_refused)) |
 | `class_promotion` *(per-backend)* | `{}` | relabel a detection when corroborating evidence overlaps it, e.g. `covered_vulva` → `exposed_vulva` under an `exposed_penis`. See [Class promotion](CONFIG_REFERENCE.md#class-promotion) |
 | `item_overrides` *(per-backend)* | per model | per-label detection and tracking settings |
 
@@ -204,16 +212,16 @@ Reference: [Detector backend](CONFIG_REFERENCE.md#detector-backend)
 
 ### Hardware
 
-These, the batch sizes and the render and encode settings below are this
-computer's to set: put them in `../resources/betaconfig_machine.py`,
-outside the repository, rather than `betaconfig.py`.
-`python3 tools/setup/machine_config.py` shows what is set and where it
-comes from, and `tools/bench/tune_machine.sh` measures them on this
-machine. Reference: [Machine config](CONFIG_REFERENCE.md#machine-config-this-computers-hardware-settings)
+These, the batch sizes and the render and encode settings below depend
+on the computer. Set your own in `betaconfig_local.py`, like any other
+setting you change, rather than in `betaconfig.py`.
+`python3 tools/setup/local_config.py` shows every setting, its value and
+where it came from, and `tools/bench/tune_machine.sh` measures these on
+this machine and offers to write them. Reference: [Local config](CONFIG_REFERENCE.md#local-config-your-own-settings)
 
 | Setting | Default | What it does |
 |---|---|---|
-| `gpu_enabled` | `1` | request CUDA. A CPU provider is always added as a fallback, and the provider actually in use is logged and recorded in the stats row |
+| `gpu_enabled` | `0` | request CUDA. Setup sets `1` in `betaconfig_local.py` on a GPU install, and `tune_machine.sh` proposes it when onnxruntime has CUDA and nvidia-smi sees a GPU. A CPU provider is always added as a fallback, and the provider actually in use is logged and recorded in the stats row |
 | `cuda_device_id` | `0` | which GPU |
 | `detection_prefetch_frames` | `0` | frames decoded ahead of the model on a second thread. `0` decodes and detects in turn; `tune_machine.sh` says whether it helps here |
 | `structure_scan_workers` | `0` | `betabench structure-scan` files at once. `0` is one per core, at most 4 |
@@ -274,8 +282,8 @@ Reference: [Cross-size dedup](CONFIG_REFERENCE.md#cross-size-dedup)
 
 | Setting | Default | What it does |
 |---|---|---|
-| `default_position_smoothing`, `position_smoothing` *(per-label)* | `0.50` | 0–1: lower is smoother, higher is snappier. Moves where the box **is** |
-| `default_size_smoothing`, `size_smoothing` *(per-label)* | `position_smoothing / 3` | 0–1, same scale, applied to the box's **width and height**. Lower than position on purpose: a breathing box reads as flicker |
+| `default_position_smoothing`, `position_smoothing` *(per-label)* | `0.65` | 0–1: lower is smoother, higher is snappier. Moves where the box **is** |
+| `default_size_smoothing`, `size_smoothing` *(per-label)* | `None`: `position_smoothing / 3` | 0–1, same scale, applied to the box's **width and height**. Lower than position on purpose: a breathing box reads as flicker |
 | `default_interpolation_enabled`, `interpolation_enabled` *(per-label)* | `True` | fill detection gaps with synthetic boxes |
 | `default_interpolation_max_gap`, `interpolation_max_gap` *(per-label)* | `0.5` s | longest gap that gets filled |
 | `track_max_gap` *(per-label)* | auto | longest gap a track survives. Defaults to the larger of `2/video_censor_fps` and that label's `interpolation_max_gap` |
@@ -371,7 +379,7 @@ Reference: [Shot-cut detection](CONFIG_REFERENCE.md#shot-cut-detection)
 
 | Setting | What it does |
 |---|---|
-| `items_to_censor` | the labels that produce a censor. Every other detected label is either a suppression signal or ignored |
+| `items_to_censor` | `[]` as shipped: nothing is censored until you choose, and `betatv.py`, `betastare.py` and betavision stop before any detection, naming the setting. `[ 'exposed_vulva', 'exposed_breast' ]` is what the shipped tuning covers ([Example local config](CONFIG_REFERENCE.md#example-local-config)). Every other detected label is a suppression or promotion signal or ignored |
 
 Every label BetaSuite understands is listed in `betaconst.classes`.
 Some (`exposed_anus`, `exposed_armpits`, `exposed_chest`) exist purely
@@ -387,8 +395,8 @@ as suppression signals and are not meant to be censored directly.
 | `reverse['fade_seconds']` | `0.25` | fade in and out; the fade-in finishes before the target appears |
 | `reverse['trigger']` | every censored label, `min_prob` 0.30, hold 0.5 s | what switches the frame style on. A censored box on screen holds it on too |
 | `reverse['censor']` | `items_to_censor`, no overrides | labels censored inside a triggered frame, keeping their normal-mode styles; `overrides` changes any key for reverse mode only |
-| `reverse['windows']` | female and male faces, `exposed_chest`, `exposed_penis`, each twice the detection's width and height, as a soft-edged ellipse | never censored. Tuning keys are inherited from every tier; look keys never are |
-| `reverse['person_windows']` | on | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
+| `reverse['windows']` | `{}`: none | never censored. A window is `{ label: { 'censor_style': { 'type': 'show', 'feather': 0.3 }, ... } }`; the example local config has one. Tuning keys are inherited from every tier; look keys never are |
+| `reverse['person_windows']` | off | whole male bodies left uncensored: person outlines from `person_backend`, attributed male by the detections inside them |
 | `person_backend` | `yolo11_seg`, size `s` | the person model: `yolo11_seg` (`n`/`s`/`m`, AGPL-3.0) or `rf_detr_seg` (`nano`/`small`/`medium`, Apache-2.0). Exported to ONNX by setup, for the backends you choose there (default `yolo11_seg`) |
 
 Reference: [Reverse mode](CONFIG_REFERENCE.md#reverse-mode), [Person segmentation](CONFIG_REFERENCE.md#person-segmentation)
@@ -462,8 +470,10 @@ Reference: [Preview mode](CONFIG_REFERENCE.md#preview-mode)
 |---|---|---|
 | `logging_enabled` | `True` | write a log file |
 | `log_path` | `../output/logs/betasuite.log` | where |
-| `log_level` | `'debug'` | the **log file's** level |
+| `log_level` | `'info'` | the **log file's** level |
 | `console_level` | `'info'` | the **terminal's** level |
+| `console_palette` | `'standard'` | colors for the terminal view: `'standard'`, `'deuteranopia'` or `'protanopia'` (no red against green), `'monochrome'` (bold, dim, underline only) |
+| `console_color` | `'auto'` | color the terminal view: `'auto'` (a terminal only), `'always'`, `'never'`. `NO_COLOR` and `FORCE_COLOR` are honoured under `'auto'` |
 | `stats_enabled` | `True` | write one JSON-Lines row per processed file |
 | `stats_path` | `../output/stats/betasuite_stats.jsonl` | where |
 
@@ -495,8 +505,11 @@ copy is displayed elsewhere.
 
 ## Command-line overrides
 
-A flag overrides `betaconfig.py` **for that run only**; nothing is ever
-written back. Anything you do not pass falls through to the file.
+A flag overrides `betaconfig.py` and `betaconfig_local.py` **for that
+run only**; nothing is ever written back. Anything you do not pass falls
+through to the files: `betaconfig.py < betaconfig_local.py < flags`.
+`python3 tools/setup/local_config.py show --render-workers 3` prints the
+result of a set of flags, each value labelled default, local or CLI.
 
 Deliberately not covered: detection and censoring tuning
 (`items_to_censor`, `class_suppression`, censor styles, safety margins,
@@ -743,6 +756,13 @@ neither. Two backends in one file therefore produce two reports plus a
 per-source-minute comparison table that survives each configuration
 having processed different files.
 
+A file that read its detections from cache (under 1 second of detection
+per source minute) is counted in the wall clock but left out of
+detect/min, which covers only files that ran the model. When a
+configuration's rows span more than one week, a week-by-week table
+follows, so a new machine, encoder or worker count shows up instead of
+being averaged into one number.
+
 Read it before acting on anything else here. Tuning the stage that took
 16% of a run caps the possible saving at 16%, whatever else the tuning
 output says.
@@ -823,8 +843,11 @@ python3 tools/bench/betabench.py hysteresis --sizes 640
 
 ### `tools/tuning/auto_tune.py`
 
-The staged tuner. It measures, decides, writes the decision into
-`betaconfig.py`, and moves to the next question.
+The staged tuner. It measures, decides, writes the decision into your
+local config (`betaconfig_local.py`, with a `set by auto_tune <run>`
+comment and a backup of the file in the run folder), and moves to the
+next question. A write that the resolver does not read back, or that
+fails validation, is undone.
 
 ```bash
 python3 tools/tuning/auto_tune.py            # measure and report, write nothing

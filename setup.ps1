@@ -303,14 +303,14 @@ if ($Yes -or -not [Environment]::UserInteractive) { $fetchArgs += '--yes' }
 & $VenvPy @fetchArgs
 if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
 
-# ---------------------------------------------------------------- machine config
-# This machine's hardware settings live in ..\resources\betaconfig_machine.py,
-# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
+# ---------------------------------------------------------------- local config
+# Your own settings live in betaconfig_local.py (ignored by git), not
+# betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 $wantFlag = if ($Mode -eq 'gpu') { '1' } else { '0' }
-$machineArgs = @('tools\setup\machine_config.py', '--log-level', $LogLevel, '--log-file', $LogFile, 'setup', '--gpu-enabled', $wantFlag)
-if ($Yes) { $machineArgs += '--yes' }
-& $VenvPy @machineArgs
-if ($LASTEXITCODE -ne 0) { Write-Log warn 'machine config step reported a problem; see the messages above' }
+$localArgs = @('tools\setup\local_config.py', '--log-level', $LogLevel, '--log-file', $LogFile, 'setup', '--gpu-enabled', $wantFlag)
+if ($Yes) { $localArgs += '--yes' }
+& $VenvPy @localArgs
+if ($LASTEXITCODE -ne 0) { Write-Log warn 'local config step reported a problem; see the messages above' }
 
 # ---------------------------------------------------------------- verify
 Write-Log info '=== verifying environment ==='

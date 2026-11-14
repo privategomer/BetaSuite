@@ -54,6 +54,9 @@ video_path_censored   = '../output/censored_vids/'
 # when a cached detection's source file is no longer under
 # video_path_uncensored.
 video_path_source_backup = '../resources/source/'
+# Finished sources, when move_completed_sources is on; profile folders mirror
+# video_path_uncensored's.
+video_path_completed = '../resources/source/completed/'
 
 # --- Cache directory layout -------------------------------------------------
 #

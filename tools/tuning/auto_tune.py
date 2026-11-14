@@ -2,8 +2,8 @@
 """
 auto_tune.py - derive config values from your own footage, one at a time.
 
-One command. It measures, decides, writes the decision into
-betaconfig.py, and moves to the next question. Nothing to remember, no
+One command. It measures, decides, writes the decision into your
+local config (betaconfig_local.py, never betaconfig.py), and moves to the next question. Nothing to remember, no
 per-model or per-variant invocations to get right, and a full log of why
 every value was chosen.
 
@@ -55,7 +55,6 @@ import argparse
 import copy
 import json
 import os
-import statistics
 import sys
 import time
 
@@ -130,11 +129,6 @@ class Stage:
         # key, and a summary that cannot tell them apart is a summary
         # you cannot act on.
         self.configuration_label = configuration_label or backend_name
-        # Median shot length for this configuration's footage, in
-        # seconds, or None when no shot-cut cache was found. Set by the
-        # caller after construction; only TrackMaxGapStage reads it, to
-        # cap candidates that could only bridge across a cut.
-        self.median_shot_seconds = None
         # Set for a stage that tunes one structure profile's value of
         # this key (profiles.variants[<name>].item_overrides) rather than
         # the backend's. See profile_stage().
@@ -360,32 +354,19 @@ class TrackMaxGapStage( LooseningStage ):
     """
     How long a track stays matchable after its last real detection.
 
-    A CEILING THIS STAGE MUST RESPECT
-    ---------------------------------
-    The price rule above counts resets as the thing to minimise, and for
-    a single continuous scene that is right: a reset there is a censor
-    snapping off a subject who never left. On CUT-DENSE footage it is
-    exactly backwards, and the metric cannot see the difference.
-
-    A track that outlives a shot cut does not stop censoring - it keeps
-    drawing, on whoever now occupies that part of the frame. So censor
-    coverage stays high, risky contention stays low, and every candidate
-    looks free. Measured on a 30s slice of a 16-woman compilation, all
-    from one cache: track_max_gap 27.0s produced 3 tracks and 208
-    interpolated boxes; 0.16s produced 31 tracks and 0. The 27.0s value
-    came from this stage, scored as 10-11 resets avoided at 0.0 risky
-    each. It was not free - it welded 16 women into 3 tracks, so all of
-    them wore one censor style, and the EMA smoothed position ACROSS the
-    cuts (median frame-to-frame jump 39.5px vs 48.1px at the tight
-    value: lower, because it was averaging one woman's position into
-    another's).
-
-    Hence the ceiling: a gap longer than a typical shot can only ever
-    bridge across a cut, so candidates above the median shot length are
-    not offered at all. Where the shot length is unknown (no shot-cut
-    cache), nothing is capped and the old behaviour stands - but the
-    report says so, because "no cuts found" and "no cuts in this
-    footage" are different facts.
+    NO SHOT-LENGTH CEILING
+    ----------------------
+    Candidates above the median shot length used to be dropped, because a
+    gap that outlived a cut once kept a track drawing on whoever next held
+    that part of the frame: on a 16-woman compilation 27.0s welded them
+    into 3 tracks under one style. Tracking now ends every track at a
+    shot cut (smooth_boxes never pairs a box with a track across one), so
+    a longer gap cannot bridge a cut at all; it only keeps a track alive
+    longer inside one shot, and the harm there, a box handed to the wrong
+    subject, is what the risky-per-reset price already measures. The
+    ceiling became a second guard over a priced risk, and on one large
+    run, with its median taken over a split-screen profile dominated by
+    one fast-cut file, it removed every larger candidate.
     """
 
     name = 'track_max_gap'
@@ -398,27 +379,9 @@ class TrackMaxGapStage( LooseningStage ):
         baseline = self.baseline_value()
         if not baseline:
             return []
-        ceiling = self._shot_length_ceiling()
-        rows = []
-        for multiplier in self.MULTIPLIERS:
-            value = round( baseline * multiplier, 4 )
-            if ceiling is not None and value > ceiling:
-                continue
-            rows.append( ( value, '%gx (%gs)'%( multiplier, round( value, 3 ) ) ) )
-        return rows
-
-    def _shot_length_ceiling( self ):
-        """
-        Median shot length across this configuration's footage, or None.
-
-        None means "not knowable from what is on disk" - no shot-cut
-        cache, or too few cuts to form a median - and the caller then
-        applies no ceiling rather than guessing one.
-        """
-        median_shot = getattr( self, 'median_shot_seconds', None )
-        if median_shot and median_shot > 0:
-            return median_shot
-        return None
+        return [ ( round( baseline * multiplier, 4 ),
+                   '%gx (%gs)'%( multiplier, round( baseline * multiplier, 3 ) ) )
+                 for multiplier in self.MULTIPLIERS ]
 
 
 class MatchDistanceStage( LooseningStage ):
@@ -565,6 +528,24 @@ class MinTrackHitsStage( Stage ):
         floor = min( entry['missed'] for entry in usable.values() )
         allowed = floor + options.max_confident_loss * total
         within = [ value for value, entry in usable.items() if entry['missed'] <= allowed ]
+        # The tolerance above is a share of every confident detection, so on
+        # a big library it hides a large step against today: vulva
+        # confirm_score 0.5 -> 0.7 passed at "within 0.10%" while nearly
+        # doubling the confident detections it left bare (198 -> 384 of
+        # 556,205). So a value stricter than the current one must also stay
+        # within max_confident_growth of what the current one leaves bare.
+        # Looser values are never held back by this: they leave fewer bare.
+        growth = getattr( options, 'max_confident_growth', MAX_CONFIDENT_GROWTH )
+        held_back = []
+        if baseline_value in by_value:
+            ceiling = by_value[baseline_value]['missed'] * ( 1.0 + growth )
+            for value in list( within ):
+                if ( self.strictness( value ) > self.strictness( baseline_value )
+                        and by_value[value]['missed'] > ceiling ):
+                    within.remove( value )
+                    held_back.append( value )
+            if not within:
+                within = [ baseline_value ]
         chosen = max( within, key=self.strictness )
         summary = ", ".join( "%s: %d uncensored"%( value, by_value[value]['missed'] )
                              for value in sorted( by_value, key=self.strictness ) )
@@ -576,6 +557,11 @@ class MinTrackHitsStage( Stage ):
         if rejected:
             reasoning += " (%s rejected: censor coverage fell more than %.2f%%)"%(
                 ", ".join( str( value ) for value in rejected ), 100*options.max_coverage_loss )
+        if held_back:
+            reasoning += ( " (%s held back: leaves more than %d%% more confident detections "
+                           "uncensored than %s does)"%(
+                               ", ".join( str( value ) for value in sorted( held_back, key=self.strictness ) ),
+                               round( 100*growth ), baseline_value ) )
         if chosen == baseline_value:
             return bu_tuning.Decision( self.title, baseline_value, False,
                                        reasoning + "; keeping %s"%( baseline_value, ),
@@ -747,54 +733,20 @@ def _flatten_rows( rows_by_configuration ):
     return flattened
 
 
-def _median_shot_seconds_for( entries, logger ):
+def unattended_write_refused( decision, assume_yes ):
     """
-    Median shot length across the footage these entries cover, or None.
-
-    Read from the shot-cut caches a real run already wrote, so this
-    costs no decoding. Returns None when no cache is found or there are
-    too few cuts to form a shot length - "cuts were never looked for"
-    and "this footage has no cuts" are different facts, and only the
-    second would justify an unbounded track_max_gap.
+    Whether --yes must not write this decision: accepted, but flagged for
+    judging by eye. --yes answers the write prompts for an unattended run;
+    it used to answer this one too, so a value the numbers say they cannot
+    settle was written with no one looking at it.
     """
-    threshold = getattr( betaconfig, 'shot_cut_threshold', 0.5 )
-    shots = []
-    seen = set()
-    for _config, context in entries:
-        # context['videos'] is {file_hash: [cache_path, ...]}.
-        for file_hash in ( context or {} ).get( 'videos', {} ):
-            if file_hash in seen:
-                continue
-            seen.add( file_hash )
-            # The scan at the configured rate, else the newest at any
-            # rate: a run made before the rate changed scanned at the
-            # old one, and shot length barely depends on the cadence.
-            found = ( bu_cache.shot_cut_caches_for( file_hash, betaconfig.video_censor_fps, threshold )
-                      or bu_cache.shot_cut_caches_for( file_hash, None, threshold ) )
-            for path, _parsed in found[:1]:
-                try:
-                    cuts = sorted( float( c ) for c in bu_hash.read_json( path ) )
-                except Exception:                         # noqa: BLE001
-                    continue
-                # The cuts tracking stops at, with bursts merged: a fade
-                # scans as a run of cuts a frame or two apart, and counted
-                # raw those slivers set one profile's median shot at 0.2s,
-                # which capped away every track_max_gap candidate.
-                cuts = bu_track.tracking_cut_times( cuts )
-                shots.extend( b - a for a, b in zip( cuts, cuts[1:] ) if b > a )
+    return bool( assume_yes and decision.accepted and decision.review )
 
-    if len( shots ) < 2:
-        logger.info( "no usable shot-cut cache: track_max_gap candidates are NOT "
-                     "capped. If this footage is cut-dense, run betatv.py with "
-                     "shot_cut_detection_enabled first so this stage can see the "
-                     "shot length." )
-        return None
 
-    median_shot = statistics.median( shots )
-    logger.info( "median shot length %.2fs across %d shot(s): track_max_gap "
-                 "candidates above this are skipped, since a longer gap could "
-                 "only bridge a cut.", median_shot, len( shots ) )
-    return median_shot
+# A stricter min_track_hits or confirm_score may leave at most this much
+# more confident detections bare than the current value does; see
+# MinTrackHitsStage.decide.
+MAX_CONFIDENT_GROWTH = 0.25
 
 
 STAGE_TYPES = {
@@ -954,7 +906,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter )
     parser.add_argument( '--apply', action='store_true',
-        help="write accepted values into betaconfig.py. Without this the run measures and "
+        help="write accepted values into betaconfig_local.py. Without this the run measures and "
              "reports and changes nothing, which is the right way to see what it would do" )
     parser.add_argument( '--yes', action='store_true',
         help="accept every prompt - what an unattended run wants" )
@@ -988,6 +940,10 @@ def build_parser():
         help="min_track_hits: the strictest value is recommended that leaves at most this share "
              "of a label's confident detections uncensored beyond the fewest any value leaves "
              "(default: 0.001, i.e. 0.1%%)" )
+    parser.add_argument( '--max-confident-growth', type=float, default=MAX_CONFIDENT_GROWTH,
+        help="min_track_hits, confirm_score: a value stricter than the current one may leave at "
+             "most this much more of the current value's uncensored confident detections "
+             "(default: %(default)s, i.e. 25%% more)" )
     parser.add_argument( '--max-risky-per-reset', type=float, default=5.0,
         help="how many risky track assignments a loosening change may add per track reset it "
              "avoids, before it stops being worth it (default: 5)" )
@@ -1025,7 +981,7 @@ def main():
 
     logger.info( "auto_tune starting" )
     logger.info( "output directory: %s"%( os.path.abspath( run_dir ) ) )
-    logger.info( "mode: %s"%( "APPLY - accepted values will be written to betaconfig.py"
+    logger.info( "mode: %s"%( "APPLY - accepted values will be written to betaconfig_local.py"
                               if args.apply else "measure and report only (pass --apply to write)" ) )
     logger.info( "safety: reject any candidate costing more than %.2f%% censor coverage"%(
         100*args.max_coverage_loss ) )
@@ -1039,10 +995,11 @@ def main():
         variant_names=args.variants, logger=logger )
     logger.info( "configurations: %s"%( bu_cache.describe_configurations( configurations ) ) )
 
+    # Into the local config, never betaconfig.py: the shipped file is
+    # the defaults, and a local line for the same setting would hide it.
     writer = bu_tuning.ConfigWriter(
-        config_path=os.path.join( os.path.dirname( os.path.dirname( os.path.dirname(
-            os.path.abspath( __file__ ) ) ) ), 'betaconfig.py' ),
-        backup_dir=run_dir, logger=logger )
+        backup_dir=run_dir, logger=logger,
+        comment='set by auto_tune %s'%( os.path.basename( os.path.normpath( run_dir ) ), ) )
 
     stage_names = args.stages or list( STAGE_ORDER )
     decisions = []
@@ -1097,17 +1054,26 @@ def main():
             logger.info( "  worth judging by eye: %s"%( decision.review['why'], ) )
         decisions.append( decision )
 
-        if decision.accepted and args.apply:
+        if args.apply and unattended_write_refused( decision, args.yes ):
+            logger.warning( "  NOT written: %s is flagged for judging by eye, and --yes does not "
+                            "answer that. Run without --yes to be asked, after "
+                            "AB_EXPERIMENT=%s bash tools/tuning/ab_compare.sh"%(
+                                probe.title, REVIEW_EXPERIMENTS.get( probe.key, 'tracking' ) ) )
+            decision.accepted = False
+            decision.reasoning += " (NOT written: flagged for judging by eye, and --yes was given)"
+        elif decision.accepted and args.apply:
             variant_of = { config.label: config.variant for config, _c in entries }
             if decision.is_split:
-                question = "  write %s per variant (%s) to betaconfig.py?"%(
+                question = "  write %s per variant (%s) to betaconfig_local.py?"%(
                     probe.title,
                     ", ".join( "%s=%s"%( name, value )
                                for name, value in sorted( decision.per_configuration.items() ) ) )
             else:
-                question = "  write %s = %s to betaconfig.py (governs %s)?"%(
+                question = "  write %s = %s to betaconfig_local.py (governs %s)?"%(
                     probe.title, decision.chosen,
                     ", ".join( config.label for config, _c in entries ) )
+            if decision.review:
+                question += " It is flagged for judging by eye: %s."%( decision.review['why'], )
             if confirm( logger, question, args.yes ):
                 try:
                     if decision.is_split and probe.profile_name:
@@ -1135,7 +1101,7 @@ def main():
 
     profile_contexts = {}
 
-    def measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot ):
+    def measure_profiles( backend_name, stage_name, label, entries, profiles, masking ):
         """
         One stage per structure profile that sets this key for this label.
 
@@ -1170,18 +1136,13 @@ def main():
                 stage = STAGE_TYPES[stage_name]( backend_name, label, config.label )
                 stage.profile_name = profile_name
                 stages.append( ( config, stage ) )
-            profile_shot = _median_shot_seconds_for( profile_entries, logger )
-            for _config, stage in stages:
-                stage.median_shot_seconds = profile_shot if profile_shot else median_shot
             probe = stages[0][1]
             if probe.baseline_value() is None and stage_name == 'track_max_gap':
                 continue
             if not probe.candidates():
                 logger.info( "" )
-                logger.info( "-- %s: nothing to try (%d file(s) run this profile%s)"%(
-                    probe.title, len( files ),
-                    "; every candidate is past their median shot, %.2fs"%( profile_shot, )
-                    if profile_shot and stage_name == 'track_max_gap' else '' ) )
+                logger.info( "-- %s: nothing to try (%d file(s) run this profile)"%(
+                    probe.title, len( files ) ) )
                 continue
             logger.info( "" )
             logger.info( "-- %s  (%s; %d file(s) run this profile)"%(
@@ -1207,18 +1168,11 @@ def main():
         logger.info( "  These share one detector_backend[%r]['item_overrides'] block, so each"%(backend_name) )
         logger.info( "  key below gets ONE decision, measured against all of them." )
 
-        # Median shot length for this backend's footage, used only to cap
-        # track_max_gap candidates that could not do anything except
-        # bridge across a shot cut. None when no shot-cut cache exists,
-        # and then no cap is applied - see TrackMaxGapStage.
-        median_shot = _median_shot_seconds_for( entries, logger )
 
         for stage_name in stage_names:
             for label in labels:
                 stages = [ ( config, STAGE_TYPES[stage_name]( backend_name, label, config.label ) )
                            for config, _context in entries ]
-                for _config, stage in stages:
-                    stage.median_shot_seconds = median_shot
                 probe = stages[0][1]
 
                 # A structure profile that sets this key for this label
@@ -1240,13 +1194,11 @@ def main():
                 if probe.baseline_value() is None and stage_name == 'track_max_gap':
                     logger.debug( "%s/%s: no backend baseline; tuning the profiles that set it"%(
                         stage_name, label ) )
-                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
-                                      median_shot )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking )
                     continue
                 if not probe.candidates():
                     logger.debug( "%s/%s: no candidates to try at the backend level"%( stage_name, label ) )
-                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
-                                      median_shot )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking )
                     continue
 
                 logger.info( "" )
@@ -1272,8 +1224,7 @@ def main():
                     logger.info( "  => %s"%( reasoning ) )
                     decisions.append( bu_tuning.Decision(
                         probe.title, probe.baseline_value(), False, reasoning, [] ) )
-                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking,
-                                      median_shot )
+                    measure_profiles( backend_name, stage_name, label, entries, profiles, masking )
                     continue
                 if masked_files:
                     logger.info( "  note: %d of %d file(s) run a profile that sets %s itself (%s); "
@@ -1282,7 +1233,7 @@ def main():
                                      len( masked_files ), len( profiles ), probe.key, masking_text ) )
 
                 measure_decide_write( entries, stages, probe, label )
-                measure_profiles( backend_name, stage_name, label, entries, profiles, masking, median_shot )
+                measure_profiles( backend_name, stage_name, label, entries, profiles, masking )
 
     if not measured_anything:
         logger.error( "nothing to tune: no detection caches found for any configuration. Run "
@@ -1309,6 +1260,8 @@ def main():
                            for name, value in sorted( decision.per_configuration.items() ) ) )
         else:
             outcome = "-> %s"%(decision.chosen)
+        if decision.accepted and decision.review:
+            outcome += "   (judge by eye first, see below)"
         logger.info( "  %-52s %s"%( decision.stage_name, outcome ) )
     reviews = [ decision for decision in decisions if decision.review ]
     if reviews:
@@ -1322,7 +1275,7 @@ def main():
     logger.info( "" )
     logger.info( "decisions written to %s"%( os.path.abspath( results_path ) ) )
     if writer.backups:
-        logger.info( "config backups: %s"%( ", ".join( os.path.basename( b ) for b in writer.backups ) ) )
+        logger.info( "local config backups: %s"%( ", ".join( os.path.basename( b ) for b in writer.backups ) ) )
 
     logger.info( "" )
     if accepted and args.apply:

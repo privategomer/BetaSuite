@@ -110,7 +110,7 @@ def collect( include_preview, labels_filter ):
     per_configuration = {}
     source_count = 0
     for directory in ( VID_HASH_DIR, PIC_HASH_DIR ):
-        for name, boxes in bu_cache.iter_cache_files( directory, include_preview ):
+        for name, boxes in bu_cache.iter_newest_cache_files( directory, include_preview ):
             source_count += 1
             if not boxes:
                 continue

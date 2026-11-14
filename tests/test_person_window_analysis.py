@@ -139,6 +139,17 @@ class TestTool( Harness ):
         self.assertIsNone( parse( 'abc123-person-yolo11_seg-9-p0f0f0f.npz.checkpoint.npz' ) )
         self.assertIsNone( parse( 'abc123-nudenet_v3-3-640-9-0.120-df43d00.gz' ) )
 
+    def test_a_legacy_preview_name_with_a_named_twin_is_read_once( self ):
+        names = [ 'abc123-person-yolo11_seg-9-p0f0f0f-preview.npz',
+                  'abc123-person-yolo11_seg-9-p0f0f0f-preview+20.0s.npz',
+                  'abc123-person-yolo11_seg-9-p0f0f0f-preview@600.0s.npz',
+                  'def456-person-yolo11_seg-9-p0f0f0f-preview.npz' ]
+        for name in names:
+            open( os.path.join( self.tmp, name ), 'w' ).close()
+        kept = sorted( os.path.basename( path ) for path, _parsed in self.tool.person_caches( self.tmp ) )
+        self.assertEqual( kept, sorted( names[ 1: ] ),
+                          "only the lengthless name at the offset a named cache covers goes" )
+
     def test_end_to_end_from_cache_files( self ):
         man = _person( 0, 0, 100, 200, t=0.0 )
         nobody = _person( 300, 0, 100, 200, t=0.0 )

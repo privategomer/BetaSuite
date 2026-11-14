@@ -37,6 +37,19 @@ def _load_tool():
 TOOL = _load_tool()
 
 
+def _set_args( command ):
+    """{ setting path: value } a printed local_config.py set command would write, through its own parser."""
+    import shlex
+    spec = importlib.util.spec_from_file_location(
+        '_local_config_for_ab', os.path.join( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ),
+                                              'tools', 'setup', 'local_config.py' ) )
+    tool = importlib.util.module_from_spec( spec )
+    spec.loader.exec_module( tool )
+    words = shlex.split( command )
+    assert words[:3] == [ 'python', 'tools/setup/local_config.py', 'set' ], words
+    return dict( tool.parse_assignment( word ) for word in words[3:] )
+
+
 def _box( start, end, x=0, y=0, w=100, h=100, label='exposed_breast', track=1 ):
     return { 'start': start, 'end': end, 't': start, 'x': x, 'y': y, 'w': w, 'h': h,
              'label': label, 'score': 0.8, 'track_id': track,
@@ -190,7 +203,7 @@ class TestAdditionFollowUp( unittest.TestCase ):
 
     def lines( self, decisions, refused=() ):
         experiment = TOOL.ab_experiments.SuppressionExperiment()
-        with mock.patch.object( TOOL.ab_experiments.bu_detector, 'get_class_suppression_refused',
+        with mock.patch.object( TOOL.ab_experiments.bu_detector, 'get_configured_class_suppression_refused',
                                 return_value=list( refused ) ):
             return experiment.follow_up_lines( self.CURRENT, self.PROPOSED, decisions, 'nudenet_v3' )
 
@@ -200,9 +213,8 @@ class TestAdditionFollowUp( unittest.TestCase ):
                               'exposed_vulva<-exposed_penis': 'current',
                               'exposed_breast<-face_femme': 'current' },
                             refused=[ 'exposed_vulva<-exposed_buttocks' ] )
-        self.assertEqual( lines[1], "detector_backend['nudenet_v3']['class_suppression_refused'] = "
-                                    "['exposed_vulva<-exposed_buttocks', 'exposed_breast<-exposed_chest', "
-                                    "'exposed_vulva<-exposed_penis']" )
+        self.assertEqual( _set_args( lines[1] ), { ( 'detector_backend', 'nudenet_v3', 'class_suppression_refused' ):
+            [ 'exposed_vulva<-exposed_buttocks', 'exposed_breast<-exposed_chest', 'exposed_vulva<-exposed_penis' ] } )
         self.assertIn( 'exposed_breast<-exposed_chest, exposed_vulva<-exposed_penis', lines[0] )
 
     def test_an_unjudged_addition_is_not_refused( self ):
@@ -212,6 +224,26 @@ class TestAdditionFollowUp( unittest.TestCase ):
         lines = self.lines( { 'exposed_breast<-exposed_chest': 'current' },
                             refused=[ 'exposed_breast<-exposed_chest' ] )
         self.assertEqual( lines[1].count( 'exposed_breast<-exposed_chest' ), 1 )
+
+    def test_the_built_in_pairs_are_never_copied_into_the_config( self ):
+        # Only the person's own list is repeated; the built-in ones apply anyway.
+        experiment = TOOL.ab_experiments.SuppressionExperiment()
+        with mock.patch.object( TOOL.ab_experiments.bu_detector, 'resolve_backend_setting', return_value=None ):
+            lines = experiment.follow_up_lines( self.CURRENT, self.PROPOSED,
+                                                { 'exposed_breast<-exposed_chest': 'current' }, 'nudenet_v3' )
+        self.assertEqual( list( _set_args( lines[1] ).values() ), [ [ 'exposed_breast<-exposed_chest' ] ] )
+
+    def test_chosen_rules_become_one_command_with_each_label_replaced( self ):
+        experiment = TOOL.ab_experiments.SuppressionExperiment()
+        chosen = { 'exposed_vulva': self.PROPOSED['exposed_vulva'][:1] }
+        lines = experiment.chosen_lines( chosen, self.CURRENT, 'nudenet_v3' )
+        self.assertEqual( len( lines ), 1 )
+        # exposed_breast had rules and the chosen side has none: [] clears it,
+        # or the shipped rules for it would stay in effect.
+        self.assertEqual( _set_args( lines[0] ), {
+            ( 'detector_backend', 'nudenet_v3', 'class_suppression', 'exposed_breast' ): [],
+            ( 'detector_backend', 'nudenet_v3', 'class_suppression', 'exposed_vulva' ):
+                self.PROPOSED['exposed_vulva'][:1] } )
 
     def test_other_experiments_have_nothing_to_add( self ):
         experiment = TOOL.ab_experiments.experiment_named( 'min_track_hits' )

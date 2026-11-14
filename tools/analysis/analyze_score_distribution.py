@@ -80,7 +80,7 @@ def load_cache_dir( path, include_preview ):
     boundary-truncated preview slice skews, because its frames are both
     fewer and more alike than a whole video's.
     """
-    return bu_cache.iter_cache_files( path, include_preview=include_preview )
+    return bu_cache.iter_newest_cache_files( path, include_preview=include_preview )
 
 
 def percentiles_of( values, pcts ):

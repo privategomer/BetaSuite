@@ -548,7 +548,8 @@ echo "Next: the tuner above ran as a DRY RUN and wrote nothing. Values it marked
 echo "judging by eye' go through the A/B first: bash tools/tuning/ab_compare.sh"
 echo "When you agree with the rest, apply it with:"
 echo "    ${PYTHON_BIN} tools/tuning/auto_tune.py --apply"
-echo "It backs betaconfig.py up before every write and verifies each value took effect."
+echo "It writes to betaconfig_local.py (never the shipped betaconfig.py), backs it up before every"
+echo "write and verifies each value took effect. With --yes it skips the values marked for the eye."
 
 for r in "${RESULTS[@]}"; do
     if [[ "$r" == FAIL* ]]; then

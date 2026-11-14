@@ -43,7 +43,9 @@ the two function bodies out of it to be sure it was testing the real
 code.
 """
 
+import errno
 import os
+import shutil
 import time
 
 import betaconst
@@ -54,6 +56,7 @@ import betautils_cli as bu_cli
 import betautils_config as bu_config
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
+import betautils_local as bu_local
 import betautils_log as bu_log
 import betautils_person as bu_person
 import betautils_render as bu_render
@@ -94,6 +97,7 @@ def _startup():
     bu_signals.install_handler( logger )
 
     bu_config.validate_config()
+    bu_config.exit_if_nothing_to_render( logger )
     bu_config.verify_input_delete_probability()
     return logger
 
@@ -492,7 +496,8 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             names a person can read. Never reaches a cache path.
 
     Returns:
-        'processed', 'skipped' or 'failed'.
+        'processed', 'skipped', 'failed', or 'out_of_space' for a failure
+        because a disk filled (see is_out_of_space).
 
     Raises:
         betautils_signals.Interrupted: the user asked to stop. Deliberately
@@ -585,6 +590,9 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                source.release()
+                if not preview_mode_enabled:
+                    move_completed_source( uncensored_path, logger )
                 return 'skipped'
 
         logger.info( "processing %s: %s"%(label, fname) )
@@ -629,6 +637,9 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                source.release()
+                if not preview_mode_enabled:
+                    move_completed_source( uncensored_path, logger )
                 return 'skipped'
 
         # Reverse mode's person masks: same frames as detection, in a
@@ -710,27 +721,121 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             fname, paths, preview_mode_enabled, preview_offset_seconds,
             detection_seconds, encode_seconds, finished_at - started_at,
             picture_sizes, session, source, track_stats, render_stats ) )
+        if person_pass is not None:
+            person_pass.stop()
+        source.release()
+        if not preview_mode_enabled:
+            move_completed_source( uncensored_path, logger )
         return 'processed'
 
     except bu_signals.Interrupted:
         raise
     except Exception as err:
-        logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
-        logger.debug( "failure detail", exc_info=True )
-        # Recording the failure must never turn one bad file into a
-        # stopped run, so a problem building the record is logged here.
-        try:
-            bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
-                                                   time.perf_counter() - started_at ) )
-        except Exception as record_err:
-            logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
-        return 'failed'
+        return _failed( label, fname, preview_mode_enabled, source, err, started_at, logger )
     finally:
         # On a failure or Ctrl-C, the person pass checkpoints before the
         # run moves on or exits; after a normal finish this returns at once.
         if person_pass is not None:
             person_pass.stop()
         source.release()
+
+
+def _failed( label, fname, preview_mode_enabled, source, err, started_at, logger ):
+    """Log and record one file's failure; its outcome."""
+    logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
+    logger.debug( "failure detail", exc_info=True )
+    # Recording the failure must never turn one bad file into a
+    # stopped run, so a problem building the record is logged here.
+    try:
+        bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
+                                               time.perf_counter() - started_at ) )
+    except Exception as record_err:
+        logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
+    if is_out_of_space( err ):
+        return 'out_of_space'
+    return 'failed'
+
+
+def completed_source_path( uncensored_path ):
+    """
+    Where a finished source goes: the same folder under
+    betaconst.video_path_completed as it had under video_path_uncensored,
+    so its profile folder keeps meaning the same profile. None when the
+    file is not under video_path_uncensored.
+    """
+    root = os.path.abspath( betaconst.video_path_uncensored )
+    path = os.path.abspath( uncensored_path )
+    relative = os.path.relpath( path, root )
+    if relative.startswith( os.pardir + os.sep ) or relative == os.pardir or os.path.isabs( relative ):
+        return None
+    return os.path.join( betaconst.video_path_completed, relative )
+
+
+def move_completed_source( uncensored_path, logger ):
+    """
+    Move a finished source out of the queue, when move_completed_sources
+    is on.
+
+    Only after a valid output exists: called after a render and its stats
+    row, or when a run skips a file whose output is already there. A
+    failed file stays in the queue, so the next run retries it; moving
+    finished files by hand once carried two unfinished ones along, and
+    no run saw them again. An existing file at the target is never
+    replaced: the source stays where it is and a warning says why.
+    """
+    if not getattr( betaconfig, 'move_completed_sources', False ):
+        return None
+    if not os.path.exists( uncensored_path ):
+        return None                      # deleted by input_delete_probability
+    target = completed_source_path( uncensored_path )
+    if target is None:
+        logger.debug( "not moving %s: not under %s"%( uncensored_path, betaconst.video_path_uncensored ) )
+        return None
+    if os.path.exists( target ):
+        logger.warning( "not moving %s to %s: a file is already there"%( uncensored_path, target ) )
+        return None
+    try:
+        os.makedirs( os.path.dirname( target ), exist_ok=True )
+        shutil.move( uncensored_path, target )
+    except OSError as err:
+        logger.warning( "could not move %s to %s: %s"%( uncensored_path, target, err ) )
+        return None
+    logger.info( "moved finished source to %s"%( target, ) )
+    return target
+
+
+# ffmpeg reports a full disk in its own words, inside a RenderError.
+_OUT_OF_SPACE_TEXT = 'No space left on device'
+
+
+def is_out_of_space( err ):
+    """
+    Whether a failure was a full disk, anywhere in its cause chain.
+
+    One file failing is that file's problem, and the run goes on. A full
+    disk is every remaining file's problem: on one large run the disk
+    filled and the next nine files each failed within seconds, two
+    minutes of the queue spent producing nothing but failure records.
+    An OSError carries ENOSPC; a RenderError carries ffmpeg's message.
+    """
+    seen = set()
+    while err is not None and id( err ) not in seen:
+        seen.add( id( err ) )
+        if isinstance( err, OSError ) and err.errno == errno.ENOSPC:
+            return True
+        if _OUT_OF_SPACE_TEXT in str( err ):
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
+def _free_space_note( folder ):
+    """'N GB free in <folder>', or '' when it cannot be read."""
+    try:
+        free = shutil.disk_usage( folder ).free
+    except OSError:
+        return ''
+    return "%.1f GB free in %s"%( free / 1e9, folder )
 
 
 def _failure_record( fname, preview_mode_enabled, source, err, elapsed_seconds ):
@@ -791,6 +896,10 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
         'detection_key': paths['detection_key'],
         'censor_key': paths['censor_key'],
         'encode_key': paths['encode_key'],
+        # Which settings came from this person's betaconfig_local.py, so
+        # two machines' rows that differ say why. The values themselves
+        # are in the fields above and in the keys.
+        'local_overrides': bu_local.LOADED.overridden_names() if bu_local.LOADED is not None else [],
         'transcoded_source': source.transcoded,
         'video_width': source.width,
         'video_height': source.height,
@@ -816,13 +925,22 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
 # Entry point
 # ---------------------------------------------------------------------------
 
+class _OutOfSpace( Exception ):
+    """Raised inside main's loop to stop the run when a disk fills."""
+
+    def __init__( self, folder ):
+        super().__init__( folder )
+        self.folder = folder
+
+
 def main():
     """
     Walk betaconst.video_path_uncensored and censor everything in it.
 
     Returns:
-        A process exit code: 0 for a clean finish, 130 for a user
-        interrupt (the conventional 128 + SIGINT).
+        A process exit code: 0 for a clean finish, 1 for a run stopped
+        by a full disk, 130 for a user interrupt (the conventional
+        128 + SIGINT).
     """
     logger = _startup()
     _log_run_banner( logger )
@@ -851,14 +969,25 @@ def main():
                 betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
             os.makedirs( censored_folder, exist_ok=True )
             logger.info( "scanning %s (%d file(s))"%(root, len( file_names )) )
-
             for file_index, fname in enumerate( sorted( file_names ) ):
                 bu_signals.check()
                 run_marker.now_processing( fname, preview_mode_enabled )
                 outcome = process_one_video(
                     root, fname, censored_folder, file_index, len( file_names ), session,
                     preview_mode_enabled, preview_max_seconds, active_encode_preset, logger )
+                if outcome == 'out_of_space':
+                    counts['failed'] += 1
+                    raise _OutOfSpace( censored_folder )
                 counts[outcome] += 1
+    except _OutOfSpace as stop:
+        # Stopping is the resumable choice: finished outputs are skipped
+        # next time, the file that failed is rebuilt, and detections
+        # already cached are not run again.
+        note = _free_space_note( stop.folder )
+        logger.error( "stopping the run: a disk is full%s. Free some space and run again; finished "
+                      "files are skipped and the one that failed is rebuilt."%(
+                          " (%s)"%( note, ) if note else "" ) )
+        exit_code = 1
     except bu_signals.Interrupted:
         logger.warning( "run stopped by user after %s"%(
             bu_log.format_duration( time.perf_counter() - run_started_at ) ) )

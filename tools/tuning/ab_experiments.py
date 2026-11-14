@@ -11,7 +11,7 @@ verdicts); an experiment supplies the parts that depend on what changes:
   applied      a context in which the production pipeline reads a side
   attribute    which change caused each differing box
   choose       the chosen side, change by change, from the verdicts
-  chosen_lines the config lines a person pastes
+  chosen_lines the local_config.py command a person runs
 
 Experiments here:
   suppression     class_suppression rules (the bench's retune/drop/add proposal)
@@ -37,6 +37,7 @@ import os
 import betaconfig
 import betautils_config as bu_config
 import betautils_detector as bu_detector
+import betautils_local as bu_local
 import betautils_track as bu_track
 import betautils_tuning as bu_tuning
 
@@ -108,7 +109,7 @@ class Experiment( object ):
         raise NotImplementedError
 
     def chosen_lines( self, chosen, current, backend_name ):
-        """The config lines that make `chosen` the config."""
+        """The local_config.py command (and any notes) that make `chosen` the config."""
         raise NotImplementedError
 
     def explain_intro( self ):
@@ -116,7 +117,7 @@ class Experiment( object ):
                  "one moment where the two censor differently, and the change that caused it." )
 
     def follow_up_lines( self, current, proposed, decisions, backend_name ):
-        """Config lines worth pasting whatever was adopted (see SuppressionExperiment)."""
+        """Commands worth running whatever was adopted (see SuppressionExperiment)."""
         return []
 
     def note( self, cause, proposed ):
@@ -328,7 +329,7 @@ class SuppressionExperiment( Experiment ):
                                    min_win_rate=betabench.ADDITION_MIN_WIN_RATE )
         added = added_pairs( current, proposed )
         if refused:
-            logger.info( "never proposed as additions (class_suppression_refused): %s"%(
+            logger.info( "never proposed as additions (built in, and class_suppression_refused): %s"%(
                 ", ".join( refused ), ) )
         source = 'betabench suppression suggestions'
         if added:
@@ -357,15 +358,14 @@ class SuppressionExperiment( Experiment ):
         return choose_rules( current, proposed, tally )
 
     def chosen_lines( self, chosen, current, backend_name ):
-        lines = [ "detector_backend[%r]['class_suppression'] = {"%( backend_name, ) ]
-        for label, entries in sorted( chosen.items() ):
-            lines.append( "    '%s': ["%( label, ) )
-            for rule in entries:
-                lines.append( "        { 'suppressed_by': '%s', 'margin': %s, 'min_iou': %s },"%(
-                    rule['suppressed_by'], rule.get( 'margin' ), rule.get( 'min_iou' ) ) )
-            lines.append( "    ]," )
-        lines.append( "}" )
-        return lines
+        # One label's rules per assignment: the local config merges the
+        # class_suppression dict by label and replaces each label's list
+        # whole. A label the chosen side has no rules for gets [], or the
+        # shipped rules for it would stay in effect.
+        base = ( 'detector_backend', backend_name, 'class_suppression' )
+        updates = [ ( base + ( label, ), [ dict( rule ) for rule in chosen.get( label ) or [] ] )
+                    for label in sorted( set( chosen ) | set( current or {} ) ) ]
+        return [ bu_local.set_command( updates ) ]
 
     def follow_up_lines( self, current, proposed, decisions, backend_name ):
         """
@@ -377,10 +377,14 @@ class SuppressionExperiment( Experiment ):
                         if decisions.get( pair ) == 'current' ]
         if not turned_down:
             return []
-        refused = bu_detector.get_class_suppression_refused( backend_name )
+        # Only the person's own list: the built-in pairs are never
+        # proposed, so never turned down, and repeating them here would
+        # copy them into the config.
+        refused = bu_detector.get_configured_class_suppression_refused( backend_name )
         merged = refused + [ pair for pair in turned_down if pair not in refused ]
         return [ "so the next round does not propose %s again:"%( ", ".join( turned_down ), ),
-                 "detector_backend[%r]['class_suppression_refused'] = %r"%( backend_name, merged ) ]
+                 bu_local.set_command( [ ( ( 'detector_backend', backend_name, 'class_suppression_refused' ),
+                                           merged ) ] ) ]
 
     def note( self, cause, proposed ):
         # The label is drawn on the line above, so the suppressor alone.
@@ -560,15 +564,18 @@ class OverrideExperiment( Experiment ):
         return chosen, decisions
 
     def chosen_lines( self, chosen, current, backend_name ):
-        lines = []
+        updates, notes = [], []
         for label in sorted( chosen ):
             for key, value in sorted( chosen[label].items() ):
-                lines.append( "detector_backend[%r]['item_overrides'][%r][%r] = %s"%(
-                    backend_name, label, key, _format( value ) ) )
+                updates.append( ( ( 'detector_backend', backend_name, 'item_overrides', label, key ), value ) )
                 for profile, setting in _profiles_setting( label, key, backend_name ).items():
-                    lines.append( "    and in profiles['variants'][%r]['item_overrides'][%r][%r] "
-                                  "(now %s), or remove it there"%( profile, label, key, _format( setting ) ) )
-        return lines or [ "(nothing: every change kept the config as it is)" ]
+                    notes.append( "profile %r sets %s.%s too (now %s), and wins for its files: set "
+                                  "detector_backend.%s.profiles.variants.%s.item_overrides.%s.%s as well "
+                                  "if it should follow"%( profile, label, key, _format( setting ),
+                                                          backend_name, profile, label, key ) )
+        if not updates:
+            return [ "(nothing: every change kept the config as it is)" ]
+        return [ bu_local.set_command( updates ) ] + notes
 
 
 def parse_sets( items ):
@@ -688,7 +695,7 @@ class GlobalsExperiment( Experiment ):
     def chosen_lines( self, chosen, current, backend_name ):
         if not chosen:
             return [ "(nothing: the verdicts kept the config as it is)" ]
-        return [ "%s = %s"%( name, _format( chosen[name] ) ) for name in self.keys if name in chosen ]
+        return [ bu_local.set_command( [ ( ( name, ), chosen[name] ) for name in self.keys if name in chosen ] ) ]
 
 
 # --- registry ---------------------------------------------------------------------------

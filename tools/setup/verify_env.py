@@ -192,14 +192,17 @@ def gpu_requested( args, c ):
         return False
     try:
         import betaconfig
-        import betautils_machine
-        loaded = betautils_machine.LOADED
+        import betautils_local
+        loaded = betautils_local.LOADED
         value = bool( getattr( betaconfig, 'gpu_enabled', 0 ) )
-        from_machine = loaded is not None and ( 'gpu_enabled', ) in loaded.applied
+        from_local = loaded is not None and ( 'gpu_enabled', ) in loaded.applied
         c.log.info( 'gpu_enabled = %d (from %s)'%(
-            int( value ), loaded.path if from_machine else 'betaconfig.py' ) )
+            int( value ), loaded.path if from_local else 'betaconfig.py' ) )
         if loaded is not None:
             c.log.info( 'note  %s'%( loaded.describe(), ) )
+            legacy = betautils_local.legacy_warning( loaded )
+            if legacy:
+                c.warn( legacy )
             for problem in loaded.problems:
                 c.fail( problem )
         return value

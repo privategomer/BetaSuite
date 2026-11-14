@@ -25,11 +25,11 @@ PHASES (--phase rank | explain | render | decide | all)
             <video>_clipNN_<s>s_ab.mp4    the real censor, config LEFT,
                                           change RIGHT
           --full also renders both sides over each whole video (hours).
-  decide  Reads the verdicts and writes chosen.json and the config lines
-          to paste: each change takes the side its verdicts favour; a
+  decide  Reads the verdicts and writes chosen.json and prints the
+          local_config.py command that adopts it: each change takes the side its verdicts favour; a
           tie or no verdict keeps the config.
 
-Nothing touches betaconfig.py or any cache. Output goes to
+Nothing touches betaconfig.py, betaconfig_local.py or any cache. Output goes to
 ../output/benchmarks/ab_<experiment>_<timestamp>/ unless --out-dir.
 tools/tuning/ab_compare.sh runs the whole round with prompts and a log.
 """
@@ -986,18 +986,18 @@ def phase_decide( args, logger, ranking ):
     logger.info( "chosen side written to %s"%( ", ".join( written ), ) )
     adopted = sorted( cause for cause, decision in decisions.items() if decision == 'proposed' )
     if not adopted:
-        logger.info( "every change kept the config as it is; nothing to paste" )
+        logger.info( "every change kept the config as it is; nothing to set" )
     else:
-        logger.info( "to adopt %s, put this in betaconfig.py:"%( ", ".join( adopted ), ) )
+        logger.info( "to adopt %s, run this (it writes betaconfig_local.py):"%( ", ".join( adopted ), ) )
         for line in experiment.chosen_lines( chosen, ranking['current'], ranking['backend'] ):
             logger.info( "    %s"%( line, ) )
         logger.info( "next round: check the chosen side on videos you have not judged yet, before "
-                     "pasting: bash tools/tuning/ab_compare.sh confirm" )
+                     "setting it: bash tools/tuning/ab_compare.sh confirm" )
     follow_up = experiment.follow_up_lines( ranking['current'], ranking['proposed'], decisions,
                                             ranking['backend'] )
     if follow_up:
         logger.info( "" )
-        logger.info( "also worth pasting, %s"%( follow_up[0], ) )
+        logger.info( "also worth running, %s"%( follow_up[0], ) )
         for line in follow_up[1:]:
             logger.info( "    %s"%( line, ) )
     return chosen, decisions

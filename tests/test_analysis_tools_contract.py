@@ -156,6 +156,23 @@ class TestTrackingObserverIsALiveExtensionPoint( unittest.TestCase ):
         self.assertGreaterEqual( seen['match'], 1,
             "smooth_boxes never reported continuing a track, so no jitter/reset numbers can be measured" )
 
+    def test_a_resolve_is_shown_only_the_tracks_live_beside_it( self ):
+        # One track, a shot cut, then a box elsewhere. The old track is
+        # still inside track_max_gap, so the tracker still holds it, but it
+        # is across the cut and so no neighbour of the new box: paired
+        # style could not use it, and the flicker analysis must not count it.
+        boxes = self._one_label_boxes()
+        after_cut = dict( boxes[0], start=0.4, end=0.5, t=0.4, x=1000, _raw_x=1000 )
+        resolves = []
+
+        class _Recorder( bu_track.TrackingObserver ):
+            def on_independent_style_resolve( self, label, box, tracks, settings ):
+                resolves.append( ( box['t'], len( tracks ) ) )
+
+        with bu_track.tracking_observer( _Recorder() ):
+            bu_track.smooth_boxes( boxes[ :3 ] + [ after_cut ], shot_cut_times=[ 0.35 ], cut_bursts=False )
+        self.assertEqual( resolves[-1], ( 0.4, 0 ), "a track across a cut is not a live neighbour" )
+
     def test_observer_is_removed_on_the_way_out( self ):
         class _Recorder( bu_track.TrackingObserver ):
             pass
@@ -305,6 +322,15 @@ class TestSweepsReachTheResolver( unittest.TestCase ):
         self.assertAlmostEqual(
             bu_detector.get_item_overrides( label, backend )['position_smoothing'], 0.9 )
         self.assertAlmostEqual( betaconfig.default_position_smoothing, self._orig_alpha )
+
+    def test_jitter_sweep_always_measures_each_configured_value( self ):
+        # A fixed sweep of 0.15 to 0.70 never measured a label pinned at 0.85.
+        backend, label = 'nudenet_v3', 'exposed_breast'
+        self._pin_backend_key( backend, label, 'position_smoothing', 0.85 )
+        tool = self._load_tool( 'tools/analysis/analyze_jitter.py', '_jit_configured_under_test' )
+        configured = tool.configured_alphas( [ label ], backend )
+        self.assertAlmostEqual( configured[label], 0.85 )
+        self.assertEqual( tool.sweep_points( [ 0.15, 0.70, 0.70 ], configured ), [ 0.15, 0.70, 0.85 ] )
 
 
 

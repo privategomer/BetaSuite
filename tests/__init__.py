@@ -21,12 +21,12 @@ import os
 import shutil
 import tempfile
 
-# The repo's own defaults, whatever ../resources/betaconfig_machine.py
-# this machine has: tests that check the shipped config, or count on its
-# encoder or worker settings, must see the same values on every machine.
-# Set before betaconfig is imported, and inherited by every subprocess a
-# test starts. Tests of the machine config pass their own paths.
-os.environ['BETASUITE_MACHINE_CONFIG'] = 'none'
+# The shipped defaults, whatever betaconfig_local.py this checkout has:
+# tests that check the shipped config, or count on its encoder or worker
+# settings, must see the same values on every machine. Set before
+# betaconfig is imported, and inherited by every subprocess a test
+# starts. Tests of the local config pass their own paths.
+os.environ['BETASUITE_LOCAL_CONFIG'] = 'none'
 
 import betaconfig
 import betaconst
@@ -46,6 +46,7 @@ REDIRECTED_PATHS = {
     'video_path_uncensored':    _under_root( 'resources', 'uncensored_vids' ) + os.sep,
     'video_path_censored':      _under_root( 'output', 'censored_vids' ) + os.sep,
     'video_path_source_backup': _under_root( 'resources', 'source' ) + os.sep,
+    'video_path_completed':     _under_root( 'resources', 'source', 'completed' ) + os.sep,
     'cache_root':               _under_root( 'output', 'cache' ),
     'vid_hash_dir':             _under_root( 'output', 'cache', 'vid_hashes' ),
     'pic_hash_dir':             _under_root( 'output', 'cache', 'pic_hashes' ),
@@ -76,3 +77,13 @@ betaconfig.stats_path = TEST_STATS_PATH
 TEST_ENCODE = { 'encode_video_codec': 'libx264', 'encode_preset': 'fast', 'encode_crf': 17 }
 for _name, _value in TEST_ENCODE.items():
     setattr( betaconfig, _name, _value )
+
+# betaconfig.py ships items_to_censor = [] (a fresh install chooses what
+# to censor), but most of the suite is about censoring: tracking, styles,
+# shot cuts, the structure bench. Without labels every one of those
+# would pass vacuously or fail on an empty render. The suite censors the
+# two labels the shipped tuning covers. Tests of the shipped default read
+# betaconfig.py's source (tests/test_shipped_defaults.py), and tests
+# about an empty list set it themselves.
+SUITE_ITEMS_TO_CENSOR = [ 'exposed_vulva', 'exposed_breast' ]
+betaconfig.items_to_censor = list( SUITE_ITEMS_TO_CENSOR )

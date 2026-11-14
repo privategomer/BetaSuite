@@ -191,6 +191,44 @@ class TestSameContent( unittest.TestCase ):
                           [ ( 'x', 'y' ), ( 'x', 'z' ), ( 'y', 'z' ) ] )
 
 
+class TestTimelineSeparatesSeries( unittest.TestCase ):
+    """
+    Two volumes of one series agree on runtime and every total, so only
+    what is on screen over time tells them apart.
+    """
+
+    def _with( self, timeline ):
+        signature = _signature( 600.0, 592.0, 0.0, 0.0 )
+        signature['timeline'] = timeline
+        return signature
+
+    def test_copies_agree_on_the_timeline( self ):
+        timeline = [ 6.0, 8.0, 9.0, 7.0 ] * 15
+        self.assertTrue( bu_tuning.same_content( self._with( timeline ), self._with( list( timeline ) ) ) )
+
+    def test_another_volume_does_not( self ):
+        # Same levels in another order, so no shift lines them up.
+        first = [ float( ( index * 7 ) % 11 + 1 ) for index in range( 60 ) ]
+        second = [ float( ( index * 5 ) % 11 + 1 ) for index in range( 60 ) ]
+        self.assertFalse( bu_tuning.same_content( self._with( first ), self._with( second ) ) )
+
+    def test_a_trim_shifts_but_still_matches( self ):
+        timeline = [ float( index % 7 ) + 1.0 for index in range( 60 ) ]
+        trimmed = timeline[ 1: ] + [ 1.0 ]
+        self.assertTrue( bu_tuning.same_content( self._with( timeline ), self._with( trimmed ) ) )
+
+    def test_without_a_timeline_on_both_the_totals_decide( self ):
+        self.assertTrue( bu_tuning.same_content( self._with( [ 1.0 ] * 60 ), self._with( [] ) ) )
+
+    def test_label_content_reports_boxes_per_sample_by_bucket( self ):
+        # Two boxes in every sample of the first 10s at 1 fps, none after,
+        # then one box at 25s: buckets 0, 1 and 2.
+        raw = ( [ _raw( float( t ), 'exposed_breast' ) for t in range( 10 ) ] * 2
+                + [ _raw( 25.0, 'exposed_vulva' ), _raw( 25.0, 'face_femme' ) ] )
+        found = bu_tuning.label_content( raw, LABELS, 1 )
+        self.assertEqual( found['box_timeline'], [ 2.0, 0.0, 0.1 ] )
+
+
 class TestDuplicateReport( unittest.TestCase ):
 
     def setUp( self ):

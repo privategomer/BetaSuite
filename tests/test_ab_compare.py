@@ -41,6 +41,19 @@ def _box( start, end, label='exposed_breast', x=0 ):
              'label': label }
 
 
+
+def _set_args( command ):
+    """{ setting path: value } a printed local_config.py set command would write, through its own parser."""
+    import shlex
+    spec = importlib.util.spec_from_file_location(
+        '_local_config_for_ab_compare', os.path.join( os.path.dirname( os.path.dirname( os.path.abspath(
+            __file__ ) ) ), 'tools', 'setup', 'local_config.py' ) )
+    tool = importlib.util.module_from_spec( spec )
+    spec.loader.exec_module( tool )
+    words = shlex.split( command )
+    assert words[:3] == [ 'python', 'tools/setup/local_config.py', 'set' ], words
+    return dict( tool.parse_assignment( word ) for word in words[3:] )
+
 class _Logger( object ):
 
     def __init__( self ):
@@ -111,8 +124,9 @@ class TestFocus( unittest.TestCase ):
                                     { 'exposed_breast', 'exposed_vulva' }, 4.0, 3,
                                     replay=lambda *args, **kwargs: [],
                                     duration_of=lambda path: 100.0 )[0]
+        # One box in each of the 90 samples of the first 10-second bucket.
         self.assertEqual( row['signature'], { 'duration': 100.0, 'mixed': 0.0, 'seconds': {
-            'exposed_breast': 10.0, 'exposed_vulva': 0.0 } } )
+            'exposed_breast': 10.0, 'exposed_vulva': 0.0 }, 'timeline': [ 1.0 ] } )
 
     def test_focused_keeps_all_without_a_focus( self ):
         boxes = [ _box( 0, 1, 'a' ), _box( 0, 1, 'b' ) ]
@@ -225,13 +239,14 @@ class TestOverrideExperiment( _ConfigSnapshot ):
         self.assertEqual( chosen, { 'exposed_breast': { 'min_track_hits': 1 } } )
         self.assertEqual( decisions, { 'exposed_breast': 'proposed', 'exposed_vulva': 'current' } )
 
-    def test_chosen_lines_are_pastable_and_name_the_profiles( self ):
+    def test_chosen_lines_are_a_set_command_and_name_the_profiles( self ):
         self.set_override( 'exposed_breast', 'min_track_hits', 3, profile='quick_cut' )
         lines = self.experiment().chosen_lines( { 'exposed_breast': { 'min_track_hits': 1 } }, {},
                                                 self.backend_name )
-        self.assertEqual( lines[0], "detector_backend[%r]['item_overrides']['exposed_breast']"
-                                    "['min_track_hits'] = 1"%( self.backend_name, ) )
-        self.assertIn( 'quick_cut', lines[1] )
+        self.assertEqual( _set_args( lines[0] ), {
+            ( 'detector_backend', self.backend_name, 'item_overrides', 'exposed_breast', 'min_track_hits' ): 1 } )
+        self.assertIn( 'detector_backend.%s.profiles.variants.quick_cut.item_overrides.exposed_breast.'
+                       'min_track_hits'%( self.backend_name, ), lines[1] )
 
     def test_note_names_the_setting_under_the_label( self ):
         self.assertEqual( self.experiment().note( 'exposed_breast', { 'exposed_breast': {
@@ -417,9 +432,11 @@ class TestCutBurstExperiment( unittest.TestCase ):
         chosen, decisions = self.experiment.choose( {}, proposed, { 'cut_bursts': { 'proposed': 3 } },
                                                     'nudenet_v3' )
         self.assertEqual( chosen, proposed )
-        self.assertEqual( self.experiment.chosen_lines( chosen, {}, 'nudenet_v3' ),
-                          [ "shot_cut_burst_window = 0.35", "shot_cut_burst_max_span = None",
-                            "shot_cut_burst_keep = 'first'" ] )
+        lines = self.experiment.chosen_lines( chosen, {}, 'nudenet_v3' )
+        self.assertEqual( len( lines ), 1 )
+        self.assertEqual( _set_args( lines[0] ), { ( 'shot_cut_burst_window', ): 0.35,
+                                                   ( 'shot_cut_burst_max_span', ): None,
+                                                   ( 'shot_cut_burst_keep', ): 'first' } )
         chosen, decisions = self.experiment.choose( {}, proposed, { 'cut_bursts': { 'proposed': 1,
                                                                                     'current': 1 } },
                                                     'nudenet_v3' )
@@ -473,16 +490,17 @@ class TestDecideWritesChosen( _ConfigSnapshot ):
         with open( os.path.join( directory, 'chosen.json' ) ) as handle:
             self.assertEqual( json.load( handle ), { 'exposed_breast': { 'min_track_hits': 1 } } )
         self.assertFalse( os.path.exists( os.path.join( directory, 'chosen_rules.json' ) ) )
-        self.assertTrue( any( "['min_track_hits'] = 1" in line for line in logger.lines ) )
+        self.assertTrue( any( "item_overrides.exposed_breast.min_track_hits=1" in line
+                              and 'local_config.py set' in line for line in logger.lines ), logger.lines )
         self.assertTrue( any( 'ab_compare.sh confirm' in line for line in logger.lines ) )
 
-    def test_nothing_won_means_nothing_to_paste( self ):
+    def test_nothing_won_means_nothing_to_set( self ):
         self.set_override( 'exposed_breast', 'min_track_hits', 2 )
         ranking = { 'experiment': 'min_track_hits', 'backend': self.backend_name, 'current': {},
                     'proposed': { 'exposed_breast': { 'min_track_hits': 1 } } }
         directory, chosen, decisions, logger = self.decide( ranking, [ ( 'exposed_breast', 'left' ) ] )
         self.assertEqual( chosen, {} )
-        self.assertTrue( any( 'nothing to paste' in line for line in logger.lines ) )
+        self.assertTrue( any( 'nothing to set' in line for line in logger.lines ) )
         self.assertFalse( any( 'confirm' in line for line in logger.lines ) )
 
     def test_suppression_writes_both_names( self ):
@@ -503,12 +521,14 @@ class TestDecideWritesChosen( _ConfigSnapshot ):
         ranking = { 'experiment': 'suppression', 'backend': self.backend_name,
                     'current': current, 'proposed': proposed }
         with mock.patch.object( ab.ab_experiments.bu_detector, 'get_class_suppression_refused',
-                                return_value=[] ):
+                                return_value=[] ), \
+                mock.patch.object( ab.ab_experiments.bu_detector, 'get_configured_class_suppression_refused',
+                                   return_value=[] ):
             _directory, chosen, decisions, logger = self.decide(
                 ranking, [ ( 'exposed_breast<-exposed_chest', 'left' ) ] )
         self.assertEqual( decisions, { 'exposed_breast<-exposed_chest': 'current' } )
-        self.assertTrue( any( 'nothing to paste' in line for line in logger.lines ) )
-        self.assertTrue( any( "['class_suppression_refused'] = ['exposed_breast<-exposed_chest']" in line
+        self.assertTrue( any( 'nothing to set' in line for line in logger.lines ) )
+        self.assertTrue( any( "class_suppression_refused=['exposed_breast<-exposed_chest']" in line
                               for line in logger.lines ), logger.lines )
 
 

@@ -239,3 +239,47 @@ class TestFailuresInTheReport( unittest.TestCase ):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestDetectionReusedFromCache( unittest.TestCase ):
+    """
+    A file that read its detections from cache spent almost nothing on
+    detection. Counted into detect/min, it lowers the configuration's
+    detection cost by however many files a re-run happened to reuse.
+    """
+
+    def test_a_near_zero_detection_is_a_cache_hit( self ):
+        # 2400 frames at 24 fps is 100 seconds of source.
+        self.assertTrue( summarize_run.detection_was_reused( _row( detection=0.03 ) ) )
+        self.assertFalse( summarize_run.detection_was_reused( _row( detection=10.0 ) ) )
+        self.assertFalse( summarize_run.detection_was_reused( _row( frames=0 ) ), "no duration, no verdict" )
+
+    def test_detect_per_minute_leaves_cache_hits_out( self ):
+        totals = summarize_run.summarise_group( [ _row( detection=20.0 ), _row( detection=0.02 ) ] )
+        self.assertEqual( totals['detection_reused'], 1 )
+        self.assertAlmostEqual( summarize_run.detect_per_minute( totals ), 12.0,
+                                msg="20s over the one 100s file that ran the model, not over both" )
+
+    def test_all_cached_has_no_detection_cost( self ):
+        totals = summarize_run.summarise_group( [ _row( detection=0.02 ) ] )
+        self.assertIsNone( summarize_run.detect_per_minute( totals ) )
+
+
+class TestByWeek( unittest.TestCase ):
+
+    def test_one_configuration_is_split_by_week( self ):
+        early = dict( _row( encode=100.0 ), timestamp=1_700_000_000 )
+        late = dict( _row( encode=20.0 ), timestamp=1_700_000_000 + 14 * 86400 )
+        lines = []
+        with mock.patch( 'builtins.print', side_effect=lambda *args: lines.append( ' '.join( map( str, args ) ) ) ):
+            summarize_run.print_by_week( { summarize_run.group_key( early ): [ early, late ] } )
+        weeks = [ line for line in lines if 'week of' in line ]
+        self.assertEqual( len( weeks ), 2 )
+        self.assertIn( 'render/min   60.0s', weeks[0] )
+        self.assertIn( 'render/min   12.0s', weeks[1] )
+
+    def test_a_single_week_prints_nothing( self ):
+        lines = []
+        with mock.patch( 'builtins.print', side_effect=lambda *args: lines.append( args ) ):
+            summarize_run.print_by_week( { summarize_run.group_key( _row() ): [ _row(), _row() ] } )
+        self.assertEqual( lines, [] )
