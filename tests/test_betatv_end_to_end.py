@@ -115,8 +115,10 @@ class BetaTvHarness( unittest.TestCase ):
         self._saved_const = { name: getattr( betaconst, name ) for name in (
             'video_path_uncensored', 'video_path_censored', 'vid_hash_dir',
             'pic_hash_dir', 'shot_cut_dir', 'transcode_cache_dir',
-            'file_hash_cache_path', 'run_key_dir' ) }
+            'file_hash_cache_path', 'run_key_dir', 'video_path_completed' ) }
         betaconst.video_path_uncensored = self.uncensored + os.sep
+        self.completed = os.path.join( self.tmpdir, 'source', 'completed' )
+        betaconst.video_path_completed = self.completed + os.sep
         betaconst.video_path_censored = self.censored + os.sep
         betaconst.vid_hash_dir = os.path.join( self.tmpdir, 'cache', 'vid_hashes' )
         betaconst.pic_hash_dir = os.path.join( self.tmpdir, 'cache', 'pic_hashes' )
@@ -147,7 +149,8 @@ class BetaTvHarness( unittest.TestCase ):
                 ( 'shot_cut_detection_enabled', True ),
                 ( 'encode_preset', 'ultrafast' ),
                 ( 'items_to_censor', [ 'exposed_breast' ] ),
-                ( 'video_censor_fps', 5 ) ):
+                ( 'video_censor_fps', 5 ),
+                ( 'move_completed_sources', False ) ):
             # _MISSING, not None, for "this attribute did not exist".
             # None is a legitimate configured value (preview_start_seconds
             # means "no pinned start"), and the restore loop used to skip
@@ -738,3 +741,66 @@ class TestSignalPlumbing( unittest.TestCase ):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestMoveCompletedSources( BetaTvHarness ):
+    """
+    A finished source leaves the queue for the completed tree, under the
+    same folder; anything unfinished stays where the next run sees it.
+    """
+
+    def setUp( self ):
+        super().setUp()
+        betaconfig.move_completed_sources = True
+        os.makedirs( os.path.join( self.uncensored, 'scene' ) )
+        self.clip = os.path.join( self.uncensored, 'scene', 'clip.mp4' )
+        _build_clip( self.clip )
+
+    def _run( self ):
+        return betatv.process_one_video(
+            os.path.join( self.uncensored, 'scene' ), 'clip.mp4', self.censored, 0, 1,
+            self.detector.get_session(), False, 20, 'ultrafast', self.logger )
+
+    def test_a_rendered_source_moves_under_its_own_folder( self ):
+        self.assertEqual( self._run(), 'processed' )
+        self.assertFalse( os.path.exists( self.clip ) )
+        self.assertTrue( os.path.exists( os.path.join( self.completed, 'scene', 'clip.mp4' ) ) )
+
+    def test_a_failed_source_stays_in_the_queue( self ):
+        with mock.patch.object( betatv, 'detect_boxes_for_video', side_effect=RuntimeError( 'bad' ) ):
+            self.assertEqual( self._run(), 'failed' )
+        self.assertTrue( os.path.exists( self.clip ) )
+        self.assertFalse( os.path.exists( self.completed ) )
+
+    def test_a_source_already_rendered_moves_when_skipped( self ):
+        betaconfig.move_completed_sources = False
+        self.assertEqual( self._run(), 'processed' )
+        betaconfig.move_completed_sources = True
+        self.assertEqual( self._run(), 'skipped' )
+        self.assertTrue( os.path.exists( os.path.join( self.completed, 'scene', 'clip.mp4' ) ) )
+
+    def test_off_leaves_it_and_a_taken_target_is_never_replaced( self ):
+        betaconfig.move_completed_sources = False
+        self.assertEqual( self._run(), 'processed' )
+        self.assertTrue( os.path.exists( self.clip ), "off by default" )
+        betaconfig.move_completed_sources = True
+        os.makedirs( os.path.join( self.completed, 'scene' ) )
+        taken = os.path.join( self.completed, 'scene', 'clip.mp4' )
+        with open( taken, 'w' ) as handle:
+            handle.write( 'someone else' )
+        with self.assertLogs( self.logger, level='WARNING' ):
+            self._run()
+        self.assertTrue( os.path.exists( self.clip ) )
+        with open( taken ) as handle:
+            self.assertEqual( handle.read(), 'someone else' )
+
+    def test_a_preview_never_moves_its_source( self ):
+        betaconfig.preview_mode_enabled = True
+        betatv.process_one_video(
+            os.path.join( self.uncensored, 'scene' ), 'clip.mp4', self.censored, 0, 1,
+            self.detector.get_session(), True, 1, 'ultrafast', self.logger )
+        self.assertTrue( os.path.exists( self.clip ) )
+
+    def test_the_folder_rule_reads_a_completed_file_as_its_own_folder( self ):
+        moved = os.path.join( self.completed, 'scene', 'other.mp4' )
+        self.assertEqual( betatv.bu_detector.source_dir_parts( moved ), ( 'scene', ) )

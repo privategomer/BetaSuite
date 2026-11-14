@@ -765,7 +765,9 @@ def source_dir_parts( source_path, uncensored_root=None ):
         return None
     if uncensored_root:
         return _dir_parts_under( source_path, uncensored_root )
-    for root_name in ( 'video_path_uncensored', 'video_path_source_backup' ):
+    # Completed before the source tree that contains it, so a finished
+    # file in source/completed/scene/ reads as scene/, not completed/scene/.
+    for root_name in ( 'video_path_uncensored', 'video_path_completed', 'video_path_source_backup' ):
         parts = _dir_parts_under( source_path, getattr( betaconst, root_name, None ) )
         if parts is not None:
             return parts

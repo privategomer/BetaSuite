@@ -3926,6 +3926,31 @@ is confirmed on disk. **0**.
 Non-zero requires typing `DELETE MY FILES` at startup. Deletion only
 happens once the censored output exists and is non-trivially sized.
 
+### `move_completed_sources`
+
+Move each finished source out of the queue. **False**.
+
+When a file's output is rendered and its stats row written, or a run
+skips it because a valid output is already there, its source moves from
+`../resources/uncensored_vids/<folder>/` to
+`../resources/source/completed/<folder>/` (`betaconst.video_path_completed`).
+A file that failed, a preview, and anything outside the uncensored tree
+stay put, so the next run retries what did not finish. A file already at
+the target is never replaced: the source stays and a warning says why.
+Nothing else changes: outputs, caches and keys are the same either way,
+and the analysis tools find a moved source by its content hash.
+
+Why this and nothing more. Moving finished files by hand once carried two
+unfinished ones along: their failures were never recorded because the
+disk was full, so nothing showed they had not finished, and the full run
+only reads the uncensored tree. The run is the one place that knows a
+file finished, so it does the move, at the moment it knows. Anything
+richer (moving outputs, renaming, per-profile destinations) is left to
+you. The profile folder is kept under `completed/` and the folder rule
+reads it there (`source_dir_parts` tries `video_path_completed` before
+`video_path_source_backup`), so `completed/scene/` still means scene.
+Off by default because it moves files you put somewhere yourself.
+
 ---
 
 ## Preview mode
@@ -4595,6 +4620,51 @@ overriding a real detection. `exposed_vulva<-exposed_anus` stays at its
 derived 0.05 as a reviewed exception.
 
 ---
+
+### Run-level speedups measured and dropped
+
+Two ways to shorten a run's wall clock were built, measured on a
+16-thread laptop (Ryzen 9 5900HS, 15 GiB, RTX 3070 Laptop) and removed.
+Recorded so they are not tried again without a reason this does not
+cover. Each bench ran `betatv.py` from scratch in sandboxes on the same
+four 1080p files (17.7 minutes of source), with outputs compared box for
+box.
+
+**Detecting the next file while this one renders.** A worker thread
+hashed, scanned, detected and tracked file N+1 while file N rendered.
+The idea: detection is about half the run and leans on the GPU, render
+the other half on the CPU and the hardware encoder, so the two should
+fill each other's idle time, up to about 47% saved. Measured: 4.0% to
+5.4% faster over three samples, the same boxes every time. Run side by
+side, detection took 76% longer per file and render 28% longer: both
+stages are short of CPU on this machine, not of GPU. Detection decodes
+every frame in software, runs the shot-cut scan on four more decoders
+and the person pass; render runs 8 workers with 2 decoder and 2 encoder
+threads each, on 16 hardware threads. Fewer render workers did not
+help (6: 4.7% faster; 4: 3.0% slower). Under overlap the memory cap
+also dropped render from 8 workers to 7 at 1080p, and at 4K, where 8
+workers have already run out of memory on 15 GiB, it would add the
+detection pass's memory on top. A 4 to 5% gain did not pay for a split
+of the per-file pipeline, a second thread and that memory risk.
+
+**Decoding the model's frames on the GPU (NVDEC).** ffmpeg decoded every
+frame with `-hwaccel cuda`, copied it down as NV12 and converted only
+the sampled ones to BGR, to take the software decode off the CPU.
+Measured: 40% slower than the first baseline, and still slower than a
+baseline run at the end of the bench, after the machine itself had
+slowed by 30% (12m07s against 11m16s; detection 6m54s against 6m10s).
+Copying every frame down from the GPU and through a pipe costs more than
+the CPU decoder's own skipping of unsampled frames (`grab()` without
+the colour conversion). It also converted colour with another routine,
+moving rendered boxes by 0.5%. A version that scales on the GPU before
+the copy would move far fewer bytes, but would change every pixel the
+model sees and every detection key with it.
+
+What the benches showed beyond the two options: on this class of
+machine the CPU is the limit in both stages, and the laptop drifted by
+30% over an hour of back-to-back runs (the same configuration, first
+and last), mostly in detection. A comparison of run-level options needs
+its variants interleaved and repeated, not run once each in sequence.
 
 ## Re-deriving values from your own footage
 

@@ -590,6 +590,9 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                source.release()
+                if not preview_mode_enabled:
+                    move_completed_source( uncensored_path, logger )
                 return 'skipped'
 
         logger.info( "processing %s: %s"%(label, fname) )
@@ -634,6 +637,9 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                                   output_label=output_label )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                source.release()
+                if not preview_mode_enabled:
+                    move_completed_source( uncensored_path, logger )
                 return 'skipped'
 
         # Reverse mode's person masks: same frames as detection, in a
@@ -715,29 +721,87 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             fname, paths, preview_mode_enabled, preview_offset_seconds,
             detection_seconds, encode_seconds, finished_at - started_at,
             picture_sizes, session, source, track_stats, render_stats ) )
+        if person_pass is not None:
+            person_pass.stop()
+        source.release()
+        if not preview_mode_enabled:
+            move_completed_source( uncensored_path, logger )
         return 'processed'
 
     except bu_signals.Interrupted:
         raise
     except Exception as err:
-        logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
-        logger.debug( "failure detail", exc_info=True )
-        # Recording the failure must never turn one bad file into a
-        # stopped run, so a problem building the record is logged here.
-        try:
-            bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
-                                                   time.perf_counter() - started_at ) )
-        except Exception as record_err:
-            logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
-        if is_out_of_space( err ):
-            return 'out_of_space'
-        return 'failed'
+        return _failed( label, fname, preview_mode_enabled, source, err, started_at, logger )
     finally:
         # On a failure or Ctrl-C, the person pass checkpoints before the
         # run moves on or exits; after a normal finish this returns at once.
         if person_pass is not None:
             person_pass.stop()
         source.release()
+
+
+def _failed( label, fname, preview_mode_enabled, source, err, started_at, logger ):
+    """Log and record one file's failure; its outcome."""
+    logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
+    logger.debug( "failure detail", exc_info=True )
+    # Recording the failure must never turn one bad file into a
+    # stopped run, so a problem building the record is logged here.
+    try:
+        bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
+                                               time.perf_counter() - started_at ) )
+    except Exception as record_err:
+        logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
+    if is_out_of_space( err ):
+        return 'out_of_space'
+    return 'failed'
+
+
+def completed_source_path( uncensored_path ):
+    """
+    Where a finished source goes: the same folder under
+    betaconst.video_path_completed as it had under video_path_uncensored,
+    so its profile folder keeps meaning the same profile. None when the
+    file is not under video_path_uncensored.
+    """
+    root = os.path.abspath( betaconst.video_path_uncensored )
+    path = os.path.abspath( uncensored_path )
+    relative = os.path.relpath( path, root )
+    if relative.startswith( os.pardir + os.sep ) or relative == os.pardir or os.path.isabs( relative ):
+        return None
+    return os.path.join( betaconst.video_path_completed, relative )
+
+
+def move_completed_source( uncensored_path, logger ):
+    """
+    Move a finished source out of the queue, when move_completed_sources
+    is on.
+
+    Only after a valid output exists: called after a render and its stats
+    row, or when a run skips a file whose output is already there. A
+    failed file stays in the queue, so the next run retries it; moving
+    finished files by hand once carried two unfinished ones along, and
+    no run saw them again. An existing file at the target is never
+    replaced: the source stays where it is and a warning says why.
+    """
+    if not getattr( betaconfig, 'move_completed_sources', False ):
+        return None
+    if not os.path.exists( uncensored_path ):
+        return None                      # deleted by input_delete_probability
+    target = completed_source_path( uncensored_path )
+    if target is None:
+        logger.debug( "not moving %s: not under %s"%( uncensored_path, betaconst.video_path_uncensored ) )
+        return None
+    if os.path.exists( target ):
+        logger.warning( "not moving %s to %s: a file is already there"%( uncensored_path, target ) )
+        return None
+    try:
+        os.makedirs( os.path.dirname( target ), exist_ok=True )
+        shutil.move( uncensored_path, target )
+    except OSError as err:
+        logger.warning( "could not move %s to %s: %s"%( uncensored_path, target, err ) )
+        return None
+    logger.info( "moved finished source to %s"%( target, ) )
+    return target
 
 
 # ffmpeg reports a full disk in its own words, inside a RenderError.
@@ -905,7 +969,6 @@ def main():
                 betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
             os.makedirs( censored_folder, exist_ok=True )
             logger.info( "scanning %s (%d file(s))"%(root, len( file_names )) )
-
             for file_index, fname in enumerate( sorted( file_names ) ):
                 bu_signals.check()
                 run_marker.now_processing( fname, preview_mode_enabled )

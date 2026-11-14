@@ -2157,6 +2157,13 @@ def _validate_logging_settings( errors ):
         errors.append( "logging_enabled is True but log_path is not set" )
 
 
+def _validate_pipeline_settings( errors ):
+    """move_completed_sources is True/False."""
+    value = getattr( betaconfig, 'move_completed_sources', False )
+    if not isinstance( value, bool ):
+        errors.append( "move_completed_sources must be True/False, got %r"%( value, ) )
+
+
 def _validate_stats_settings( errors ):
     """
     When stats_enabled is on, check stats_path is set. No-op entirely
@@ -2332,6 +2339,7 @@ def _collect_validation_errors():
     _validate_preview_settings( errors )
     _validate_logging_settings( errors )
     _validate_stats_settings( errors )
+    _validate_pipeline_settings( errors )
     _validate_nn_batch_size( errors )
     _validate_min_prob_floor_consistency( errors )
     _validate_checkpoint_and_chunk_settings( errors )

@@ -46,6 +46,7 @@ REDIRECTED_PATHS = {
     'video_path_uncensored':    _under_root( 'resources', 'uncensored_vids' ) + os.sep,
     'video_path_censored':      _under_root( 'output', 'censored_vids' ) + os.sep,
     'video_path_source_backup': _under_root( 'resources', 'source' ) + os.sep,
+    'video_path_completed':     _under_root( 'resources', 'source', 'completed' ) + os.sep,
     'cache_root':               _under_root( 'output', 'cache' ),
     'vid_hash_dir':             _under_root( 'output', 'cache', 'vid_hashes' ),
     'pic_hash_dir':             _under_root( 'output', 'cache', 'pic_hashes' ),

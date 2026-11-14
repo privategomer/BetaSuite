@@ -5,6 +5,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 ## Unreleased
 ### Added
 
+- `move_completed_sources` (False): after a file renders, or is skipped because its output is already there, its source moves from `uncensored_vids/<folder>/` to `../resources/source/completed/<folder>/`. Failures, previews and existing targets stay put. The folder rule reads `source/completed/<folder>/` as `<folder>`. Upgrade cost: none
 - `summarize_run.py`: a week-by-week table per configuration whose rows span more than one week, so a change of machine, encoder or worker count is visible rather than averaged into one number (one 9 fps group read 27 s/min of render: 45 to 66 s/min in its oldest weeks, 11 to 20 in its newest)
 - `auto_tune.py --max-confident-growth` (0.25): a `min_track_hits` or `confirm_score` value stricter than the current one may leave at most 25% more confident detections uncensored than the current one does
 - `console_palette` (`'standard'`): `'deuteranopia'` / `'protanopia'` (no red against green) and `'monochrome'` (weight only) for the terminal colors, and lines are now colored by run phase (detect, structure, reverse, render, prep), including the in-place progress line
@@ -31,6 +32,8 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 - `analyze_jitter.py` adds every label's configured `position_smoothing` to the sweep and marks it, so the value in use is always measured (a fixed 0.15 to 0.70 sweep never measured `exposed_vulva`'s 0.85)
 - `analyze_score_distribution.py`, `analyze_suppression_pairs.py` and `analyze_geometry_impact.py` read each video's newest run per configuration (`iter_newest_cache_files`), as the replaying tools do. They read every cache file, so a video re-run at another rate counted two or three times (326 files for 182 videos on one run)
 - `betatv.py` stops the run when a disk is full (`OSError` ENOSPC, or ffmpeg's "No space left on device"), with an error naming the free space, and exits 1. It went on to the next file, and on one run nine more files each failed within seconds. Finished outputs are skipped on the next run and the failed file is rebuilt
+
+- Measured and not shipped: detecting the next file while the current one renders (4 to 5% faster, both stages short of CPU, more memory at 4K) and decoding the model's frames on the GPU (slower than the CPU path). The evidence is in CONFIG_REFERENCE.md, "Run-level speedups measured and dropped"
 
 ### Fixed
 

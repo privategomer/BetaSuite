@@ -499,6 +499,7 @@ blur_edge_margin = True   # blur reads real pixels around the box, so it holds s
 # --- Input handling -----------------------------------------------------
 
 input_delete_probability = 0
+move_completed_sources = False   # move each finished source to ../resources/source/completed/<its folder>/
 
 # --- Preview mode -------------------------------------------------------
 
