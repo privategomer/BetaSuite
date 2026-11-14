@@ -708,7 +708,12 @@ class TrackingObserver:
         """
 
     def on_independent_style_resolve( self, label, box, tracks, settings ):
-        """A new track rolled its own style rather than sharing a pair's."""
+        """
+        A box rolled its own style rather than sharing a pair's: a new
+        track, or a continuing one re-rolled at a shot cut. tracks is the
+        OTHER tracks of the label live beside it (live_track_indices),
+        the candidates paired style had, not every track in the video.
+        """
 
     def on_suppressed( self, raw, rule_key, suppressor ):
         """
@@ -752,6 +757,137 @@ def _notify( event, *args ):
     handler = getattr( observer, event, None )
     if handler is not None:
         handler( *args )
+
+
+def _observed( event ):
+    """Whether an installed observer handles event, so a caller can skip building its arguments."""
+    return _tracking_observer is not None and getattr( _tracking_observer, event, None ) is not None
+
+
+def _min_cost_assignment( cost ):
+    """
+    Hungarian method on a square cost matrix: column chosen for each row.
+
+    O(n^3); n is the boxes or tracks of one label in one frame, a handful.
+    """
+    size = len( cost )
+    infinity = float( 'inf' )
+    row_potential = [ 0.0 ] * ( size + 1 )
+    column_potential = [ 0.0 ] * ( size + 1 )
+    row_of_column = [ 0 ] * ( size + 1 )
+    way = [ 0 ] * ( size + 1 )
+    for row in range( 1, size + 1 ):
+        row_of_column[0] = row
+        column = 0
+        least = [ infinity ] * ( size + 1 )
+        used = [ False ] * ( size + 1 )
+        while True:
+            used[column] = True
+            current_row = row_of_column[column]
+            delta = infinity
+            next_column = 0
+            for candidate in range( 1, size + 1 ):
+                if used[candidate]:
+                    continue
+                reduced = ( cost[current_row - 1][candidate - 1]
+                            - row_potential[current_row] - column_potential[candidate] )
+                if reduced < least[candidate]:
+                    least[candidate] = reduced
+                    way[candidate] = column
+                if least[candidate] < delta:
+                    delta = least[candidate]
+                    next_column = candidate
+            for candidate in range( size + 1 ):
+                if used[candidate]:
+                    row_potential[row_of_column[candidate]] += delta
+                    column_potential[candidate] -= delta
+                else:
+                    least[candidate] -= delta
+            column = next_column
+            if row_of_column[column] == 0:
+                break
+        while column:
+            previous = way[column]
+            row_of_column[column] = row_of_column[previous]
+            column = previous
+    chosen = [ None ] * size
+    for column in range( 1, size + 1 ):
+        if row_of_column[column]:
+            chosen[row_of_column[column] - 1] = column - 1
+    return chosen
+
+
+def assign_candidates( candidates ):
+    """
+    Which (distance, box_index, box, track_index) pairings a frame keeps.
+
+    As many boxes as possible continue a track, and among the ways to
+    continue that many, the one with the least total distance. Returned
+    nearest first, ties to the earlier box, so the caller processes them
+    in the order the greedy pass used to.
+
+    Greedy nearest-first, which this replaces, let one box take the
+    track a second box needed when the first had another track within
+    reach: the second then started a new track, a reset and a style
+    re-roll. On a large library that was 17,132 breast resets where the
+    nearest track qualified on distance and time and another box
+    claimed it first.
+    """
+    if not candidates:
+        return []
+    box_indices = sorted( set( candidate[1] for candidate in candidates ) )
+    track_indices = sorted( set( candidate[3] for candidate in candidates ) )
+    if len( box_indices ) == 1 or len( track_indices ) == 1:
+        # One box or one track: nothing to trade, the nearest pair wins.
+        return [ min( candidates, key=lambda candidate: ( candidate[0], candidate[1] ) ) ]
+    size = max( len( box_indices ), len( track_indices ) )
+    row_of_box = { box_index: row for row, box_index in enumerate( box_indices ) }
+    column_of_track = { track_index: column for column, track_index in enumerate( track_indices ) }
+    # Every real pairing costs less than one missing pairing, so the least
+    # total cost is always the most pairings first.
+    missing = 1.0 + 2.0 * sum( candidate[0] for candidate in candidates )
+    cost = [ [ missing ] * size for _row in range( size ) ]
+    by_cell = {}
+    for candidate in candidates:
+        cell = ( row_of_box[candidate[1]], column_of_track[candidate[3]] )
+        if cell not in by_cell or candidate[0] < by_cell[cell][0]:
+            by_cell[cell] = candidate
+            cost[cell[0]][cell[1]] = candidate[0]
+    chosen = []
+    for row, column in enumerate( _min_cost_assignment( cost ) ):
+        candidate = by_cell.get( ( row, column ) )
+        if candidate is not None:
+            chosen.append( candidate )
+    chosen.sort( key=lambda candidate: ( candidate[0], candidate[1] ) )
+    return chosen
+
+
+def live_track_indices( tracks, reference_start, reference_t, max_age_seconds, cut_between,
+                        exclude_track_index=None ):
+    """
+    Indices of the tracks that count as live beside a box at reference_t.
+
+    Live means detected within max_age_seconds of reference_start and not
+    separated from reference_t by a shot cut. The one definition paired
+    style uses to pick a donor, and the one the independent-resolve
+    observer is shown: it used to be handed every track still within
+    track_max_gap (up to 12s on split screens), ones across a cut
+    included, so the flicker analysis counted neighbours paired style
+    could never have used, often the same body part's own track from
+    before a reset.
+    """
+    found = []
+    for track_index, track in enumerate( tracks ):
+        if track_index == exclude_track_index:
+            continue
+        if reference_start - track['end'] > max_age_seconds:
+            continue
+        # Timestamps, not padded bounds: a padded comparison let a dead
+        # track donate its style across a cut.
+        if cut_between( track['t'], reference_t ):
+            continue
+        found.append( track_index )
+    return found
 
 
 class _LabelSettings:
@@ -813,10 +949,12 @@ class _LabelSettings:
         # itself: size jitter is what flickers the censor's edge, and
         # nothing about following a moving subject requires the box to
         # resize as fast as it translates. An explicit per-label
-        # size_smoothing overrides this.
-        self.size_alpha = overrides.get(
-            'size_smoothing',
-            getattr( betaconfig, 'default_size_smoothing', self.alpha/3.0 ) )
+        # size_smoothing overrides this. None means that third, so
+        # betaconfig.py can list the setting without fixing a number that
+        # would stop following position_smoothing.
+        size_alpha = overrides.get(
+            'size_smoothing', getattr( betaconfig, 'default_size_smoothing', None ) )
+        self.size_alpha = self.alpha/3.0 if size_alpha is None else size_alpha
         self.interpolation_enabled = overrides.get(
             'interpolation_enabled', betaconfig.default_interpolation_enabled )
         self.interpolation_max_gap = overrides.get(
@@ -1137,7 +1275,7 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
             matched_track_indices = set()
             box_track_index = {}
 
-            for distance, _box_index, box, track_index in candidates:
+            for distance, _box_index, box, track_index in assign_candidates( candidates ):
                 box_id = id( box )
                 if box_id in matched_box_ids or track_index in matched_track_indices:
                     continue
@@ -1295,7 +1433,13 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                                        shape=box['censor_shape'],
                                        seed=box['censor_sticker_seed'],
                                        since=box_t )
-                    _notify( 'on_independent_style_resolve', label, box, tracks, settings )
+                    if _observed( 'on_independent_style_resolve' ):
+                        _notify( 'on_independent_style_resolve', label, box,
+                                 [ tracks[index] for index in live_track_indices(
+                                     tracks, box['start'], box_t,
+                                     min( settings.paired_style_max_age, settings.max_gap ),
+                                     cut_between, track_index ) ],
+                                 settings )
                 else:
                     box['_style_since'] = track.get( 'style_since', track['t'] )
                     box['censor_style'] = track['censor_style']
@@ -1378,16 +1522,10 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                     reference_t = reference_start
                 nearby = []
                 donor_max_age = min( settings.paired_style_max_age, settings.max_gap )
-                for track_index, track in enumerate( tracks ):
-                    if track_index == exclude_track_index:
-                        continue
-                    if reference_start - track['end'] > donor_max_age:
-                        continue
-                    # Timestamps, not padded bounds - see the note at
-                    # the track-continuation check. A padded comparison
-                    # here let a dead track donate its style across a cut.
-                    if cut_between( track['t'], reference_t ):
-                        continue
+                for track_index in live_track_indices( tracks, reference_start, reference_t,
+                                                       donor_max_age, cut_between,
+                                                       exclude_track_index ):
+                    track = tracks[track_index]
                     track_cx, track_cy = track['x'] + track['w']/2, track['y'] + track['h']/2
                     distance = ( ( centre_x-track_cx )**2 + ( centre_y-track_cy )**2 ) ** 0.5
                     scale = max( track['w'], track['h'], w, h )
@@ -1538,7 +1676,13 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                                            shape=box['censor_shape'],
                                            seed=box['censor_sticker_seed'],
                                            since=new_t )
-                        _notify( 'on_independent_style_resolve', label, box, tracks, settings )
+                        if _observed( 'on_independent_style_resolve' ):
+                            _notify( 'on_independent_style_resolve', label, box,
+                                     [ tracks[index] for index in live_track_indices(
+                                         tracks, box['start'], new_t,
+                                         min( settings.paired_style_max_age, settings.max_gap ),
+                                         cut_between ) ],
+                                     settings )
 
                 _apply_style_area_safety( box, box['censor_style'],
                                           settings.item_x_safety, settings.item_y_safety )

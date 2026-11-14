@@ -1,12 +1,13 @@
 """
 test_tune_machine.py - the hardware tuning harness's choices: what it
 measures, what it proposes, and that what it proposes is something the
-machine config editor accepts.
+local config editor accepts.
 """
 
 import argparse
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -111,10 +112,43 @@ class TestChoosing( unittest.TestCase ):
         self.assertEqual( tune.busy_reasons( None, None, {}, None ), [] )
 
 
+class TestGpuEnabled( unittest.TestCase ):
+    """betaconfig.py ships gpu_enabled = 0; tune_machine sets it from what is installed."""
+
+    CUDA = [ 'CUDAExecutionProvider', 'CPUExecutionProvider' ]
+    GPU = { 'name': 'Example GPU' }
+
+    def test_a_working_gpu_is_proposed_and_a_missing_one_is_turned_off( self ):
+        self.assertEqual( tune.gpu_enabled_proposal( self.CUDA, self.GPU, 0 )[0], 1 )
+        self.assertIn( 'Example GPU', tune.gpu_enabled_proposal( self.CUDA, self.GPU, 0 )[1] )
+        self.assertIsNone( tune.gpu_enabled_proposal( self.CUDA, self.GPU, 1 ) )
+        self.assertIsNone( tune.gpu_enabled_proposal( [ 'CPUExecutionProvider' ], {}, 0 ) )
+        self.assertEqual( tune.gpu_enabled_proposal( [ 'CPUExecutionProvider' ], self.GPU, 1 )[0], 0 )
+        self.assertEqual( tune.gpu_enabled_proposal( None, {}, 1 )[0], 0 )
+
+    def test_the_cuda_provider_alone_is_not_a_gpu( self ):
+        # onnxruntime-gpu lists CUDAExecutionProvider on a machine with no
+        # usable GPU; proposing 1 there would warn on every run.
+        self.assertIsNone( tune.gpu_enabled_proposal( self.CUDA, {}, 0 ) )
+        self.assertEqual( tune.gpu_enabled_proposal( self.CUDA, {}, 1 )[0], 0 )
+
+    def test_inventory_proposes_it_and_the_later_stages_run_with_it( self ):
+        saved = betaconfig.gpu_enabled
+        self.addCleanup( setattr, betaconfig, 'gpu_enabled', saved )
+        betaconfig.gpu_enabled = 0
+        runtime = mock.Mock( __version__='0.0', get_available_providers=lambda: list( self.CUDA ) )
+        context = { 'proposal': {}, 'batch_now': 4 }
+        with mock.patch.object( tune, 'nvidia_smi', return_value=dict( self.GPU ) ), \
+                mock.patch.dict( sys.modules, { 'onnxruntime': runtime } ):
+            tune.stage_inventory( context, mock.Mock() )
+        self.assertEqual( context['proposal']['gpu_enabled']['value'], 1 )
+        self.assertEqual( betaconfig.gpu_enabled, 1, "the detect stage would time the CPU" )
+
+
 class TestProposalIsWhatTheEditorTakes( unittest.TestCase ):
 
     def test_every_proposed_line_parses( self ):
-        tool = _load( 'tools/setup/machine_config.py', 'machine_config_for_tune' )
+        tool = _load( 'tools/setup/local_config.py', 'local_config_for_tune' )
         proposal = { 'render_workers': { 'value': 6, 'reason': 'x' },
                      'render_decode_threads': { 'value': None, 'reason': 'x' },
                      'encode_video_codec': { 'value': 'h264_nvenc', 'reason': 'x' },
@@ -262,6 +296,12 @@ class TestScripts( unittest.TestCase ):
         self.assertIn( tune.SUMMARY_END, text )
         self.assertIn( 'wait_for_confirmation', text, "asks before writing" )
         self.assertIn( "trap '", text, "Ctrl+C at the prompt says how to write later" )
+        # Both the write and the "write later" command put the proposal in
+        # the local config's hardware section, through local_config.py.
+        self.assertIn( 'LOCAL_CONFIG="$REPO_ROOT/tools/setup/local_config.py"', text )
+        writes = re.findall( r'\$LOCAL_CONFIG"?[^\n]*\n?[^\n]*\bset\b[^\n]*', text )
+        self.assertEqual( len( writes ), 2, writes )
+        self.assertTrue( all( '--section hardware' in write for write in writes ), writes )
         self.assertNotIn( '—', text )
 
 

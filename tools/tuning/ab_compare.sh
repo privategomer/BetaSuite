@@ -43,8 +43,8 @@
 #                Judging comes before the hours of whole-video renders
 #   4  judge     waits while you watch the clips and put right / left /
 #                same in feedback.csv (and waits again while it has no
-#                verdicts), then decides: chosen.json and the config
-#                lines to paste
+#                verdicts), then decides: chosen.json and the
+#                local_config.py command that adopts it
 #   5  confirm   asks whether to check the chosen side on videos you
 #                have not judged yet, then runs that round the same way
 # Unattended, it runs phases 1 to 2 (whole videos too with AB_FULL=1)
@@ -405,7 +405,7 @@ after_decide() {
         run_confirm "$dir"
     else
         log_info "later: bash tools/tuning/ab_compare.sh confirm $dir"
-        log_info "or paste the config lines above into betaconfig.py if you are already sure"
+        log_info "or run the local_config.py command above if you are already sure"
     fi
 }
 

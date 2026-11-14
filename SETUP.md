@@ -23,9 +23,9 @@ folder, not inside them:
 ```
 BetaSuiteHome/                      any name, any location
 ├── BetaSuite/                      this repository; always run commands from here
-│   └── .venv/                      Python virtual environment (created by setup)
+│   ├── .venv/                      Python virtual environment (created by setup)
+│   └── betaconfig_local.py         your own settings, ignored by git (created by setup)
 ├── resources/
-│   ├── betaconfig_machine.py       this computer's hardware settings (created by setup)
 │   ├── model/                      detector and person-segmentation .onnx files
 │   │   ├── v3.4-320n.onnx          nudenet_v3 320n (default backend)
 │   │   ├── v3.4-640m.onnx          nudenet_v3 640m (optional)
@@ -50,8 +50,12 @@ Because the paths are relative to the working directory, running
 `python3 BetaSuite/betatv.py` from `BetaSuiteHome/` will **not** work.
 `cd` into the repository first.
 
-The sticker folders ship empty. Until you add `.png` files to them,
-sticker styles render as solid bars.
+The sticker folders ship empty, and the shipped styles use no stickers:
+BetaSuite has no licence to distribute sticker images. To use them, add
+your own `.png` files, then add sticker entries to a label's
+`censor_style` in `betaconfig_local.py` (CONFIG_REFERENCE.md,
+`type: 'sticker'`). A sticker style with an empty folder renders as a
+solid bar.
 
 The `yolo11*-seg.onnx` and `rf-detr-seg-*.onnx` files are
 person-segmentation models. Only reverse mode uses them
@@ -155,15 +159,27 @@ To go back to development, `git switch main`.
    models already present,
    and lists the two optional ones you download yourself (see
    [Models](#6-models))
-8. Creates this machine's config, `../resources/betaconfig_machine.py`,
-   if it is missing, and sets `gpu_enabled` in it to match the build
-   (asking first only if that file already says otherwise)
+8. Creates your local config, `betaconfig_local.py`, if it is missing
+   (a header and nothing else), and sets `gpu_enabled` in it when the
+   build does not match `betaconfig.py`'s value (asking first only if
+   that file already says otherwise)
 9. Runs `tools/setup/verify_env.py` and, optionally, the unit tests
+
+After setup, choose what to censor. A fresh install censors nothing
+(`items_to_censor` ships empty) and `betatv.py` stops before any
+detection until you do:
+
+```bash
+python3 tools/setup/local_config.py set "items_to_censor=['exposed_vulva', 'exposed_breast']"
+```
+
+CONFIG_REFERENCE.md, "Example local config", has that line and a whole
+local config to start from.
 
 Optional, after setup: `tools/bench/tune_machine.sh` measures this
 machine's hardware settings (detection batch size, render workers,
-encoder and more, 15 to 30 minutes) and offers to write them to the
-machine config. See CONFIG_REFERENCE.md, "Machine config".
+encoder and more, 15 to 30 minutes) and offers to write them to
+`betaconfig_local.py`. See CONFIG_REFERENCE.md, "Local config".
 
 Everything goes to `setup.log` in the repository at every log level.
 The console shows `info` and above unless you pass a different level.
@@ -430,24 +446,33 @@ reverse mode with person windows. The benchmarking and comparison tools
 cover whichever ones are present: `python3 tools/bench/betabench.py
 persons` times every person backend and size on your own footage.
 
-### 7. This machine's config
+### 7. Your local config
 
-Hardware settings for this computer go in
-`../resources/betaconfig_machine.py`, outside the repository, not in
-`betaconfig.py`. Create it and set `gpu_enabled` to match what you
-installed:
+`betaconfig.py` holds the shipped defaults; never edit it. Your own
+settings go in `betaconfig_local.py` beside it, which git ignores: copy
+a setting in to change it, delete the line to go back. Setup creates it
+and, on a GPU build, sets `gpu_enabled` (the shipped value is `0`). By
+hand:
 
 ```bash
-python3 tools/setup/machine_config.py init
-python3 tools/setup/machine_config.py set gpu_enabled=1     # GPU build
-python3 tools/setup/machine_config.py set gpu_enabled=0     # CPU build
-python3 tools/setup/machine_config.py                       # what is set, and from where
+python3 tools/setup/local_config.py init
+python3 tools/setup/local_config.py set gpu_enabled=1     # GPU build
+python3 tools/setup/local_config.py                       # every setting, and where it came from
 ```
 
 Leaving it at `1` on a CPU install still runs (a CPU fallback is always
 added) but logs a warning on every run. `tools/bench/tune_machine.sh`
-measures the rest of this machine's hardware settings; see
-CONFIG_REFERENCE.md, "Machine config".
+proposes `gpu_enabled` from what is installed and measures the rest of
+this machine's hardware settings; see
+CONFIG_REFERENCE.md, "Local config".
+
+If you used an earlier version, your hardware settings may be in
+`../resources/betaconfig_machine.py`, which is no longer read. Every
+run warns until you move them:
+
+```bash
+python3 tools/setup/local_config.py migrate
+```
 
 ### 8. Verify
 
@@ -456,7 +481,7 @@ See the next section.
 ## Verifying an install
 
 ```bash
-python3 tools/setup/verify_env.py          # reads gpu_enabled (machine config, else betaconfig.py)
+python3 tools/setup/verify_env.py          # reads gpu_enabled (betaconfig_local.py, else betaconfig.py)
 python3 tools/setup/verify_env.py --gpu    # insist on CUDA
 python3 tools/setup/verify_env.py --cpu
 ```

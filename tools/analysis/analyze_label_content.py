@@ -55,6 +55,9 @@ def content_rows( content, names, durations=None ):
             'mixed_seconds': found['mixed_seconds'],
             'pair_seconds': found['pair_seconds'],
             'duration_seconds': duration,
+            # For telling copies apart (bu_tuning.same_content); left out
+            # of the JSON report, where it would be most of the bytes.
+            'box_timeline': found.get( 'box_timeline' ) or [],
         } )
     return rows
 
@@ -79,8 +82,8 @@ def mark_duplicates( rows ):
 
 def print_duplicates( pairs, out=print ):
     out( "" )
-    out( "Near-duplicate videos (runtime and every labelled-seconds figure agree: the same "
-         "footage twice):" )
+    out( "Near-duplicate videos (runtime, every labelled-seconds figure and the boxes on screen "
+         "over time agree: the same footage twice):" )
     if not pairs:
         out( "  none" )
         return
@@ -216,7 +219,8 @@ def main( argv=None ):
         rows = content_rows( content, names, durations )
         print_report( rows, labels, args.top )
         print_duplicates( mark_duplicates( rows ) )
-        report[config.label] = rows
+        report[config.label] = [ { key: value for key, value in row.items() if key != 'box_timeline' }
+                                 for row in rows ]
     if args.json:
         with open( args.json, 'w', encoding='UTF-8' ) as handle:
             json.dump( report, handle, indent=2 )

@@ -187,7 +187,10 @@ class TestClassSuppressionRefused( unittest.TestCase ):
         betaconfig.detector_backend = { 'selected': 'nudenet_v3', 'nudenet_v3': {} }
         bu_config.invalidate_config_caches()
         import betautils_detector as bu_detector
-        self.assertEqual( bu_detector.get_class_suppression_refused( 'nudenet_v3' ), [] )
+        self.assertEqual( bu_detector.get_configured_class_suppression_refused( 'nudenet_v3' ), [] )
+        # The built-in unsafe pairs are refused whatever the config says.
+        self.assertEqual( bu_detector.get_class_suppression_refused( 'nudenet_v3' ),
+                          list( bu_detector.UNSAFE_SUPPRESSION_PAIRS ) )
         errors = []
         bu_config._validate_class_suppression( errors, self.CLASSES )
         self.assertEqual( errors, [] )

@@ -744,6 +744,7 @@ class SourceDirHarness( ProfileHarness ):
     """
 
     ROOT = '/videos/uncensored/'
+    STAGING = '/videos/staging/'
 
     def setUp( self ):
         super().setUp()
@@ -753,6 +754,8 @@ class SourceDirHarness( ProfileHarness ):
         betaconfig.profile_by_path_pattern = None
         self._saved_root = betaconst.video_path_uncensored
         betaconst.video_path_uncensored = self.ROOT
+        self._saved_staging = getattr( betaconst, 'video_path_source_backup', None )
+        betaconst.video_path_source_backup = self.STAGING
         # A manual_only third variant, because reaching one of those is
         # the main thing the folder convention exists to do.
         self.profiles()['variants']['split_screen'] = {
@@ -763,6 +766,7 @@ class SourceDirHarness( ProfileHarness ):
 
     def tearDown( self ):
         betaconst.video_path_uncensored = self._saved_root
+        betaconst.video_path_source_backup = self._saved_staging
         betaconfig.profile_by_source_dir = self._saved_dirs
         betaconfig.profile_by_path_pattern = self._saved_patterns
         super().tearDown()
@@ -813,6 +817,72 @@ class TestSourceDirParts( SourceDirHarness ):
     def test_redundant_separators_do_not_invent_segments( self ):
         self.assertEqual( self.parts( 'scene//a.mp4' ), ( 'scene', ) )
         self.assertEqual( self.parts( './scene/a.mp4' ), ( 'scene', ) )
+
+
+class TestSourceDirPartsInStagingTree( SourceDirHarness ):
+    """
+    A file moved from the working tree to the staging tree (resources/source)
+    keeps its folder, so a replay of a finished run reads it under the
+    profile it was rendered with. Without this the file read as "outside
+    the tree" and fell through to measurement.
+    """
+
+    def staged( self, relative ):
+        return bu_detector.source_dir_parts( self.STAGING + relative )
+
+    def test_a_staged_file_reports_its_folder( self ):
+        self.assertEqual( self.staged( 'scene/a.mp4' ), ( 'scene', ) )
+        self.assertEqual( self.staged( 'comps/split/a.mp4' ), ( 'comps', 'split' ) )
+
+    def test_a_staged_file_in_the_root_is_empty_not_none( self ):
+        self.assertEqual( self.staged( 'loose.mp4' ), () )
+
+    def test_a_file_outside_both_trees_is_still_none( self ):
+        self.assertIsNone( bu_detector.source_dir_parts( '/somewhere/else/scene/a.mp4' ) )
+
+    def test_the_working_tree_is_tried_first( self ):
+        # Staging nested inside the working tree: the working tree's
+        # reading wins, as it always did.
+        betaconst.video_path_source_backup = self.ROOT + 'staging/'
+        self.assertEqual(
+            bu_detector.source_dir_parts( self.ROOT + 'staging/scene/a.mp4' ),
+            ( 'staging', 'scene' ) )
+
+    def test_an_explicit_root_is_the_only_root_tried( self ):
+        # betabench structure names the tree each file sits in; a path
+        # outside that tree must not be rescued by the other one.
+        self.assertIsNone( bu_detector.source_dir_parts(
+            self.STAGING + 'scene/a.mp4', uncensored_root=self.ROOT ) )
+        self.assertEqual( bu_detector.source_dir_parts(
+            self.STAGING + 'scene/a.mp4', uncensored_root=self.STAGING ), ( 'scene', ) )
+
+    def test_no_staging_root_leaves_the_old_answer( self ):
+        betaconst.video_path_source_backup = None
+        self.assertIsNone( self.staged( 'scene/a.mp4' ) )
+
+
+class TestSourceDirSelectionInStagingTree( SourceDirHarness ):
+
+    def pick_staged( self, relative, cuts_per_min=4.0 ):
+        return bu_detector.select_profile_name(
+            cuts_per_min, source_path=self.STAGING + relative )
+
+    def test_a_staged_mapped_folder_supplies_the_profile( self ):
+        # The replay's call: no root passed. A file that was rendered
+        # from split-screen/ and then moved must still read as
+        # split_screen, whatever its measured cut rate.
+        self._map( { 'split-screen': 'split_screen' } )
+        self.assertEqual( self.pick_staged( 'split-screen/a.mp4', cuts_per_min=999.0 ),
+                          'split_screen' )
+
+    def test_a_staged_file_in_the_root_is_measured( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual( self.pick_staged( 'loose.mp4', cuts_per_min=999.0 ), 'compilation' )
+
+    def test_both_trees_pick_the_same_profile_for_the_same_folder( self ):
+        self._map( { 'scene': 'scene' } )
+        self.assertEqual( self.pick( 'scene/a.mp4', cuts_per_min=999.0 ),
+                          self.pick_staged( 'scene/a.mp4', cuts_per_min=999.0 ) )
 
 
 class TestSourceDirSelection( SourceDirHarness ):

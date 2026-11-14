@@ -368,8 +368,24 @@ def print_profile_breakdown( per_profile, labels ):
     print()
 
 
-def print_alpha_result( alpha, result, labels ):
-    print( "=== position_smoothing (alpha) = %.2f ==="%(alpha) )
+def configured_alphas( labels, backend_name, variant_name=None ):
+    """{label: the position_smoothing it runs with today}, through the real resolver."""
+    return { label: float( bu_detector.get_item_overrides( label, backend_name, variant_name ).get(
+                 'position_smoothing', betaconfig.default_position_smoothing ) )
+             for label in labels }
+
+
+def sweep_points( alphas, configured ):
+    """The requested alphas plus every configured one, each once, in order."""
+    return sorted( set( round( float( alpha ), 4 ) for alpha in alphas )
+                   | set( round( alpha, 4 ) for alpha in ( configured or {} ).values() ) )
+
+
+def print_alpha_result( alpha, result, labels, configured=None ):
+    users = sorted( label for label, value in ( configured or {} ).items()
+                    if abs( value - alpha ) < 1e-9 )
+    print( "=== position_smoothing (alpha) = %.2f ===%s"%(
+        alpha, "   (configured for %s)"%( ", ".join( users ), ) if users else "" ) )
     if result['dims_missing']:
         print( "  (skipped %d video(s) - source file no longer found under %s or %s to read real width/height)"%(
             len(result['dims_missing']), betaconst.video_path_uncensored, betaconst.video_path_source_backup ) )
@@ -482,7 +498,14 @@ def main():
             "%s %d"%( name, len( members ) ) for name, members in sorted( by_profile.items() ) ) or 'none' ) )
         print()
 
-        for alpha in alphas:
+        # The configured value of every label joins the sweep: a fixed
+        # list (0.15 to 0.70) never measured exposed_vulva's own 0.85,
+        # so the report could not say how today's setting compared.
+        configured = configured_alphas( labels, backend_name, getattr( config, 'variant', None ) )
+        if configured:
+            print( "  configured position_smoothing: %s"%( ", ".join(
+                "%s %.2f"%( label, alpha ) for label, alpha in sorted( configured.items() ) ), ) )
+        for alpha in sweep_points( alphas, configured ):
             # Each profile replays its own videos and the counts add up to
             # the pooled result, so the per-profile rows cost no extra replay.
             per_profile = { name: run_one_alpha( alpha, members, hash_to_path, smooth_boxes_fn,
@@ -494,7 +517,7 @@ def main():
             else:
                 result = run_one_alpha( alpha, videos, hash_to_path, smooth_boxes_fn,
                                         apply_suppression_fn, set(labels), backend_name )
-            print_alpha_result( alpha, result, labels )
+            print_alpha_result( alpha, result, labels, configured )
             print_profile_breakdown( per_profile, labels )
 
     if not any_backend_had_videos:

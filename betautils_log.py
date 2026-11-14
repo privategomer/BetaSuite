@@ -25,6 +25,7 @@ video in the earlier logs.
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -97,6 +98,167 @@ def _trace_capable( name ):
     return logger
 
 
+# --- Console color ----------------------------------------------------------
+
+COLOR_MODES = ( 'auto', 'always', 'never' )
+
+_RESET = '\033[0m'
+
+# Each palette maps a role to an SGR code. Roles: start/done/detail/skipped/
+# failed (a file's life), warn/error/quiet (by log level), and one per phase
+# of a run. 'deuteranopia' (also served to protanopia, which shares its
+# red-green confusion) never uses red against green: its hues are an
+# Okabe-Ito blue, sky, bluish-green, purple and vermillion, picked so no two
+# phases collapse into each other under a deuteranopia/protanopia simulation,
+# and failures and errors carry reverse video, so they do not rely on hue.
+# 'monochrome' uses weight alone (bold, dim, underline, reverse).
+PALETTES = {
+    'standard': {
+        'start': '1;4;36', 'done': '1;32', 'detail': '32', 'skipped': '2',
+        'failed': '1;31', 'warn': '33', 'error': '31', 'quiet': '2',
+        'detect': '34', 'structure': '35', 'render': '36',
+        'reverse': '38;5;208', 'prep': '90',
+    },
+    'deuteranopia': {
+        'start': '1;4', 'done': '1;38;5;79', 'detail': '38;5;79', 'skipped': '2',
+        'failed': '1;7;38;5;202', 'warn': '1;38;5;227', 'error': '1;7;38;5;202', 'quiet': '2',
+        'detect': '38;5;33', 'structure': '38;5;133', 'render': '38;5;79',
+        'reverse': '38;5;202', 'prep': '38;5;153',
+    },
+    'monochrome': {
+        'start': '1;4', 'done': '1', 'detail': '', 'skipped': '2',
+        'failed': '1;7', 'warn': '1', 'error': '1;7', 'quiet': '2',
+        'detect': '', 'structure': '', 'render': '', 'reverse': '', 'prep': '2',
+    },
+}
+PALETTES['protanopia'] = PALETTES['deuteranopia']
+PALETTE_NAMES = tuple( PALETTES )
+
+# betatv logs one line at the start and one at the end of every file,
+# "processing 3/53: name" and "done 3/53: name  detect=...": the label
+# is what tells them from any other line that starts with those words.
+_FILE_LINE = re.compile( r'^(processing|done|skipping|failed) \d+/\d+: ' )
+_DETAIL_START = '  detect='
+
+# First match wins. A line no row matches keeps the terminal's own color.
+_PHASES = (
+    ( 'detect',    re.compile( r'^(size \d+[: ]|detect\b|detector|raw detections)' ) ),
+    ( 'structure', re.compile( r'^(shot[- ]cut|shot structure|structure profile|promotion|tracking )' ) ),
+    ( 'reverse',   re.compile( r'^(reverse|person)' ) ),
+    ( 'render',    re.compile( r'^render' ) ),
+    ( 'prep',      re.compile( r'^(transcod|reusing cached transcode|preview slice|decod)' ) ),
+)
+
+
+def phase_of( message ):
+    """The run phase a log line belongs to ('detect', 'render', ...), or None."""
+    for name, pattern in _PHASES:
+        if pattern.match( message ):
+            return name
+    return None
+
+
+def _enable_windows_ansi():
+    """Turn on ANSI escape handling for stdout in a Windows console. True if it took."""
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle( -11 )
+        mode = ctypes.c_ulong()
+        if not kernel32.GetConsoleMode( handle, ctypes.byref( mode ) ):
+            return False
+        return bool( kernel32.SetConsoleMode( handle, mode.value | 0x0004 ) )
+    except Exception:
+        return False
+
+
+def color_enabled( stream, mode=None, environ=None ):
+    """
+    Whether the terminal view should carry color for this stream.
+
+    'never' is off and 'always' is on, whatever the environment says.
+    'auto' (also what an unknown value means) is on only for a terminal
+    that is not TERM=dumb; NO_COLOR turns it off and FORCE_COLOR turns it
+    on (https://no-color.org), so piping through tee keeps plain text
+    unless you ask otherwise.
+    """
+    if mode is None:
+        mode = getattr( betaconfig, 'console_color', 'auto' )
+    env = os.environ if environ is None else environ
+    if mode == 'never':
+        return False
+    if mode == 'always':
+        return True
+    if env.get( 'NO_COLOR' ):
+        return False
+    if env.get( 'FORCE_COLOR' ):
+        return True
+    try:
+        is_terminal = bool( stream.isatty() )
+    except Exception:
+        is_terminal = False
+    if not is_terminal or env.get( 'TERM' ) == 'dumb':
+        return False
+    if os.name == 'nt':
+        return _enable_windows_ansi()
+    return True
+
+
+def _palette():
+    name = getattr( betaconfig, 'console_palette', 'standard' )
+    return PALETTES.get( name, PALETTES['standard'] )
+
+
+def _paint( style, text, palette=None ):
+    code = ( palette or _palette() )[style]
+    if not code:
+        return text
+    return '\033[' + code + 'm' + text + _RESET
+
+
+class ColorFormatter( logging.Formatter ):
+    """
+    The terminal's formatter when color is on: the same text as
+    logging.Formatter, wrapped in escape codes. It colors the finished
+    string and leaves the record alone, so the log file's handler, which
+    formats the same record, never sees a code.
+    """
+
+    def format( self, record ):
+        text = super().format( record )
+        message = record.getMessage()
+        palette = _palette()
+        event = _FILE_LINE.match( message )
+        event = event.group( 1 ) if event else None
+        if event == 'processing':
+            return _paint( 'start', text, palette )
+        if event == 'done':
+            split = text.find( _DETAIL_START )
+            if split > 0:
+                return _paint( 'done', text[:split], palette ) + _paint( 'detail', text[split:], palette )
+            return _paint( 'done', text, palette )
+        if event == 'skipping':
+            return _paint( 'skipped', text, palette )
+        if event == 'failed':
+            return _paint( 'failed', text, palette )
+        if record.levelno >= logging.ERROR:
+            return _paint( 'error', text, palette )
+        if record.levelno >= logging.WARNING:
+            return _paint( 'warn', text, palette )
+        if record.levelno < logging.INFO:
+            return _paint( 'quiet', text, palette )
+        phase = phase_of( message )
+        if phase:
+            return _paint( phase, text, palette )
+        return text
+
+
+def _console_formatter( fmt, stream ):
+    if color_enabled( stream ):
+        return ColorFormatter( fmt )
+    return logging.Formatter( fmt )
+
+
 def _as_level( level ):
     return level if isinstance( level, int ) else resolve_level( level )
 
@@ -138,9 +300,10 @@ def tool_logger( name, log_path=None, file_level='info', console_level='info', f
         file_handler.setFormatter( logging.Formatter( file_format ) )
         logger.addHandler( file_handler )
     if console_level is not None:
-        console_handler = logging.StreamHandler( console_stream or sys.stdout )
+        stream = console_stream or sys.stdout
+        console_handler = logging.StreamHandler( stream )
         console_handler.setLevel( _as_level( console_level ) )
-        console_handler.setFormatter( logging.Formatter( console_format ) )
+        console_handler.setFormatter( _console_formatter( console_format, stream ) )
         logger.addHandler( console_handler )
     return logger
 
@@ -195,7 +358,7 @@ def _build_configured_logger():
 
     console_handler = logging.StreamHandler( sys.stdout )
     console_handler.setLevel( console_level )
-    console_handler.setFormatter( logging.Formatter( CONSOLE_FORMAT ) )
+    console_handler.setFormatter( _console_formatter( CONSOLE_FORMAT, sys.stdout ) )
     logger.addHandler( console_handler )
 
     return logger
@@ -275,6 +438,7 @@ class ProgressReporter:
         self._painted = False
         self._lock = threading.Lock()
         self._isatty = bool( getattr( sys.stdout, 'isatty', lambda: False )() )
+        self._phase = phase_of( label ) if self._isatty and color_enabled( sys.stdout ) else None
 
     def _format( self, current ):
         elapsed = max( time.monotonic() - self._start, 1e-6 )
@@ -314,7 +478,10 @@ class ProgressReporter:
         """Paint and log if their intervals are up. The caller holds the lock."""
         if self._isatty and ( now - self._last_paint ) >= self.min_interval:
             self._last_paint = now
-            sys.stdout.write( "\r\033[K" + self._format( current ) )
+            line = self._format( current )
+            if self._phase:
+                line = _paint( self._phase, line )
+            sys.stdout.write( "\r\033[K" + line )
             sys.stdout.flush()
             self._painted = True
         if ( now - self._last_log ) >= self.log_interval:

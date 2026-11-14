@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 tune_machine.py - measure this machine's hardware settings and propose
-values for its machine config (../resources/betaconfig_machine.py).
+values for the local config (betaconfig_local.py, its hardware section).
 
 Run it through tools/bench/tune_machine.sh, which logs everything, asks
 before it starts if the machine looks busy, and asks before writing
@@ -13,7 +13,8 @@ anything. Directly:
 STAGES (each one logged, timed, and skipped with a warning if it fails)
     inventory   CPU, memory, GPU and driver, ffmpeg's hardware encoders,
                 onnxruntime's providers, OpenCV's decode support, and the
-                settings in effect now
+                settings in effect now. Proposes gpu_enabled from the
+                providers and nvidia-smi; the later stages run with it
     detect      detection batch size: ms per frame at batch 1..16 on the
                 same frames, and whether the detections stay the same
     prefetch    the real detection loop (decode, batch, model) over a
@@ -31,7 +32,7 @@ STAGES (each one logged, timed, and skipped with a warning if it fails)
 Nothing real is read from or written to the caches; encodes go to a
 scratch folder that is removed. The proposal is written as
 proposal.json (values and reasons) and proposal.args (one NAME=VALUE per
-line, what tools/setup/machine_config.py set takes).
+line, what tools/setup/local_config.py set takes).
 """
 
 import argparse
@@ -258,6 +259,25 @@ def mb_per_megapixel_proposal( rows, margin=MEMORY_MARGIN ):
     return int( max( 50, -( -value // 10 ) * 10 ) )
 
 
+def gpu_enabled_proposal( providers, gpu, configured ):
+    """
+    ( value, reason ) when gpu_enabled should change, else None.
+
+    Decided from what is installed, not timed: betaconfig.py ships 0 so a
+    CPU install works out of the box, and onnxruntime-gpu lists
+    CUDAExecutionProvider even on a machine with no usable GPU, so both
+    the provider and a GPU that nvidia-smi can see are required for 1.
+    """
+    cuda = 'CUDAExecutionProvider' in ( providers or () )
+    if cuda and gpu and configured != 1:
+        return 1, "onnxruntime has CUDAExecutionProvider and nvidia-smi sees %s"%(
+            gpu.get( 'name', 'a GPU' ), )
+    if configured == 1 and not ( cuda and gpu ):
+        return 0, "gpu_enabled = 1 but %s, so detection would run on the CPU anyway"%(
+            "onnxruntime has no CUDAExecutionProvider" if not cuda else "nvidia-smi sees no GPU", )
+    return None
+
+
 def auto_render_workers( cpu_count ):
     """render_workers = 0's count before the memory cap (betautils_render.resolve_worker_count)."""
     return max( 1, min( ( cpu_count or 1 ) // 2 or 1, 8 ) )
@@ -325,7 +345,7 @@ def stage_inventory( context, logger ):
     import platform
     import cv2
     import betaconfig
-    import betautils_machine as bu_machine
+    import betautils_local as bu_local
     import betabench
 
     result = { 'platform': platform.platform(), 'python': platform.python_version(),
@@ -359,8 +379,8 @@ def stage_inventory( context, logger ):
     result['opencv_decoder_threads_settable'] = hasattr( cv2, 'CAP_PROP_N_THREADS' )
     result['opencv_video_io'] = [ line.strip() for line in build.splitlines()
                                   if any( key in line for key in ( 'FFMPEG:', 'GStreamer:', 'VA:', 'Media SDK' ) ) ]
-    loaded = bu_machine.LOADED
-    result['machine_config'] = loaded.describe() if loaded is not None else None
+    loaded = bu_local.LOADED
+    result['local_config'] = loaded.describe() if loaded is not None else None
     result['in_effect'] = { name: getattr( betaconfig, name, None ) for name in (
         'gpu_enabled', 'detection_prefetch_frames', 'render_workers', 'render_decode_threads',
         'render_worker_mb_per_megapixel', 'render_memory_reserve_mb', 'render_chunk_seconds',
@@ -384,8 +404,18 @@ def stage_inventory( context, logger ):
                                                   result.get( 'onnxruntime_providers' ) ) )
     logger.info( "OpenCV %s, decoder threads settable: %s; %s"%(
         result['opencv'], result['opencv_decoder_threads_settable'], '; '.join( result['opencv_video_io'] ) ) )
-    logger.info( result['machine_config'] or 'machine config: unknown' )
+    logger.info( result['local_config'] or 'local config: unknown' )
     logger.info( "in effect: %s"%( ', '.join( "%s=%r"%( k, v ) for k, v in result['in_effect'].items() ), ) )
+
+    gpu_change = gpu_enabled_proposal( result.get( 'onnxruntime_providers' ), gpu,
+                                       result['in_effect']['gpu_enabled'] )
+    if gpu_change:
+        value, reason = gpu_change
+        context['proposal']['gpu_enabled'] = { 'value': value, 'reason': reason }
+        # The later stages measure under the proposed value: batch size
+        # and prefetch timed on the CPU would be proposed for the GPU.
+        betaconfig.gpu_enabled = value
+        logger.info( "gpu_enabled: proposing %d (%s); the stages below run with it"%( value, reason ) )
     return result
 
 
@@ -786,7 +816,7 @@ def pick_video( path, logger ):
 
 
 def proposal_args( proposal ):
-    """One NAME=VALUE per proposed setting, as tools/setup/machine_config.py set takes them."""
+    """One NAME=VALUE per proposed setting, as tools/setup/local_config.py set takes them."""
     return [ "%s=%r"%( name, entry['value'] ) for name, entry in sorted( proposal.items() ) ]
 
 
@@ -838,7 +868,7 @@ def command_measure( args ):
         failed = 'error' in ( context['results'].get( stage ) or {} )
         logger.info( "  %-9s %5.0fs%s"%( stage, timings.get( stage, 0 ), '   FAILED, see the log' if failed else '' ) )
     if proposal:
-        logger.info( "  proposed for the machine config:" )
+        logger.info( "  proposed for the local config:" )
         for name, entry in sorted( proposal.items() ):
             logger.info( "    %s = %r   (%s)"%( name, entry['value'], entry['reason'] ) )
     else:

@@ -169,10 +169,16 @@ def _record_independent_style_event( label, box, tracks, paired_style ):
     # any earlier new-this-frame box in this same loop) - see this
     # script's docstring for why that's exactly the right thing to check.
     #
-    # NOTE: `tracks` here is NOT distance/liveness-filtered - it's every
-    # currently-tracked box of the label, which is why num_other_live can
-    # be high even in a scene with one real close pair (a second person
-    # elsewhere in frame counts too). _last_nearby_count (see
+    # NOTE: `tracks` is the other tracks of the label LIVE beside this box
+    # (betautils_track.live_track_indices: detected within
+    # paired_style_max_age and not across a cut), the candidates paired
+    # style itself had. It is not distance-filtered, so a second person
+    # elsewhere in frame still counts. It used to be every track still
+    # within track_max_gap (up to 12s on split screens) including ones
+    # across a cut, so 'with other live box(es)' counted tracks paired
+    # style could never use, often the same body part's own track from
+    # before a reset; earlier reports of this tool overstated mismatches
+    # for that reason. _last_nearby_count (see
     # _record_nearby_count above) is the ACTUAL len(nearby) from
     # _nearby_live_track_indices - the real gate paired_style used to
     # decide not to share - and is what actually explains why this event

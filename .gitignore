@@ -163,3 +163,8 @@ run_keys/
 **/.pytest_cache/
 **/.coverage
 tools/release/release-notes.md
+
+# Your own settings (CONFIG_REFERENCE.md, "Local config"), and the editor's
+# temporary file while it writes one
+/betaconfig_local.py
+/.betaconfig_local.py.*.tmp

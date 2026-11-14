@@ -779,7 +779,13 @@ class TestValidation( ConfigHarness ):
         backend['class_promotion'] = { 'exposed_vulva': [
             { 'from': 'covered_vulva', 'requires': [ { 'label': 'exposed_penis' } ] } ] }
         betaconfig.items_to_censor = [ 'exposed_vulva' ]
+        # The source is not rendered either, so no censor is lost.
         self.set_reverse()
+        errors = []
+        bu_config._validate_class_promotion( errors, bu_config._valid_class_names() )
+        self.assertEqual( [ e for e in errors if 'censored labels' in e ], [] )
+        # The source is censored and the target is not: its boxes would lose their censor.
+        self.set_reverse( censor={ 'labels': [ 'exposed_breast', 'covered_vulva' ] } )
         errors = []
         bu_config._validate_class_promotion( errors, bu_config._valid_class_names() )
         self.assertTrue( any( "reverse mode's windows and censored labels" in e for e in errors ), errors )

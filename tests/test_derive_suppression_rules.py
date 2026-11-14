@@ -192,5 +192,30 @@ class TestMarginRequiredAlongsideMinIou( unittest.TestCase ):
         self.assertIsNotNone( margin )  # even the "gut the rule" case still returns an explicit 0.00, never None+min_iou
 
 
+class TestRefusedPairsAreNotProposed( unittest.TestCase ):
+    """The built-in unsafe pairs: the A/B never offers them, and neither may this tool."""
+
+    def run_main( self, text ):
+        import io
+        from unittest import mock
+        out = io.StringIO()
+        with mock.patch( 'sys.argv', [ 'derive_suppression_rules.py' ] ), \
+                mock.patch( 'sys.stdin', io.StringIO( text ) ), mock.patch( 'sys.stdout', out ):
+            dsr.main()
+        return out.getvalue()
+
+    def test_an_unsafe_pair_is_named_and_left_out_of_the_dict( self ):
+        thresholds = ( { 0.05: (225,775,29), 0.10: (26,775,3), 0.20: (6,775,1), 0.30: (4,775,1) },
+                       -0.112, { 0.00: (203,775,26), 0.05: (139,775,18), 0.10: (93,775,12) } )
+        text = "\n".join( [ _make_block( 'exposed_vulva', 'exposed_penis', 55444, 775, 0.036, *thresholds ),
+                            _make_block( 'exposed_breast', 'covered_breast', 55444, 775, 0.036, *thresholds ) ] )
+        printed = self.run_main( text )
+        self.assertIn( 'NOT PROPOSED: refused (in penetration', printed )
+        proposed = printed[ printed.index( '=== As a Python dict' ): ]
+        self.assertNotIn( 'exposed_penis', proposed )
+        self.assertIn( 'covered_breast', proposed, "precondition: the same numbers do propose a safe pair" )
+        self.assertIn( 'betaconfig_local.py', proposed )
+
+
 if __name__ == '__main__':
     unittest.main()

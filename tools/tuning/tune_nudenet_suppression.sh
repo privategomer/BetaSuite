@@ -207,7 +207,7 @@ for r in "${STEP_RESULTS[@]}"; do
 done
 log_info "derived rule candidates: $DERIVED_RULES_OUT"
 log_info "full log: $HARNESS_LOG_FILE"
-log_info "next step (manual, per CONFIG_REFERENCE.md): review $DERIVED_RULES_OUT and the replay_tune.py deltas in the log above, then hand-edit $REPLAY_VARIANTS_FILE (or betaconfig.py's detector_backend['nudenet_v3']['class_suppression'] directly) with whatever rules you decide to keep."
+log_info "next step (manual, per CONFIG_REFERENCE.md): review $DERIVED_RULES_OUT and the replay_tune.py deltas in the log above, then hand-edit $REPLAY_VARIANTS_FILE (or set them in betaconfig_local.py with python tools/setup/local_config.py set detector_backend.nudenet_v3.class_suppression.<label>=[...]) with whatever rules you decide to keep."
 
 for r in "${STEP_RESULTS[@]}"; do
     if [[ "$r" == FAIL* ]]; then

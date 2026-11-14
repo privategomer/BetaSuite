@@ -24,9 +24,10 @@ Usage:
     # or read from stdin
     python3 analyze_suppression_pairs.py | python3 derive_suppression_rules.py
 
-Output: a class_suppression dict (Python literal, ready to paste into
-betaconfig.py's detector_backend[<name>]['class_suppression'], or into a
-replay_tune.py variants file's "class_suppression" key) plus, for every
+Output: a class_suppression dict (Python literal, ready to go into
+betaconfig_local.py under detector_backend[<name>]['class_suppression'],
+or into a replay_tune.py variants file's "class_suppression" key), leaving
+out every refused pair (bu_detector.get_class_suppression_refused), plus, for every
 pair, the reasoning it used - so this is a starting point to sanity-check
 against the same judgment calls documented in CONFIG_REFERENCE.md
 (protect real detections over catching every false positive; treat a
@@ -60,8 +61,11 @@ Limitations, stated plainly:
   an omitted key relying on that default.
 """
 
+import os
 import re
 import sys
+
+sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) ) )
 
 
 MIN_OVERLAPPING_PAIRS = 20  # below this, there's not enough signal to propose anything - matches the spirit of CONFIG_REFERENCE.md's "covered_belly has no rule" call (~2-4 pairs judged not enough)
@@ -280,11 +284,21 @@ def main():
     print( "(read the reasoning for each - this is a starting point for a real tuning pass, not a value to paste in unread. margin is required alongside min_iou - see this script's docstring for why a missing margin isn't a safe default.)" )
     print()
 
+    import betautils_detector as bu_detector   # deferred: imports betaconfig
+    refused = bu_detector.get_class_suppression_refused( 'nudenet_v3' )
     proposed = {}
     for entry in entries:
-        min_iou, iou_reasoning = propose_rule( entry )
         label_a, label_b = entry['label_a'], entry['label_b']
         print( "%s suppressed_by %s:"%(label_a, label_b) )
+        # This tool proposed the built-in unsafe pairs too, so a person
+        # who pasted its dict got back a rule the A/B would never offer.
+        pair = "%s<-%s"%( label_a, label_b )
+        if pair in refused:
+            reason = bu_detector.UNSAFE_SUPPRESSION_PAIRS.get( pair, 'in class_suppression_refused' )
+            print( "  -> NOT PROPOSED: refused (%s)"%( reason, ) )
+            print()
+            continue
+        min_iou, iou_reasoning = propose_rule( entry )
         print( "  min_iou: %s"%(iou_reasoning) )
         if min_iou is None:
             print()
@@ -301,8 +315,9 @@ def main():
         proposed.setdefault( label_a, [] ).append( { 'suppressed_by': label_b, 'margin': round(margin, 2), 'min_iou': round(min_iou, 2) } )
         print()
 
-    print( "=== As a Python dict (paste into betaconfig.py's detector_backend['nudenet_v3']['class_suppression'], "
-        "or a replay_tune.py variants file's 'class_suppression' key, AFTER reviewing every reasoning line above) ===" )
+    print( "=== As a Python dict (into betaconfig_local.py as detector_backend = { 'nudenet_v3': { "
+        "'class_suppression': ... } }, or a replay_tune.py variants file's 'class_suppression' key, AFTER "
+        "reviewing every reasoning line above; it replaces the shipped rules for each label it names) ===" )
     print( "{" )
     for label, rules in proposed.items():
         print( "    %r: %s,"%(label, rules) )

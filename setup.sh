@@ -288,14 +288,14 @@ if [ "$USE_UV" = 1 ] && [ -n "${UV:-}" ]; then FETCH_ARGS+=( --uv "$UV" ); fi
 "$VENV_PY" tools/setup/fetch_models.py "${FETCH_ARGS[@]}" \
     || log_warn "model check reported a problem; see the messages above"
 
-# ---------------------------------------------------------------- machine config
-# This machine's hardware settings live in ../resources/betaconfig_machine.py,
-# not betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
+# ---------------------------------------------------------------- local config
+# Your own settings live in betaconfig_local.py (ignored by git), not
+# betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
 want_flag=0; [ "$MODE" = gpu ] && want_flag=1
-MACHINE_ARGS=( setup --gpu-enabled "$want_flag" )
-[ "$ASSUME_YES" = 1 ] && MACHINE_ARGS+=( --yes )
-"$VENV_PY" tools/setup/machine_config.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
-    "${MACHINE_ARGS[@]}" || log_warn "machine config step reported a problem; see the messages above"
+LOCAL_ARGS=( setup --gpu-enabled "$want_flag" )
+[ "$ASSUME_YES" = 1 ] && LOCAL_ARGS+=( --yes )
+"$VENV_PY" tools/setup/local_config.py --log-level "${LOG_LEVEL:-info}" --log-file "$HARNESS_LOG_FILE" \
+    "${LOCAL_ARGS[@]}" || log_warn "local config step reported a problem; see the messages above"
 
 # ---------------------------------------------------------------- verify
 log_info "=== verifying environment ==="

@@ -341,11 +341,7 @@ def censor_identity( backend_name=None ):
         # render and reports it as the new result. Caught by
         # tests/test_censor_key_coverage.py on a real tuned config, where
         # all three censored labels pinned position_smoothing.
-        'global_defaults': {
-            name: getattr( betaconfig, name )
-            for name in sorted( dir( betaconfig ) )
-            if name.startswith( 'default_' ) and not callable( getattr( betaconfig, name ) )
-        },
+        'global_defaults': _global_defaults_identity(),
         'watermark':                bool( getattr( betaconfig, 'enable_betasuite_watermark', False ) ),
         'debug_overlay':            bool( getattr( betaconfig, 'debug_mode', 0 ) & 1 ),
 
@@ -403,6 +399,36 @@ def censor_identity( backend_name=None ):
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
     return identity
+
+
+def _defaults_keyed_once_changed():
+    """
+    { name: the value the code used before betaconfig.py listed it }.
+
+    These were read with a code fallback, then listed in betaconfig.py at
+    that same value so they can be overridden. Every default_* name is
+    keyed, so listing them moved the censor key and would have
+    re-rendered every finished output with nothing about it changed. Each
+    is keyed only once it differs from that value.
+    """
+    import betautils_track as bu_track   # deferred: bu_track imports bu_config
+    return { 'default_confirm_score': None,
+             'default_size_smoothing': None,
+             'default_geometry_action': bu_track.DEFAULT_GEOMETRY_ACTION }
+
+
+def _global_defaults_identity():
+    """Every default_* setting in betaconfig, as censor_identity keys it."""
+    unchanged = _defaults_keyed_once_changed()
+    keyed = {}
+    for name in sorted( dir( betaconfig ) ):
+        if not name.startswith( 'default_' ) or callable( getattr( betaconfig, name ) ):
+            continue
+        value = getattr( betaconfig, name )
+        if name in unchanged and value == unchanged[name]:
+            continue
+        keyed[name] = value
+    return keyed
 
 
 def censor_uses_feathered_shape( per_label ):
@@ -1445,6 +1471,47 @@ def iter_cache_files( directory, include_preview=False ):
         except Exception:
             continue
         if boxes:
+            yield ( name, boxes )
+
+
+def iter_newest_cache_files( directory, include_preview=False ):
+    """
+    iter_cache_files, keeping each video's newest run per configuration.
+
+    A video re-run at another sample rate or detection key leaves its
+    older cache on disk, and reading every file counted that video once
+    per run: on a large library the pooled tools read 326 files for 182
+    videos while the replaying tools, through videos_across_sample_rates,
+    read one run each. The same footage weighed two or three times in
+    the score, geometry and confusion-pair numbers and once everywhere
+    else. Grouped by configuration, video, size and preview slice, newest
+    by modification time, as videos_across_sample_rates picks. A file
+    whose name this module cannot parse (a picture cache, a legacy name)
+    is kept, as before.
+    """
+    if not os.path.isdir( directory ):
+        return
+    newest = {}
+    kept = set()
+    for path in glob.glob( os.path.join( directory, '*.gz' ) ):
+        name = os.path.basename( path )
+        if not include_preview and is_preview_cache_filename( name ):
+            continue
+        parsed = parse_any_cache_name( name )
+        if not parsed:
+            kept.add( name )
+            continue
+        group = ( configuration_label_of_cache_filename( name ), parsed['file_hash'],
+                  parsed['size'], parsed['preview_suffix'] )
+        try:
+            modified = os.path.getmtime( path )
+        except OSError:
+            continue
+        if group not in newest or modified > newest[group][0]:
+            newest[group] = ( modified, name )
+    kept.update( name for _modified, name in newest.values() )
+    for name, boxes in iter_cache_files( directory, include_preview ):
+        if name in kept:
             yield ( name, boxes )
 
 

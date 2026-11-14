@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # tune_machine.sh - measure this machine's hardware settings and offer to
-# write them to its machine config (../resources/betaconfig_machine.py).
+# write them to the local config (betaconfig_local.py, in its
+# "hardware (written by tune_machine)" section).
 # Single click:
 #
 #   ./tools/bench/tune_machine.sh
@@ -23,7 +24,7 @@
 #   scan       structure-scan worker processes
 #
 # Reads only: no cache is read or written, encodes go to a scratch folder
-# that is removed. The only file it changes is the machine config, and
+# that is removed. The only file it changes is the local config, and
 # only after you say yes.
 #
 # OUTPUT
@@ -53,7 +54,7 @@ source "$REPO_ROOT/tools/tuning/harness_lib.sh"
 : "${TUNE_SKIP:=}"
 : "${TUNE_YES:=0}"
 TUNE="$REPO_ROOT/tools/bench/tune_machine.py"
-MACHINE="$REPO_ROOT/tools/setup/machine_config.py"
+LOCAL_CONFIG="$REPO_ROOT/tools/setup/local_config.py"
 
 log_info "tune_machine: output in $RUN_DIR"
 log_info "python: $PYTHON_BIN ($PYTHON_BIN_SOURCE)"
@@ -103,18 +104,18 @@ if [ "${#PROPOSAL[@]}" -eq 0 ]; then
     log_info "nothing to write; every number: $RUN_DIR/results.json"
     exit 0
 fi
-WRITE_LATER="$PYTHON_BIN $MACHINE set ${PROPOSAL[*]} --comment \"tune_machine $STAMP\""
+WRITE_LATER="$PYTHON_BIN $LOCAL_CONFIG set ${PROPOSAL[*]} --section hardware --comment \"tune_machine $STAMP\""
 # Ctrl+C at the prompt is a "no", with the command to say yes later.
 trap 'echo; log_warn "stopped at the prompt; nothing was written. To write them later:"; log_warn "  $WRITE_LATER"; exit 130' INT
-if [ "$TUNE_YES" != 1 ] && ! wait_for_confirmation "Write these ${#PROPOSAL[@]} setting(s) to the machine config?"; then
+if [ "$TUNE_YES" != 1 ] && ! wait_for_confirmation "Write these ${#PROPOSAL[@]} setting(s) to betaconfig_local.py?"; then
     log_info "not written. To write them later:"
     log_info "  $WRITE_LATER"
     exit 0
 fi
 trap - INT
-if run_logged "write the machine config" "$PYTHON_BIN" "$MACHINE" --log-file "$HARNESS_LOG_FILE" \
-        set "${PROPOSAL[@]}" --comment "tune_machine $STAMP"; then
-    log_info "written; to see every setting and where it comes from: $PYTHON_BIN $MACHINE show"
+if run_logged "write the local config" "$PYTHON_BIN" "$LOCAL_CONFIG" --log-file "$HARNESS_LOG_FILE" \
+        set "${PROPOSAL[@]}" --section hardware --comment "tune_machine $STAMP"; then
+    log_info "written; to see every setting and where it comes from: $PYTHON_BIN $LOCAL_CONFIG show"
 else
     log_error "not written: the change failed validation; see $HARNESS_LOG_FILE"
     exit 1

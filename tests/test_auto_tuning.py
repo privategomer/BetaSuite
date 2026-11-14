@@ -198,10 +198,12 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
             rows.append( _row( value, '%d hit(s)'%( value, ), metrics, base ) )
         return rows
 
-    def decide( self, stage, rows, loss=0.001 ):
+    def decide( self, stage, rows, loss=0.001, growth=None ):
         opts = _Options()
         opts.confident_score = 0.5
         opts.max_confident_loss = loss
+        if growth is not None:
+            opts.max_confident_growth = growth
         stage.score_rows( rows, opts )
         return stage.decide( { 'only @640': rows }, opts, None )
 
@@ -234,16 +236,22 @@ class TestMinTrackHitsRecommendation( unittest.TestCase ):
         self.assertIn( 'keeping 2', decision.reasoning )
 
     def test_the_tolerance_is_a_share_of_confident_detections( self ):
+        # The growth limit is lifted here: this is the absolute rule alone.
         uncensored = { 1: 50, 2: 50, 3: 160, 4: 400 }
-        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001 )
-        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002 )
+        tight = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.001, growth=10 )
+        loose = self.decide( self.stage_at( 2 ), self.rows( 2, uncensored ), loss=0.002, growth=10 )
         self.assertEqual( tight.chosen, 2, "110 more bare is over 0.1% of 100,000" )
         self.assertEqual( loose.chosen, 3, "and under 0.2%" )
 
     def test_a_value_exactly_at_the_tolerance_is_within_it( self ):
         # 100,000 confident detections at 0.1% allows exactly 100 more bare.
-        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ),
+                                growth=10 )
         self.assertEqual( decision.chosen, 3 )
+
+    def test_by_default_a_stricter_value_may_not_triple_what_is_left_bare( self ):
+        decision = self.decide( self.stage_at( 2 ), self.rows( 2, { 1: 50, 2: 50, 3: 150, 4: 400 } ) )
+        self.assertEqual( decision.chosen, 2, "150 bare against 50 today is far past 25% more" )
 
     def test_rows_report_boxes_and_confident_changes( self ):
         rows = self.rows( 2, { 1: 40, 2: 50 }, boxes_by_value={ 1: 10400, 2: 10000 } )
@@ -465,6 +473,47 @@ class TestConfirmScoreRecommendation( unittest.TestCase ):
         decision = bu_tuning.Decision( stage.title, None, True, '', [], per_configuration={ 'a': 0.6 } )
         self.assertIsNone( stage.review( decision, {} ) )
 
+    def _from_baseline( self, uncensored_by_value, growth=None ):
+        # A real run's vulva shape: 0.5 today, 556,205 confident detections.
+        base = _metrics( uncensored=uncensored_by_value[0.5], confident=556205 )
+        rows = [ dict( _row( 0.5, 'baseline (0.5)', base, base ), verdict='baseline' ) ]
+        for value in ( 0.6, 0.7 ):
+            rows.append( _row( value, '%g'%( value, ),
+                               _metrics( uncensored=uncensored_by_value[value], confident=556205 ), base ) )
+        opts = _Options()
+        opts.confident_score = 0.5
+        opts.max_confident_loss = 0.001
+        if growth is not None:
+            opts.max_confident_growth = growth
+        stage = self.stage( 0.5 )
+        stage.score_rows( rows, opts )
+        return stage.decide( { 'only @640': rows }, opts, None )
+
+    def test_a_stricter_score_may_not_much_grow_what_is_left_bare( self ):
+        # Within 0.1% of all confident detections, but 384 against 198 today.
+        decision = self._from_baseline( { 0.5: 198, 0.6: 285, 0.7: 384 } )
+        self.assertFalse( decision.accepted )
+        self.assertEqual( decision.chosen, 0.5 )
+        self.assertIn( 'held back', decision.reasoning )
+
+    def test_a_small_step_stricter_still_goes_through( self ):
+        decision = self._from_baseline( { 0.5: 198, 0.6: 240, 0.7: 384 } )
+        self.assertTrue( decision.accepted )
+        self.assertEqual( decision.chosen, 0.6 )
+
+    def test_the_growth_limit_is_the_options( self ):
+        decision = self._from_baseline( { 0.5: 198, 0.6: 285, 0.7: 384 }, growth=1.0 )
+        self.assertEqual( decision.chosen, 0.7 )
+
+    def test_yes_never_writes_a_value_flagged_for_the_eye( self ):
+        flagged = bu_tuning.Decision( 'confirm_score', 0.7, True, '', [] )
+        flagged.review = { 'value': 0.7, 'why': 'judge by eye' }
+        plain = bu_tuning.Decision( 'track_max_gap', 0.9, True, '', [] )
+        plain.review = None
+        self.assertTrue( auto_tune.unattended_write_refused( flagged, True ) )
+        self.assertFalse( auto_tune.unattended_write_refused( flagged, False ), "asked, a person decides" )
+        self.assertFalse( auto_tune.unattended_write_refused( plain, True ) )
+
     def test_it_runs_after_min_track_hits( self ):
         order = auto_tune.STAGE_ORDER
         self.assertEqual( order.index( 'confirm_score' ), order.index( 'min_track_hits' ) + 1 )
@@ -539,8 +588,7 @@ class TestMaskedStagesAreSkipped( unittest.TestCase ):
              mock.patch.object( auto_tune, 'measure_stage',
                                 side_effect=lambda *a, **k: measured.append( 1 ) or [
                                     dict( _row( 0.17, 'baseline', _metrics(), _metrics() ),
-                                          verdict='baseline' ) ] ), \
-             mock.patch.object( auto_tune, '_median_shot_seconds_for', return_value=None ):
+                                          verdict='baseline' ) ] ):
             auto_tune.main()
         import json as _json
         import os as _os
@@ -811,144 +859,6 @@ class TestSplittingWhenConfigurationsDisagree( unittest.TestCase ):
         self.assertTrue( decision.accepted )
         self.assertFalse( decision.is_split )
         self.assertEqual( decision.chosen, 27.0 )
-
-
-class TestConfigWriter( unittest.TestCase ):
-    """
-    Editing a live config file, carefully.
-    """
-
-    SAMPLE = '''"""A stand-in betaconfig for tests."""
-
-render_chunk_seconds = 600
-render_workers = 0          # 0 = auto
-
-detector_backend = {
-    'selected': 'nudenet_v3',
-    'nudenet_v3': {
-        'model_variant': '320n',
-        'item_overrides': {
-            'exposed_vulva': {
-                'min_prob': 0.335,
-                'track_max_gap': 10.8,
-            },
-            'exposed_breast': {
-                'min_prob': 0.37,
-                'track_max_gap': 13.5,
-            },
-        },
-    },
-}
-'''
-
-    def setUp( self ):
-        self._dir = tempfile.TemporaryDirectory()
-        self.path = os.path.join( self._dir.name, 'betaconfig.py' )
-        with open( self.path, 'w', encoding='UTF-8' ) as fout:
-            fout.write( self.SAMPLE )
-        self.writer = bu_tuning.ConfigWriter( config_path=self.path, backup_dir=self._dir.name )
-        # The verification step reloads the REAL betaconfig, which would
-        # not reflect this temporary file. These tests exercise the
-        # locating and rewriting; verification is covered by the live
-        # smoke run in the tuner itself.
-        self.writer._write_and_verify = self._write_only
-
-    def tearDown( self ):
-        self._dir.cleanup()
-
-    def _write_only( self, updated_source, resolve, expected, description ):
-        self.writer._backup()
-        with open( self.path, 'w', encoding='UTF-8' ) as fout:
-            fout.write( updated_source )
-
-    def test_it_edits_the_right_label_block( self ):
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'track_max_gap', 27.0 )
-        written = self.writer.read()
-        self.assertIn( "'track_max_gap': 27,", written )
-        self.assertIn( "'track_max_gap': 10.8,", written,
-            "editing exposed_breast must not touch exposed_vulva's identically named key" )
-
-    def test_it_leaves_other_keys_and_comments_alone( self ):
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_vulva', 'min_prob', 0.4 )
-        written = self.writer.read()
-        self.assertIn( "'min_prob': 0.4,", written )
-        self.assertIn( "'model_variant': '320n',", written )
-        self.assertIn( "# 0 = auto", written )
-
-    def test_a_missing_key_is_inserted( self ):
-        # The tuner's most useful decisions are about keys that have
-        # never been set, because they default implicitly and so appear
-        # nowhere. Refusing them meant measuring correctly and then
-        # asking the user to type the answer in themselves.
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'min_track_hits', 2 )
-        written = self.writer.read()
-        self.assertIn( "'min_track_hits': 2,", written )
-        self.assertIn( 'set by auto_tune', written,
-            "a value that appeared in config without being typed should say where it came from" )
-
-    def test_an_inserted_key_lands_in_the_right_label_block( self ):
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast',
-                                       'match_distance_multiplier', 2.0 )
-        written = self.writer.read()
-        breast_at = written.index( "'exposed_breast': {" )
-        vulva_at = written.index( "'exposed_vulva': {" )
-        inserted_at = written.index( "'match_distance_multiplier'" )
-        self.assertGreater( inserted_at, breast_at,
-            "an inserted key must land inside the label it was decided for" )
-        self.assertGreater( inserted_at, vulva_at )
-
-    def test_an_inserted_key_matches_its_siblings_indentation( self ):
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_vulva', 'min_track_hits', 3 )
-        written = self.writer.read()
-        sibling = [ line for line in written.splitlines() if "'min_prob': 0.335" in line ][0]
-        inserted = [ line for line in written.splitlines() if "'min_track_hits'" in line ][0]
-        self.assertEqual( len( sibling ) - len( sibling.lstrip() ),
-                          len( inserted ) - len( inserted.lstrip() ),
-            "a tuner that reformats a hand-maintained config is a tuner people stop trusting "
-            "with the file" )
-
-    def test_the_file_still_parses_after_an_insert( self ):
-        import ast
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_vulva', 'min_track_hits', 3 )
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'min_track_hits', 2 )
-        ast.parse( self.writer.read() )
-
-    def test_an_inserted_key_can_then_be_updated( self ):
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'min_track_hits', 2 )
-        self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'min_track_hits', 3 )
-        written = self.writer.read()
-        self.assertEqual( written.count( "'min_track_hits'" ), 1,
-            "a second decision on the same key must replace the first, not stack another line" )
-        self.assertIn( "'min_track_hits': 3,", written )
-
-    def test_a_duplicated_key_is_still_refused( self ):
-        doubled = self.SAMPLE.replace(
-            "                'track_max_gap': 13.5,\n",
-            "                'track_max_gap': 13.5,\n                'track_max_gap': 99.0,\n" )
-        with open( self.path, 'w', encoding='UTF-8' ) as fout:
-            fout.write( doubled )
-        with self.assertRaises( bu_tuning.ConfigWriteError ):
-            self.writer.set_item_override( 'nudenet_v3', 'exposed_breast', 'track_max_gap', 27.0 )
-
-    def test_an_unknown_label_is_refused( self ):
-        with self.assertRaises( bu_tuning.ConfigWriteError ):
-            self.writer.set_item_override( 'nudenet_v3', 'no_such_label', 'track_max_gap', 5 )
-
-    def test_an_unknown_backend_is_refused( self ):
-        with self.assertRaises( bu_tuning.ConfigWriteError ):
-            self.writer.set_item_override( 'no_such_backend', 'exposed_breast', 'track_max_gap', 5 )
-
-    def test_a_module_scalar_keeps_its_trailing_comment( self ):
-        self.writer.set_module_scalar( 'render_workers', 4 )
-        written = self.writer.read()
-        self.assertIn( 'render_workers = 4', written )
-        self.assertIn( '# 0 = auto', written )
-
-    def test_every_write_leaves_a_backup( self ):
-        self.writer.set_module_scalar( 'render_chunk_seconds', 180 )
-        self.assertEqual( len( self.writer.backups ), 1 )
-        with open( self.writer.backups[0], encoding='UTF-8' ) as fin:
-            self.assertIn( 'render_chunk_seconds = 600', fin.read() )
 
 
 class TestStageCandidates( unittest.TestCase ):

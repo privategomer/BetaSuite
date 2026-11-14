@@ -353,20 +353,47 @@ def get_class_suppression( backend_name=None ):
     return {}
 
 
-def get_class_suppression_refused( backend_name=None ):
+# Suppression pairs ('label<-suppressor') never proposed, for any backend
+# or user, each with the reason. Every one is two real body parts that
+# share a spot. The bench sees only overlap and scores, so it cannot tell
+# these from a mislabel, and a rule here removes the censor exactly when
+# it is needed. They shipped as config once, which left a user's tuner
+# one deleted line away from proposing them; the anatomy is the same for
+# everyone, so it lives here. Validation warns if a hand-written rule
+# names one.
+UNSAFE_SUPPRESSION_PAIRS = {
+    'exposed_vulva<-exposed_penis':
+        "in penetration the penis sits on the vulva; removing this rule fixed a missed censor",
+    'exposed_vulva<-face_femme':
+        "in oral sex a face beside the vulva is two real things, and the rule removed the vulva censor then",
+    'exposed_vulva<-exposed_buttocks':
+        "anatomy, not a competing claim: about 90% of vulva detections would sit behind the gate",
+    'exposed_vulva<-exposed_feet':
+        "the same shape as exposed_buttocks, smaller",
+}
+
+
+def get_configured_class_suppression_refused( backend_name=None ):
     """
-    Suppression pairs ('label<-suppressor') a person has decided against.
-
-    The bench suggests a rule for every pair whose overlaps form a
-    same-spot cluster, and it cannot tell a mislabel from two body parts
-    that genuinely share a spot (exposed_vulva<-exposed_penis during
-    penetration). A pair named here is never proposed as an addition
-    again, so a decision made once stays made. It changes nothing a run
-    renders.
-
-    Resolution: backend block -> detector_backend['defaults'] -> [].
+    The person's own refused pairs: class_suppression_refused, resolved
+    backend block -> detector_backend['defaults'] -> [].
     """
     return list( resolve_backend_setting( 'class_suppression_refused', backend_name, None ) or [] )
+
+
+def get_class_suppression_refused( backend_name=None ):
+    """
+    Every suppression pair never to propose: UNSAFE_SUPPRESSION_PAIRS,
+    then the person's own (class_suppression_refused), without repeats.
+
+    The bench suggests a rule for every pair whose overlaps form a
+    same-spot cluster. A pair named here is never proposed as an
+    addition, so a decision made once stays made. It changes nothing a
+    run renders.
+    """
+    refused = list( UNSAFE_SUPPRESSION_PAIRS )
+    return refused + [ pair for pair in get_configured_class_suppression_refused( backend_name )
+                       if pair not in refused ]
 
 
 def get_class_promotion( backend_name=None ):
@@ -692,26 +719,11 @@ def _dir_key_parts( key ):
                   if part not in ( '', '.' ) )
 
 
-def source_dir_parts( source_path, uncensored_root=None ):
+def _dir_parts_under( source_path, root ):
     """
-    Where a source file sits relative to the uncensored-video root.
-
-    Args:
-        source_path: Path to the source video, absolute or relative.
-        uncensored_root: Root of the source tree. Defaults to
-            betaconst.video_path_uncensored.
-
-    Returns:
-        A tuple of lowercased directory segments between the root and
-        the file, empty for a file sitting directly in the root, or None
-        when the file is outside the tree or the root is unknown. None
-        and () are different facts: () means "in the root", which takes
-        automatic selection, while None means the question does not
-        apply.
+    The directory segments between root and source_path, or None when
+    the file is not under root (or root is unknown).
     """
-    if not source_path:
-        return None
-    root = uncensored_root or getattr( betaconst, 'video_path_uncensored', None )
     if not root:
         return None
     try:
@@ -724,6 +736,42 @@ def source_dir_parts( source_path, uncensored_root=None ):
     if parts and parts[0] == '..':
         return None
     return parts
+
+
+def source_dir_parts( source_path, uncensored_root=None ):
+    """
+    Where a source file sits relative to its source-video root.
+
+    Args:
+        source_path: Path to the source video, absolute or relative.
+        uncensored_root: Root of the source tree. When given, it is the
+            only root tried. When omitted, betaconst.video_path_uncensored
+            is tried first and then betaconst.video_path_source_backup,
+            because the same folder names mean the same profiles in both
+            trees: a file moved from uncensored_vids/scene/ to
+            source/scene/ keeps its profile, so analysis that replays a
+            finished run still reads it under the profile it was
+            rendered with.
+
+    Returns:
+        A tuple of lowercased directory segments between the root and
+        the file, empty for a file sitting directly in the root, or None
+        when the file is outside every tree tried or no root is known.
+        None and () are different facts: () means "in the root", which
+        takes automatic selection, while None means the question does
+        not apply.
+    """
+    if not source_path:
+        return None
+    if uncensored_root:
+        return _dir_parts_under( source_path, uncensored_root )
+    # Completed before the source tree that contains it, so a finished
+    # file in source/completed/scene/ reads as scene/, not completed/scene/.
+    for root_name in ( 'video_path_uncensored', 'video_path_completed', 'video_path_source_backup' ):
+        parts = _dir_parts_under( source_path, getattr( betaconst, root_name, None ) )
+        if parts is not None:
+            return parts
+    return None
 
 
 def profile_for_source_dir( source_path, backend_name=None, uncensored_root=None ):

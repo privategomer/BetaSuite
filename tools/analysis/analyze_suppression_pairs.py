@@ -126,12 +126,13 @@ def load_cache_dir( path ):
     """
     Yield (source_filename, raw_boxes) for every cache file in path.
 
-    A thin alias for betautils_cache_paths.iter_cache_files, kept under
+    A thin alias for betautils_cache_paths.iter_newest_cache_files (each
+    video's newest run per configuration), kept under
     the historical name this tool's body uses. A video cache holds every
     sampled frame's boxes for one video concatenated together (matched
     by 't'); a picture cache holds one photo's boxes, all at the same t.
     """
-    return bu_cache.iter_cache_files( path, include_preview=True )
+    return bu_cache.iter_newest_cache_files( path, include_preview=True )
 
 
 # fmt_stats's body now lives in betautils_cache_paths.py (shared with

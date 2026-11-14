@@ -51,8 +51,6 @@ STATUS=$?
 echo
 if [ $STATUS -ne 0 ]; then
     echo "run_bar_smoothing_test.py exited with status $STATUS - check ../../../output/logs/run_bar_smoothing_test.log for details."
-    echo "IMPORTANT: verify betaconfig.py looks like your real config before doing anything else - the script"
-    echo "restores it in a finally-block even on error, but this is worth a manual double-check regardless."
 else
     echo "done. Results are in ../../../bar_smoothing_test_results/ - full log in ../../../output/logs/run_bar_smoothing_test.log"
 fi
