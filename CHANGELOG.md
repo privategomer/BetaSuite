@@ -2,6 +2,12 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Changed
+
+- `tools/release/release.py` releases through a pull request, for a `main` that only takes changes that way. From an up-to-date, clean `main` it branches `release/vX.Y.Z`, bumps `VERSION` and dates the CHANGELOG entry, runs the tests, opens the PR, waits for its checks, squash-merges it, then tags the merged commit and creates the GitHub release. The tag is made after the merge, so it always points at a commit on `main`, and `git push origin main --follow-tags` is gone. Running it again resumes whichever stage an earlier run stopped at. It now needs the GitHub CLI (`gh`), logged in, and refuses to run from another branch or from a `main` that differs from `origin/main`. Upgrade cost: none to the app or its caches
+- `.github/dependabot.yml` also keeps the Python requirements files current, monthly and grouped into one pull request
+
 ## 1.5.0 (2026-11-14)
 ### Added
 

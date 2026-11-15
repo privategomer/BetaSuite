@@ -984,19 +984,26 @@ The same string is in BetaTV's startup log line and in every stats row
 produced it.
 
 To cut a release, note your changes under a `## Unreleased` heading in
-`CHANGELOG.md` as you go (optional), then run:
+`CHANGELOG.md` as you go (optional) and merge them to `main` through pull
+requests. Then, from an up-to-date, clean `main`, run:
 
 ```bash
 uv pip install -r requirements-dev.txt   # once: semver, plus the profilers
 python3 tools/release/release.py         # or --dry-run to see the plan
 ```
 
-It lists the commits since the last tag, suggests a bump (`major` for
-"BREAKING" or `type!:`, `minor` for subjects starting with feat/add/new,
-`patch` otherwise), and asks before each step: bump `VERSION`, date the
-CHANGELOG entry (drafting one from the commit subjects if there's no
-`Unreleased` section), run the tests, commit and tag, push, and create the
-GitHub release. Everything is logged to `tools/release/release.log`.
+`main` only takes changes through a pull request whose checks pass, so the
+release is one too. The script lists the commits since the last tag (with
+squash merges, the PR titles), suggests a bump (`major` for "BREAKING" or
+`type!:`, `minor` for subjects starting with feat/add/new, `patch`
+otherwise), and asks before each step: branch `release/vX.Y.Z`, bump
+`VERSION`, date the CHANGELOG entry (drafting one from the commit subjects
+if there's no `Unreleased` section), run the tests, commit, push and open
+the PR, wait for its checks, squash-merge it, then tag the merged commit on
+`main`, push the tag and create the GitHub release. The tag is made after
+the merge, so it always points at a commit on `main`. If a run stops, run
+it again: it works out where it was and resumes. It needs the GitHub CLI
+(`gh`), logged in. Everything is logged to `tools/release/release.log`.
 
 ---
 
