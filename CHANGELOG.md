@@ -2,6 +2,11 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Fixed
+
+- `tools/release/release.py` waited on the release PR's checks forever with a GitHub CLI that has no `--json` on `gh pr checks` (2.46 is one), reading the error as "no checks yet". It now reads the checks from `gh pr view --json statusCheckRollup`, which every release of the CLI has, and stops with the CLI's error after three unreadable polls in a row instead of waiting out the timeout. Upgrade cost: none to the app or its caches
+
 ## 1.5.1 (2026-11-14)
 ### Changed
 
