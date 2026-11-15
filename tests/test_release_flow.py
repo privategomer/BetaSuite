@@ -83,12 +83,34 @@ class HelpersTest( unittest.TestCase ):
         self.assertEqual( c( [ { 'name': 'x', 'bucket': 'fail' } ], () ), 'fail' )
         self.assertEqual( c( [ { 'name': 'x', 'bucket': 'pass' } ], () ), 'pass' )
 
-    def test_parse_checks_tolerates_noise( self ):
-        p = self.r.parse_checks
-        self.assertEqual( p( '' ), [] )
-        self.assertEqual( p( 'no checks reported' ), [] )
-        self.assertEqual( p( '{"a": 1}' ), [] )
-        self.assertEqual( p( '[{"name": "tests", "bucket": "pass"}]' ), [ { 'name': 'tests', 'bucket': 'pass' } ] )
+    def test_rollup_rows_are_read_from_gh_pr_view_json( self ):
+        f = self.r.checks_from_rollup
+        run = lambda **kw: dict( { '__typename': 'CheckRun', 'name': 'tests', 'status': 'COMPLETED', 'conclusion': 'SUCCESS' }, **kw )
+        def rows( *entries ):
+            return f( json.dumps( { 'statusCheckRollup': list( entries ) } ) )
+        self.assertEqual( rows( run() ), [ { 'name': 'tests', 'bucket': 'pass' } ] )
+        self.assertEqual( rows( run( conclusion='NEUTRAL' ) )[0]['bucket'], 'pass' )
+        self.assertEqual( rows( run( conclusion='SKIPPED' ) )[0]['bucket'], 'skipping' )
+        self.assertEqual( rows( run( conclusion='FAILURE' ) )[0]['bucket'], 'fail' )
+        self.assertEqual( rows( run( conclusion='TIMED_OUT' ) )[0]['bucket'], 'fail' )
+        self.assertEqual( rows( run( conclusion='CANCELLED' ) )[0]['bucket'], 'cancel' )
+        self.assertEqual( rows( run( status='IN_PROGRESS', conclusion='' ) )[0]['bucket'], 'pending' )
+        self.assertEqual( rows( run( status='QUEUED', conclusion=None ) )[0]['bucket'], 'pending' )
+        ctx = lambda state: { '__typename': 'StatusContext', 'context': 'ci/other', 'state': state }
+        self.assertEqual( rows( ctx( 'SUCCESS' ) ), [ { 'name': 'ci/other', 'bucket': 'pass' } ] )
+        self.assertEqual( rows( ctx( 'PENDING' ) )[0]['bucket'], 'pending' )
+        self.assertEqual( rows( ctx( 'EXPECTED' ) )[0]['bucket'], 'pending' )
+        self.assertEqual( rows( ctx( 'FAILURE' ) )[0]['bucket'], 'fail' )
+        self.assertEqual( rows( ctx( 'ERROR' ) )[0]['bucket'], 'fail' )
+        self.assertEqual( rows(), [] )
+
+    def test_rollup_text_that_is_not_the_json_is_none_not_empty( self ):
+        f = self.r.checks_from_rollup
+        self.assertIsNone( f( '' ) )
+        self.assertIsNone( f( 'unknown flag: --json' ) )
+        self.assertIsNone( f( '[]' ) )
+        self.assertIsNone( f( '{"statusCheckRollup": null}' ) )
+        self.assertIsNone( f( '{"other": []}' ) )
 
 
 CHANGELOG_UNRELEASED = '# Changelog\n\n## Unreleased\n\n- a new thing\n\n## 1.4.0 (2000-01-02)\n\n- old\n'
@@ -135,6 +157,9 @@ class FlowTest( unittest.TestCase ):
         self.merge_state = 'MERGED'
         self.gh_logged_in = True
         self.on_pull = None
+        self.view_errors = 0
+        self.polls = 0
+        self.fail_polls = set()
         self.have_gh = True
         self.write( 'VERSION', '1.4.0\n' )
         self.write( 'CHANGELOG.md', CHANGELOG_UNRELEASED )
@@ -235,11 +260,15 @@ class FlowTest( unittest.TestCase ):
         if g[:2] == [ 'pr', 'create' ]:
             self.open_prs.append( 7 )
             return 'https://github.com/x/y/pull/7', 0
-        if g[:2] == [ 'pr', 'checks' ]:
-            rows = self.checks_script[0] if len( self.checks_script ) == 1 else self.checks_script.pop( 0 )
-            return json.dumps( rows ), 0
         if g[:2] == [ 'pr', 'merge' ]:
             return '', 0
+        if g[:2] == [ 'pr', 'view' ] and g[4] == 'statusCheckRollup':
+            self.polls += 1
+            if self.view_errors or ( self.polls - 1 ) in self.fail_polls:
+                self.view_errors = max( 0, self.view_errors - 1 )
+                raise self.r.Abort( 'gh pr view failed: HTTP 502' )
+            rows = self.checks_script[0] if len( self.checks_script ) == 1 else self.checks_script.pop( 0 )
+            return json.dumps( { 'statusCheckRollup': [ self.rollup_entry( r ) for r in rows ] } ), 0
         if g[:2] == [ 'pr', 'view' ]:
             return self.merge_state, 0
         if g[:2] == [ 'release', 'view' ]:
@@ -248,6 +277,20 @@ class FlowTest( unittest.TestCase ):
             self.releases.add( g[2] )
             return '', 0
         raise AssertionError( 'unscripted gh command: %s'%( ' '.join( c ) ) )
+
+    @staticmethod
+    def rollup_entry( row ):
+        b = row['bucket']
+        entry = { '__typename': 'CheckRun', 'name': row['name'], 'status': 'COMPLETED', 'conclusion': 'SUCCESS' }
+        if b == 'pending':
+            entry.update( status='IN_PROGRESS', conclusion='' )
+        elif b == 'fail':
+            entry.update( conclusion='FAILURE' )
+        elif b == 'cancel':
+            entry.update( conclusion='CANCELLED' )
+        elif b == 'skipping':
+            entry.update( conclusion='SKIPPED' )
+        return entry
 
     def names( self ):
         """Compact names of what ran, in order: 'git switch -c', 'gh pr merge', 'git push refs/tags/v1.5.0'."""
@@ -287,7 +330,7 @@ class FlowTest( unittest.TestCase ):
     def test_new_release_goes_through_a_pr_and_tags_after_the_merge( self ):
         self.assertEqual( self.r.release( Args() ), 0 )
         self.assertOrder( 'git fetch', 'git switch -c', 'unit tests', 'git add', 'git commit', 'git push -u',
-                          'gh pr create', 'gh pr checks', 'gh pr checks', 'git switch main', 'gh pr merge',
+                          'gh pr create', 'gh pr view', 'gh pr view', 'git switch main', 'gh pr merge',
                           'gh pr view', 'git pull', 'git tag -a', 'git push refs/tags/v1.5.0', 'gh release create' )
         self.assertEqual( self.read( 'VERSION' ), '1.5.0\n' )
         self.assertTrue( self.r.release_is_prepared( self.read( 'CHANGELOG.md' ), '1.5.0' ) )
@@ -316,9 +359,9 @@ class FlowTest( unittest.TestCase ):
     def test_merge_waits_for_pending_checks( self ):
         self.checks_script = [ [], [ { 'name': 'tests', 'bucket': 'pending' } ], [ { 'name': 'tests', 'bucket': 'pass' } ] ]
         self.r.release( Args() )
-        polls = [ n for n in self.names() if n == 'gh pr checks' ]
+        names = self.names()
+        polls = [ n for n in names[:names.index( 'gh pr merge' )] if n == 'gh pr view' ]
         self.assertEqual( len( polls ), 3 )
-        self.assertOrder( 'gh pr checks', 'gh pr checks', 'gh pr checks', 'gh pr merge' )
 
     def test_failed_checks_stop_before_the_merge( self ):
         self.checks_script = [ [ { 'name': 'tests', 'bucket': 'fail' } ] ]
@@ -334,6 +377,36 @@ class FlowTest( unittest.TestCase ):
         with self.assertRaises( self.r.Abort ) as cm:
             self.r.wait_for_checks( '/fake/gh', 7, 5, sleep=lambda s: None, clock=lambda: next( clock ) )
         self.assertIn( 'did not finish', str( cm.exception ) )
+
+    def test_checks_are_never_read_with_gh_pr_checks( self ):
+        self.r.release( Args() )
+        for c in self.calls:
+            if c[0] == '/fake/gh':
+                self.assertNotEqual( c[1:3], [ 'pr', 'checks' ] )   # older gh has no --json there
+
+    def test_a_flaky_read_is_retried_but_a_broken_one_aborts( self ):
+        self.view_errors = 2
+        self.assertEqual( self.r.release( Args() ), 0 )
+        self.assertIn( 'git tag -a', self.names() )
+
+    def test_exactly_three_unreadable_polls_abort_but_two_do_not( self ):
+        self.fail_polls = { 0, 1, 2 }
+        with self.assertRaises( self.r.Abort ):
+            self.r.release( Args() )
+
+    def test_unreadable_polls_must_be_consecutive_to_abort( self ):
+        self.checks_script = [ [ { 'name': 'tests', 'bucket': 'pending' } ] ] * 1 + [ [ { 'name': 'tests', 'bucket': 'pending' } ] ] * 4 \
+            + [ [ { 'name': 'tests', 'bucket': 'pass' } ] ]
+        self.fail_polls = { 0, 1, 3, 4 }
+        self.assertEqual( self.r.release( Args() ), 0 )
+        self.assertIn( 'gh release create', self.names() )
+
+    def test_three_unreadable_polls_in_a_row_abort_instead_of_waiting_forever( self ):
+        self.view_errors = 99
+        with self.assertRaises( self.r.Abort ) as cm:
+            self.r.release( Args() )
+        self.assertIn( 'three polls in a row', str( cm.exception ) )
+        self.assertNotIn( 'gh pr merge', self.names() )
 
     def test_failing_unit_tests_stop_before_any_commit( self ):
         self.unit_tests_exit = 1
@@ -371,7 +444,7 @@ class FlowTest( unittest.TestCase ):
         self.assertNotIn( 'git switch -c', names )
         self.assertNotIn( 'gh pr create', names )
         self.assertNotIn( 'git commit', names )
-        self.assertOrder( 'gh pr checks', 'gh pr merge', 'git pull', 'git tag -a',
+        self.assertOrder( 'gh pr view', 'gh pr merge', 'git pull', 'git tag -a',
                           'git push refs/tags/v1.5.0', 'gh release create' )
 
     def test_main_that_does_not_show_the_release_after_the_merge_is_an_error( self ):

@@ -241,7 +241,7 @@ def sync_problem( ahead, behind ):
 
 def checks_state( checks, required=() ):
     """
-    'pass', 'pending' or 'fail' for the rows of `gh pr checks --json bucket,name`.
+    'pass', 'pending' or 'fail' for rows of {'name', 'bucket'} (see checks_from_rollup).
 
     No rows, or a required check that has not reported yet, is 'pending'.
     Any failed or cancelled check is 'fail', required or not.
@@ -258,13 +258,38 @@ def checks_state( checks, required=() ):
     return 'pass'
 
 
-def parse_checks( text ):
-    """The JSON rows from `gh pr checks`, or [] when it printed none (no checks yet)."""
+def checks_from_rollup( text ):
+    """
+    Rows of {'name', 'bucket'} from `gh pr view --json statusCheckRollup`, or
+    None if the text is not that JSON (an error, or nothing printed).
+
+    This is read from `pr view` rather than `pr checks --json` because older
+    GitHub CLI releases have no --json on `pr checks`. bucket is pass,
+    pending, fail, cancel or skipping, as `gh pr checks` words it.
+    """
     try:
-        rows = json.loads( text )
+        data = json.loads( text )
     except ( ValueError, TypeError ):
-        return []
-    return rows if isinstance( rows, list ) else []
+        return None
+    if not isinstance( data, dict ) or not isinstance( data.get( 'statusCheckRollup' ), list ):
+        return None
+    rows = []
+    for c in data['statusCheckRollup']:
+        if c.get( '__typename' ) == 'StatusContext':
+            name = c.get( 'context' )
+            state = ( c.get( 'state' ) or '' ).upper()
+            bucket = 'pass' if state == 'SUCCESS' else 'pending' if state in ( 'PENDING', 'EXPECTED' ) else 'fail'
+        else:
+            name = c.get( 'name' )
+            if ( c.get( 'status' ) or '' ).upper() != 'COMPLETED':
+                bucket = 'pending'
+            else:
+                conclusion = ( c.get( 'conclusion' ) or '' ).upper()
+                bucket = ( 'pass' if conclusion in ( 'SUCCESS', 'NEUTRAL' ) else
+                           'skipping' if conclusion == 'SKIPPED' else
+                           'cancel' if conclusion == 'CANCELLED' else 'fail' )
+        rows.append( { 'name': name, 'bucket': bucket } )
+    return rows
 
 
 # ---------------------------------------------------------------- release
@@ -475,8 +500,21 @@ def wait_for_checks( gh, number, timeout_minutes, sleep=None, clock=None ):
     clock = clock or time.monotonic
     deadline = clock() + timeout_minutes * 60
     last = None
+    unreadable = 0
     while True:
-        rows = parse_checks( run( [ gh, 'pr', 'checks', str( number ), '--json', 'bucket,name' ], check=False ) )
+        try:
+            rows = checks_from_rollup( run( [ gh, 'pr', 'view', str( number ), '--json', 'statusCheckRollup' ] ) )
+            problem = None if rows is not None else 'gh printed something other than the checks JSON'
+        except Abort as e:
+            rows, problem = None, str( e )
+        if rows is None:
+            unreadable += 1
+            if unreadable >= 3:
+                raise Abort( 'could not read the checks on PR #%d, three polls in a row: %s'%( number, problem ) )
+            log.warning( 'could not read the checks on PR #%d (%s); trying again'%( number, problem ) )
+            sleep( CHECKS_POLL_SECONDS )
+            continue
+        unreadable = 0
         state = checks_state( rows, REQUIRED_CHECKS )
         if state != last:
             log.info( 'PR #%d checks: %s'%( number, state ) )
