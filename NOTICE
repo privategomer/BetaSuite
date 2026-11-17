@@ -1,18 +1,28 @@
 BetaSuite fork notices
 
-License scope
-The license in LICENSE (PolyForm Noncommercial License 1.0.0) covers the
-changes and additions made in this fork: new files, and modifications to
-existing files.
+License
+The changes and additions made in this fork are licensed under the GNU
+Affero General Public License, version 3 or (at your option) any later
+version (AGPL-3.0-or-later). The full text is in LICENSE. This covers the
+code, documentation and artwork in this repository unless a file says
+otherwise.
 
-Upstream
+Earlier releases
+Releases 1.4.0 to 1.5.2 were published under the PolyForm Noncommercial
+License 1.0.0 and stay available under those terms. The same contributions
+are also available under AGPL-3.0-or-later from this version on.
+
+Upstream (open question)
 This project is a fork of BetaSuite 0.2.4 by solarorb93:
 https://github.com/solarorb93/BetaSuite
 
-The upstream repository carries no license file. The code that originates
-there remains under its author's rights and is included here pending the
-author's permission. The license in LICENSE does not grant any rights to it
-beyond what its author has granted.
+The upstream repository carries no license file. Permission to license its
+code has been requested and not yet answered. The code that originates
+there remains under its author's rights; the license in LICENSE does not
+grant any rights to it beyond what its author has granted. Choosing a
+different license for the fork does not change this. It stays unresolved
+until the author grants permission or the upstream code still present is
+rewritten.
 
 Third-party components
 BetaSuite does not redistribute the detection or segmentation models.
