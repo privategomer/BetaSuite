@@ -2,6 +2,11 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Changed
+
+- License: AGPL-3.0-or-later replaces PolyForm Noncommercial 1.0.0. Free to use, modify and share for any purpose, commercial use included; anyone who distributes BetaSuite, changed or not, or runs a changed version as a network service, must offer the full source under the same license. `LICENSE` is the verbatim text published by the FSF. `NOTICE` states what the license covers, that releases 1.4.0 to 1.5.2 keep their PolyForm terms, and that the upstream code's license is still an open question. Upgrade cost: none to the app or its caches
+
 ## 1.5.2 (2026-11-14)
 ### Fixed
 
