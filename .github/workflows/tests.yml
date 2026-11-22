@@ -31,3 +31,21 @@ jobs:
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
       - name: Run tests
         run: bash tests/run_tests.sh
+
+  # Serve mode isolates stdout at the file-descriptor level, which behaves
+  # differently on Windows; this proves it there. The rest of the suite
+  # runs on Linux only for now.
+  serve-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run protocol and serve tests
+        run: python -m unittest -v tests.test_protocol tests.test_serve

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/shutdown.schema.json",
+  "title": "shutdown",
+  "description": "Stop the engine. Allowed before hello. The result is the last message the engine sends; it then stops reading and exits with code 0. Closing the engine's stdin has the same effect.",
+  "$defs": {
+    "data": { "type": "object" },
+    "result": { "type": "object" }
+  }
+}
