@@ -950,8 +950,7 @@ def main():
     active_encode_preset = _resolve_active_encode_preset()
 
     run_marker = bu_log.RunMarker(
-        bu_log.run_marker_path_for( getattr( betaconfig, 'stats_path', None )
-                                    or bu_log.DEFAULT_STATS_PATH ),
+        bu_log.run_marker_path_for( bu_log.configured_stats_path() ),
         logger, boot_id=bu_log.current_boot_id() )
     run_marker.report_previous()
     run_marker.start()

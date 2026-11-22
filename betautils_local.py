@@ -60,6 +60,8 @@ import re
 import sys
 import types
 
+import betautils_paths as bu_paths
+
 ENV_VAR = 'BETASUITE_LOCAL_CONFIG'
 FILE_NAME = 'betaconfig_local.py'
 _REPO_DIR = os.path.dirname( os.path.abspath( __file__ ) )
@@ -152,7 +154,7 @@ def default_path():
 
 def legacy_machine_path():
     """../resources/betaconfig_machine.py, where the old machine config lived."""
-    return os.path.normpath( os.path.join( _REPO_DIR, '..', 'resources', LEGACY_FILE_NAME ) )
+    return os.path.normpath( bu_paths.beside_repo( _REPO_DIR, 'resources', LEGACY_FILE_NAME ) )
 
 
 def configured_path( environ=None ):

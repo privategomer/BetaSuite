@@ -2,6 +2,12 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Added
+
+- `BETASUITE_DATA_ROOT`: names the folder that holds `resources/` and `output/`, in place of the folder beside the repo. Unset or empty, every path is as before. It must be an absolute path to an existing folder; a relative or missing one is an error. Only paths starting `../resources` or `../output` move. Settings keep their written paths in the cache keys and are resolved only where a file is opened, so detection, censor and encode keys are the same with or without it. See CONFIG_REFERENCE.md, "Where data lives". Upgrade cost: none
+- `.worktreeinclude` copies `betaconfig_local.py` into a new git worktree; `.gitignore` ignores Claude Code's worktrees and local session settings
+
 ## 1.5.2 (2026-11-14)
 ### Fixed
 
