@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/envelope.schema.json",
+  "title": "message",
+  "description": "Every line on the engine's stdin or stdout is one of these. Fields not listed are allowed and ignored by both sides.",
+  "oneOf": [
+    { "$ref": "#/$defs/cmd" },
+    { "$ref": "#/$defs/result_ok" },
+    { "$ref": "#/$defs/result_error" },
+    { "$ref": "#/$defs/event" }
+  ],
+  "$defs": {
+    "v": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+    "cmd": {
+      "description": "Client to engine. data may be left out and then means {}.",
+      "type": "object",
+      "required": [ "v", "kind", "id", "name" ],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "kind": { "const": "cmd" },
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/name" },
+        "data": { "type": "object" }
+      }
+    },
+    "result_ok": {
+      "description": "Engine to client, answering the command with the same id.",
+      "type": "object",
+      "required": [ "v", "kind", "id", "name", "ok", "data" ],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "kind": { "const": "result" },
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/name" },
+        "ok": { "const": true },
+        "data": { "type": "object" }
+      }
+    },
+    "result_error": {
+      "description": "Engine to client. id and name are null when the command was too malformed to read them.",
+      "type": "object",
+      "required": [ "v", "kind", "id", "name", "ok", "error" ],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "kind": { "const": "result" },
+        "id": { "oneOf": [ { "$ref": "#/$defs/id" }, { "type": "null" } ] },
+        "name": { "oneOf": [ { "type": "string", "minLength": 1 }, { "type": "null" } ] },
+        "ok": { "const": false },
+        "error": { "$ref": "errors.schema.json" }
+      }
+    },
+    "event": {
+      "description": "Engine to client, unprompted. No id.",
+      "type": "object",
+      "required": [ "v", "kind", "name", "data" ],
+      "not": { "required": [ "id" ] },
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "kind": { "const": "event" },
+        "name": { "$ref": "#/$defs/name" },
+        "data": { "type": "object" }
+      }
+    }
+  }
+}
