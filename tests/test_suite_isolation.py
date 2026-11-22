@@ -25,7 +25,8 @@ import tests
 
 def _relative_path_constants_in( module_path ):
     """
-    Module-level NAME = '../...' string assignments in a source file.
+    Module-level NAME = '../...' string assignments in a source file,
+    bare or wrapped in a call (NAME = resolve( '../...' )).
 
     Read from the file rather than the live module, because the live
     module has already been redirected and would show the new values.
@@ -36,13 +37,16 @@ def _relative_path_constants_in( module_path ):
     for node in tree.body:
         if not isinstance( node, ast.Assign ):
             continue
-        if not ( isinstance( node.value, ast.Constant ) and isinstance( node.value.value, str ) ):
+        value = node.value
+        if isinstance( value, ast.Call ) and value.args:
+            value = value.args[0]
+        if not ( isinstance( value, ast.Constant ) and isinstance( value.value, str ) ):
             continue
-        if not node.value.value.startswith( '../' ):
+        if not value.value.startswith( '../' ):
             continue
         for target in node.targets:
             if isinstance( target, ast.Name ):
-                found[target.id] = node.value.value
+                found[target.id] = value.value
     return found
 
 
@@ -77,6 +81,11 @@ class TestSuiteIsolation( unittest.TestCase ):
                              ( 'betautils_log.DEFAULT_LOG_PATH', betautils_log.DEFAULT_LOG_PATH ),
                              ( 'betautils_log.DEFAULT_STATS_PATH', betautils_log.DEFAULT_STATS_PATH ) ):
             self.assertTrue( _is_under_test_root( live ), "%s is %r"%( label, live ) )
+
+    def test_the_callers_data_root_does_not_reach_the_suite( self ):
+        # A session that exports BETASUITE_DATA_ROOT points it at real
+        # footage; tests and the subprocesses they start must not see it.
+        self.assertNotIn( 'BETASUITE_DATA_ROOT', os.environ )
 
     def test_import_time_copies_were_taken_after_the_redirect( self ):
         # betautils_cache_paths copies these at import. If any test
