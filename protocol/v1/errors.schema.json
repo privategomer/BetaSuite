@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/errors.schema.json",
+  "title": "error",
+  "description": "The error of a failed result: a code and exactly the parameters that code lists. Never a sentence; the UI owns the wording.",
+  "type": "object",
+  "required": [ "code", "params" ],
+  "properties": {
+    "code": { "type": "string" },
+    "params": { "type": "object" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/protocol.bad_encoding" },
+    { "$ref": "#/$defs/protocol.bad_json" },
+    { "$ref": "#/$defs/protocol.line_too_long" },
+    { "$ref": "#/$defs/protocol.bad_envelope" },
+    { "$ref": "#/$defs/protocol.unsupported_version" },
+    { "$ref": "#/$defs/protocol.hello_required" },
+    { "$ref": "#/$defs/command.unknown" },
+    { "$ref": "#/$defs/command.bad_params" },
+    { "$ref": "#/$defs/engine.internal" }
+  ],
+  "$defs": {
+    "reason": { "enum": [ "missing", "type", "value" ] },
+    "protocol.bad_encoding": {
+      "description": "A line was not UTF-8.",
+      "properties": {
+        "code": { "const": "protocol.bad_encoding" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "protocol.bad_json": {
+      "description": "A line was not one JSON value.",
+      "properties": {
+        "code": { "const": "protocol.bad_json" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "protocol.line_too_long": {
+      "description": "A line was longer than limit_bytes (hello reports it) and was discarded.",
+      "properties": {
+        "code": { "const": "protocol.line_too_long" },
+        "params": {
+          "type": "object",
+          "required": [ "limit_bytes", "line_bytes" ],
+          "properties": {
+            "limit_bytes": { "type": "integer", "minimum": 1 },
+            "line_bytes": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.bad_envelope": {
+      "description": "A JSON line was not a well-formed command. field names the envelope field, or 'message' when the line was not an object.",
+      "properties": {
+        "code": { "const": "protocol.bad_envelope" },
+        "params": {
+          "type": "object",
+          "required": [ "field", "reason" ],
+          "properties": {
+            "field": { "enum": [ "message", "v", "kind", "id", "name", "data" ] },
+            "reason": { "$ref": "#/$defs/reason" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.unsupported_version": {
+      "description": "No protocol version in common. got is what the client sent: the envelope's v, or hello's protocol list.",
+      "properties": {
+        "code": { "const": "protocol.unsupported_version" },
+        "params": {
+          "type": "object",
+          "required": [ "got", "supported" ],
+          "properties": {
+            "got": {},
+            "supported": { "type": "array", "items": { "type": "integer" } }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.hello_required": {
+      "description": "A command other than hello or shutdown came before a successful hello.",
+      "properties": {
+        "code": { "const": "protocol.hello_required" },
+        "params": {
+          "type": "object",
+          "required": [ "name" ],
+          "properties": { "name": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "command.unknown": {
+      "description": "No command by this name. hello lists the ones there are.",
+      "properties": {
+        "code": { "const": "command.unknown" },
+        "params": {
+          "type": "object",
+          "required": [ "name" ],
+          "properties": { "name": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "command.bad_params": {
+      "description": "A command's data was missing a field, or had one of the wrong type or value.",
+      "properties": {
+        "code": { "const": "command.bad_params" },
+        "params": {
+          "type": "object",
+          "required": [ "field", "reason" ],
+          "properties": {
+            "field": { "type": "string" },
+            "reason": { "$ref": "#/$defs/reason" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "engine.internal": {
+      "description": "The engine failed while handling the command and keeps serving. The traceback is in the engine log.",
+      "properties": {
+        "code": { "const": "engine.internal" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type" ],
+          "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

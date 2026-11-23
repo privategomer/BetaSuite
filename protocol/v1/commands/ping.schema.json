@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/ping.schema.json",
+  "title": "ping",
+  "description": "A liveness check. The result arrives once every command sent before it has been answered.",
+  "$defs": {
+    "data": { "type": "object" },
+    "result": { "type": "object" }
+  }
+}
