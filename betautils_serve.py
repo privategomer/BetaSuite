@@ -4,7 +4,8 @@ stdin and stdout, for the desktop UI.
 
     run()             isolate stdio, build the logger, serve, exit code
     Server            the read, dispatch, reply loop over two streams
-    register()        add a command; later milestones add theirs here
+    register()        add a command; every command beyond the built-ins
+                      registers here
 
 KEEPING STDOUT PROTOCOL-ONLY
     In serve mode stdout is the wire, and one stray byte on it breaks
@@ -58,7 +59,7 @@ EXIT_TERMINATED = 143
 # Allowed before hello.
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
-# Events the engine can send. None in v1 yet; M4 adds the job events.
+# Events the engine can send. None yet; the job events will join them.
 EVENTS = ()
 
 # The longest piece of a message the trace log shows.
@@ -166,6 +167,23 @@ def _binary( fd ):
     return fd
 
 
+def _point_windows_std_handles():
+    """
+    Make the Windows standard handles match fds 0 and 1 after the dup2s.
+
+    Child processes started without explicit handles inherit the
+    process's standard handles, not its C runtime fds. The C runtime
+    updates those handles on dup2 only in a console program (python.exe),
+    not in pythonw.exe, so this sets them itself either way.
+    """
+    import ctypes
+    import msvcrt
+    kernel32 = ctypes.windll.kernel32
+    for std_handle, fd in ( ( -10, 0 ), ( -11, 1 ) ):   # STD_INPUT_HANDLE, STD_OUTPUT_HANDLE
+        kernel32.SetStdHandle( ctypes.c_uint32( std_handle & 0xFFFFFFFF ),
+                               ctypes.c_void_p( msvcrt.get_osfhandle( fd ) ) )
+
+
 def isolate_stdio():
     """
     Take stdin and stdout for the protocol; see the module docstring.
@@ -188,6 +206,8 @@ def isolate_stdio():
         os.dup2( null_fd, 0 )
     finally:
         os.close( null_fd )
+    if os.name == 'nt':
+        _point_windows_std_handles()
     proto_in = os.fdopen( proto_in_fd, 'rb', buffering=64*1024 )
     proto_out = os.fdopen( proto_out_fd, 'wb', buffering=64*1024 )
     sys.stdin = open( os.devnull, 'r', encoding='utf-8' )
@@ -380,9 +400,9 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             Default: betaconfig's log_level and console_level.
         commands: The command table, default every registered command.
     """
-    proto_in, proto_out, stray = isolate_stdio()
-    faulthandler.enable( file=sys.stderr )
     try:
+        proto_in, proto_out, stray = isolate_stdio()
+        faulthandler.enable( file=sys.stderr )
         import betaconfig
         import betautils_log as bu_log
         log_path = log_path or getattr( betaconfig, 'log_path', None ) or bu_log.DEFAULT_LOG_PATH

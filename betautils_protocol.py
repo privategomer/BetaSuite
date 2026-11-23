@@ -32,16 +32,21 @@ protocol/v1/ and tests hold this module and those files in step.
 
 import collections
 import json
+import re
 import threading
 
 
 PROTOCOL_VERSION = 1
 SUPPORTED_VERSIONS = ( 1, )
 
-# Longest line accepted, in bytes, not counting its newline. Commands are
+# Longest line accepted, in bytes, not counting its line ending. Commands are
 # small; 1 MiB leaves room for a long list of file paths in one job.
 MAX_LINE_BYTES = 1024*1024
 MAX_ID_CHARS = 128
+
+# Command and event names: lower-case words joined by dots, as in
+# protocol/v1/envelope.schema.json.
+NAME_PATTERN = re.compile( r'[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*' )
 
 # An oversized line is thrown away in pieces this big, so it never sits
 # in memory whole.
@@ -148,26 +153,36 @@ class LineReader:
         Raises LineTooLong for a line longer than the limit.
         """
         while True:
-            line = self._stream.readline( self._limit + 1 )
+            # Room for the limit plus CRLF, so the line ending never counts.
+            line = self._stream.readline( self._limit + 2 )
             if not line:
                 return None
             if line.endswith( b'\n' ):
                 line = line[:-1]
-            elif len( line ) > self._limit:
-                raise LineTooLong( self._discard_rest( len( line ) ), self._limit )
+            elif len( line ) == self._limit + 2:
+                raise LineTooLong( self._discard_rest( line ), self._limit )
             if line.endswith( b'\r' ):
                 line = line[:-1]
+            if len( line ) > self._limit:
+                raise LineTooLong( len( line ), self._limit )
             if line.strip():
                 return line
 
-    def _discard_rest( self, counted ):
+    def _discard_rest( self, start ):
+        # The size of the whole line, not counting its line ending.
+        counted, tail = len( start ), start[-1:]
         while True:
             chunk = self._stream.readline( _DISCARD_CHUNK )
-            if not chunk:
-                return counted
             if chunk.endswith( b'\n' ):
-                return counted + len( chunk ) - 1
+                chunk = chunk[:-1]
+                counted += len( chunk )
+                tail = chunk[-1:] or tail
+                break
+            if not chunk:
+                break
             counted += len( chunk )
+            tail = chunk[-1:]
+        return counted - 1 if tail == b'\r' else counted
 
 
 # --- Envelope -----------------------------------------------------------------
@@ -237,7 +252,7 @@ def parse_command( line ):
         raise bad( 'kind', REASON_VALUE )
     if request_id is None:
         raise bad( 'id', REASON_VALUE )
-    if name is None:
+    if name is None or not NAME_PATTERN.fullmatch( name ):
         raise bad( 'name', REASON_VALUE )
 
     data = message.get( 'data', {} )
