@@ -46,6 +46,51 @@ def preserved():
         restore( saved )
 
 
+_SHIPPED = None
+
+
+def shipped_values():
+    """
+    betaconfig.py's own values, read fresh from the file, with the
+    suite's adjustments (tests/__init__.py) on top. Other tests change
+    betaconfig and some do not put everything back, so a test that
+    compares against a recorded baseline starts from this instead.
+    """
+    global _SHIPPED
+    if _SHIPPED is None:
+        import importlib.util
+        import tests
+        path = os.path.join( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ),
+                             'betaconfig.py' )
+        spec = importlib.util.spec_from_file_location( '_betaconfig_shipped', path )
+        module = importlib.util.module_from_spec( spec )
+        with environment( BETASUITE_LOCAL_CONFIG='none' ):
+            spec.loader.exec_module( module )
+        values = { name: getattr( module, name ) for name in bu_local.known_names( vars( module ) ) }
+        values.update( tests.TEST_ENCODE )
+        values['items_to_censor'] = list( tests.SUITE_ITEMS_TO_CENSOR )
+        values['log_path'] = tests.TEST_LOG_PATH
+        values['stats_path'] = tests.TEST_STATS_PATH
+        _SHIPPED = values
+    return copy.deepcopy( _SHIPPED )
+
+
+@contextlib.contextmanager
+def shipped():
+    """Run a block against the shipped config, whatever earlier tests left; restore afterwards."""
+    with preserved():
+        with environment( BETASUITE_DETECTOR_BACKEND_OVERRIDE=None,
+                          BETASUITE_DETECTOR_VARIANT_OVERRIDE=None ):
+            values = shipped_values()
+            for name in setting_names():
+                if name not in values:
+                    delattr( betaconfig, name )
+            for name, value in values.items():
+                setattr( betaconfig, name, value )
+            bu_config.invalidate_config_caches()
+            yield
+
+
 def get_path( path ):
     """The value at a setting path (a tuple of names and list indices)."""
     value = getattr( betaconfig, path[0] )

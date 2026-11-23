@@ -50,6 +50,12 @@ def _variants( backend_name ):
 def matrix():
     """{ case name: { 'detection', 'censor', 'encode' } } for the shipped config."""
     results = {}
+    with harness.shipped():
+        _fill( results )
+    return results
+
+
+def _fill( results ):
     for backend_name in bu_detector.registered_backend_names():
         for variant in _variants( backend_name ):
             for labels_name, labels in LABEL_SETS.items():
@@ -70,7 +76,6 @@ def matrix():
                                     betaconfig.reverse[key] = value
                             betaconfig.preview_mode_enabled = preview
                             results[name] = harness.keys( backend_name )
-    return results
 
 
 class TestShippedCacheKeysAreUnchanged( unittest.TestCase ):

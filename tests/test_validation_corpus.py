@@ -59,6 +59,12 @@ def _named( path, errors ):
 def corpus():
     """{ case: { 'fires': bool, 'named': bool, 'raises': exception type or None } }"""
     results = {}
+    with harness.shipped():
+        _fill( results )
+    return results
+
+
+def _fill( results ):
     with harness.preserved():
         baseline = set( bu_config._collect_validation_errors() )
     for path in harness.shipped_leaf_paths():
@@ -74,7 +80,6 @@ def corpus():
                     errors = []
             results[case_name( path, bad )] = {
                 'fires': bool( errors ), 'named': _named( path, errors ), 'raises': raises }
-    return results
 
 
 class TestValidationStillCatchesWhatItCaught( unittest.TestCase ):
