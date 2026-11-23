@@ -1,14 +1,17 @@
 """
 stub_client.py - start the engine the way the desktop UI will, shake
-hands, ping, shut it down, and record the session.
+hands, ping, read the settings, shut it down, and record the session.
 
     python tools/engine/stub_client.py [--transcript PATH] [--log-file PATH]
         [--engine-log PATH] [--log-level LEVEL] [--console-level LEVEL]
         [--timeout SECONDS]
 
 No input needed. Checks each step (hello negotiates protocol 1, ping
-answers, shutdown answers and the engine exits 0, every stdout line is
-a protocol message) and exits 0 when all hold, 1 when one does not.
+answers, config.schema lists the settings, config.get reads them,
+config.set with dry_run reports that a new encode_crf re-encodes and
+writes nothing, shutdown answers and the engine exits 0, every stdout
+line is a protocol message) and exits 0 when all hold, 1 when one does
+not. Nothing it does changes the local config.
 
 Writes, by default next to betaconfig's log_path (under
 BETASUITE_DATA_ROOT when that is set):
@@ -96,7 +99,7 @@ class Session:
         for line in iter( self.proc.stderr.readline, b'' ):
             self.logger.debug( "engine stderr: %s"%( line.decode( 'utf-8', 'replace' ).rstrip(), ) )
 
-    def request( self, name, data=None ):
+    def request( self, name, data=None, allowed_errors=() ):
         message = bu_proto.command( str( uuid.uuid4() ), name, data )
         self._record( 'send', message )
         self.proc.stdin.write( bu_proto.encode( message ) )
@@ -110,6 +113,8 @@ class Session:
         if reply.get( 'kind' ) != 'result' or reply.get( 'id' ) != message['id']:
             raise StepFailed( "expected the result of %s, got %r"%( name, reply ) )
         if not reply.get( 'ok' ):
+            if reply.get( 'error', {} ).get( 'code' ) in allowed_errors:
+                return { 'error': reply['error'] }
             raise StepFailed( "%s failed: %r"%( name, reply.get( 'error' ) ) )
         return reply['data']
 
@@ -129,6 +134,30 @@ class Session:
             self.proc.wait()
 
 
+def config_steps( session, logger ):
+    """The settings, read and a change checked without writing it."""
+    schema = session.request( 'config.schema', {} )
+    levels = [ entry['level'] for entry in schema['settings'] ]
+    logger.info( "config.schema: %d settings (%d simple, %d advanced)"%(
+        len( levels ), levels.count( 'simple' ), levels.count( 'advanced' ) ) )
+    settings = session.request( 'config.get', {} )['settings']
+    local = [ row['path'] for row in settings if row['source'] == 'local' ]
+    logger.info( "config.get: %d values, %d from the local config"%( len( settings ), len( local ) ) )
+    crf = next( ( row['value'] for row in settings if row['path'] == 'encode_crf' ), None )
+    if not isinstance( crf, int ):
+        raise StepFailed( "config.get gave no whole-number encode_crf: %r"%( crf, ) )
+    other = crf + 1 if crf < 51 else crf - 1
+    checked = session.request( 'config.set', { 'values': { 'encode_crf': other }, 'dry_run': True },
+                               allowed_errors=( 'config.local_off', ) )
+    if 'error' in checked:
+        logger.info( "config.set dry run: the local config is turned off, so it answers config.local_off" )
+        return
+    if checked != { 'moves': [ 'encode' ], 'written': False, 'dry_run': True }:
+        raise StepFailed( "config.set dry run of encode_crf=%d answered %r"%( other, checked ) )
+    logger.info( "config.set dry run: encode_crf=%d would move %s, nothing written"%(
+        other, ', '.join( checked['moves'] ) ) )
+
+
 def run_session( engine_log, timeout, logger, transcript ):
     session = Session( engine_log, timeout, logger, transcript )
     try:
@@ -143,6 +172,7 @@ def run_session( engine_log, timeout, logger, transcript ):
         started = time.perf_counter()
         session.request( 'ping' )
         logger.info( "ping round trip %.2f ms"%( ( time.perf_counter() - started )*1000.0, ) )
+        config_steps( session, logger )
         session.request( 'shutdown' )
         code = session.finish()
     finally:
@@ -156,7 +186,8 @@ def run_session( engine_log, timeout, logger, transcript ):
 
 def main( argv=None ):
     log_dir = os.path.dirname( bu_log.configured_log_path() )
-    parser = argparse.ArgumentParser( description="Drive the engine through hello, ping and shutdown" )
+    parser = argparse.ArgumentParser( description="Drive the engine through hello, ping, the config "
+                                                  "commands and shutdown" )
     parser.add_argument( '--transcript', default=os.path.join( log_dir, 'engine_transcript.jsonl' ),
                          help="where to record the session (default: %(default)s)" )
     parser.add_argument( '--log-file', default=os.path.join( log_dir, 'stub_client.log' ),

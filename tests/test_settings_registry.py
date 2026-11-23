@@ -308,7 +308,8 @@ class TestCheckValue( unittest.TestCase ):
         self.assertIsInstance( problem, str )
         self.assertIn( 'encode_crf', problem )
         self.assertEqual( { 'code': 'config.out_of_range',
-                            'params': { 'path': 'encode_crf', 'minimum': 0, 'maximum': 51 } },
+                            'params': { 'path': 'encode_crf', 'minimum': 0, 'maximum': 51,
+                                        'min_open': False, 'max_open': False, 'odd': False } },
                           problem.as_error() )
 
 
