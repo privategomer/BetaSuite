@@ -9,9 +9,22 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 - `.worktreeinclude` copies `betaconfig_local.py` into a new git worktree; `.gitignore` ignores Claude Code's worktrees and local session settings
 - `betaengine.py serve`: the engine as a child process for a front end, speaking JSON lines on stdin and stdout (`protocol/README.md`, schemas in `protocol/v1/`). Commands so far: `hello` (version handshake, required first), `ping`, `shutdown`. Errors are codes with parameters, never sentences; a result always answers a command's id, and a line whose id cannot be read gets a `protocol.rejected` event naming the line. Nothing but protocol messages reaches stdout: prints become warnings in the log, and anything else written to stdout, by the engine or a child process, goes to stderr. Logs go to stderr and the log file. The command-line tools are unchanged. Upgrade cost: none
 - `tools/engine/stub_client.py`: starts the engine the way the UI will, runs hello, ping and shutdown, checks each step and records the session as JSON lines
+- The settings registry, `betautils_settings.py`: one entry for every setting, with its kind, range or choices, where it may be set, whether the app shows it by default, which cache keys it moves and when, and its tip and help anchor. Tips and labels are in `i18n/en-US/settings.json`. See CONFIG_REFERENCE.md, "The settings registry". Upgrade cost: none
 
 ### Changed
 
+- Validation reads the settings registry, so each limit is stated once. Each error is reported once, at the setting's own path, and carries a code for the engine (`config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id); the CLI keeps printing English. Some messages are worded differently. Validation now rejects values it used to let through:
+  - a per-label `min_prob` outside 0 to 1
+  - a per-label `position_smoothing` or `size_smoothing` outside 0 (exclusive) to 1
+  - a negative `interpolation_max_gap`, `style_min_dwell_seconds` or `paired_style_max_age`
+  - a suppression rule's `margin` or `min_iou` above 1
+  - a bar `color` that is not three whole numbers from 0 to 255
+  - `shot_cut_threshold` outside 0 to 1
+  - `debug_mode` outside 0 to 3
+  - BetaVision capture settings that are not whole numbers
+  - preview, logging and person-model settings, which are now checked while their feature is off too
+
+  A wrong-typed `items_to_censor`, `input_delete_probability` or `picture_sizes` is now an error, where it used to crash validation. Upgrade cost: a local config with one of those values stops at validation, naming it
 - License: AGPL-3.0-or-later replaces PolyForm Noncommercial 1.0.0. Free to use, modify and share for any purpose, commercial use included; anyone who distributes BetaSuite, changed or not, or runs a changed version as a network service, must offer the full source under the same license. `LICENSE` is the verbatim text published by the FSF. `NOTICE` states what the license covers, that releases 1.4.0 to 1.5.2 keep their PolyForm terms, and that the upstream code's license is still an open question. Upgrade cost: none to the app or its caches
 
 ### Fixed

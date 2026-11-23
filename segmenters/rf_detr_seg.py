@@ -53,6 +53,12 @@ import numpy as np
 
 import betautils_detector as bu_detector
 
+
+def _rule( rule_id, text ):
+    """An error with a stable rule id for the engine protocol (betautils_settings.rule)."""
+    import betautils_settings as bu_settings
+    return bu_settings.rule( rule_id, text )
+
 # native_size: the square picture size the export is fixed at, Roboflow's
 # own resolution for that size. Not a setting: it is baked into the .onnx
 # file, and persons_for_imgs reads it from there.
@@ -113,17 +119,12 @@ def validate_config( config, errors ):
     try:
         resolved = resolve_config( config )
     except ValueError as err:
-        errors.append( str( err ) )
+        errors.append( _rule( 'person_backend.unknown_variant', str( err ) ) )
         return
     if 'picture_size' in config:
-        errors.append( "%s['picture_size'] is not a setting: RF-DETR's picture size is fixed in the "
-                       ".onnx file when it is exported (pick a model_variant instead)"%( where, ) )
-    value = resolved['min_prob']
-    if not isinstance( value, ( int, float ) ) or isinstance( value, bool ) or not ( 0 < value < 1 ):
-        errors.append( "%s['min_prob'] must be a number between 0 and 1, got %r"%( where, value ) )
-    batch = resolved['batch_size']
-    if not isinstance( batch, int ) or isinstance( batch, bool ) or batch < 1:
-        errors.append( "%s['batch_size'] must be a whole number >= 1, got %r"%( where, batch ) )
+        errors.append( _rule( 'person_backend.picture_size_not_a_setting', "%s['picture_size'] is not a setting: RF-DETR's picture size is fixed in the "
+                       ".onnx file when it is exported (pick a model_variant instead)"%( where, ) ) )
+    # min_prob and batch_size are registry checks (betautils_settings).
 
 
 def identity( config ):
