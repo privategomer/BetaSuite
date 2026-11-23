@@ -8,6 +8,10 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 - `BETASUITE_DATA_ROOT`: names the folder that holds `resources/` and `output/`, in place of the folder beside the repo. Unset or empty, every path is as before. It must be an absolute path to an existing folder; a relative or missing one is an error. Only paths starting `../resources` or `../output` move. Settings keep their written paths in the cache keys and are resolved only where a file is opened, so detection, censor and encode keys are the same with or without it. The tools, their shell launchers and `setup.sh` / `setup.ps1` follow it too (`tools/lib/data_root.sh` applies the same rule in bash). See CONFIG_REFERENCE.md, "Where data lives". Upgrade cost: none
 - `.worktreeinclude` copies `betaconfig_local.py` into a new git worktree; `.gitignore` ignores Claude Code's worktrees and local session settings
 
+### Changed
+
+- License: AGPL-3.0-or-later replaces PolyForm Noncommercial 1.0.0. Free to use, modify and share for any purpose, commercial use included; anyone who distributes BetaSuite, changed or not, or runs a changed version as a network service, must offer the full source under the same license. `LICENSE` is the verbatim text published by the FSF. `NOTICE` states what the license covers, that releases 1.4.0 to 1.5.2 keep their PolyForm terms, and that the upstream code's license is still an open question. Upgrade cost: none to the app or its caches
+
 ### Fixed
 
 - `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
