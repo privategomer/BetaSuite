@@ -39,6 +39,7 @@ import betautils_cache_paths as bu_cache
 import betautils_log    as bu_log
 import betautils_person as bu_person
 import betautils_reverse as bu_reverse
+import betautils_runlock as bu_runlock
 import betautils_signals as bu_signals
 import betautils_track  as bu_track
 
@@ -346,14 +347,26 @@ def main():
     into betaconst.picture_path_censored.
 
     Returns:
-        A process exit code: 0 clean, 130 on a user interrupt.
+        A process exit code: 0 clean, 3 when another run holds the
+        library's run lock (betautils_runlock), 130 on a user interrupt.
     """
     _parse_cli_args_and_validate_config()
 
     logger = bu_log.get_logger()
+    try:
+        run_lock = bu_runlock.acquire( 'betastare', logger=logger )
+    except bu_runlock.RunLocked as locked:
+        logger.error( locked.message() )
+        return bu_runlock.EXIT_LOCKED
     bu_signals.install_handler( logger )
 
-    session = bu_detector.get_detector().get_session()
+    try:
+        session = bu_detector.get_detector().get_session()
+    except BaseException:
+        # A model that fails to load (or a Ctrl-C while it loads) still
+        # gives the lock back, so the next run does not report it left.
+        run_lock.release()
+        raise
     logger.info( "BetaStare starting: backend=%s picture_sizes=%s"%(
         bu_detector.selected_backend_name(), bu_detector.get_picture_sizes() ) )
     if bu_reverse.enabled():
@@ -382,6 +395,7 @@ def main():
         exit_code = 130
     finally:
         bu_hash.flush_file_hash_memo()
+        run_lock.release()
 
     return exit_code
 
