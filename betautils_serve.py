@@ -59,8 +59,8 @@ EXIT_TERMINATED = 143
 # Allowed before hello.
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
-# Events the engine can send. None yet; the job events will join them.
-EVENTS = ()
+# Events the engine can send. The job events will join them.
+EVENTS = ( bu_proto.REJECTED_EVENT, )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -302,6 +302,10 @@ class Server:
         self._send_result( bu_proto.ok_result( command.id, command.name, {} if data is None else data ) )
 
     def _reply_error( self, err ):
+        # No readable id: nothing to answer, so say which line was refused.
+        if err.request_id is None:
+            self._send( bu_proto.rejected( self._reader.line_number, err.error ) )
+            return
         self._send_result( bu_proto.error_result( err.request_id, err.request_name, err.error ) )
 
     def _reply_internal( self, request_id, name, err ):

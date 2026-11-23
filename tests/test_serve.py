@@ -112,7 +112,10 @@ class Engine:
         for chunk in iter( lambda: self.proc.stderr.read1( 65536 ), b'' ):
             self.stderr += chunk
 
+    lines_sent = 0
+
     def write( self, data ):
+        self.lines_sent += data.count( b'\n' )
         self.proc.stdin.write( data )
         self.proc.stdin.flush()
 
@@ -168,6 +171,8 @@ def check_message( line ):
         if message.get( 'kind' ) == 'result' and message.get( 'ok' ) \
                 and message['name'] in schemas.command_schema_names():
             schemas.validate_command_result( message['name'], message['data'] )
+        if message.get( 'kind' ) == 'event':
+            schemas.validate_event_data( message['name'], message['data'] )
     return message
 
 
@@ -193,6 +198,14 @@ class _EngineTest( unittest.TestCase ):
         if params is not None:
             self.assertEqual( message['error']['params'], params )
 
+    def assertRejected( self, message, line, code, params=None ):
+        self.assertEqual( ( message['kind'], message['name'] ), ( 'event', 'protocol.rejected' ), message )
+        self.assertNotIn( 'id', message )
+        self.assertEqual( message['data']['line'], line )
+        self.assertEqual( message['data']['error']['code'], code )
+        if params is not None:
+            self.assertEqual( message['data']['error']['params'], params )
+
     def assertStdoutOnlyProtocol( self, engine ):
         lines = bytes( engine.raw ).split( b'\n' )
         self.assertEqual( lines[-1], b'', "stdout ends mid-line" )
@@ -209,7 +222,7 @@ class TestHandshake( _EngineTest ):
         self.assertEqual( hello['protocol'], 1 )
         self.assertEqual( hello['pid'], engine.proc.pid )
         self.assertEqual( hello['commands'], [ 'hello', 'ping', 'shutdown' ] )
-        self.assertEqual( hello['events'], [] )
+        self.assertEqual( hello['events'], [ 'protocol.rejected' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )
         self.assertTrue( engine.request( 'ping' )['ok'] )
@@ -267,7 +280,7 @@ class TestHandshake( _EngineTest ):
 
 class TestFramingOverAPipe( _EngineTest ):
 
-    def test_bad_lines_get_error_results_and_the_engine_carries_on( self ):
+    def test_bad_lines_are_answered_by_id_or_by_line_and_the_engine_carries_on( self ):
         engine = self.start()
         self.hello( engine )
         ping = bu_proto.encode( bu_proto.command( 'p1', 'ping' ) )
@@ -287,14 +300,17 @@ class TestFramingOverAPipe( _EngineTest ):
                       + bu_proto.encode( bu_proto.command( 'p4', 'ping' ) ) )
         self.assertEqual( [ engine.recv()['id'] for _ in range( 3 ) ], [ 'p2', 'p3', 'p4' ] )
 
+        # No readable id: a protocol.rejected event naming the line. Lines
+        # so far: hello 1, the split ping 2, then 3 to 6 (blank included).
         engine.write( b'{"v":1,"kind":"cmd","id":"e1","name":"\xff"}\n' )
-        self.assertError( engine.recv(), 'protocol.bad_encoding' )
+        self.assertRejected( engine.recv(), 7, 'protocol.bad_encoding' )
         engine.write( b'this is not json\n' )
-        reply = engine.recv()
-        self.assertError( reply, 'protocol.bad_json' )
-        self.assertIsNone( reply['id'] )
+        self.assertRejected( engine.recv(), 8, 'protocol.bad_json' )
         engine.write( b'[1,2]\n' )
-        self.assertError( engine.recv(), 'protocol.bad_envelope', { 'field': 'message', 'reason': 'type' } )
+        self.assertRejected( engine.recv(), 9, 'protocol.bad_envelope', { 'field': 'message', 'reason': 'type' } )
+        self.assertEqual( engine.lines_sent, 9 )
+
+        # A readable id: an error result for that id.
         engine.write( b'{"v":7,"kind":"cmd","id":"e2","name":"ping"}\n' )
         reply = engine.recv()
         self.assertError( reply, 'protocol.unsupported_version', { 'got': 7, 'supported': [ 1 ] } )
@@ -307,8 +323,9 @@ class TestFramingOverAPipe( _EngineTest ):
         # Oversized: 1.5 MiB, then a normal command.
         size = bu_proto.MAX_LINE_BYTES + bu_proto.MAX_LINE_BYTES//2
         engine.write( b'{"v":1,"pad":"' + b'x' * ( size - 16 ) + b'"}\n' )
-        self.assertError( engine.recv(), 'protocol.line_too_long',
-                          { 'limit_bytes': bu_proto.MAX_LINE_BYTES, 'line_bytes': size } )
+        self.assertRejected( engine.recv(), 12, 'protocol.line_too_long',
+                             { 'limit_bytes': bu_proto.MAX_LINE_BYTES, 'line_bytes': size } )
+        self.assertEqual( engine.lines_sent, 12 )
         self.assertEqual( engine.request( 'ping' )['data'], {} )
 
         self.assertTrue( engine.request( 'shutdown' )['ok'] )
@@ -606,6 +623,9 @@ class TestCommandSchemas( unittest.TestCase ):
 
     def test_every_registered_command_has_a_schema_and_every_schema_a_command( self ):
         self.assertEqual( sorted( bu_serve.registered_commands() ), schemas.command_schema_names() )
+
+    def test_every_event_has_a_schema_and_every_schema_an_event( self ):
+        self.assertEqual( sorted( bu_serve.EVENTS ), schemas.event_schema_names() )
 
     def test_commands_allowed_before_hello_exist( self ):
         self.assertTrue( set( bu_serve.ALWAYS_ALLOWED ) <= set( bu_serve.registered_commands() ) )

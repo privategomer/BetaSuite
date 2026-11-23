@@ -13,15 +13,22 @@ engine state, so a stub client or a test can use it as is.
     parse_command()  one line -> Command, or ProtocolError with a code
     ok_result()      the three outgoing message shapes
     error_result()
-    event()
+    event()          ( rejected() for a line whose id could not be read )
     MessageWriter    one message -> one flushed line, thread-safe
 
 Envelope, every message:
     {"v": 1, "kind": "cmd" | "result" | "event", "id": "...",
      "name": "dotted.name", "data": {...}}
-    id appears on commands and results only. A result also carries
+    id appears on commands and results only, and a result's id is
+    always the id of the command it answers. A result also carries
     "ok": true with "data", or "ok": false with
     "error": {"code": "...", "params": {...}}.
+
+    A line too broken to read an id from (bad UTF-8, bad JSON, too long,
+    or an envelope with no usable id) gets no result. The engine sends a
+    protocol.rejected event instead, naming the line by its number: every
+    line the engine has read counts, blank ones included, from 1. The
+    client knows what it wrote on that line.
 
 The engine never sends sentences. An error is a code from ERRORS with
 exactly the parameters ERRORS lists for it; the UI owns the wording.
@@ -144,6 +151,8 @@ class LineReader:
     def __init__( self, stream, limit=MAX_LINE_BYTES ):
         self._stream = stream
         self._limit = limit
+        # Lines read so far, blank and oversized ones included.
+        self.line_number = 0
 
     def read_line( self ):
         """
@@ -157,6 +166,7 @@ class LineReader:
             line = self._stream.readline( self._limit + 2 )
             if not line:
                 return None
+            self.line_number += 1
             if line.endswith( b'\n' ):
                 line = line[:-1]
             elif len( line ) == self._limit + 2:
@@ -275,9 +285,12 @@ def ok_result( request_id, name, data ):
 
 def error_result( request_id, name, error_object ):
     """
-    A failed result. request_id and name are None when the command was
-    too malformed to read them.
+    A failed result for the command with this id. name is None when the
+    command's name could not be read. A line with no readable id gets
+    rejected() instead, never a result.
     """
+    if request_id is None:
+        raise ValueError( "a result needs the id of the command it answers; use rejected()" )
     return { 'v': PROTOCOL_VERSION, 'kind': 'result', 'id': request_id, 'name': name,
              'ok': False, 'error': error_object }
 
@@ -285,6 +298,14 @@ def error_result( request_id, name, error_object ):
 def event( name, data ):
     """An event: engine-initiated, no id."""
     return { 'v': PROTOCOL_VERSION, 'kind': 'event', 'name': name, 'data': data }
+
+
+REJECTED_EVENT = 'protocol.rejected'
+
+
+def rejected( line_number, error_object ):
+    """The event for a line whose id could not be read: which line, and why."""
+    return event( REJECTED_EVENT, { 'line': line_number, 'error': error_object } )
 
 
 def choose_version( client_versions ):
