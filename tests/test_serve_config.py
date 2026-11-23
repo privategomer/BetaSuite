@@ -97,7 +97,9 @@ class TestWhatIsSetIsWhatTheCliReads( _ConfigEngineTest ):
 
     def test_the_cli_tool_and_the_engine_write_the_same_file_the_same_way( self ):
         tool = os.path.join( REPO, 'tools', 'setup', 'local_config.py' )
-        subprocess.run( [ sys.executable, tool, 'set', 'console_palette=deuteranopia' ], cwd=REPO,
+        # Its log goes to the test's folder, never to the real output/logs.
+        subprocess.run( [ sys.executable, tool, '--log-file', os.path.join( self.tmp, 'local_config.log' ),
+                          'set', 'console_palette=deuteranopia' ], cwd=REPO,
                         capture_output=True, timeout=60, check=True,
                         env=dict( os.environ, BETASUITE_LOCAL_CONFIG=self.local ) )
         engine = self.engine()

@@ -40,10 +40,12 @@ def restore( saved ):
 def preserved():
     """Run a block that may change any setting; restore them all afterwards."""
     saved = snapshot()
+    saved_loaded = bu_local.LOADED   # what the local layer last applied; apply() replaces it
     try:
         yield
     finally:
         restore( saved )
+        bu_local.LOADED = saved_loaded
 
 
 _SHIPPED = None
