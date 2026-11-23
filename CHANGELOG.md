@@ -2,6 +2,12 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Added
+
+- `betaengine.py serve`: the engine as a child process for a front end, speaking JSON lines on stdin and stdout (`protocol/README.md`, schemas in `protocol/v1/`). Commands so far: `hello` (version handshake, required first), `ping`, `shutdown`. Errors are codes with parameters, never sentences. Nothing but protocol messages reaches stdout: prints become warnings in the log, and anything else written to stdout, by the engine or a child process, goes to stderr. Logs go to stderr and the log file. The command-line tools are unchanged. Upgrade cost: none
+- `tools/engine/stub_client.py`: starts the engine the way the UI will, runs hello, ping and shutdown, checks each step and records the session as JSON lines
+
 ## 1.5.2 (2026-11-14)
 ### Fixed
 
