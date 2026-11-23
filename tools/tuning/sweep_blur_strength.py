@@ -106,7 +106,7 @@ def _run_directory():
     on an AttributeError before writing anything.
     """
     stamp = datetime.datetime.now().strftime( '%Y%m%d_%H%M%S' )
-    log_path = getattr( betaconfig, 'log_path', None ) or '../output/logs/betasuite.log'
+    log_path = bu_log.configured_log_path()
     logs_root = os.path.dirname( log_path ) or '.'
     path = os.path.join( logs_root, 'analysis_runs', stamp, 'blur_sweep' )
     os.makedirs( path, exist_ok=True )

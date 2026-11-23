@@ -32,6 +32,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/python_env.sh"
 set -uo pipefail
 
 cd "$(dirname "$0")"
+# shellcheck source=/dev/null
+source ../lib/data_root.sh
+DATA_ROOT="$(betasuite_data_root "$(cd ../.. && pwd)")" || exit 1
 
 if [ -f ../../../bin/activate ]; then
     source ../../../bin/activate
@@ -50,8 +53,8 @@ STATUS=$?
 
 echo
 if [ $STATUS -ne 0 ]; then
-    echo "run_bar_smoothing_test.py exited with status $STATUS - check ../../../output/logs/run_bar_smoothing_test.log for details."
+    echo "run_bar_smoothing_test.py exited with status $STATUS - check $DATA_ROOT/output/logs/run_bar_smoothing_test.log for details."
 else
-    echo "done. Results are in ../../../bar_smoothing_test_results/ - full log in ../../../output/logs/run_bar_smoothing_test.log"
+    echo "done. Results are in $DATA_ROOT/bar_smoothing_test_results/ - full log in $DATA_ROOT/output/logs/run_bar_smoothing_test.log"
 fi
 exit $STATUS

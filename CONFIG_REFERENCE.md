@@ -10,6 +10,7 @@ where the reasoning lives.
 
 - [How to read this document](#how-to-read-this-document)
 - [The three cache keys](#the-three-cache-keys)
+- [Where data lives: `BETASUITE_DATA_ROOT`](#where-data-lives-betasuite_data_root)
 - [Detector backend](#detector-backend)
 - [Detection sampling](#detection-sampling)
 - [Confidence and the three gates](#confidence-and-the-three-gates)
@@ -399,6 +400,32 @@ the worst per-worker memory it saw plus 25% for the censoring the bench
 leaves out. Output in `../output/benchmarks/tune_machine_<time>/`:
 `results.json`, `proposal.json` (with the reason for each value) and the
 logs.
+
+---
+
+## Where data lives: `BETASUITE_DATA_ROOT`
+
+Paths in this file and in `betaconfig.py` that start with `../resources`
+or `../output` are relative to the folder the app runs in, the repo
+root, so by default the data sits beside the repo. The environment
+variable `BETASUITE_DATA_ROOT` names the folder that holds `resources/`
+and `output/` instead, for a second checkout that should work on the
+same library and caches.
+
+- Unset or empty: every path is exactly as written.
+- Set: it must be an absolute path to an existing folder. A relative
+  value, `~`, or a missing folder stops the run with an error naming the
+  variable.
+- Only the `../resources` and `../output` prefixes move. An absolute
+  path, or any other relative path, means what it always did.
+- Path settings keep their written value in every cache key. A model
+  path is part of the detection key and a sticker folder part of the
+  censor key, and they are resolved only where a file is opened, so a
+  checkout using the variable computes the same keys as one without it
+  and reuses its caches.
+
+This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
+`images`, betaconst's folders, and the tools' own output folders.
 
 ---
 

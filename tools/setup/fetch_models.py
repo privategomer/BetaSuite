@@ -50,7 +50,10 @@ import urllib.request
 import zipfile
 
 REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( __file__ ), '..', '..' ) )
-MODEL_DIR = os.path.normpath( os.path.join( REPO_ROOT, '..', 'resources', 'model' ) )
+sys.path.insert( 0, REPO_ROOT )
+import betautils_paths as bu_paths  # noqa: E402  (stdlib only)
+
+MODEL_DIR = os.path.normpath( bu_paths.beside_repo( REPO_ROOT, 'resources', 'model' ) )
 
 
 def relaunch_in_venv():

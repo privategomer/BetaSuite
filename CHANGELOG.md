@@ -2,6 +2,16 @@
 
 This fork's releases. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+### Added
+
+- `BETASUITE_DATA_ROOT`: names the folder that holds `resources/` and `output/`, in place of the folder beside the repo. Unset or empty, every path is as before. It must be an absolute path to an existing folder; a relative or missing one is an error. Only paths starting `../resources` or `../output` move. Settings keep their written paths in the cache keys and are resolved only where a file is opened, so detection, censor and encode keys are the same with or without it. The tools, their shell launchers and `setup.sh` / `setup.ps1` follow it too (`tools/lib/data_root.sh` applies the same rule in bash). See CONFIG_REFERENCE.md, "Where data lives". Upgrade cost: none
+- `.worktreeinclude` copies `betaconfig_local.py` into a new git worktree; `.gitignore` ignores Claude Code's worktrees and local session settings
+
+### Fixed
+
+- `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
+
 ## 1.5.2 (2026-11-14)
 ### Fixed
 

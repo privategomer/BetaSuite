@@ -57,6 +57,7 @@ sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.dirname( os.path.a
 import betaconfig
 import betautils_cache_paths as bu_cache
 import betautils_log as bu_log
+import betautils_paths as bu_paths
 
 
 DEFAULT_STATS_PATH = '../output/stats/betasuite_stats.jsonl'
@@ -452,7 +453,7 @@ def main():
              "short slice, so pooling them with real runs makes both numbers wrong." )
     args = parser.parse_args()
 
-    stats_path = args.stats_path or getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH
+    stats_path = args.stats_path or bu_paths.resolve( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH )
     rows, skipped = load_rows( stats_path )
     failures_path = bu_log.failures_path_for( stats_path )
     failures, _failures_skipped = load_rows( failures_path )

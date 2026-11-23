@@ -58,6 +58,7 @@ import os
 
 import betaconfig
 import betaconst
+import betautils_paths as bu_paths
 import betautils_reverse as bu_reverse
 
 
@@ -630,6 +631,9 @@ def build_onnx_session( model_path, logger=None, backend_name=None ):
     import betautils_log as bu_log
     logger = logger or bu_log.get_logger()
 
+    # model_path stays as configured everywhere else: it is part of the
+    # detection key, which must not change with where the data lives.
+    model_path = bu_paths.resolve( model_path )
     if not os.path.exists( model_path ):
         raise FileNotFoundError(
             "detector model not found: %s (configure detector_backend[%r]'s "
