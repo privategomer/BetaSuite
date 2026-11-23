@@ -39,6 +39,7 @@ REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( os.path.abspath( __f
 sys.path.insert( 0, REPO_ROOT )
 
 import betautils_local as bu_local   # imports nothing of betaconfig's
+import betautils_paths as bu_paths
 
 LEVELS = ( 'trace', 'debug', 'info', 'warn', 'error' )
 # How much of a value `show` prints on one row.
@@ -433,8 +434,8 @@ def build_parser():
         bu_local.default_path(), bu_local.ENV_VAR ) )
     parser.add_argument( '--log-level', default='info', choices=LEVELS,
                          help='terminal level (the log file gets everything)' )
-    parser.add_argument( '--log-file', default=os.path.join( REPO_ROOT, '..', 'output', 'logs',
-                                                             'local_config.log' ) )
+    parser.add_argument( '--log-file', default=bu_paths.beside_repo( REPO_ROOT, 'output', 'logs',
+                                                                     'local_config.log' ) )
     commands = parser.add_subparsers( dest='command' )
     commands.add_parser( 'show', help="every setting, its value and where it came from; "
                                       "betatv.py's flags after it are applied on top" )

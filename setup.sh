@@ -270,8 +270,12 @@ run_logged "install requirements-$MODE.txt" pip_install -r "requirements-$MODE.t
     || die "package install failed"
 
 # ---------------------------------------------------------------- folders
-for d in ../resources/model ../resources/uncensored_vids ../resources/uncensored_pics \
-         ../resources/source ../resources/stickers/breasts ../resources/stickers/vulva ../output; do
+# shellcheck source=/dev/null
+source "$REPO_DIR/tools/lib/data_root.sh"
+DATA_ROOT="$(betasuite_data_root "$REPO_DIR")" || die "BETASUITE_DATA_ROOT is not usable"
+for d in "$DATA_ROOT"/resources/model "$DATA_ROOT"/resources/uncensored_vids "$DATA_ROOT"/resources/uncensored_pics \
+         "$DATA_ROOT"/resources/source "$DATA_ROOT"/resources/stickers/breasts "$DATA_ROOT"/resources/stickers/vulva \
+         "$DATA_ROOT"/output; do
     if [ ! -d "$d" ]; then mkdir -p "$d" && log_info "created $(cd "$d" && pwd)"; fi
 done
 
@@ -320,7 +324,7 @@ cat <<EOF
 
 Next steps:
   source .venv/bin/activate          # once per terminal
-  # put videos in $(cd ../resources/uncensored_vids && pwd)
+  # put videos in $DATA_ROOT/resources/uncensored_vids
   python3 betatv.py --preview on --preview-seconds 20
   tools/bench/tune_machine.sh        # optional: measure this machine's hardware settings
 

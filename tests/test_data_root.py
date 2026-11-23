@@ -73,14 +73,23 @@ print( json.dumps( { 'paths': paths,
 
 
 def _probe( root=None ):
-    """Run _PROBE from the repo root with the data root set to `root` (None: unset)."""
-    env = dict( os.environ, BETASUITE_LOCAL_CONFIG='none' )
+    """
+    Run _PROBE with the data root set to `root` (None: unset).
+
+    From a scratch folder, with the repo on PYTHONPATH: computing a key
+    writes its run-key record, and unset that goes to '../output' of the
+    working folder, which from the repo root is the real output folder.
+    """
+    env = dict( os.environ, BETASUITE_LOCAL_CONFIG='none', PYTHONPATH=REPO_ROOT )
     env.pop( ENV, None )
     if root is not None:
         env[ENV] = root
     code = 'NAMES = %r\n%s'%( sorted( TODAY ), _PROBE )
-    result = subprocess.run( [ sys.executable, '-c', code ], cwd=REPO_ROOT, env=env,
-                             capture_output=True, text=True, timeout=120 )
+    with tempfile.TemporaryDirectory( prefix='betasuite-probe-' ) as scratch:
+        work = os.path.join( scratch, 'work' )
+        os.mkdir( work )
+        result = subprocess.run( [ sys.executable, '-c', code ], cwd=work, env=env,
+                                 capture_output=True, text=True, timeout=120 )
     return result
 
 
@@ -95,6 +104,13 @@ class _RootCase( unittest.TestCase ):
         self.addCleanup( patcher.stop )
         self.addCleanup( self._tmp.cleanup )
         os.environ.pop( ENV, None )
+        # Work from inside the temp folder, so a path that misses the root
+        # ('../output/...' left relative) lands in it, not beside the repo.
+        work = os.path.join( self.root, 'work' )
+        os.mkdir( work )
+        cwd = os.getcwd()
+        os.chdir( work )
+        self.addCleanup( os.chdir, cwd )
 
     def set_root( self, value=None ):
         os.environ[ENV] = self.root if value is None else value
