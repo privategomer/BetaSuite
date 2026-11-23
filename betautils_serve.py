@@ -394,7 +394,9 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
 
     Args:
         log_path: The log file. Default: betaconfig.log_path, else
-            betautils_log.DEFAULT_LOG_PATH. Serve mode always writes one,
+            betautils_log.DEFAULT_LOG_PATH, under BETASUITE_DATA_ROOT
+            when that is set (betautils_log.configured_log_path). Serve
+            mode always writes one,
             whatever logging_enabled says, since nothing else records it.
         log_level, console_level: Level names for the file and stderr.
             Default: betaconfig's log_level and console_level.
@@ -405,7 +407,7 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
         faulthandler.enable( file=sys.stderr )
         import betaconfig
         import betautils_log as bu_log
-        log_path = log_path or getattr( betaconfig, 'log_path', None ) or bu_log.DEFAULT_LOG_PATH
+        log_path = log_path or bu_log.configured_log_path()
         logger = bu_log.tool_logger(
             'betasuite', log_path=log_path,
             file_level=log_level or getattr( betaconfig, 'log_level', 'info' ),

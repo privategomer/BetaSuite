@@ -421,6 +421,20 @@ class TestStartupFailure( unittest.TestCase ):
         self.assertIn( b'Traceback', result.stderr )
 
 
+class TestDefaultLogPath( unittest.TestCase ):
+
+    def test_without_log_file_the_log_goes_under_the_data_root( self ):
+        with tempfile.TemporaryDirectory() as root:
+            env = dict( os.environ, BETASUITE_DATA_ROOT=root, BETASUITE_LOCAL_CONFIG='none' )
+            result = subprocess.run( [ sys.executable, ENGINE, 'serve' ], capture_output=True, cwd=REPO,
+                                     timeout=TIMEOUT, env=env,
+                                     input=bu_proto.encode( bu_proto.command( 's', 'shutdown' ) ) )
+            self.assertEqual( result.returncode, 0, result.stderr )
+            log_path = os.path.join( root, 'output', 'logs', 'betasuite.log' )
+            with open( log_path, encoding='utf-8' ) as handle:
+                self.assertIn( 'engine stopped, exit code 0', handle.read() )
+
+
 class TestCommandLine( unittest.TestCase ):
 
     def _run( self, *args ):

@@ -26,6 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ANALYSIS_DIR="$CORE_DIR/tools/analysis"
 cd "$CORE_DIR"
+# shellcheck source=/dev/null
+source "$CORE_DIR/tools/lib/data_root.sh"
+DATA_ROOT="$(betasuite_data_root "$CORE_DIR")" || exit 1
 
 PREVIEW_START_SECONDS="${PREVIEW_START_SECONDS:-450}"
 PREVIEW_SECONDS="${PREVIEW_SECONDS:-33}"
@@ -45,7 +48,7 @@ PREVIEW_SUFFIX=$(printf '%.1f' "$PREVIEW_START_SECONDS")
 CLEARED=0
 # Every length at this offset ('+<length>s' / '+all'), and names written
 # before the length was part of them.
-for f in output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s.gz output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s+*.gz; do
+for f in "$DATA_ROOT"/output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s.gz "$DATA_ROOT"/output/cache/vid_hashes/*-preview@${PREVIEW_SUFFIX}s+*.gz; do
     [ -e "$f" ] || continue
     rm -f "$f"
     CLEARED=$((CLEARED + 1))

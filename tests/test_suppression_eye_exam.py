@@ -309,7 +309,8 @@ class TestWrapperModes( unittest.TestCase ):
         self.root = tempfile.mkdtemp( prefix='betasuite-abwrap-' )
         self.repo = os.path.join( self.root, 'repo' )
         for relative in ( 'tools/tuning/suppression_ab.sh', 'tools/tuning/ab_compare.sh',
-                          'tools/tuning/harness_lib.sh', 'tools/lib/python_env.sh' ):
+                          'tools/tuning/harness_lib.sh', 'tools/lib/python_env.sh',
+                          'tools/lib/data_root.sh' ):
             target = os.path.join( self.repo, relative )
             os.makedirs( os.path.dirname( target ), exist_ok=True )
             shutil.copy( os.path.join( REPO, relative ), target )

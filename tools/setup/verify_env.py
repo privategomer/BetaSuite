@@ -170,13 +170,14 @@ def check_ffmpeg( c ):
 
 
 def check_dirs( c ):
-    for d in DIRS:
+    import betautils_paths as bu_paths
+    for d in map( bu_paths.resolve, DIRS ):
         if os.path.isdir( d ):
             c.log.debug( 'dir present: %s'%( os.path.abspath( d ) ) )
         else:
             c.warn( 'missing directory %s (setup creates it)'%(d) )
     for label in ( 'breasts', 'vulva' ):
-        d = '../resources/stickers/%s'%(label)
+        d = bu_paths.resolve( '../resources/stickers/%s'%(label) )
         n = len( [ f for f in os.listdir( d ) if f.lower().endswith( '.png' ) ] ) if os.path.isdir( d ) else 0
         if n:
             c.ok( 'stickers/%s: %d png'%( label, n ) )
@@ -223,12 +224,15 @@ def check_models( c, want_gpu ):
         c.fail( 'GPU requested but this onnxruntime build has no CUDAExecutionProvider '
                 '(CPU package installed, or wrong build)' )
 
-    present = { name: path for name, path in MODELS.items() if os.path.exists( path ) }
-    for name, path in MODELS.items():
+    import betautils_paths as bu_paths
+    models = { name: bu_paths.resolve( path ) for name, path in MODELS.items() }
+    present = { name: path for name, path in models.items() if os.path.exists( path ) }
+    for name, path in models.items():
         if name not in present:
             c.log.info( 'skip  model %s not present (%s)'%( name, path ) )
     if not present:
-        c.fail( 'no model files in ../resources/model; the default backend needs v3.4-320n.onnx' )
+        c.fail( 'no model files in %s; the default backend needs v3.4-320n.onnx'%(
+            bu_paths.resolve( '../resources/model' ), ) )
         return
 
     if want_gpu:
@@ -283,6 +287,14 @@ def main():
 
     log.info( 'verifying BetaSuite environment in %s (%s %s)'%(
         REPO_ROOT, platform.system(), platform.machine() ) )
+    import betautils_paths as bu_paths
+    try:
+        root = bu_paths.data_root()
+    except bu_paths.DataRootError as e:
+        log.error( str( e ) )
+        return 1
+    log.info( 'data folder: %s (%s)'%( root or os.path.dirname( REPO_ROOT ),
+        '%s'%( bu_paths.ENV_VAR, ) if root else 'beside the repo; %s unset'%( bu_paths.ENV_VAR, ) ) )
     check_python( c )
     check_packages( c )
     check_ffmpeg( c )

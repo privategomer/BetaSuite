@@ -281,7 +281,17 @@ if ($Vision -or (Ask-YesNo 'Install betavision-* live screen censoring dependenc
 }
 
 # ---------------------------------------------------------------- folders
+# BETASUITE_DATA_ROOT, when set, is the folder that holds resources\ and output\
 $Parent = Split-Path $RepoDir -Parent
+if ($env:BETASUITE_DATA_ROOT) {
+    if (-not [System.IO.Path]::IsPathRooted($env:BETASUITE_DATA_ROOT)) {
+        Stop-Setup "BETASUITE_DATA_ROOT must be an absolute path, got '$($env:BETASUITE_DATA_ROOT)'"
+    }
+    if (-not (Test-Path -LiteralPath $env:BETASUITE_DATA_ROOT -PathType Container)) {
+        Stop-Setup "BETASUITE_DATA_ROOT is '$($env:BETASUITE_DATA_ROOT)', which is not an existing folder"
+    }
+    $Parent = $env:BETASUITE_DATA_ROOT
+}
 foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncensored_pics','resources\source',
                  'resources\stickers\breasts','resources\stickers\vulva','output')) {
     $full = Join-Path $Parent $d

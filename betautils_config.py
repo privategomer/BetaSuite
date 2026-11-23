@@ -56,6 +56,7 @@ import betaconfig
 import betaconst
 import betautils_detector as bu_detector
 import betautils_local as bu_local
+import betautils_paths as bu_paths
 import betautils_reverse as bu_reverse
 
 
@@ -797,7 +798,7 @@ def _validate_person_backend( errors ):
     if not bu_person.is_implemented( selected ):
         return
     try:
-        model_path = bu_person.resolve_config( selected )['model_path']
+        model_path = bu_paths.resolve( bu_person.resolve_config( selected )['model_path'] )
     except ValueError:
         return
     if not os.path.exists( model_path ):

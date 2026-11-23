@@ -28,6 +28,11 @@ import tempfile
 # starts. Tests of the local config pass their own paths.
 os.environ['BETASUITE_LOCAL_CONFIG'] = 'none'
 
+# A data root in the caller's environment points at real footage and
+# caches. Dropped before betaconst resolves its paths, and so for every
+# subprocess a test starts too; tests of the data root set their own.
+os.environ.pop( 'BETASUITE_DATA_ROOT', None )
+
 import betaconfig
 import betaconst
 import betautils_log

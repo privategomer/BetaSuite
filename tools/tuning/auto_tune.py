@@ -66,6 +66,7 @@ import betaconst
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
 import betautils_detector as bu_detector
+import betautils_paths as bu_paths
 import betautils_hash as bu_hash
 import betautils_log as bu_log
 import betautils_track as bu_track
@@ -975,8 +976,8 @@ def main():
         print( "\nEach runs per backend and per censored label. Use --stages to narrow." )
         return 0
 
-    run_dir = args.out_dir or os.path.join(
-        '..', 'output', 'tuning', time.strftime( '%Y%m%d_%H%M%S' ) )
+    stamp = time.strftime( '%Y%m%d_%H%M%S' )
+    run_dir = args.out_dir or bu_paths.resolve( os.path.join( '..', 'output', 'tuning', stamp ) )
     logger = build_logger( run_dir, args.log_level, args.console_level )
 
     logger.info( "auto_tune starting" )

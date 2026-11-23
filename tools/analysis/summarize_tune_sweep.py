@@ -26,10 +26,11 @@ from collections import defaultdict
 
 def load_betaconfig_stats_path():
     try:
-        import betaconfig
-        return getattr( betaconfig, 'stats_path', '../output/stats/betasuite_stats.jsonl' )
+        import betautils_log
+        return betautils_log.configured_stats_path()
     except Exception:
-        return '../output/stats/betasuite_stats.jsonl'
+        import betautils_paths
+        return betautils_paths.resolve( '../output/stats/betasuite_stats.jsonl' )
 
 def main():
     parser = argparse.ArgumentParser( description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter )
