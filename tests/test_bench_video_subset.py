@@ -10,6 +10,7 @@ grouping by directory, and that every subcommand reads the subset rather
 than the whole library.
 """
 
+import glob
 import logging
 import os
 import shutil
@@ -255,7 +256,7 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
 
     SCRIPTS = ( 'tools/bench/structure_survey.sh', 'tools/bench/reverse_cost.sh',
                 'tools/bench/video_subset.sh', 'tools/tuning/harness_lib.sh',
-                'tools/lib/python_env.sh' )
+                'tools/lib/python_env.sh', 'tools/lib/data_root.sh' )
 
     def setUp( self ):
         self.root = tempfile.mkdtemp( prefix='betasuite-harness-' )
@@ -313,6 +314,24 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
         for call in calls:
             self.assertNotIn( '--first-videos', call )
             self.assertNotIn( '--videos-per-folder', call )
+
+    def test_the_survey_writes_beside_the_repo_or_under_the_data_root( self ):
+        result, _calls = self.run_script( 'tools/bench/structure_survey.sh' )
+        self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
+        self.assertTrue( glob.glob( os.path.join( self.root, 'output', 'benchmarks', 'structure_survey_*' ) ) )
+        data = os.path.join( self.root, 'data' )
+        os.makedirs( data )
+        shutil.rmtree( os.path.join( self.root, 'output' ) )
+        result, _calls = self.run_script( 'tools/bench/structure_survey.sh', BETASUITE_DATA_ROOT=data )
+        self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
+        self.assertTrue( glob.glob( os.path.join( data, 'output', 'benchmarks', 'structure_survey_*' ) ) )
+        self.assertFalse( os.path.exists( os.path.join( self.root, 'output' ) ) )
+
+    def test_a_relative_data_root_stops_before_any_bench_runs( self ):
+        result, calls = self.run_script( 'tools/bench/structure_survey.sh', BETASUITE_DATA_ROOT='data' )
+        self.assertNotEqual( result.returncode, 0 )
+        self.assertIn( 'BETASUITE_DATA_ROOT', result.stderr )
+        self.assertEqual( calls, [] )
 
     def test_both_set_stops_before_any_bench_runs( self ):
         result, calls = self.run_script( 'tools/bench/structure_survey.sh',

@@ -24,6 +24,9 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/lib/data_root.sh"
+DATA_ROOT="$(betasuite_data_root "$REPO_ROOT")" || exit 1
 case "${1:-}" in
     -h|--help|help)
         awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -31,7 +34,7 @@ case "${1:-}" in
         ;;
 esac
 
-OUTPUT_ROOT="$(cd "$REPO_ROOT/.." && pwd)/output"
+OUTPUT_ROOT="$DATA_ROOT/output"
 mkdir -p "$OUTPUT_ROOT/logs"
 export HARNESS_LOG_FILE="${HARNESS_LOG_FILE:-$OUTPUT_ROOT/logs/cleanup_output.log}"
 # shellcheck source=/dev/null

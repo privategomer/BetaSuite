@@ -8,6 +8,8 @@ the reasoning behind every tunable lives in CONFIG_REFERENCE.md.
 Do not rename or reorder anything here without checking every caller.
 """
 
+import betautils_paths as _bu_paths
+
 # --- Detection confidence floor (fallback only) -----------------------------
 
 # Fallback for betaconfig.global_min_prob. Only read if betaconfig.py
@@ -43,20 +45,23 @@ model_outputs = [
 model_input = 'input_1:0'
 
 # --- Default input/output directory layout ----------------------------------
+#
+# Relative to the repo root, or under BETASUITE_DATA_ROOT when that is set
+# (betautils_paths.py).
 
-picture_path_uncensored = '../resources/uncensored_pics/'
-picture_path_censored   = '../output/censored_pics/'
+picture_path_uncensored = _bu_paths.resolve( '../resources/uncensored_pics/' )
+picture_path_censored   = _bu_paths.resolve( '../output/censored_pics/' )
 
-video_path_uncensored = '../resources/uncensored_vids/'
-video_path_censored   = '../output/censored_vids/'
+video_path_uncensored = _bu_paths.resolve( '../resources/uncensored_vids/' )
+video_path_censored   = _bu_paths.resolve( '../output/censored_vids/' )
 
 # Secondary archive of source footage. Analysis tools fall back to this
 # when a cached detection's source file is no longer under
 # video_path_uncensored.
-video_path_source_backup = '../resources/source/'
+video_path_source_backup = _bu_paths.resolve( '../resources/source/' )
 # Finished sources, when move_completed_sources is on; profile folders mirror
 # video_path_uncensored's.
-video_path_completed = '../resources/source/completed/'
+video_path_completed = _bu_paths.resolve( '../resources/source/completed/' )
 
 # --- Cache directory layout -------------------------------------------------
 #
@@ -64,14 +69,14 @@ video_path_completed = '../resources/source/completed/'
 # else in the codebase may construct one of these paths itself; see that
 # module's docstring for why.
 
-cache_root            = '../output/cache'
-vid_hash_dir          = '../output/cache/vid_hashes'
-pic_hash_dir          = '../output/cache/pic_hashes'
-shot_cut_dir          = '../output/cache/shot_cuts'
-transcode_cache_dir   = '../output/cache/transcode_cache'
-file_hash_cache_path  = '../output/cache/file_hashes.json'
-run_key_dir           = '../output/cache/run_keys'
-benchmark_dir         = '../output/benchmarks'
+cache_root            = _bu_paths.resolve( '../output/cache' )
+vid_hash_dir          = _bu_paths.resolve( '../output/cache/vid_hashes' )
+pic_hash_dir          = _bu_paths.resolve( '../output/cache/pic_hashes' )
+shot_cut_dir          = _bu_paths.resolve( '../output/cache/shot_cuts' )
+transcode_cache_dir   = _bu_paths.resolve( '../output/cache/transcode_cache' )
+file_hash_cache_path  = _bu_paths.resolve( '../output/cache/file_hashes.json' )
+run_key_dir           = _bu_paths.resolve( '../output/cache/run_keys' )
+benchmark_dir         = _bu_paths.resolve( '../output/benchmarks' )
 
 # --- Detection class labels --------------------------------------------
 #

@@ -53,6 +53,9 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/lib/data_root.sh"
+DATA_ROOT="$(betasuite_data_root "$REPO_ROOT")" || exit 1
 
 : "${PROFILE:=both}"
 : "${PROFILE_PID:=}"
@@ -68,7 +71,7 @@ else
 fi
 
 STAMP="$(date '+%Y%m%d_%H%M%S')"
-RUN_DIR="$(cd "$REPO_ROOT/.." && pwd)/output/benchmarks/profile_${STAMP}_${TOOL_NAME}"
+RUN_DIR="$DATA_ROOT/output/benchmarks/profile_${STAMP}_${TOOL_NAME}"
 mkdir -p "$RUN_DIR"
 export HARNESS_LOG_FILE="$RUN_DIR/profile.log"
 

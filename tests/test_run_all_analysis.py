@@ -55,7 +55,8 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
     def setUp( self ):
         self.root = tempfile.mkdtemp( prefix='betasuite-suite-' )
         self.repo = os.path.join( self.root, 'repo' )
-        for relative in ( 'tools/analysis/run_all_analysis.sh', 'tools/lib/python_env.sh' ):
+        for relative in ( 'tools/analysis/run_all_analysis.sh', 'tools/lib/python_env.sh',
+                          'tools/lib/data_root.sh' ):
             target = os.path.join( self.repo, relative )
             os.makedirs( os.path.dirname( target ), exist_ok=True )
             shutil.copy( os.path.join( REPO_ROOT, relative ), target )

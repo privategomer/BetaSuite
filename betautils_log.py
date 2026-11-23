@@ -31,6 +31,7 @@ import threading
 import time
 
 import betaconfig
+import betautils_paths as bu_paths
 
 
 # --- Level vocabulary -------------------------------------------------------
@@ -46,8 +47,18 @@ LEVEL_NAMES = {
     'error': logging.ERROR,
 }
 
-DEFAULT_LOG_PATH = '../output/logs/betasuite.log'
-DEFAULT_STATS_PATH = '../output/stats/betasuite_stats.jsonl'
+DEFAULT_LOG_PATH = bu_paths.resolve( '../output/logs/betasuite.log' )
+DEFAULT_STATS_PATH = bu_paths.resolve( '../output/stats/betasuite_stats.jsonl' )
+
+
+def configured_log_path():
+    """betaconfig.log_path (or the default), where it really is on disk."""
+    return bu_paths.resolve( getattr( betaconfig, 'log_path', None ) or DEFAULT_LOG_PATH )
+
+
+def configured_stats_path():
+    """betaconfig.stats_path (or the default), where it really is on disk."""
+    return bu_paths.resolve( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH )
 
 _logger = None
 _logger_lock = threading.Lock()
@@ -347,7 +358,7 @@ def _build_configured_logger():
     logger.setLevel( min( file_level, console_level ) )
 
     if getattr( betaconfig, 'logging_enabled', False ):
-        log_path = getattr( betaconfig, 'log_path', None ) or DEFAULT_LOG_PATH
+        log_path = configured_log_path()
         log_dir = os.path.dirname( log_path )
         if log_dir:
             os.makedirs( log_dir, exist_ok=True )
@@ -538,8 +549,7 @@ def write_stats( record ):
     """
     if not getattr( betaconfig, 'stats_enabled', False ):
         return
-    _append_record( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH, record,
-                    'stats record' )
+    _append_record( configured_stats_path(), record, 'stats record' )
 
 
 def failures_path_for( stats_path ):
@@ -569,8 +579,7 @@ def write_failure( record ):
     """
     if not getattr( betaconfig, 'stats_enabled', False ):
         return
-    stats_path = getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH
-    _append_record( failures_path_for( stats_path ), record, 'failure record' )
+    _append_record( failures_path_for( configured_stats_path() ), record, 'failure record' )
 
 
 def _append_record( path, record, what ):

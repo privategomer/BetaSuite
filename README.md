@@ -83,6 +83,10 @@ checkpoints and completed render chunks are already on disk, so
 re-running resumes rather than restarting. A second Ctrl-C exits
 immediately.
 
+`resources/` and `output/` live beside the repo. To use them from
+another checkout, set `BETASUITE_DATA_ROOT` to the absolute path of the
+folder that holds them (CONFIG_REFERENCE.md, "Where data lives").
+
 ---
 
 ## How a run works

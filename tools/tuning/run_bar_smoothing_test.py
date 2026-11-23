@@ -96,14 +96,17 @@ SCRIPT_DIR = os.path.dirname( os.path.abspath( __file__ ) )
 # still need to be resolved/run relative to the app root, not to
 # tools/tuning/.
 BASE_DIR = os.path.abspath( os.path.join( SCRIPT_DIR, '..', '..' ) )
-RESULTS_DIR = os.path.join( BASE_DIR, '..', 'bar_smoothing_test_results' )
-QUARANTINE_DIR = os.path.join( BASE_DIR, '..', 'bar_smoothing_test_quarantine' )
+sys.path.insert( 0, BASE_DIR )
+import betautils_paths as bu_paths  # noqa: E402  (stdlib only)
+
+RESULTS_DIR = bu_paths.beside_repo( BASE_DIR, 'bar_smoothing_test_results' )
+QUARANTINE_DIR = bu_paths.beside_repo( BASE_DIR, 'bar_smoothing_test_quarantine' )
 
 _LEVEL_MAP = { 'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO, 'warn': logging.WARNING, 'error': logging.ERROR }
 
 
 def _setup_logging():
-    log_dir = os.path.join( BASE_DIR, '..', 'output', 'logs' )
+    log_dir = bu_paths.beside_repo( BASE_DIR, 'output', 'logs' )
     os.makedirs( log_dir, exist_ok=True )
     log_path = os.path.join( log_dir, 'run_bar_smoothing_test.log' )
     logger = logging.getLogger( 'bar_smoothing_test' )
