@@ -1,0 +1,182 @@
+{
+ "nudenet_v3/320n/none/reverse_off/preview_off": {
+  "censor": "a23448",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/none/reverse_off/preview_on": {
+  "censor": "a23448",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/320n/none/reverse_on/preview_off": {
+  "censor": "9fb7cd",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/none/reverse_on/preview_on": {
+  "censor": "9fb7cd",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/320n/none/reverse_on_person_windows/preview_off": {
+  "censor": "e15d21",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/none/reverse_on_person_windows/preview_on": {
+  "censor": "e15d21",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/320n/suite/reverse_off/preview_off": {
+  "censor": "e1c612",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/suite/reverse_off/preview_on": {
+  "censor": "e1c612",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/320n/suite/reverse_on/preview_off": {
+  "censor": "46c81b",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/suite/reverse_on/preview_on": {
+  "censor": "46c81b",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/320n/suite/reverse_on_person_windows/preview_off": {
+  "censor": "961174",
+  "detection": "36f103",
+  "encode": "1638"
+ },
+ "nudenet_v3/320n/suite/reverse_on_person_windows/preview_on": {
+  "censor": "961174",
+  "detection": "36f103",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/none/reverse_off/preview_off": {
+  "censor": "1281af",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/none/reverse_off/preview_on": {
+  "censor": "1281af",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/none/reverse_on/preview_off": {
+  "censor": "4d2140",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/none/reverse_on/preview_on": {
+  "censor": "4d2140",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/none/reverse_on_person_windows/preview_off": {
+  "censor": "c357a9",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/none/reverse_on_person_windows/preview_on": {
+  "censor": "c357a9",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/suite/reverse_off/preview_off": {
+  "censor": "e17233",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/suite/reverse_off/preview_on": {
+  "censor": "e17233",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/suite/reverse_on/preview_off": {
+  "censor": "cf9a15",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/suite/reverse_on/preview_on": {
+  "censor": "cf9a15",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "nudenet_v3/640m/suite/reverse_on_person_windows/preview_off": {
+  "censor": "17ceb2",
+  "detection": "61859e",
+  "encode": "1638"
+ },
+ "nudenet_v3/640m/suite/reverse_on_person_windows/preview_on": {
+  "censor": "17ceb2",
+  "detection": "61859e",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/none/reverse_off/preview_off": {
+  "censor": "7264fa",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/none/reverse_off/preview_on": {
+  "censor": "7264fa",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/none/reverse_on/preview_off": {
+  "censor": "521b87",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/none/reverse_on/preview_on": {
+  "censor": "521b87",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/none/reverse_on_person_windows/preview_off": {
+  "censor": "c444a8",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/none/reverse_on_person_windows/preview_on": {
+  "censor": "c444a8",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/suite/reverse_off/preview_off": {
+  "censor": "4075d9",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/suite/reverse_off/preview_on": {
+  "censor": "4075d9",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/suite/reverse_on/preview_off": {
+  "censor": "bae368",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/suite/reverse_on/preview_on": {
+  "censor": "bae368",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ },
+ "retinanet_v2/None/suite/reverse_on_person_windows/preview_off": {
+  "censor": "a2a056",
+  "detection": "76f2b7",
+  "encode": "1638"
+ },
+ "retinanet_v2/None/suite/reverse_on_person_windows/preview_on": {
+  "censor": "a2a056",
+  "detection": "76f2b7",
+  "encode": "5bbe"
+ }
+}
