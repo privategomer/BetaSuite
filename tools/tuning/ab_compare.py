@@ -55,6 +55,7 @@ import betaconfig
 import betaconst
 import betautils_cache_paths as bu_cache
 import betautils_detector as bu_detector
+import betautils_paths as bu_paths
 import betautils_render as bu_render
 import betautils_track as bu_track
 import betautils_tuning as bu_tuning
@@ -1104,8 +1105,9 @@ def main( argv=None, default_experiment=None ):
         return 0
     if args.confirm_from:
         confirming( args )
+    data_folder = bu_paths.data_root() or os.path.dirname( CORE_DIR )
     args.out_dir = args.out_dir or os.path.join(
-        os.path.dirname( CORE_DIR ), 'output', 'benchmarks',
+        data_folder, 'output', 'benchmarks',
         'ab_%s_%s'%( args.experiment, time.strftime( '%Y%m%d_%H%M%S' ) ) )
     os.makedirs( args.out_dir, exist_ok=True )
     betabench = _load_betabench()

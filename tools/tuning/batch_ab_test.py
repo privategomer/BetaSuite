@@ -82,6 +82,7 @@ import betaconst
 import betautils_detector as bu_detector
 import betaconfig
 import betautils_hash as bu_hash
+import betautils_log as bu_log
 import betautils_video as bu_video
 import betautils_cache_paths as bu_cache
 
@@ -328,7 +329,7 @@ def run_one_backend( backend_name, args, video_files, global_min_prob ):
     # scoped to rows written during each batch's run window and matching
     # this comparison's config, rather than timing the whole subprocess
     # (which would also include model-load and encode overhead)
-    stats_path = getattr( betaconfig, 'stats_path', '../output/stats/betasuite_stats.jsonl' )
+    stats_path = bu_log.configured_stats_path()
     stats_rows = load_stats_rows( stats_path )
     timing_by_batch = {}
     for batch in args.batch_sizes:

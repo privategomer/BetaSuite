@@ -5,8 +5,18 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 ## Unreleased
 ### Added
 
+- `BETASUITE_DATA_ROOT`: names the folder that holds `resources/` and `output/`, in place of the folder beside the repo. Unset or empty, every path is as before. It must be an absolute path to an existing folder; a relative or missing one is an error. Only paths starting `../resources` or `../output` move. Settings keep their written paths in the cache keys and are resolved only where a file is opened, so detection, censor and encode keys are the same with or without it. The tools, their shell launchers and `setup.sh` / `setup.ps1` follow it too (`tools/lib/data_root.sh` applies the same rule in bash). See CONFIG_REFERENCE.md, "Where data lives". Upgrade cost: none
+- `.worktreeinclude` copies `betaconfig_local.py` into a new git worktree; `.gitignore` ignores Claude Code's worktrees and local session settings
 - `betaengine.py serve`: the engine as a child process for a front end, speaking JSON lines on stdin and stdout (`protocol/README.md`, schemas in `protocol/v1/`). Commands so far: `hello` (version handshake, required first), `ping`, `shutdown`. Errors are codes with parameters, never sentences. Nothing but protocol messages reaches stdout: prints become warnings in the log, and anything else written to stdout, by the engine or a child process, goes to stderr. Logs go to stderr and the log file. The command-line tools are unchanged. Upgrade cost: none
 - `tools/engine/stub_client.py`: starts the engine the way the UI will, runs hello, ping and shutdown, checks each step and records the session as JSON lines
+
+### Changed
+
+- License: AGPL-3.0-or-later replaces PolyForm Noncommercial 1.0.0. Free to use, modify and share for any purpose, commercial use included; anyone who distributes BetaSuite, changed or not, or runs a changed version as a network service, must offer the full source under the same license. `LICENSE` is the verbatim text published by the FSF. `NOTICE` states what the license covers, that releases 1.4.0 to 1.5.2 keep their PolyForm terms, and that the upstream code's license is still an open question. Upgrade cost: none to the app or its caches
+
+### Fixed
+
+- `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
 
 ## 1.5.2 (2026-11-14)
 ### Fixed

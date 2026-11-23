@@ -40,6 +40,7 @@ import numpy as np
 
 import betaconfig
 import betautils_config as bu_config
+import betautils_paths as bu_paths
 
 
 # Largest blur kernel, as a fraction of the region's shorter side, that
@@ -922,9 +923,11 @@ def _load_stickers( style ):
         if cache_key in _sticker_cache:
             return _sticker_cache[cache_key]
 
-        candidate_paths = list( style.get( 'images', [] ) )
+        # Resolved here only: the configured strings are part of the
+        # censor key, which must not change with where the data lives.
+        candidate_paths = [ bu_paths.resolve( path ) for path in style.get( 'images', [] ) ]
         if style.get( 'dir' ):
-            candidate_paths += sorted( glob.glob( os.path.join( style['dir'], '*.png' ) ) )
+            candidate_paths += sorted( glob.glob( os.path.join( bu_paths.resolve( style['dir'] ), '*.png' ) ) )
 
         loaded_images = []
         for path in candidate_paths:

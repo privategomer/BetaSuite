@@ -23,6 +23,7 @@ import onnxruntime
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+import betautils_paths as bu_paths
 
 
 def get_session():
@@ -42,7 +43,8 @@ def get_session():
     else:
         providers = [ ( 'CPUExecutionProvider', {} ) ]
 
-    session = onnxruntime.InferenceSession( '../resources/model/detector_v2_default_checkpoint.onnx', providers=providers )
+    session = onnxruntime.InferenceSession(
+        bu_paths.resolve( '../resources/model/detector_v2_default_checkpoint.onnx' ), providers=providers )
     return( session )
 
 

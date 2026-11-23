@@ -537,6 +537,18 @@ class TestConfig( Harness ):
         self.set_reverse( person_windows={ 'enabled': False } )
         self.assertEqual( self.errors(), [] )
 
+    def test_the_model_check_looks_under_the_data_root( self ):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict( os.environ ):
+            os.makedirs( os.path.join( root, 'resources', 'model' ) )
+            open( os.path.join( root, 'resources', 'model', 'yolo-root.onnx' ), 'w' ).close()
+            betaconfig.person_backend = { 'selected': 'yolo11_seg',
+                                          'yolo11_seg': { 'model_path': '../resources/model/yolo-root.onnx' } }
+            self.set_reverse()
+            os.environ.pop( 'BETASUITE_DATA_ROOT', None )
+            self.assertTrue( any( 'yolo-root.onnx' in e for e in self.errors() ) )
+            os.environ['BETASUITE_DATA_ROOT'] = root
+            self.assertEqual( self.errors(), [] )
+
     def test_an_unknown_backend_is_named( self ):
         betaconfig.person_backend = { 'selected': 'sam9' }
         self.set_reverse()
