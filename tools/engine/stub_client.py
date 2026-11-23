@@ -10,7 +10,8 @@ No input needed. Checks each step (hello negotiates protocol 1, ping
 answers, shutdown answers and the engine exits 0, every stdout line is
 a protocol message) and exits 0 when all hold, 1 when one does not.
 
-Writes, by default next to betaconfig's log_path:
+Writes, by default next to betaconfig's log_path (under
+BETASUITE_DATA_ROOT when that is set):
     stub_client.log            this tool's log, every level at --log-level
                                (default info); --console-level filters
                                the terminal only
@@ -34,7 +35,6 @@ import uuid
 REPO = os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
 sys.path.insert( 0, REPO )
 
-import betaconfig
 import betautils_log as bu_log
 import betautils_protocol as bu_proto
 import betautils_version as bu_version
@@ -155,7 +155,7 @@ def run_session( engine_log, timeout, logger, transcript ):
 
 
 def main( argv=None ):
-    log_dir = os.path.dirname( getattr( betaconfig, 'log_path', None ) or bu_log.DEFAULT_LOG_PATH )
+    log_dir = os.path.dirname( bu_log.configured_log_path() )
     parser = argparse.ArgumentParser( description="Drive the engine through hello, ping and shutdown" )
     parser.add_argument( '--transcript', default=os.path.join( log_dir, 'engine_transcript.jsonl' ),
                          help="where to record the session (default: %(default)s)" )
