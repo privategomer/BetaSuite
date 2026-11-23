@@ -60,6 +60,29 @@ def configured_stats_path():
     """betaconfig.stats_path (or the default), where it really is on disk."""
     return bu_paths.resolve( getattr( betaconfig, 'stats_path', None ) or DEFAULT_STATS_PATH )
 
+
+_REPO_DIR = os.path.dirname( os.path.abspath( __file__ ) )
+
+
+def log_data_layout( logger, repo_dir=_REPO_DIR ):
+    """
+    At run start: which layout the data is in, at debug, and a warning
+    when a 1.x tree beside the code is not being read
+    (betautils_paths.legacy_tree_hint).
+    """
+    try:
+        root = bu_paths.data_root()
+        if root is not None:
+            logger.debug( "data: the 1.x layout under %s (%s)"%( root, bu_paths.ENV_VAR ) )
+        else:
+            logger.debug( "data: OS folders by kind, %s"%( ', '.join(
+                '%s %s'%( kind, bu_paths.kind_dir( kind ) ) for kind in bu_paths.KINDS ), ) )
+    except bu_paths.PathsError as err:
+        logger.debug( "data: %s"%( err, ) )
+    hint = bu_paths.legacy_tree_hint( repo_dir )
+    if hint:
+        logger.warning( hint )
+
 _logger = None
 _logger_lock = threading.Lock()
 

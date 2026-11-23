@@ -101,10 +101,13 @@ class LiveConfig( TempDir ):
 
 class TestWhereItLives( unittest.TestCase ):
 
-    def test_the_default_is_beside_betaconfig( self ):
-        self.assertEqual( bu_local.default_path(), os.path.join( REPO, 'betaconfig_local.py' ) )
+    def test_the_default_is_the_config_folder( self ):
+        # test_paths.py covers the 1.x layout, where it stays beside betaconfig.
+        import betautils_paths as bu_paths
+        self.assertEqual( bu_local.default_path(), os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_local.py' ) )
+        self.assertEqual( bu_local.repo_path(), os.path.join( REPO, 'betaconfig_local.py' ) )
         self.assertEqual( bu_local.legacy_machine_path(),
-                          os.path.normpath( os.path.join( REPO, '..', 'resources', 'betaconfig_machine.py' ) ) )
+                          os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_machine.py' ) )
 
     def test_the_environment_variable_moves_or_turns_it_off( self ):
         self.assertEqual( bu_local.configured_path( {} ), bu_local.default_path() )

@@ -203,7 +203,7 @@ def _describe_clear_plan( logger ):
         excluded_names = _EXCLUDED_NAMES_BY_CLEAR_DIR.get( rel_dir, set() )
         note = "(excludes %s - see this script's own docstring)"%(", ".join(sorted(excluded_names))) if excluded_names else ""
         plan.append( (rel_dir, abs_dir, len(entries), note) )
-    checkpoint_count = len( glob.glob( bu_paths.beside_repo( _CORE_DIR, 'output', 'cache', '**', '*.checkpoint' ), recursive=True ) )
+    checkpoint_count = len( glob.glob( bu_paths.legacy_path( 'output', 'cache', '**', '*.checkpoint' ), recursive=True ) )
     for rel_dir, abs_dir, count, note in plan:
         logger.info( "  %-45s %4d entr%s  %s"%(rel_dir, count, 'y' if count==1 else 'ies', note) )
     logger.info( "  (%d stray .checkpoint file(s) under output/cache/ also included in the above counts)"%(checkpoint_count) )
@@ -377,7 +377,7 @@ def main():
     backends = args.backends or sorted( bu_detector._BACKENDS.keys() )
 
     ts = datetime.datetime.now().strftime( '%Y%m%d_%H%M%S' )
-    log_dir = os.path.abspath( bu_paths.beside_repo( _CORE_DIR, 'output', 'logs', 'clean_run_both_backends', ts ) )
+    log_dir = os.path.abspath( bu_paths.legacy_path( 'output', 'logs', 'clean_run_both_backends', ts ) )
     os.makedirs( log_dir, exist_ok=True )
 
     logger, own_log_path = _build_logger( log_dir, args.log_level, args.console_level )
