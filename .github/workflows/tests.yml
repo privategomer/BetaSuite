@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run protocol, serve and stub client tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client tests.test_zz_gate_probe
 
   tests:
     if: always()
