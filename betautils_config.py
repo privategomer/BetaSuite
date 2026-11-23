@@ -177,6 +177,16 @@ def get_label_settings( label, backend_name=None ):
         'geometry_action':    override.get( 'geometry_action',
                                             getattr( betaconfig, 'default_geometry_action',
                                                      _geometry_action_default() ) ),
+        # Tracking reads these three per label too (betautils_track's
+        # per-label settings). They were missing here, so the censor key
+        # did not move when one changed at the backend or model-variant
+        # tier, and the old render was reused as the new result.
+        'size_smoothing':     override.get( 'size_smoothing',
+                                            getattr( betaconfig, 'default_size_smoothing', None ) ),
+        'style_min_dwell_seconds': override.get(
+            'style_min_dwell_seconds', getattr( betaconfig, 'default_style_min_dwell_seconds', 0.0 ) ),
+        'paired_style_max_age': override.get(
+            'paired_style_max_age', getattr( betaconfig, 'default_paired_style_max_age', 1.0 ) ),
     }
     # Present only while set, so adding the setting left every existing
     # render's censor key, and so every finished output, valid.

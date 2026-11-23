@@ -125,6 +125,12 @@ changes rendered output, add it to `censor_identity()` and to that file.
 > files remain, under their old names, but a full re-render is a real
 > cost, so expect it rather than being surprised by it.
 
+> **Changed:** per-label `size_smoothing`, `style_min_dwell_seconds`
+> and `paired_style_max_age` joined the censor key's `labels` entry.
+> Tracking read them from a backend's or model variant's
+> `item_overrides`, and the key did not. Every config that censors
+> something re-renders once, for the same reason as above.
+
 ---
 
 ## Local config: your own settings

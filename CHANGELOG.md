@@ -16,6 +16,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Fixed
 
+- The censor key now covers per-label `size_smoothing`, `style_min_dwell_seconds` and `paired_style_max_age`. Tracking reads them per label from a backend's or model variant's `item_overrides`, but the key did not, so changing one there reused the old render and reported it as the new result. Upgrade cost: every config that censors something gets a new censor key, so finished outputs re-render once on their next run. The old files stay, under their old names. Detection and encode keys are unchanged, and the shipped `items_to_censor = []` keeps all three keys
 - `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
 
 ## 1.5.2 (2026-11-14)
