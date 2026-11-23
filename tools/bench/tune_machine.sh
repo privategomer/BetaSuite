@@ -41,9 +41,12 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
+# shellcheck source=/dev/null
+source "$REPO_ROOT/tools/lib/data_root.sh"
+DATA_ROOT="$(betasuite_data_root "$REPO_ROOT")" || exit 1
 
 STAMP="$(date '+%Y%m%d_%H%M%S')"
-RUN_DIR="$(cd "$REPO_ROOT/.." && pwd)/output/benchmarks/tune_machine_$STAMP"
+RUN_DIR="$DATA_ROOT/output/benchmarks/tune_machine_$STAMP"
 mkdir -p "$RUN_DIR"
 export HARNESS_LOG_FILE="$RUN_DIR/tune_machine_run.log"
 

@@ -67,6 +67,7 @@ _sys.path.insert( 0, _os.path.dirname( _os.path.dirname( _os.path.dirname( _os.p
 
 import betaconfig
 import betautils_detector as bu_detector
+import betautils_paths as bu_paths
 
 _BACKEND_OVERRIDE_ENV_VAR = 'BETASUITE_DETECTOR_BACKEND_OVERRIDE'
 
@@ -188,7 +189,7 @@ def main():
                "for an actual before/after comparison."%(backends[0]) )
 
     ts = datetime.datetime.now().strftime( '%Y%m%d_%H%M%S' )
-    log_dir = os.path.join( _CORE_DIR, '..', 'output', 'logs', 'backend_comparison_runs', ts )
+    log_dir = bu_paths.beside_repo( _CORE_DIR, 'output', 'logs', 'backend_comparison_runs', ts )
     log_dir = os.path.abspath( log_dir )
     os.makedirs( log_dir, exist_ok=True )
 

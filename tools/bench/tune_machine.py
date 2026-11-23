@@ -907,7 +907,7 @@ def command_preflight( args ):
     import betaconfig
     import betautils_log as bu_log
     marker = bu_log.RunMarker( bu_log.run_marker_path_for(
-        getattr( betaconfig, 'stats_path', None ) or bu_log.DEFAULT_STATS_PATH ), None,
+        bu_log.configured_stats_path() ), None,
         boot_id=bu_log.current_boot_id() )
     record = marker.read()
     running_pid = record.get( 'pid' ) if record and marker.previous_run_state( record ) == 'running' else None

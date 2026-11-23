@@ -111,6 +111,7 @@ import betaconfig
 import betaconst
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
+import betautils_paths as bu_paths
 import betautils_detections as bu_detections
 import betautils_detector as bu_detector
 import betautils_hash as bu_hash
@@ -3031,7 +3032,7 @@ def real_render_fps( width, height ):
     the stats log. Only renders that built every chunk count; a resumed
     render's time covers part of the file.
     """
-    path = getattr( betaconfig, 'stats_path', None ) or _default_stats_path()
+    path = bu_paths.resolve( getattr( betaconfig, 'stats_path', None ) or _default_stats_path() )
     rates = []
     try:
         with open( path, encoding='UTF-8' ) as handle:
@@ -3915,7 +3916,7 @@ def bench_persons( args, logger ):
             try:
                 config = bu_person.get_backend_config( backend )
                 resolved = segmenter.resolve_config( config )
-                if not os.path.exists( resolved['model_path'] ):
+                if not os.path.exists( bu_paths.resolve( resolved['model_path'] ) ):
                     logger.warning( "  %s %s skipped: %s is missing (setup exports it: "
                                     "tools/setup/fetch_models.py)"%( backend, variant, resolved['model_path'] ) )
                     rows.append( { 'backend': backend, 'variant': variant, 'skipped': 'model missing' } )

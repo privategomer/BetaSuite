@@ -104,6 +104,7 @@ _sys.path.insert( 0, _os.path.dirname( _os.path.dirname( _os.path.dirname( _os.p
 
 import betautils_detector as bu_detector
 import betautils_log as bu_log
+import betautils_paths as bu_paths
 
 _BACKEND_OVERRIDE_ENV_VAR = 'BETASUITE_DETECTOR_BACKEND_OVERRIDE'
 _VARIANT_OVERRIDE_ENV_VAR = 'BETASUITE_DETECTOR_VARIANT_OVERRIDE'
@@ -194,7 +195,7 @@ def _describe_clear_plan( logger ):
     """
     plan = []
     for rel_dir in _CLEAR_DIRS:
-        abs_dir = os.path.normpath( os.path.join( _CORE_DIR, rel_dir ) )
+        abs_dir = os.path.normpath( os.path.join( _CORE_DIR, bu_paths.resolve( rel_dir ) ) )
         if not os.path.isdir( abs_dir ):
             plan.append( (rel_dir, abs_dir, 0, "(directory doesn't exist yet - nothing to clear)") )
             continue
@@ -202,7 +203,7 @@ def _describe_clear_plan( logger ):
         excluded_names = _EXCLUDED_NAMES_BY_CLEAR_DIR.get( rel_dir, set() )
         note = "(excludes %s - see this script's own docstring)"%(", ".join(sorted(excluded_names))) if excluded_names else ""
         plan.append( (rel_dir, abs_dir, len(entries), note) )
-    checkpoint_count = len( glob.glob( os.path.join( _CORE_DIR, '..', 'output', 'cache', '**', '*.checkpoint' ), recursive=True ) )
+    checkpoint_count = len( glob.glob( bu_paths.beside_repo( _CORE_DIR, 'output', 'cache', '**', '*.checkpoint' ), recursive=True ) )
     for rel_dir, abs_dir, count, note in plan:
         logger.info( "  %-45s %4d entr%s  %s"%(rel_dir, count, 'y' if count==1 else 'ies', note) )
     logger.info( "  (%d stray .checkpoint file(s) under output/cache/ also included in the above counts)"%(checkpoint_count) )
@@ -219,7 +220,7 @@ def clear_everything( logger ):
     detail without flooding the default console output.
     """
     for rel_dir in _CLEAR_DIRS:
-        abs_dir = os.path.normpath( os.path.join( _CORE_DIR, rel_dir ) )
+        abs_dir = os.path.normpath( os.path.join( _CORE_DIR, bu_paths.resolve( rel_dir ) ) )
         if not os.path.isdir( abs_dir ):
             os.makedirs( abs_dir, exist_ok=True )
             logger.debug( "created missing directory %s"%(abs_dir) )
@@ -241,7 +242,7 @@ def clear_everything( logger ):
         logger.info( "cleared %s (%d entr%s removed%s)"%(rel_dir, removed, 'y' if removed==1 else 'ies', kept_note) )
 
     for rel_file in _CLEAR_FILES:
-        abs_file = os.path.normpath( os.path.join( _CORE_DIR, rel_file ) )
+        abs_file = os.path.normpath( os.path.join( _CORE_DIR, bu_paths.resolve( rel_file ) ) )
         if os.path.exists( abs_file ):
             logger.log( 5, "removing %s"%(abs_file) )
             os.remove( abs_file )
@@ -376,7 +377,7 @@ def main():
     backends = args.backends or sorted( bu_detector._BACKENDS.keys() )
 
     ts = datetime.datetime.now().strftime( '%Y%m%d_%H%M%S' )
-    log_dir = os.path.abspath( os.path.join( _CORE_DIR, '..', 'output', 'logs', 'clean_run_both_backends', ts ) )
+    log_dir = os.path.abspath( bu_paths.beside_repo( _CORE_DIR, 'output', 'logs', 'clean_run_both_backends', ts ) )
     os.makedirs( log_dir, exist_ok=True )
 
     logger, own_log_path = _build_logger( log_dir, args.log_level, args.console_level )

@@ -53,6 +53,7 @@ sys.path.insert( 0, os.path.dirname( os.path.dirname( os.path.dirname(
 
 import betaconfig
 import betaconst
+import betautils_paths as bu_paths
 
 
 CATEGORIES = ( 'decided_renders', 'stale_renders', 'aborted_rounds', 'log_rotation' )
@@ -265,7 +266,7 @@ def main( argv=None, now=None, out=print ):
     if args.root:
         log_path = os.path.join( root, 'logs', 'betasuite.log' )
     else:
-        log_path = os.path.abspath( getattr( betaconfig, 'log_path', None )
+        log_path = os.path.abspath( bu_paths.resolve( getattr( betaconfig, 'log_path', None ) )
                                     or os.path.join( root, 'logs', 'betasuite.log' ) )
     items = plan( root, now=now, stale_days=args.stale_days, log_path=log_path,
                   log_max_mb=args.log_max_mb )
