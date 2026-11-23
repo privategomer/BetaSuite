@@ -25,6 +25,7 @@ registry tests then require its cache-key tags to be true.
 """
 
 import difflib
+import functools
 import re
 
 
@@ -58,7 +59,7 @@ CONDITIONS = {
     'inherited_by_backend':   "the selected backend does not set this key itself",
 }
 
-KINDS = ( 'bool', 'int', 'number', 'choice', 'string', 'path', 'labels', 'color', 'sizes',
+KINDS = ( 'bool', 'int', 'number', 'choice', 'string', 'path', 'paths', 'labels', 'color', 'sizes',
           'censor_style', 'window_style', 'frame_style', 'geometry_action', 'suppression_rules',
           'promotion_rules', 'refused_pairs', 'profile_map' )
 
@@ -212,6 +213,20 @@ def encode_presets( codec=None ):
     return sorted( bu_config.valid_encode_presets( codec ) )
 
 
+def _codec_note( _value ):
+    import betaconfig
+    return "These are the presets %s accepts"%( getattr( betaconfig, 'encode_video_codec', 'libx264' ), )
+
+
+def _track_hits_note( value ):
+    import betaconfig
+    fps = getattr( betaconfig, 'video_censor_fps', 10 ) or 10
+    if not isinstance( value, ( int, float ) ) or isinstance( value, bool ) or value <= 10:
+        return None
+    return ( "%r detections before any censoring is about %.2f s of visible, uncensored footage on "
+             "every new appearance at video_censor_fps=%r"%( value, value / max( fps, 1 ), fps ) )
+
+
 CENSOR_STYLE_TYPES = ( 'bar', 'blur', 'debug', 'pixel', 'sticker' )
 CENSOR_SHAPES = ( 'box', 'circle', 'ellipse' )
 BLUR_METHODS = ( 'box', 'gaussian', 'triple_box' )
@@ -255,7 +270,7 @@ STYLE_TYPE_FIELDS = {
     },
     'sticker': {
         'dir':    _field( 'path', 'style_sticker_dir' ),
-        'images': _field( 'path', 'style_sticker_images' ),
+        'images': _field( 'paths', 'style_sticker_images' ),
         'scale':  _field( 'number', 'style_sticker_scale' ),
     },
     'debug': {
@@ -361,7 +376,7 @@ LABEL_FIELDS = {
     'track_max_gap':      ( 'number', 'track_max_gap', dict( minimum=0, min_open=True ), None ),
     'match_distance_multiplier': ( 'number', 'match_distance_multiplier',
                                    dict( minimum=0, min_open=True ), None ),
-    'min_track_hits':     ( 'int', 'min_track_hits', dict( minimum=1, maximum=10 ),
+    'min_track_hits':     ( 'int', 'min_track_hits', dict( minimum=1, maximum=10, note=_track_hits_note ),
                             'default_min_track_hits' ),
     'confirm_score':      ( 'number', 'confirm_score',
                             dict( minimum=0, maximum=1, min_open=True, nullable=True,
@@ -513,7 +528,8 @@ _ENTRIES = [
        moves=( CENSOR, ), when=( 'backend_selected', ), probe='cuts_per_min' ),
     S( 'detector_backend.<backend>.profiles.variants.<profile>.min_short_shot_fraction', 'number',
        'profile_min_short_shot_fraction', 'why-the-signal-is-a-duration-share-and-not-a-median-shot-length',
-       minimum=0, maximum=1, moves=( CENSOR, ), when=( 'backend_selected', ), probe=0.2 ),
+       minimum=0, maximum=1, moves=( CENSOR, ), when=( 'backend_selected', ), probe=0.2,
+       note='It is a fraction of runtime' ),
     S( 'detector_backend.<backend>.profiles.variants.<profile>.min_cuts_per_min', 'number',
        'profile_min_cuts_per_min', 'why-the-signal-is-a-duration-share-and-not-a-median-shot-length',
        minimum=0, moves=( CENSOR, ), when=( 'backend_selected', ), probe=12 ),
@@ -595,7 +611,8 @@ _ENTRIES = [
        moves=( ENCODE, ), probe='libx265' ),
     S( 'encode_preset', 'choice', 'encode_preset',
        'encode_video_codec-encode_crf-encode_preset-render_chunk_container', choices=encode_presets,
-       moves=( ENCODE, ), when=( 'preview_off', ), cli='--encode-preset', probe='medium' ),
+       moves=( ENCODE, ), when=( 'preview_off', ), cli='--encode-preset', probe='medium',
+       note=_codec_note ),
     S( 'encode_crf', 'int', 'encode_crf', 'encode_video_codec-encode_crf-encode_preset-render_chunk_container',
        level=SIMPLE, minimum=0, maximum=51, moves=( ENCODE, ), probe=21 ),
 
@@ -649,7 +666,7 @@ _ENTRIES = [
        choices=label_names, nullable=True, none_means='every censored label', moves=( CENSOR, ),
        when=( 'reverse_on', ), probe=[ 'exposed_breast' ] ),
     S( 'reverse.trigger.min_prob', 'number', 'reverse_trigger_min_prob', 'when-the-trigger-fires',
-       minimum=0, maximum=1, min_open=True, max_open=True, moves=( CENSOR, ), when=( 'reverse_on', ),
+       minimum=0, maximum=1, max_open=True, moves=( CENSOR, ), when=( 'reverse_on', ),
        probe=0.45 ),
     S( 'reverse.trigger.hold_seconds', 'number', 'reverse_trigger_hold_seconds', 'when-the-trigger-fires',
        minimum=0, moves=( CENSOR, ), when=( 'reverse_on', ), probe=1.0 ),
@@ -675,10 +692,10 @@ _ENTRIES = [
        'person-windows-whole-male-bodies', choices=label_names, moves=( CENSOR, ),
        when=( 'reverse_on', ), probe=[ 'face_femme', 'exposed_breast' ] ),
     S( 'reverse.person_windows.evidence_min_prob', 'number', 'person_windows_evidence_min_prob',
-       'person-windows-whole-male-bodies', minimum=0, maximum=1, min_open=True, max_open=True,
+       'person-windows-whole-male-bodies', minimum=0, maximum=1, max_open=True,
        moves=( CENSOR, ), when=( 'reverse_on', ), probe=0.5 ),
     S( 'reverse.person_windows.track_iou', 'number', 'person_windows_track_iou',
-       'person-windows-whole-male-bodies', minimum=0, maximum=1, min_open=True, max_open=True,
+       'person-windows-whole-male-bodies', minimum=0, maximum=1, min_open=True,
        moves=( CENSOR, ), when=( 'reverse_on', ), probe=0.4 ),
     S( 'reverse.person_windows.track_max_gap_seconds', 'number', 'person_windows_track_max_gap_seconds',
        'person-windows-whole-male-bodies', minimum=0, moves=( CENSOR, ), when=( 'reverse_on', ),
@@ -720,7 +737,8 @@ _ENTRIES = [
     S( 'preview_max_seconds', 'number', 'preview_max_seconds', 'preview-mode', level=SIMPLE,
        minimum=0, min_open=True, cli='--preview-seconds', probe=30 ),
     S( 'preview_encode_preset', 'choice', 'preview_encode_preset', 'preview-mode', choices=encode_presets,
-       moves=( ENCODE, ), when=( 'preview_on', ), cli='--preview-preset', probe='veryfast' ),
+       moves=( ENCODE, ), when=( 'preview_on', ), cli='--preview-preset', probe='veryfast',
+       note=_codec_note ),
     S( 'preview_start_seconds', 'number', 'preview_start_seconds', 'preview-mode', minimum=0,
        nullable=True, none_means='the start of the video', cli='--preview-start-seconds', probe=5 ),
     S( 'preview_random_slice', 'bool', 'preview_random_slice', 'preview-mode', cli='--preview-random',
@@ -790,6 +808,15 @@ def find( path ):
     finds that entry.
     """
     path = tuple( path.split( '.' ) ) if isinstance( path, str ) else tuple( path )
+    try:
+        return _find( path )
+    except TypeError:   # an unhashable key: not a setting path
+        return None
+
+
+@functools.lru_cache( maxsize=8192 )
+def _find( path ):
+    """find() for a tuple path; memoised, since validation walks the same paths every run."""
     candidates = []
     for entry in REGISTRY:
         if _matches( entry.path, path ):
@@ -805,6 +832,11 @@ def find( path ):
 def is_container( path ):
     """Whether a path is a block that registered settings live inside."""
     path = tuple( path.split( '.' ) ) if isinstance( path, str ) else tuple( path )
+    return _is_container( path )
+
+
+@functools.lru_cache( maxsize=1024 )
+def _is_container( path ):
     return any( len( entry.path ) > len( path ) and _matches( entry.path[:len( path )], path )
                 for entry in REGISTRY )
 
@@ -850,9 +882,31 @@ class Problem( str ):
 
 
 def rule( rule_id, text, **params ):
-    """A cross-field check's error: code config.rule with a stable rule id."""
+    """
+    A cross-field check's error: code config.rule with a stable rule id,
+    and the setting it is about as a dotted path (read from where the
+    text names it first, unless given).
+    """
     params['rule'] = rule_id
+    params.setdefault( 'path', located( text ) )
     return Problem( text, 'config.rule', **params )
+
+
+_LOCATION = re.compile( r"^(?:betaconfig\.)?([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\])*)" )
+
+
+def located( text ):
+    """
+    "detector_backend['nudenet_v3']['nms_iou'] must be ..." -> 'detector_backend.nudenet_v3.nms_iou'.
+    The longest setting path the text starts with, or '' when it starts with none.
+    """
+    match = _LOCATION.match( str( text ) )
+    if not match:
+        return ''
+    parts = [ match.group( 1 ) ]
+    for subscript in re.findall( r"\[([^\]]*)\]", match.group( 2 ) ):
+        parts.append( subscript.strip( "'\"" ) )
+    return '.'.join( parts )
 
 
 def _is_number( value ):
@@ -891,7 +945,8 @@ def _in_range( value, spec ):
 
 _EXPECTED = {
     'bool': 'True or False', 'int': 'a whole number', 'number': 'a number',
-    'string': 'a non-empty string', 'path': 'a non-empty path', 'labels': 'a list of labels',
+    'string': 'a non-empty string', 'path': 'a non-empty path', 'paths': 'a list of paths',
+    'labels': 'a list of labels',
     'color': 'an (r, g, b) tuple of 0 to 255', 'sizes': 'a list of whole numbers',
 }
 
@@ -914,6 +969,9 @@ def check_value( where, value, spec, params_path=None ):
         spec = { name: getattr( spec, name ) for name in Setting.__slots__ }
     path = params_path or where
     kind = spec['kind']
+    note = spec.get( 'note' )
+    note = note( value ) if callable( note ) else note
+    suffix = ( '. %s'%( note, ) ) if note else ''
     if value is None and spec.get( 'nullable' ):
         return []
     if kind in STRUCTURED_KINDS or kind == 'promotion_requirements':
@@ -932,7 +990,7 @@ def check_value( where, value, spec, params_path=None ):
         if not ( _is_whole( value ) if kind == 'int' else _is_number( value ) ):
             return bad_type()
         if not _in_range( value, spec ):
-            return [ Problem( "%s must be %s, got %r"%( where, _range_text( spec ), value ),
+            return [ Problem( "%s must be %s, got %r%s"%( where, _range_text( spec ), value, suffix ),
                               'config.out_of_range', path=path,
                               **_range_params( spec ) ) ]
         if spec.get( 'odd' ) and value % 2 == 0:
@@ -944,10 +1002,14 @@ def check_value( where, value, spec, params_path=None ):
         # True and False equal 1 and 0, so gpu_enabled = True is a valid 1.
         if value in choices:
             return []
-        return [ Problem( "%s = %r is not one of %s"%( where, value, list( choices ) ),
+        return [ Problem( "%s = %r is not one of %s%s"%( where, value, list( choices ), suffix ),
                           'config.bad_choice', path=path, choices=list( choices ) ) ]
     if kind in ( 'string', 'path' ):
         return [] if isinstance( value, str ) and value else bad_type()
+    if kind == 'paths':
+        if isinstance( value, ( list, tuple ) ) and all( isinstance( item, str ) and item for item in value ):
+            return []
+        return bad_type()
     if kind == 'labels':
         if not isinstance( value, ( list, tuple ) ):
             return bad_type()

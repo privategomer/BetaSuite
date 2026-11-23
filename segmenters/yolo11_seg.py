@@ -38,6 +38,12 @@ import numpy as np
 
 import betautils_detector as bu_detector
 
+
+def _rule( rule_id, text ):
+    """An error with a stable rule id for the engine protocol (betautils_settings.rule)."""
+    import betautils_settings as bu_settings
+    return bu_settings.rule( rule_id, text )
+
 VARIANTS = {
     'n': { 'model_path': '../resources/model/yolo11n-seg.onnx', 'native_size': 640 },
     's': { 'model_path': '../resources/model/yolo11s-seg.onnx', 'native_size': 640 },
@@ -94,19 +100,14 @@ def validate_config( config, errors ):
     try:
         resolved = resolve_config( config )
     except ValueError as err:
-        errors.append( str( err ) )
+        errors.append( _rule( 'person_backend.unknown_variant', str( err ) ) )
         return
+    # Each value's kind and range is a registry check (betautils_settings);
+    # what is left is the stride rule.
     size = resolved['picture_size']
-    if not isinstance( size, int ) or isinstance( size, bool ) or size <= 0 or size % 32:
-        errors.append( "%s['picture_size'] must be a positive multiple of 32 (the model's largest "
-                       "stride), got %r"%( where, size ) )
-    for key in ( 'min_prob', 'nms_iou' ):
-        value = resolved[key]
-        if not isinstance( value, ( int, float ) ) or isinstance( value, bool ) or not ( 0 < value < 1 ):
-            errors.append( "%s['%s'] must be a number between 0 and 1, got %r"%( where, key, value ) )
-    batch = resolved['batch_size']
-    if not isinstance( batch, int ) or isinstance( batch, bool ) or batch < 1:
-        errors.append( "%s['batch_size'] must be a whole number >= 1, got %r"%( where, batch ) )
+    if isinstance( size, int ) and not isinstance( size, bool ) and size > 0 and size % 32:
+        errors.append( _rule( 'person_backend.size_not_multiple_of_32', "%s['picture_size'] must be a positive multiple of 32 (the model's largest "
+                       "stride), got %r"%( where, size ) ) )
 
 
 def identity( config ):

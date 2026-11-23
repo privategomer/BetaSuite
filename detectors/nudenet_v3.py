@@ -57,6 +57,12 @@ import numpy as np
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+
+
+def _rule( rule_id, text ):
+    """An error with a stable rule id for the engine protocol (betautils_settings.rule)."""
+    import betautils_settings as bu_settings
+    return bu_settings.rule( rule_id, text )
 import betautils_log as bu_log
 
 
@@ -233,32 +239,20 @@ def validate_backend_config( config, errors ):
     try:
         resolved = resolve_config( config )
     except ValueError as err:
-        errors.append( str( err ) )
+        errors.append( _rule( 'backend.unknown_variant', str( err ) ) )
         return
 
-    candidate_floor = resolved['candidate_floor']
-    if not isinstance( candidate_floor, (int, float) ) or not ( 0 <= candidate_floor <= 1 ):
-        errors.append( "detector_backend['nudenet_v3']['candidate_floor'] must be between "
-                       "0 and 1, got %r"%(candidate_floor,) )
-
-    nms_iou = resolved['nms_iou']
-    if not isinstance( nms_iou, (int, float) ) or not ( 0 <= nms_iou <= 1 ):
-        errors.append( "detector_backend['nudenet_v3']['nms_iou'] must be between 0 and 1, "
-                       "got %r"%(nms_iou,) )
-
-    if resolved['nms_mode'] not in VALID_NMS_MODES:
-        errors.append( "detector_backend['nudenet_v3']['nms_mode'] must be one of %s, got %r"%(
-            list( VALID_NMS_MODES ), resolved['nms_mode'] ) )
-
+    # candidate_floor, nms_iou and nms_mode are registry checks
+    # (betautils_settings); what is left is this model's size rule.
     for size in bu_detector.get_picture_sizes( 'nudenet_v3' ):
         if not isinstance( size, int ) or size <= 0:
-            errors.append( "nudenet_v3 requires positive picture sizes (got %r) - size=0 "
+            errors.append( _rule( 'backend.size_not_positive', "nudenet_v3 requires positive picture sizes (got %r) - size=0 "
                            "('native resolution, no resize') is a retinanet_v2-only concept; "
-                           "this adapter needs a fixed square blob"%(size,) )
+                           "this adapter needs a fixed square blob"%(size,) ) )
         elif size % 32:
-            errors.append( "nudenet_v3 picture size %d is not a multiple of 32 - this model "
+            errors.append( _rule( 'backend.size_not_multiple_of_32', "nudenet_v3 picture size %d is not a multiple of 32 - this model "
                            "family's detection strides are 8/16/32, so a size that is not a "
-                           "multiple of 32 silently changes the anchor grid"%(size,) )
+                           "multiple of 32 silently changes the anchor grid"%(size,) ) )
 
 
 # ---------------------------------------------------------------------------
