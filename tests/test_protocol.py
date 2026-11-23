@@ -148,6 +148,17 @@ class TestLineReader( unittest.TestCase ):
     def test_a_line_exactly_at_the_limit_is_accepted( self ):
         self.assertEqual( _lines( b'12345678\n', limit=8 ), [ b'12345678' ] )
 
+    def test_a_crlf_line_exactly_at_the_limit_is_accepted( self ):
+        self.assertEqual( _lines( b'12345678\r\nok\n', limit=8 ), [ b'12345678', b'ok' ] )
+
+    def test_the_line_ending_never_counts_toward_the_size( self ):
+        self.assertEqual( _lines( b'123456789\r\nok\n', limit=8 ), [ ( 'too_long', 9 ), b'ok' ] )
+        self.assertEqual( _lines( b'x' * 30 + b'\r\nok\n', limit=8 ), [ ( 'too_long', 30 ), b'ok' ] )
+        self.assertEqual( _lines( b'x' * 30 + b'\nok\n', limit=8 ), [ ( 'too_long', 30 ), b'ok' ] )
+        with mock.patch.object( bu_proto, '_DISCARD_CHUNK', 4 ):
+            # A CR that ends a discard chunk, then the newline on its own.
+            self.assertEqual( _lines( b'x' * 13 + b'\r\nok\n', limit=8 ), [ ( 'too_long', 13 ), b'ok' ] )
+
     def test_one_byte_over_the_limit_is_refused_and_the_next_line_reads( self ):
         self.assertEqual( _lines( b'123456789\nok\n', limit=8 ), [ ( 'too_long', 9 ), b'ok' ] )
 
@@ -237,7 +248,15 @@ class TestParseCommand( unittest.TestCase ):
     def test_name( self ):
         self.assertEqual( _code( _without( 'name' ) ).error['params'], { 'field': 'name', 'reason': 'missing' } )
         self.assertEqual( _code( _cmd( name=[ 'ping' ] ) ).error['params'], { 'field': 'name', 'reason': 'type' } )
-        self.assertEqual( _code( _cmd( name='' ) ).error['params'], { 'field': 'name', 'reason': 'value' } )
+        for bad in ( '', 'Ping', 'has space', 'job.', '.job', 'a..b', 'job.Submit', '1job', 'ping\n', 'job-submit' ):
+            with self.subTest( name=bad ):
+                self.assertEqual( _code( _cmd( name=bad ) ).error['params'], { 'field': 'name', 'reason': 'value' } )
+        for good in ( 'ping', 'job.submit', 'config.get', 'a1.b_2', 'catalog.add_files' ):
+            with self.subTest( name=good ):
+                self.assertEqual( bu_proto.parse_command( _cmd( name=good ) ).name, good )
+
+    def test_a_badly_formed_name_is_still_echoed( self ):
+        self.assertEqual( _code( _cmd( name='Bad Name' ) ).request_name, 'Bad Name' )
 
     def test_data_that_is_not_an_object( self ):
         for bad in ( [], 'x', None, 3 ):

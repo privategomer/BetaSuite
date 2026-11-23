@@ -64,8 +64,14 @@ def stray( server, data ):
 def boom( server, data ):
     raise KeyError( '/private/path/clip.mp4' )
 
+def unterminated( server, data ):
+    import faulthandler
+    sys.stdout.write( 'unterminated tail' )
+    return { 'faulthandler': faulthandler.is_enabled() }
+
 betautils_serve.register( 'test.stray', stray )
 betautils_serve.register( 'test.boom', boom )
+betautils_serve.register( 'test.unterminated', unterminated )
 sys.exit( betautils_serve.run( log_path=sys.argv[1], log_level='trace', console_level='info' ) )
 '''
 
@@ -351,6 +357,17 @@ class TestStdoutIsProtocolOnly( _EngineTest ):
         self.assertIn( "KeyError: '/private/path/clip.mp4'", log )
 
 
+    def test_a_print_left_without_newline_reaches_the_log_at_exit( self ):
+        engine = self.start( Engine.driver )
+        self.hello( engine )
+        reply = engine.request( 'test.unterminated' )
+        self.assertEqual( reply['data'], { 'faulthandler': True } )
+        self.assertTrue( engine.request( 'shutdown' )['ok'] )
+        self.assertEqual( engine.wait(), 0 )
+        self.assertNotIn( b'unterminated tail', bytes( engine.raw ) )
+        self.assertIn( 'stray stdout: unterminated tail', engine.log() )
+
+
 @unittest.skipIf( os.name == 'nt', 'POSIX signals' )
 class TestSignals( _EngineTest ):
 
@@ -384,6 +401,17 @@ class TestStartupFailure( unittest.TestCase ):
                 [ sys.executable, ENGINE, 'serve', '--log-file', os.path.join( blocker, 'x.log' ) ],
                 capture_output=True, cwd=REPO, timeout=TIMEOUT,
                 input=bu_proto.encode( bu_proto.command( 'h', 'hello', { 'protocol': [ 1 ] } ) ) )
+        self.assertEqual( result.returncode, 2 )
+        self.assertEqual( result.stdout, b'' )
+        self.assertIn( b'Traceback', result.stderr )
+
+    @unittest.skipIf( os.name == 'nt', 'needs preexec_fn' )
+    def test_a_failure_while_isolating_stdio_also_exits_2( self ):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [ sys.executable, ENGINE, 'serve', '--log-file', os.path.join( tmp, 'x.log' ) ],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=REPO, timeout=TIMEOUT,
+                preexec_fn=lambda: os.close( 0 ) )
         self.assertEqual( result.returncode, 2 )
         self.assertEqual( result.stdout, b'' )
         self.assertIn( b'Traceback', result.stderr )
@@ -543,9 +571,16 @@ class TestStrayOutput( unittest.TestCase ):
         self.assertEqual( raw_write.call_count, 1 )
         self.assertIn( b'stray stdout: loop', raw_write.call_args[0][1] )
 
+    def test_a_line_ending_carriage_return_is_dropped( self ):
+        stray, stream = self._attached()
+        stray.write( 'crlf\r\n' )
+        self.assertEqual( stream.getvalue(), 'WARNING stray stdout: crlf\n' )
+
     def test_an_endless_line_is_cut_into_pieces( self ):
         stray, stream = self._attached()
-        stray.write( 'z' * ( bu_serve.StrayOutput._MAX_PENDING + 10 ) )
+        stray.write( 'z' * bu_serve.StrayOutput._MAX_PENDING )
+        self.assertEqual( stream.getvalue(), '' )
+        stray.write( 'z' )
         self.assertEqual( len( stream.getvalue().splitlines() ), 1 )
 
 
