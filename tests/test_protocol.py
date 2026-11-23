@@ -11,6 +11,7 @@ import io
 import json
 import os
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -304,7 +305,10 @@ class TestOutgoing( unittest.TestCase ):
 
 
 class _SlowStream:
-    """A stream that writes a byte at a time and yields between, so unlocked writers interleave."""
+    """
+    A stream that writes a few bytes at a time and sleeps between, so
+    writers that do not hold a lock across the whole line interleave.
+    """
 
     def __init__( self ):
         self.data = bytearray()
@@ -314,7 +318,7 @@ class _SlowStream:
         for i in range( len( line ) ):
             self.data += line[i:i + 1]
             if i % 7 == 0:
-                threading.Event().wait( 0 )
+                time.sleep( 0.0001 )
         return len( line )
 
     def flush( self ):

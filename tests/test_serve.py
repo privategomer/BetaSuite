@@ -373,6 +373,22 @@ class TestSignals( _EngineTest ):
         self.assertIn( 'engine stopped, exit code 130', log )
 
 
+class TestStartupFailure( unittest.TestCase ):
+
+    def test_a_failure_before_serving_exits_2_with_nothing_on_stdout( self ):
+        with tempfile.TemporaryDirectory() as tmp:
+            # A log path under a regular file cannot be created.
+            blocker = os.path.join( tmp, 'file' )
+            open( blocker, 'w' ).close()
+            result = subprocess.run(
+                [ sys.executable, ENGINE, 'serve', '--log-file', os.path.join( blocker, 'x.log' ) ],
+                capture_output=True, cwd=REPO, timeout=TIMEOUT,
+                input=bu_proto.encode( bu_proto.command( 'h', 'hello', { 'protocol': [ 1 ] } ) ) )
+        self.assertEqual( result.returncode, 2 )
+        self.assertEqual( result.stdout, b'' )
+        self.assertIn( b'Traceback', result.stderr )
+
+
 class TestCommandLine( unittest.TestCase ):
 
     def _run( self, *args ):
@@ -469,6 +485,12 @@ class TestServerInProcess( unittest.TestCase ):
                 with open( path, encoding='utf-8' ) as handle:
                     text = handle.read()
                 self.assertEqual( 'recv {"v":1' in text and 'send {"v":1' in text, expected, level )
+
+    def test_no_trace_record_is_made_when_no_handler_takes_trace( self ):
+        logger = bu_log.tool_logger( 'tests.serve.quiet', console_level='debug', console_stream=io.StringIO() )
+        with mock.patch.object( logger, 'trace' ) as trace:
+            _serve( [ bu_proto.command( 'p', 'ping' ) ], logger=logger )
+        trace.assert_not_called()
 
     def test_the_preview_is_bounded( self ):
         self.assertEqual( bu_serve._preview( b'abc' ), 'abc' )
