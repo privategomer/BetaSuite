@@ -365,7 +365,11 @@ class TestStdoutIsProtocolOnly( _EngineTest ):
         self.assertTrue( engine.request( 'shutdown' )['ok'] )
         self.assertEqual( engine.wait(), 0 )
         self.assertNotIn( b'unterminated tail', bytes( engine.raw ) )
-        self.assertIn( 'stray stdout: unterminated tail', engine.log() )
+        log = engine.log()
+        # Logged by run() itself, inside the session, not only by the
+        # interpreter's own flush at exit.
+        self.assertIn( 'stray stdout: unterminated tail', log )
+        self.assertLess( log.index( 'stray stdout: unterminated tail' ), log.index( 'engine stopped' ) )
 
 
 @unittest.skipIf( os.name == 'nt', 'POSIX signals' )
