@@ -47,6 +47,13 @@ def command_schema_names():
                    if relative.startswith( 'commands/' ) and relative.endswith( '.schema.json' ) )
 
 
+def event_schema_names():
+    """The event names that have a file under events/."""
+    return sorted( relative[len( 'events/' ):-len( '.schema.json' )]
+                   for relative in schema_files()
+                   if relative.startswith( 'events/' ) and relative.endswith( '.schema.json' ) )
+
+
 _registry = None
 
 
@@ -75,3 +82,7 @@ def validate_command_data( name, data ):
 
 def validate_command_result( name, data ):
     validator_for( 'commands/%s.schema.json#/$defs/result'%( name, ) ).validate( data )
+
+
+def validate_event_data( name, data ):
+    validator_for( 'events/%s.schema.json#/$defs/data'%( name, ) ).validate( data )

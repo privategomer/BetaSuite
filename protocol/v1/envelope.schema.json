@@ -39,13 +39,13 @@
       }
     },
     "result_error": {
-      "description": "Engine to client. id and name are null when the command was too malformed to read them.",
+      "description": "Engine to client, answering the command with the same id. name is null when the command's name could not be read. A line with no readable id gets a protocol.rejected event instead.",
       "type": "object",
       "required": [ "v", "kind", "id", "name", "ok", "error" ],
       "properties": {
         "v": { "$ref": "#/$defs/v" },
         "kind": { "const": "result" },
-        "id": { "oneOf": [ { "$ref": "#/$defs/id" }, { "type": "null" } ] },
+        "id": { "$ref": "#/$defs/id" },
         "name": { "oneOf": [ { "type": "string", "minLength": 1 }, { "type": "null" } ] },
         "ok": { "const": false },
         "error": { "$ref": "errors.schema.json" }

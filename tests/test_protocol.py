@@ -181,6 +181,21 @@ class TestLineReader( unittest.TestCase ):
                                        'params': { 'limit_bytes': 8, 'line_bytes': 9 } } )
         self.assertIsNone( err.request_id )
 
+    def test_every_line_read_is_numbered_blank_and_oversized_ones_too( self ):
+        reader = bu_proto.LineReader( io.BytesIO( b'a\n\n  \r\nb\n' + b'x' * 30 + b'\nc\r\nd' ), limit=8 )
+        seen = []
+        while True:
+            try:
+                line = reader.read_line()
+            except bu_proto.LineTooLong:
+                seen.append( ( 'too_long', reader.line_number ) )
+                continue
+            if line is None:
+                break
+            seen.append( ( line, reader.line_number ) )
+        self.assertEqual( seen, [ ( b'a', 1 ), ( b'b', 4 ), ( 'too_long', 5 ), ( b'c', 6 ), ( b'd', 7 ) ] )
+        self.assertEqual( reader.line_number, 7 )
+
     def test_the_default_limit_is_one_mebibyte( self ):
         self.assertEqual( bu_proto.MAX_LINE_BYTES, 1048576 )
 
@@ -297,11 +312,18 @@ class TestOutgoing( unittest.TestCase ):
         self.assertEqual( bu_proto.ok_result( 'a1', 'ping', {} ),
                           { 'v': 1, 'kind': 'result', 'id': 'a1', 'name': 'ping', 'ok': True, 'data': {} } )
         failure = bu_proto.error( 'command.unknown', name='x' )
-        self.assertEqual( bu_proto.error_result( None, None, failure ),
-                          { 'v': 1, 'kind': 'result', 'id': None, 'name': None, 'ok': False,
+        self.assertEqual( bu_proto.error_result( 'a1', None, failure ),
+                          { 'v': 1, 'kind': 'result', 'id': 'a1', 'name': None, 'ok': False,
                             'error': failure } )
+        self.assertEqual( bu_proto.rejected( 7, failure ),
+                          { 'v': 1, 'kind': 'event', 'name': 'protocol.rejected',
+                            'data': { 'line': 7, 'error': failure } } )
         self.assertEqual( bu_proto.event( 'job.state', { 'state': 'running' } ),
                           { 'v': 1, 'kind': 'event', 'name': 'job.state', 'data': { 'state': 'running' } } )
+
+    def test_a_result_always_answers_an_id( self ):
+        with self.assertRaises( ValueError ):
+            bu_proto.error_result( None, 'ping', bu_proto.error( 'protocol.bad_json' ) )
 
     def test_a_built_command_parses_back( self ):
         line = bu_proto.encode( bu_proto.command( 'a1', 'hello', { 'protocol': [ 1 ] } ) )
@@ -411,11 +433,24 @@ class TestSchemas( unittest.TestCase ):
                 self.assertEqual( set( params['properties'] ), set( bu_proto.ERRORS[code] ) )
                 self.assertIs( params['additionalProperties'], False )
 
-    def test_every_error_validates_as_a_result( self ):
+    def test_every_error_validates_as_a_result_and_as_a_rejection( self ):
         for code, params in EXAMPLE_PARAMS.items():
             with self.subTest( code=code ):
-                schemas.validate_message( bu_proto.error_result( 'a1', 'ping', bu_proto.error( code, **params ) ) )
-                schemas.validate_message( bu_proto.error_result( None, None, bu_proto.error( code, **params ) ) )
+                failure = bu_proto.error( code, **params )
+                schemas.validate_message( bu_proto.error_result( 'a1', 'ping', failure ) )
+                schemas.validate_message( bu_proto.error_result( 'a1', None, failure ) )
+                event = bu_proto.rejected( 3, failure )
+                schemas.validate_message( event )
+                schemas.validate_event_data( event['name'], event['data'] )
+
+    def test_a_result_without_an_id_or_a_rejection_without_a_line_does_not_validate( self ):
+        failure = bu_proto.error( 'protocol.bad_json' )
+        result = dict( bu_proto.error_result( 'a1', None, failure ), id=None )
+        with self.assertRaises( schemas.jsonschema.ValidationError ):
+            schemas.validate_message( result )
+        for data in ( { 'error': failure }, { 'line': 0, 'error': failure }, { 'line': 1 } ):
+            with self.subTest( data=data ), self.assertRaises( schemas.jsonschema.ValidationError ):
+                schemas.validate_event_data( 'protocol.rejected', data )
 
     def test_an_error_with_a_sentence_or_a_wrong_code_does_not_validate( self ):
         bad = [
@@ -433,7 +468,12 @@ class TestSchemas( unittest.TestCase ):
         for line in lines:
             with self.subTest( line=line[:30] ):
                 err = _code( line )
-                schemas.validate_message( bu_proto.error_result( err.request_id, err.request_name, err.error ) )
+                if err.request_id is None:
+                    message = bu_proto.rejected( 1, err.error )
+                    schemas.validate_event_data( message['name'], message['data'] )
+                else:
+                    message = bu_proto.error_result( err.request_id, err.request_name, err.error )
+                schemas.validate_message( message )
 
     def test_outgoing_shapes_validate_and_wrong_ones_do_not( self ):
         schemas.validate_message( bu_proto.command( 'a1', 'hello', { 'protocol': [ 1 ] } ) )
