@@ -302,6 +302,16 @@ class TestPrecedence( unittest.TestCase ):
         block = evaluation.values['detector_backend']['nudenet_v3']
         self.assertEqual( ( 0.5, 0.2, 'per_class' ), ( block['nms_iou'], block['candidate_floor'], block['nms_mode'] ) )
 
+    def test_a_write_reloads_the_live_config_the_engine_runs_with( self ):
+        # Jobs in the engine read the live betaconfig module, not the file.
+        with harness.shipped():
+            store = bu_store.ConfigStore( path=self.local )
+            evaluation, moves, written = store.edit( { ( 'encode_crf', ): 23 } )
+            self.assertTrue( written )
+            self.assertEqual( 23, betaconfig.encode_crf )
+            store.edit( removals=[ ( 'encode_crf', ) ] )
+            self.assertEqual( 17, betaconfig.encode_crf )
+
     def test_evaluating_leaves_the_live_config_as_it_was( self ):
         with harness.shipped():
             before = harness.snapshot()
