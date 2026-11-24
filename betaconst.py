@@ -46,8 +46,8 @@ model_input = 'input_1:0'
 
 # --- Default input/output directory layout ----------------------------------
 #
-# Relative to the repo root, or under BETASUITE_DATA_ROOT when that is set
-# (betautils_paths.py).
+# Named by their 1.x paths and resolved once, here: the OS folders by kind,
+# or the 1.x tree under BETASUITE_DATA_ROOT (betautils_paths.py).
 
 picture_path_uncensored = _bu_paths.resolve( '../resources/uncensored_pics/' )
 picture_path_censored   = _bu_paths.resolve( '../output/censored_pics/' )

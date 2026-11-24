@@ -398,8 +398,8 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
 
     Args:
         log_path: The log file. Default: betaconfig.log_path, else
-            betautils_log.DEFAULT_LOG_PATH, under BETASUITE_DATA_ROOT
-            when that is set (betautils_log.configured_log_path). Serve
+            betautils_log.DEFAULT_LOG_PATH, in the layout in use
+            (betautils_log.configured_log_path). Serve
             mode always writes one,
             whatever logging_enabled says, since nothing else records it.
         log_level, console_level: Level names for the file and stderr.
@@ -428,6 +428,7 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
     server = Server( proto_in, proto_out, logger, commands )
     logger.info( "engine serving: pid %d, protocol %s, log %s"%(
         os.getpid(), '/'.join( str( v ) for v in bu_proto.SUPPORTED_VERSIONS ), log_path ) )
+    bu_log.log_data_layout( logger )
     exit_code = EXIT_OK
     try:
         exit_code = server.serve()

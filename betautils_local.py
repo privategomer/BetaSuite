@@ -47,6 +47,13 @@ imported by every tool and a typo must not stop `local_config.py show`
 from explaining it. validate_config turns the recorded problems into
 errors that name the file and line, so a real run still stops on them.
 
+WHERE IT LIVES. In the OS config folder (betautils_paths: config kind,
+~/.config/betasuite on Linux), shared by every checkout. Under
+BETASUITE_DATA_ROOT, the 1.x layout, it stays beside betaconfig.py as in
+1.x. A betaconfig_local.py beside betaconfig.py that is not the file in
+use is warned about at run start, so settings left there are not
+silently ignored.
+
 BETASUITE_LOCAL_CONFIG overrides the path; set it to 'none' (or empty)
 to ignore the file. The test suite does that, so tests see the shipped
 defaults on every machine.
@@ -110,6 +117,9 @@ class LocalConfig( object ):
         problems: Human-readable strings, one per skipped line.
         legacy_machine_path: The old machine config when it still exists
             and so still needs migrating, else None.
+        ignored_repo_path: A betaconfig_local.py beside betaconfig.py
+            that is not the file in use (the OS layout reads the config
+            folder's), else None.
     """
 
     def __init__( self, path ):
@@ -120,6 +130,7 @@ class LocalConfig( object ):
         self.new_keys = []
         self.problems = []
         self.legacy_machine_path = None
+        self.ignored_repo_path = None
 
     def describe( self ):
         """The one run-start line: where the file is and what it overrides."""
@@ -147,14 +158,21 @@ class LocalConfig( object ):
 LOADED = None
 
 
-def default_path():
-    """betaconfig_local.py beside betaconfig.py, from the repo, not the cwd."""
+def repo_path():
+    """betaconfig_local.py beside betaconfig.py, from the repo, not the cwd: where 1.x kept it."""
     return os.path.join( _REPO_DIR, FILE_NAME )
 
 
+def default_path():
+    """The config folder's betaconfig_local.py, or repo_path() under BETASUITE_DATA_ROOT (the 1.x layout)."""
+    if bu_paths.data_root() is not None:
+        return repo_path()
+    return os.path.join( bu_paths.kind_dir( 'config' ), FILE_NAME )
+
+
 def legacy_machine_path():
-    """../resources/betaconfig_machine.py, where the old machine config lived."""
-    return os.path.normpath( bu_paths.beside_repo( _REPO_DIR, 'resources', LEGACY_FILE_NAME ) )
+    """Where the old machine config lived: ../resources/betaconfig_machine.py, through the layout in use."""
+    return os.path.normpath( bu_paths.legacy_path( 'resources', LEGACY_FILE_NAME ) )
 
 
 def configured_path( environ=None ):
@@ -321,7 +339,7 @@ def _set( namespace, path, value ):
     container[ path[-1] ] = value
 
 
-def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None ):
+def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None, repo_file=None ):
     """
     Merge the local config into a betaconfig namespace.
 
@@ -336,6 +354,8 @@ def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None ):
             sys.stderr. validate_config repeats them as errors.
         legacy_path: The old machine config to look for; default
             legacy_machine_path(). Not looked for when the layer is off.
+        repo_file: The 1.x place of the file, warned about when it
+            exists and is not the file read; default repo_path().
 
     Returns:
         A LocalConfig, also stored as LOADED.
@@ -350,6 +370,9 @@ def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None ):
     legacy = legacy_machine_path() if legacy_path is None else legacy_path
     if os.path.isfile( legacy ):
         result.legacy_machine_path = legacy
+    beside_code = repo_path() if repo_file is None else repo_file
+    if os.path.abspath( beside_code ) != os.path.abspath( path ) and os.path.isfile( beside_code ):
+        result.ignored_repo_path = beside_code
     if not os.path.isfile( path ):
         return result
     result.exists = True
@@ -400,6 +423,15 @@ def legacy_warning( loaded ):
         return None
     return ( "%s is no longer read, so its settings are not in effect; run `%s` to move them "
              "into %s"%( loaded.legacy_machine_path, MIGRATE_COMMAND, FILE_NAME ) )
+
+
+def ignored_repo_warning( loaded ):
+    """One line while a betaconfig_local.py beside the code is not the file in use, else None."""
+    if loaded is None or loaded.ignored_repo_path is None:
+        return None
+    return ( "%s is not read, so its settings are not in effect: settings are read from %s. Copy what "
+             "you need there (the 1.x migration copies the whole file), or set %s to keep the 1.x "
+             "layout"%( loaded.ignored_repo_path, loaded.path, bu_paths.ENV_VAR ) )
 
 
 def new_key_warnings( loaded ):

@@ -95,6 +95,7 @@ def _startup():
 
     logger = bu_log.get_logger()
     bu_signals.install_handler( logger )
+    bu_log.log_data_layout( logger )
 
     bu_config.validate_config()
     bu_config.exit_if_nothing_to_render( logger )

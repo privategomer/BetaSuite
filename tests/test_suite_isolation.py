@@ -87,6 +87,36 @@ class TestSuiteIsolation( unittest.TestCase ):
         # footage; tests and the subprocesses they start must not see it.
         self.assertNotIn( 'BETASUITE_DATA_ROOT', os.environ )
 
+    def test_the_callers_cache_folder_does_not_reach_the_suite( self ):
+        self.assertNotIn( 'BETASUITE_CACHE_DIR', os.environ )
+
+    def test_every_kind_of_folder_is_under_the_test_root( self ):
+        import betautils_paths
+        for kind in betautils_paths.KINDS:
+            folder = betautils_paths.kind_dir( kind )
+            self.assertTrue( _is_under_test_root( folder ), "%s folder is %r"%( kind, folder ) )
+
+    def test_a_subprocess_finds_every_folder_under_the_test_root( self ):
+        # What a test's subprocess resolves on its own, with no redirect:
+        # betaconst's layout, the log defaults, the local config's place
+        # and every kind of folder.
+        import json
+        import subprocess
+        import sys
+        code = ( "import json, betaconst, betautils_log, betautils_local, betautils_paths\n"
+                 "print( json.dumps( [ v for k, v in vars( betaconst ).items() if k.endswith( ( '_dir', '_path', "
+                 "'_root', '_uncensored', '_censored', '_backup', '_completed' ) ) and isinstance( v, str ) ]"
+                 " + [ betautils_log.DEFAULT_LOG_PATH, betautils_log.DEFAULT_STATS_PATH, betautils_local.default_path() ]"
+                 " + [ betautils_paths.kind_dir( k ) for k in betautils_paths.KINDS ] ) )\n" )
+        repo = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
+        result = subprocess.run( [ sys.executable, '-c', code ], cwd=repo, capture_output=True, text=True,
+                                 timeout=120, env=dict( os.environ, PYTHONPATH=repo ) )
+        self.assertEqual( result.returncode, 0, result.stderr )
+        paths = json.loads( result.stdout.strip().splitlines()[-1] )
+        self.assertGreaterEqual( len( paths ), 20 )
+        for path in paths:
+            self.assertTrue( _is_under_test_root( path ), path )
+
     def test_import_time_copies_were_taken_after_the_redirect( self ):
         # betautils_cache_paths copies these at import. If any test
         # module imported it before tests/__init__.py ran, the copies

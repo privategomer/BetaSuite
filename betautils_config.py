@@ -2065,7 +2065,8 @@ def _validate_local_config( errors ):
 
 def _warn_local_config( warnings ):
     loaded = bu_local.LOADED
-    for warning in [ bu_local.legacy_warning( loaded ), bu_local.encoder_scale_warning( loaded ) ]:
+    for warning in [ bu_local.legacy_warning( loaded ), bu_local.ignored_repo_warning( loaded ),
+                     bu_local.encoder_scale_warning( loaded ) ]:
         if warning:
             warnings.append( warning )
     warnings.extend( bu_local.new_key_warnings( loaded ) )

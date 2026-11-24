@@ -59,6 +59,7 @@ def _parse_cli_args_and_validate_config():
     cli_args = cli_parser.parse_args()
     bu_cli.apply_cli_overrides( betaconfig, cli_args )
 
+    bu_log.log_data_layout( bu_log.get_logger() )
     bu_config.validate_config()
     bu_config.exit_if_nothing_to_render( bu_log.get_logger() )
     bu_config.verify_input_delete_probability()

@@ -107,14 +107,14 @@ class TestToolDefaults( unittest.TestCase ):
 
     def test_fetch_models_puts_models_under_the_root( self ):
         self.assertEqual( _load_tool( 'tools/setup/fetch_models.py' ).MODEL_DIR,
-                          os.path.normpath( os.path.join( REPO_ROOT, '..', 'resources', 'model' ) ) )
+                          os.path.join( bu_paths.kind_dir( 'data' ), 'model' ) )
         os.environ[ENV] = self.root
         self.assertEqual( _load_tool( 'tools/setup/fetch_models.py' ).MODEL_DIR,
                           os.path.join( self.root, 'resources', 'model' ) )
 
     def test_bar_smoothing_results_go_under_the_root( self ):
         module = _load_tool( 'tools/tuning/run_bar_smoothing_test.py' )
-        self.assertEqual( module.RESULTS_DIR, os.path.join( REPO_ROOT, '..', 'bar_smoothing_test_results' ) )
+        self.assertEqual( module.RESULTS_DIR, os.path.join( bu_paths.kind_dir( 'state' ), 'bar_smoothing_test_results' ) )
         os.environ[ENV] = self.root
         module = _load_tool( 'tools/tuning/run_bar_smoothing_test.py' )
         self.assertEqual( module.RESULTS_DIR, os.path.join( self.root, 'bar_smoothing_test_results' ) )
@@ -123,7 +123,7 @@ class TestToolDefaults( unittest.TestCase ):
     def test_local_config_log_goes_under_the_root( self ):
         module = _load_tool( 'tools/setup/local_config.py' )
         default = module.build_parser().parse_args( [] ).log_file
-        self.assertEqual( default, os.path.join( REPO_ROOT, '..', 'output', 'logs', 'local_config.log' ) )
+        self.assertEqual( default, os.path.join( bu_paths.kind_dir( 'state' ), 'logs', 'local_config.log' ) )
         os.environ[ENV] = self.root
         module = _load_tool( 'tools/setup/local_config.py' )
         self.assertEqual( module.build_parser().parse_args( [] ).log_file,
@@ -306,7 +306,7 @@ class TestNoToolBuildsItsOwnDataPath( unittest.TestCase ):
                     continue
                 if any( p.search( line ) for p in self.PYTHON_PATTERNS ):
                     found.append( '%s:%d: %s'%( os.path.relpath( path, REPO_ROOT ), number, line.strip() ) )
-        self.assertEqual( found, [], 'use betautils_paths.beside_repo instead:\n' + '\n'.join( found ) )
+        self.assertEqual( found, [], 'use betautils_paths.legacy_path instead:\n' + '\n'.join( found ) )
 
     def test_the_scan_sees_the_forms_it_guards( self ):
         self.assertTrue( any( p.search( 'RUN_DIR="$(cd "$REPO_ROOT/.." && pwd)/output/x"' ) for p in self.SHELL_PATTERNS ) )

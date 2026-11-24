@@ -405,24 +405,46 @@ logs.
 
 ## Where data lives: `BETASUITE_DATA_ROOT`
 
-Paths in this file and in `betaconfig.py` that start with `../resources`
-or `../output` are relative to the folder the app runs in, the repo
-root, so by default the data sits beside the repo. The environment
-variable `BETASUITE_DATA_ROOT` names the folder that holds `resources/`
-and `output/` instead, for a second checkout that should work on the
-same library and caches.
+Each kind of data has its own folder, where the operating system keeps
+that kind for each user, with no admin rights needed:
 
-- Unset or empty: every path is exactly as written.
-- Set: it must be an absolute path to an existing folder. A relative
-  value, `~`, or a missing folder stops the run with an error naming the
-  variable.
-- Only the `../resources` and `../output` prefixes move. An absolute
-  path, or any other relative path, means what it always did.
-- Path settings keep their written value in every cache key. A model
-  path is part of the detection key and a sticker folder part of the
-  censor key, and they are resolved only where a file is opened, so a
-  checkout using the variable computes the same keys as one without it
-  and reuses its caches.
+| Kind | Holds | Linux | Windows |
+|---|---|---|---|
+| settings | `betaconfig_local.py` | `~/.config/betasuite` | `%LOCALAPPDATA%\BetaSuite\config` |
+| data | models, stickers, run-key records | `~/.local/share/betasuite` | `%LOCALAPPDATA%\BetaSuite\data` |
+| cache | detections, shot cuts, transcodes, file hashes | `~/.cache/betasuite` | `%LOCALAPPDATA%\BetaSuite\cache` |
+| state | logs, stats, benchmarks | `~/.local/state/betasuite` | `%LOCALAPPDATA%\BetaSuite\state` |
+| inputs, outputs | `uncensored_vids`, `uncensored_pics`, `source`; `censored_vids`, `censored_pics` | `~/Videos/BetaSuite` | `%USERPROFILE%\Videos\BetaSuite` |
+
+On Linux, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and
+`XDG_STATE_HOME` move the first four when set to absolute paths, and the
+Videos folder is the one `user-dirs.dirs` names. macOS uses
+`~/Library/Application Support/BetaSuite`, `~/Library/Caches/BetaSuite`
+and `~/Movies/BetaSuite`. Inputs and outputs are your files, not app
+data, which is why they sit with your videos.
+
+Three variables move one kind each. Each must be an absolute path:
+
+- `BETASUITE_CACHE_DIR`: the cache, the large one
+- `BETASUITE_INPUT_DIR`: the folders runs read from
+- `BETASUITE_OUTPUT_DIR`: the folders runs write to
+
+`BETASUITE_DATA_ROOT` uses a 1.x tree instead: a folder holding
+`resources/` and `output/` laid out as 1.x had them, with
+`betaconfig_local.py` beside `betaconfig.py`. Every path is then exactly
+the 1.x one under that folder. It must be an absolute path to an
+existing folder, and it cannot be combined with the three variables
+above. A relative value, `~`, or a missing folder stops the run with an
+error naming the variable.
+
+Paths in this file and in `betaconfig.py` keep their 1.x names
+(`../resources/model/...`, `../output/logs/...`), and the app maps them
+to the folders above. Only the `../resources` and `../output` prefixes
+are mapped; an absolute path, or any other relative path, means what it
+always did. Path settings keep their written value in every cache key.
+A model path is part of the detection key and a sticker folder part of
+the censor key, and they are resolved only where a file is opened, so
+every layout computes the same keys and reuses the same caches.
 
 This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
 `images`, betaconst's folders, and the tools' own output folders.

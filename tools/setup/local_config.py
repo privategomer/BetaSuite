@@ -195,9 +195,9 @@ def _report( logger, loaded, errors ):
 
 
 def _warn_legacy( logger, loaded ):
-    warning = bu_local.legacy_warning( loaded )
-    if warning:
-        logger.warning( "warning: %s"%( warning, ) )
+    for warning in ( bu_local.legacy_warning( loaded ), bu_local.ignored_repo_warning( loaded ) ):
+        if warning:
+            logger.warning( "warning: %s"%( warning, ) )
 
 
 def _clip( value ):
@@ -434,7 +434,7 @@ def build_parser():
         bu_local.default_path(), bu_local.ENV_VAR ) )
     parser.add_argument( '--log-level', default='info', choices=LEVELS,
                          help='terminal level (the log file gets everything)' )
-    parser.add_argument( '--log-file', default=bu_paths.beside_repo( REPO_ROOT, 'output', 'logs',
+    parser.add_argument( '--log-file', default=bu_paths.legacy_path( 'output', 'logs',
                                                                      'local_config.log' ) )
     commands = parser.add_subparsers( dest='command' )
     commands.add_parser( 'show', help="every setting, its value and where it came from; "
