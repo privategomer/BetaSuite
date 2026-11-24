@@ -67,6 +67,13 @@ const CASES = {
   'prose in a variable': { files: { 'src/a.ts': "export const label = 'Engine ready';" }, expect: [ 'source.literal' ] },
   'capitalized word in a variable': { files: { 'src/a.ts': "export const label = 'Restart';" }, expect: [ 'source.literal' ] },
   'prose in a template': { files: { 'src/a.ts': 'export const label = ( n: number ) => `${n} files left`;' }, expect: [ 'source.literal' ] },
+  'class names built in an expression pass': { files: { 'src/A.tsx': 'export const A = ( p: { tone: string } ) => <b className={`status-icon ${p.tone}`} />;' }, expect: [] },
+  'text passed to a setter named like an error': { files: { 'src/a.ts': "setError( 'Engine broke down' );" }, expect: [ 'source.literal' ] },
+  'a key used inside a setter counts as used': {
+    files: { 'src/a.ts': "setError( t( 'action.spare' ) );", 'i18n/en-US/ui.json': JSON.stringify( { 'app.title': 'BetaSuite', 'status.files': '{count, plural, one {# file} other {# files}}', 'action.open': 'Open', 'action.spare': 'Spare' } ) },
+    expect: [],
+  },
+  'an Error constructor is exempt': { files: { 'src/a.ts': "throw new TypeError( 'Bad input here' );" }, expect: [] },
   'DOM token passes': { files: { 'src/a.ts': "export const isEscape = ( k: string ) => k === 'Escape';" }, expect: [] },
   'exemption with a reason': {
     files: { 'src/a.ts': "// catalog-ignore: a fixture value, never shown\nexport const label = 'Engine ready';" },

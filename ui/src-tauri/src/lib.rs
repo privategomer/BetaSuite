@@ -10,6 +10,8 @@ mod engine;
 mod linux;
 mod logging;
 mod paths;
+mod startup;
+mod video;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -20,6 +22,7 @@ use serde_json::{json, Value};
 use tauri::{Emitter, Manager, RunEvent, WebviewWindow, WindowEvent};
 
 use engine::{Engine, ErrorCode};
+use startup::Startup;
 
 /// The release version, from the repository's VERSION file.
 pub const VERSION: &str = env!("BETASUITE_VERSION");
@@ -44,6 +47,12 @@ struct StartupInfo {
     version: &'static str,
     /// The `--locale` option, if given.
     locale: Option<String>,
+    /// The `--theme` option: "light", "dark", or None to follow the system.
+    theme: Option<String>,
+    /// The `--open` video, already allowed, so the page's first render can
+    /// start it; or why it could not be opened.
+    open: Option<video::PlayableVideo>,
+    open_error: Option<ErrorCode>,
 }
 
 #[tauri::command]
@@ -56,8 +65,29 @@ fn show_window(window: &WebviewWindow, shown: &Shown, why: &str) {
         return;
     }
     match window.show() {
-        Ok(()) => log::info!("window shown {} ms after start ({why})", elapsed_ms()),
+        Ok(()) => {
+            log::info!("window shown {} ms after start ({why})", elapsed_ms());
+            mark(window.app_handle(), "window_shown");
+        }
         Err(error) => log::error!("could not show the window: {error}"),
+    }
+}
+
+/// Records a startup step; closes the app once `--measure-startup` has its
+/// report.
+fn mark(app: &tauri::AppHandle, name: &str) {
+    if app.state::<Startup>().mark(name) {
+        close(app);
+    }
+}
+
+/// A startup step the page saw: its first script, or the first video frame.
+#[tauri::command]
+fn ui_mark(app: tauri::AppHandle, name: &str) {
+    if matches!(name, "page_script" | "first_frame") {
+        mark(&app, name);
+    } else {
+        log::warn!("ignoring unknown startup step {name:?}");
     }
 }
 
@@ -139,6 +169,9 @@ fn create_engine(app: &tauri::AppHandle, transcript: Option<std::path::PathBuf>)
     Engine::new(
         config,
         Arc::new(move |status: &engine::Status| {
+            if matches!(status, engine::Status::Ready { .. }) {
+                mark(&status_app, "engine_ready");
+            }
             if let Err(error) = status_app.emit("engine-status", status) {
                 log::warn!("cannot send the engine status to the page: {error}");
             }
@@ -154,10 +187,20 @@ fn create_engine(app: &tauri::AppHandle, transcript: Option<std::path::PathBuf>)
 fn setup(
     app: &mut tauri::App,
     transcript: Option<std::path::PathBuf>,
+    mut startup: StartupInfo,
+    open: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = create_engine(app.handle(), transcript);
     engine.start();
     app.manage(engine);
+
+    if let Some(path) = open {
+        match video::allow(app.handle(), &path) {
+            Ok(playable) => startup.open = Some(playable),
+            Err(error) => startup.open_error = Some(error),
+        }
+    }
+    app.manage(startup);
 
     let window = app
         .get_webview_window("main")
@@ -227,7 +270,12 @@ pub fn run() -> i32 {
     let startup = StartupInfo {
         version: VERSION,
         locale: options.locale.clone(),
+        theme: options.theme.clone(),
+        open: None,
+        open_error: None,
     };
+    let open = options.open.clone();
+    let startup_timing = Startup::new(options.measure_startup.clone(), options.open.is_some());
     let transcript = log_file
         .path
         .as_ref()
@@ -236,8 +284,9 @@ pub fn run() -> i32 {
     let app = tauri::Builder::default()
         .manage(Shown(AtomicBool::new(false)))
         .manage(Closing(AtomicBool::new(false)))
-        .manage(startup)
-        .setup(move |app| setup(app, transcript))
+        .manage(startup_timing)
+        .plugin(tauri_plugin_dialog::init())
+        .setup(move |app| setup(app, transcript, startup, open))
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -250,7 +299,9 @@ pub fn run() -> i32 {
             ui_ready,
             engine_status,
             engine_request,
-            engine_restart
+            engine_restart,
+            ui_mark,
+            video::pick_video
         ])
         .build(tauri::generate_context!());
     let app = match app {

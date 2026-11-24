@@ -1,6 +1,14 @@
+@import "./theme/tokens.css";
+
+/* Layout uses logical properties only (inline and block, start and end),
+   so a right-to-left language mirrors it without changes. */
+
 :root {
-  color-scheme: light dark;
   font-family: system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 html,
@@ -8,4 +16,168 @@ body,
 #root {
   block-size: 100%;
   margin: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  padding-block: 0.35em;
+  padding-inline: 0.9em;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  block-size: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-block: 0.6rem;
+  padding-inline: 1rem;
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.app-main {
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+/* Player */
+
+.player {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.player-file {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.player-stage {
+  flex: 1;
+  min-block-size: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.player-stage video {
+  inline-size: 100%;
+  block-size: 100%;
+  background: var(--color-video-bg);
+}
+
+.player-empty,
+.player-error {
+  max-inline-size: 40rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.player-empty {
+  color: var(--color-text-muted);
+}
+
+/* Status strip */
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem;
+  min-block-size: 2.4rem;
+  padding-block: 0.3rem;
+  padding-inline: 1rem;
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 0.93rem;
+}
+
+.status-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-icon {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.status-icon.ok {
+  color: var(--color-status-ok);
+}
+
+.status-icon.busy {
+  color: var(--color-status-busy);
+}
+
+.status-icon.problem {
+  color: var(--color-status-problem);
+}
+
+.status-detail {
+  color: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .status-icon.busy {
+    animation: status-spin 1.2s linear infinite;
+  }
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

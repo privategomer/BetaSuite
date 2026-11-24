@@ -83,6 +83,8 @@ jobs:
         run: npm run catalog:check
       - name: Catalog check self-test
         run: npm run catalog:selftest
+      - name: Theme contrast check (WCAG AA, both themes)
+        run: npm run contrast:check
       - name: Build the page
         run: npm run build
       - name: Install the Tauri build prerequisites

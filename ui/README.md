@@ -55,9 +55,16 @@ Every string the app shows comes from the catalogs in the repository's `i18n/<lo
 
 ```
 betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH] [--locale TAG]
+          [--theme light|dark] [--open VIDEO] [--measure-startup FILE]
 ```
 
-LEVEL is `trace`, `debug`, `info`, `warn` or `error`; both default to `info`. `--locale` picks the UI language (default: the system's; `qps-ploc` for the pseudo-locale). Unknown options are logged and ignored.
+LEVEL is `trace`, `debug`, `info`, `warn` or `error`; both default to `info`. `--locale` picks the UI language (default: the system's; `qps-ploc` for the pseudo-locale). `--theme` forces the light or dark theme (default: follow the system). `--open` plays a video at once, muted. `--measure-startup` writes the wall-clock times of startup steps (process start, page script, window shown, engine ready, first video frame with `--open`) to FILE as JSON, then closes the app.
+
+## Look and video
+
+Light and dark themes follow the system (`src/theme/tokens.css`). Status colors come from the Okabe-Ito palette and each state also has its own icon shape and words. `npm run contrast:check` checks the theme's text and icon colors against WCAG AA in both themes. Layout uses logical CSS properties, so a right-to-left language mirrors it.
+
+"Open video…" opens a native file dialog from the shell, which then allows that one file and no other. On Linux the video plays from a `file://` URL, since WebKitGTK cannot play the asset protocol; on Windows it uses the asset protocol. Linux needs a GStreamer H.264 decoder (see Prerequisites). Unknown options are logged and ignored.
 
 ## Logs
 
