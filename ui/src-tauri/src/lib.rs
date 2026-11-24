@@ -77,7 +77,12 @@ fn show_window(window: &WebviewWindow, shown: &Shown, why: &str) {
 /// report.
 fn mark(app: &tauri::AppHandle, name: &str) {
     if app.state::<Startup>().mark(name) {
-        close(app);
+        // The same path as the user closing the window.
+        if let Some(window) = app.get_webview_window("main") {
+            if let Err(error) = window.close() {
+                log::error!("could not close the window: {error}");
+            }
+        }
     }
 }
 
@@ -144,24 +149,23 @@ fn engine_restart(engine: tauri::State<'_, Engine>) {
 /// start a second shutdown.
 struct Closing(AtomicBool);
 
-/// Closing the window hides it at once, shuts the engine down (shutdown,
-/// then a kill after the timeout), and then exits.
+/// Closing the window lets it close at once and shuts the engine down
+/// (shutdown, then a kill after the timeout) on a thread; the app's exit
+/// waits for that thread. The window is never hidden and kept: on Windows,
+/// exiting with a hidden window left the event loop stuck.
 fn close(app: &tauri::AppHandle) {
     if app.state::<Closing>().0.swap(true, Ordering::SeqCst) {
         return;
     }
     log::info!("window closed; shutting the engine down");
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
-    }
     let app = app.clone();
     std::thread::spawn(move || {
         app.state::<Engine>().shutdown();
         log::debug!("asking the event loop to exit");
         app.exit(0);
         // The engine is already down, so a stuck event loop must not keep a
-        // hidden process alive: it would hold the webview profile and stall
-        // the next start.
+        // windowless process alive: it would hold the webview profile and
+        // stall the next start.
         std::thread::sleep(EXIT_WATCHDOG);
         log::warn!(
             "the event loop did not exit within {} s; ending the process with code {EXIT_FORCED}",
@@ -306,19 +310,7 @@ pub fn run() -> i32 {
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| setup(app, transcript, startup, open))
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Once closing has begun, a further request (the exit
-                // itself closing the window) is let through.
-                if window
-                    .app_handle()
-                    .state::<Closing>()
-                    .0
-                    .load(Ordering::SeqCst)
-                {
-                    log::debug!("close requested again while closing; allowing it");
-                    return;
-                }
-                api.prevent_close();
+            if let WindowEvent::CloseRequested { .. } = event {
                 close(window.app_handle());
             }
         })
@@ -341,8 +333,15 @@ pub fn run() -> i32 {
         }
     };
     let code = app.run_return(|app, event| {
-        if let RunEvent::ExitRequested { code, .. } = &event {
-            log::debug!("exit requested (code {code:?})");
+        if let RunEvent::ExitRequested { code, api, .. } = &event {
+            // The last window closing asks to exit with no code; the
+            // shutdown thread asks again with code 0 once the engine is down.
+            if code.is_none() && app.state::<Closing>().0.load(Ordering::SeqCst) {
+                log::debug!("window gone; waiting for the engine to stop");
+                api.prevent_exit();
+            } else {
+                log::debug!("exit requested (code {code:?})");
+            }
         }
         if let RunEvent::Exit = event {
             log::debug!("event loop exiting");
