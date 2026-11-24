@@ -23,7 +23,7 @@ jobs:
   linux:
     name: tests (linux, full suite)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -31,8 +31,21 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
+      # The Ubuntu mirror is sometimes slow enough to take most of the job,
+      # so the downloaded packages are cached and reused on later runs.
+      # Recommends (hardware video drivers and the like) are left out.
+      - name: Restore ffmpeg packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: apt-ffmpeg-${{ runner.os }}-ubuntu-24.04-v1
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        timeout-minutes: 25
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" ffmpeg
+          sudo chown -R "$USER" ~/apt-archives
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
       - name: Run tests
@@ -52,10 +65,12 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
+      # The config commands read betaconfig through the detector modules,
+      # which import numpy and OpenCV; onnxruntime is not needed here.
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Run protocol, serve and stub client tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run protocol, serve, config and stub client tests
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_stub_client
 
   tests:
     if: always()

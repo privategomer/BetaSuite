@@ -18,7 +18,17 @@
     { "$ref": "#/$defs/protocol.hello_required" },
     { "$ref": "#/$defs/command.unknown" },
     { "$ref": "#/$defs/command.bad_params" },
-    { "$ref": "#/$defs/engine.internal" }
+    { "$ref": "#/$defs/engine.internal" },
+    { "$ref": "#/$defs/config.bad_type" },
+    { "$ref": "#/$defs/config.out_of_range" },
+    { "$ref": "#/$defs/config.bad_choice" },
+    { "$ref": "#/$defs/config.rule" },
+    { "$ref": "#/$defs/config.invalid" },
+    { "$ref": "#/$defs/config.unknown_key" },
+    { "$ref": "#/$defs/config.not_settable" },
+    { "$ref": "#/$defs/config.local_off" },
+    { "$ref": "#/$defs/config.local_unparsable" },
+    { "$ref": "#/$defs/config.local_unwritable" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -128,6 +138,141 @@
           "type": "object",
           "required": [ "exception_type" ],
           "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.bad_type": {
+      "description": "A value is the wrong kind. path is the dotted setting path; expected is its registry kind (int, number, bool, choice, ...).",
+      "properties": {
+        "code": { "const": "config.bad_type" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "expected" ],
+          "properties": { "path": { "type": "string" }, "expected": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.out_of_range": {
+      "description": "A number is outside its range. minimum or maximum is null where there is no bound; min_open and max_open say that bound itself is excluded; odd says the number must be odd.",
+      "properties": {
+        "code": { "const": "config.out_of_range" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "minimum", "maximum", "min_open", "max_open", "odd" ],
+          "properties": {
+            "path": { "type": "string" },
+            "minimum": { "type": [ "number", "null" ] },
+            "maximum": { "type": [ "number", "null" ] },
+            "min_open": { "type": "boolean" },
+            "max_open": { "type": "boolean" },
+            "odd": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.bad_choice": {
+      "description": "A value is not one of its choices.",
+      "properties": {
+        "code": { "const": "config.bad_choice" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "choices" ],
+          "properties": { "path": { "type": "string" }, "choices": { "type": "array" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.rule": {
+      "description": "A check between values, or of a structure, failed. rule is a stable id (area.what); path is the setting it is about, or empty.",
+      "properties": {
+        "code": { "const": "config.rule" },
+        "params": {
+          "type": "object",
+          "required": [ "rule", "path" ],
+          "properties": {
+            "rule": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+            "path": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.invalid": {
+      "description": "A change was not made because the result would fail validation. Each problem is a config.bad_type, config.out_of_range, config.bad_choice or config.rule error.",
+      "properties": {
+        "code": { "const": "config.invalid" },
+        "params": {
+          "type": "object",
+          "required": [ "problems" ],
+          "properties": {
+            "problems": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [ "code", "params" ],
+                "oneOf": [
+                  { "$ref": "#/$defs/config.bad_type" },
+                  { "$ref": "#/$defs/config.out_of_range" },
+                  { "$ref": "#/$defs/config.bad_choice" },
+                  { "$ref": "#/$defs/config.rule" }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.unknown_key": {
+      "description": "No setting has this path. suggestion is the closest real path, or null.",
+      "properties": {
+        "code": { "const": "config.unknown_key" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "suggestion" ],
+          "properties": { "path": { "type": "string" }, "suggestion": { "type": [ "string", "null" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.not_settable": {
+      "description": "The path is inside a value that is set whole (a censor style, a rule list); setting is that value's path.",
+      "properties": {
+        "code": { "const": "config.not_settable" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "setting" ],
+          "properties": { "path": { "type": "string" }, "setting": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.local_off": {
+      "description": "The local config is turned off (BETASUITE_LOCAL_CONFIG=none), so nothing can be written.",
+      "properties": {
+        "code": { "const": "config.local_off" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "config.local_unparsable": {
+      "description": "The local config file does not parse, so it cannot be edited safely; nothing was written.",
+      "properties": {
+        "code": { "const": "config.local_unparsable" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "config.local_unwritable": {
+      "description": "The local config file could not be written. reason is the error's name, such as EACCES.",
+      "properties": {
+        "code": { "const": "config.local_unwritable" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "type": "string" } },
           "additionalProperties": false
         }
       }

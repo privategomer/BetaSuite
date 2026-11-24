@@ -74,6 +74,18 @@ ERRORS = {
     'command.unknown':              ( 'name', ),
     'command.bad_params':           ( 'field', 'reason' ),
     'engine.internal':              ( 'exception_type', ),
+    # config.*: a value's problem (alone, or inside config.invalid)
+    'config.bad_type':              ( 'path', 'expected' ),
+    'config.out_of_range':          ( 'path', 'minimum', 'maximum', 'min_open', 'max_open', 'odd' ),
+    'config.bad_choice':            ( 'path', 'choices' ),
+    'config.rule':                  ( 'rule', 'path' ),
+    # config.*: why a command changed nothing
+    'config.invalid':               ( 'problems', ),
+    'config.unknown_key':           ( 'path', 'suggestion' ),
+    'config.not_settable':          ( 'path', 'setting' ),
+    'config.local_off':             (),
+    'config.local_unparsable':      (),
+    'config.local_unwritable':      ( 'reason', ),
 }
 
 # Values of the 'reason' parameter.

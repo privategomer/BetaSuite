@@ -11,41 +11,32 @@ Orchestration for the main entry point, validate_config():
                                               # warnings list - printed but
                                               # never aborts the run
             -> _validate_class_suppression_zero_margin
-        -> _collect_validation_errors()      # runs every sub-validator below,
+        -> _collect_validation_errors()      # runs every check below,
                                               # each appending to one shared
                                               # errors list
-            -> _validate_items_to_censor
-            -> _validate_class_suppression
-            -> _validate_item_overrides
-            -> _validate_backend_item_overrides
-            -> _validate_default_censor_style
-            -> _validate_default_censor_shape
-            -> _validate_type_default_shapes
-            -> _validate_censor_overlap_strategy_coverage
-            -> _validate_video_censor_fps
-            -> _validate_picture_sizes
-            -> _validate_input_delete_probability_range
-            -> _validate_encode_preset
-            -> _validate_preview_settings
-            -> _validate_logging_settings
-            -> _validate_stats_settings
-            -> _validate_nn_batch_size
-            -> _validate_min_prob_floor_consistency
-            -> _validate_checkpoint_and_chunk_settings
-            -> ... (render, backend checks)
-            -> _validate_reverse
+            -> _validate_registry            # every registered value's kind,
+                                              # range and choices, from
+                                              # betautils_settings
+            -> _validate_items_to_censor ... _validate_local_config
+                                              # what the registry cannot say
+                                              # about one value alone: rules
+                                              # between values, unknown keys,
+                                              # structures (styles, rules,
+                                              # profiles), files on disk
         -> prints warnings (if any), then prints + raises SystemExit(1) if
            _collect_validation_errors returned anything, otherwise returns
            None
 
-Splitting validation into one function per concern (rather than one long
-function) is meant to make it easy to find "the code that checks X" when
-X turns out to be wrong, and to make it safe to add a new check without
-wading through unrelated ones. Every sub-validator appends error strings
-into a single shared `errors` list, mirroring exactly how the original
-single-function implementation built up that same list - the point of
-this file is to check that same set of things in the same order, not to
-change what's checked.
+Each error is a betautils_settings.Problem: its English text for the CLI
+and the log, plus a code and params for the engine protocol, which never
+sends sentences. A registry check's code says what was wrong
+(config.bad_type, config.out_of_range, config.bad_choice); every other
+check's code is config.rule with a stable rule id ('area.what') given
+where the error is raised.
+
+A limit is stated once, in the registry. The style, rule and per-label
+checks here read its field tables rather than keeping their own, so the
+app's sliders and menus and the CLI's validation cannot disagree.
 """
 
 import os
@@ -58,6 +49,7 @@ import betautils_detector as bu_detector
 import betautils_local as bu_local
 import betautils_paths as bu_paths
 import betautils_reverse as bu_reverse
+import betautils_settings as bu_settings
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +169,16 @@ def get_label_settings( label, backend_name=None ):
         'geometry_action':    override.get( 'geometry_action',
                                             getattr( betaconfig, 'default_geometry_action',
                                                      _geometry_action_default() ) ),
+        # Tracking reads these three per label too (betautils_track's
+        # per-label settings). They were missing here, so the censor key
+        # did not move when one changed at the backend or model-variant
+        # tier, and the old render was reused as the new result.
+        'size_smoothing':     override.get( 'size_smoothing',
+                                            getattr( betaconfig, 'default_size_smoothing', None ) ),
+        'style_min_dwell_seconds': override.get(
+            'style_min_dwell_seconds', getattr( betaconfig, 'default_style_min_dwell_seconds', 0.0 ) ),
+        'paired_style_max_age': override.get(
+            'paired_style_max_age', getattr( betaconfig, 'default_paired_style_max_age', 1.0 ) ),
     }
     # Present only while set, so adding the setting left every existing
     # render's censor key, and so every finished output, valid.
@@ -380,15 +382,16 @@ def _valid_class_names():
     return( set( betaconst.classes.keys() ) )
 
 
-VALID_CENSOR_STYLES = { 'blur', 'pixel', 'bar', 'sticker', 'debug' }
-VALID_CENSOR_SHAPES = { 'box', 'circle', 'ellipse' }
-VALID_BLUR_METHODS = { 'gaussian', 'box', 'triple_box' }
-VALID_PIXEL_PATTERNS = { 'square', 'mosaic', 'hex' }
+# The registry's vocabulary, under the names the rest of the code uses.
+VALID_CENSOR_STYLES = set( bu_settings.CENSOR_STYLE_TYPES )
+VALID_CENSOR_SHAPES = set( bu_settings.CENSOR_SHAPES )
+VALID_BLUR_METHODS = set( bu_settings.BLUR_METHODS )
+VALID_PIXEL_PATTERNS = set( bu_settings.PIXEL_PATTERNS )
 # same vocabulary as censor_overlap_strategy's values (betaconfig.py) - a
 # style dict's own 'merge' key overrides the type-level default there for
 # just this one style variant. See collapse_boxes_for_style in
 # betautils_censor.py.
-VALID_MERGE_STRATEGIES = { 'none', 'single-pass', 'span' }
+VALID_MERGE_STRATEGIES = set( bu_settings.MERGE_STRATEGIES )
 VALID_ENCODE_PRESETS = { 'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow' }
 NVENC_PRESETS = frozenset( 'p%d'%( number, ) for number in range( 1, 8 ) )
 
@@ -421,8 +424,9 @@ TYPE_SPECIFIC_KEYS = {
 
 def _check_style_common_fields( style, style_type, where, errors ):
     """
-    Validate the fields every censor style dict may carry, regardless of
-    its 'type' (feather, weight, shape, merge, width/height_area_safety).
+    The keys every censor style dict may carry, whatever its type
+    (feather, weight, shape, merge, width/height_area_safety), against
+    bu_settings.STYLE_COMMON_FIELDS; unknown keys for its type.
 
     Args:
         style: The style dict being validated.
@@ -434,78 +438,15 @@ def _check_style_common_fields( style, style_type, where, errors ):
     allowed_keys = COMMON_STYLE_KEYS | TYPE_SPECIFIC_KEYS.get( style_type, set() )
     unknown_keys = set(style.keys()) - allowed_keys
     if unknown_keys:
-        errors.append( "%s has unrecognized key(s) %s for type '%s', likely a typo (valid keys: %s)"%(where, sorted(unknown_keys), style_type, sorted(allowed_keys)) )
-
-    if 'feather' in style:
-        feather = style['feather']
-        if not isinstance( feather, (int, float) ) or not (0 <= feather <= 1):
-            errors.append( "%s['feather'] must be a number between 0 and 1, got %r"%(where, feather) )
-    if 'weight' in style:
-        weight = style['weight']
-        if not isinstance( weight, (int, float) ) or weight < 0:
-            errors.append( "%s['weight'] must be a non-negative number, got %r"%(where, weight) )
-    if 'shape' in style and style['shape'] not in VALID_CENSOR_SHAPES:
-        errors.append( "%s['shape'] = '%s' is not one of %s"%(where, style['shape'], sorted(VALID_CENSOR_SHAPES)) )
-    if 'merge' in style and style['merge'] not in VALID_MERGE_STRATEGIES:
-        errors.append( "%s['merge'] = '%s' is not one of %s"%(where, style['merge'], sorted(VALID_MERGE_STRATEGIES)) )
-    if 'width_area_safety' in style and not isinstance( style['width_area_safety'], (int, float) ):
-        errors.append( "%s['width_area_safety'] must be a number, got %r"%(where, style['width_area_safety']) )
-    if 'height_area_safety' in style and not isinstance( style['height_area_safety'], (int, float) ):
-        errors.append( "%s['height_area_safety'] must be a number, got %r"%(where, style['height_area_safety']) )
+        errors.append( bu_settings.rule( 'style.unknown_keys', "%s has unrecognized key(s) %s for type '%s', likely a typo (valid keys: %s)"%(where, sorted(unknown_keys), style_type, sorted(allowed_keys)) ) )
+    _check_fields( style, bu_settings.STYLE_COMMON_FIELDS, where, errors, skip=( 'type', ) )
 
 
-def _check_blur_style_fields( style, where, errors ):
-    """Validate 'method'/'strength', the fields specific to type: 'blur'."""
-    if 'method' in style and style['method'] not in VALID_BLUR_METHODS:
-        errors.append( "%s['method'] = '%s' is not one of %s"%(where, style['method'], sorted(VALID_BLUR_METHODS)) )
-    if 'strength' in style and not isinstance( style['strength'], (int, float) ):
-        errors.append( "%s['strength'] must be a number, got %r"%(where, style['strength']) )
-
-
-def _check_pixel_style_fields( style, where, errors ):
-    """Validate 'pattern'/'strength', the fields specific to type: 'pixel'."""
-    if 'pattern' in style and style['pattern'] not in VALID_PIXEL_PATTERNS:
-        errors.append( "%s['pattern'] = '%s' is not one of %s"%(where, style['pattern'], sorted(VALID_PIXEL_PATTERNS)) )
-    if 'strength' in style and not isinstance( style['strength'], (int, float) ):
-        errors.append( "%s['strength'] must be a number, got %r"%(where, style['strength']) )
-
-
-def _check_bar_style_fields( style, where, errors ):
-    """Validate 'color'/'span_extend'/'thickness', specific to type: 'bar'."""
-    if 'color' in style and not ( isinstance( style['color'], (list, tuple) ) and len(style['color']) == 3 ):
-        errors.append( "%s['color'] must be an (r,g,b) tuple, got %r"%(where, style['color']) )
-    if 'span_extend' in style:
-        span_extend = style['span_extend']
-        if not isinstance( span_extend, (int, float) ) or not (0 <= span_extend <= 1):
-            errors.append( "%s['span_extend'] must be a number between 0 (tight) and 1 (full frame width), got %r"%(where, span_extend) )
-    if 'thickness' in style:
-        thickness = style['thickness']
-        # >1 is legitimately allowed (grows the bar past the detection
-        # box, clamped to the frame - see bar_image in
-        # betautils_censor.py), but a very large value is almost always
-        # a typo (e.g. 35 meant to be 0.35) rather than intentional, so
-        # it's flagged rather than silently accepted.
-        if not isinstance( thickness, (int, float) ) or not (0 < thickness <= 3):
-            errors.append( "%s['thickness'] must be a number greater than 0 (fraction of the box height the bar covers; 1.0 = full box, <1 = thinner, up to 3 = allowed but almost certainly not what you meant), got %r"%(where, thickness) )
-
-
-def _check_sticker_style_fields( style, where, errors ):
-    """Validate 'dir'/'images'/'scale', the fields specific to type: 'sticker'."""
-    if 'dir' not in style and 'images' not in style:
-        errors.append( "%s must set 'dir' and/or 'images' so there's something to composite"%(where) )
-    if 'scale' in style and not isinstance( style['scale'], (int, float) ):
-        errors.append( "%s['scale'] must be a number, got %r"%(where, style['scale']) )
-
-
-# Type-specific field checkers, dispatched by style['type'] - 'debug'
-# intentionally has no entry here since its only type-specific key
-# ('color') is a plain tuple with no further constraints worth checking.
-_TYPE_SPECIFIC_CHECKERS = {
-    'blur':    _check_blur_style_fields,
-    'pixel':   _check_pixel_style_fields,
-    'bar':     _check_bar_style_fields,
-    'sticker': _check_sticker_style_fields,
-}
+def _check_type_fields( style, style_type, where, errors ):
+    """The keys one style type adds, against bu_settings.STYLE_TYPE_FIELDS."""
+    _check_fields( style, bu_settings.STYLE_TYPE_FIELDS.get( style_type, {} ), where, errors )
+    if style_type == 'sticker' and 'dir' not in style and 'images' not in style:
+        errors.append( bu_settings.rule( 'style.sticker_needs_images', "%s must set 'dir' and/or 'images' so there's something to composite"%(where) ) )
 
 
 def _check_one_style_dict( style, where, errors ):
@@ -521,21 +462,19 @@ def _check_one_style_dict( style, where, errors ):
         errors: Shared list of error strings to append to.
     """
     if not isinstance( style, dict ):
-        errors.append( "%s must be a dict like {'type': 'blur', ...}, got %r"%(where, style) )
+        errors.append( bu_settings.rule( 'style.not_a_mapping', "%s must be a dict like {'type': 'blur', ...}, got %r"%(where, style) ) )
         return
     if 'type' not in style:
-        errors.append( "%s is missing required key 'type'"%(where) )
+        errors.append( bu_settings.rule( 'style.missing_type', "%s is missing required key 'type'"%(where) ) )
         return
     style_type = style['type']
     if style_type not in VALID_CENSOR_STYLES:
-        errors.append( "%s has unknown censor style type '%s' (valid: %s)"%(where, style_type, sorted(VALID_CENSOR_STYLES)) )
+        errors.append( bu_settings.rule( 'style.unknown_type', "%s has unknown censor style type '%s' (valid: %s)"%(where, style_type, sorted(VALID_CENSOR_STYLES)) ) )
         return
 
     _check_style_common_fields( style, style_type, where, errors )
 
-    type_specific_checker = _TYPE_SPECIFIC_CHECKERS.get( style_type )
-    if type_specific_checker is not None:
-        type_specific_checker( style, where, errors )
+    _check_type_fields( style, style_type, where, errors )
 
 
 def _check_censor_style( style, where, errors ):
@@ -552,7 +491,7 @@ def _check_censor_style( style, where, errors ):
     """
     if isinstance( style, list ):
         if not style:
-            errors.append( "%s is an empty list - needs at least one style dict"%(where) )
+            errors.append( bu_settings.rule( 'style.empty_list', "%s is an empty list - needs at least one style dict"%(where) ) )
         for idx, one_style in enumerate( style ):
             _check_one_style_dict( one_style, "%s[%d]"%(where, idx), errors )
     else:
@@ -585,7 +524,7 @@ def _check_window_style( style, where, errors ):
     """
     if isinstance( style, list ):
         if not style:
-            errors.append( "%s is an empty list - needs at least one style dict"%( where, ) )
+            errors.append( bu_settings.rule( 'reverse_window_style.empty_list', "%s is an empty list - needs at least one style dict"%( where, ) ) )
         entries = [ ( "%s[%d]"%( where, index ), one ) for index, one in enumerate( style ) ]
     else:
         entries = [ ( where, style ) ]
@@ -593,37 +532,34 @@ def _check_window_style( style, where, errors ):
         if isinstance( one, dict ) and one.get( 'type' ) == 'show':
             unknown = set( one ) - SHOW_STYLE_KEYS
             if unknown:
-                errors.append( "%s has unrecognized key(s) %s for type 'show' (valid keys: %s)"%(
-                    entry_where, sorted( unknown ), sorted( SHOW_STYLE_KEYS ) ) )
+                errors.append( bu_settings.rule( 'reverse_window_style.unknown_keys', "%s has unrecognized key(s) %s for type 'show' (valid keys: %s)"%(
+                    entry_where, sorted( unknown ), sorted( SHOW_STYLE_KEYS ) ) ) )
             known = { key: value for key, value in one.items() if key in SHOW_STYLE_KEYS }
             _check_style_common_fields( known, 'show', entry_where, errors )
         else:
-            errors.append( "%s is %r, but a window is always uncensored: its style can only be "
+            errors.append( bu_settings.rule( 'reverse_window_style.not_show', "%s is %r, but a window is always uncensored: its style can only be "
                            "{'type': 'show', ...}. To censor this label in reverse mode, add it to "
-                           "reverse['censor'] instead"%( entry_where, one ) )
+                           "reverse['censor'] instead"%( entry_where, one ) ) )
 
 
 def _check_reverse_frame_style( frame_style, errors ):
     where = "reverse['frame_style']"
     if not isinstance( frame_style, dict ):
-        errors.append( "%s must be one style dict like {'type': 'blur', ...}, got %r"%(
-            where, frame_style ) )
+        errors.append( bu_settings.rule( 'reverse_frame_style.not_a_mapping', "%s must be one style dict like {'type': 'blur', ...}, got %r"%(
+            where, frame_style ) ) )
         return
     style_type = frame_style.get( 'type' )
     if style_type not in REVERSE_FRAME_STYLE_TYPES:
-        errors.append( "%s['type'] = %r can't be a frame style (valid: %s); stickers, 'show' and "
+        errors.append( bu_settings.rule( 'reverse_frame_style.bad_type', "%s['type'] = %r can't be a frame style (valid: %s); stickers, 'show' and "
                        "'debug' only make sense on a window"%(
-                           where, style_type, sorted( REVERSE_FRAME_STYLE_TYPES ) ) )
+                           where, style_type, sorted( REVERSE_FRAME_STYLE_TYPES ) ) ) )
         return
     variant = frame_style.get( 'method' ) or frame_style.get( 'pattern' )
     if ( style_type, variant ) in REVERSE_FRAME_STYLES_TOO_SLOW:
-        errors.append( "%s %s/%s is too slow over a whole frame (measured 0.9 to 4.8 s per 4K frame "
+        errors.append( bu_settings.rule( 'reverse_frame_style.too_slow', "%s %s/%s is too slow over a whole frame (measured 0.9 to 4.8 s per 4K frame "
                        "on one core); use blur 'triple_box' or 'box', or pixel 'mosaic'"%(
-                           where, style_type, variant ) )
-    dim = frame_style.get( 'dim', 0 )
-    if isinstance( dim, bool ) or not isinstance( dim, ( int, float ) ) or not 0 <= dim <= 1:
-        errors.append( "%s['dim'] must be a number from 0 (no dimming) to 1 (black), got %r"%(
-            where, dim ) )
+                           where, style_type, variant ) ) )
+    _check_fields( frame_style, bu_settings.FRAME_STYLE_EXTRA_FIELDS, where, errors )
     _check_one_style_dict( { key: value for key, value in frame_style.items() if key != 'dim' },
                            where, errors )
 
@@ -631,87 +567,70 @@ def _check_reverse_frame_style( frame_style, errors ):
 def _check_reverse_trigger( trigger, valid_classes, errors ):
     where = "reverse['trigger']"
     if not isinstance( trigger, dict ):
-        errors.append( "%s must be a dict, got %r"%( where, trigger ) )
+        errors.append( bu_settings.rule( 'reverse_trigger.not_a_mapping', "%s must be a dict, got %r"%( where, trigger ) ) )
         return
     unknown = set( trigger ) - REVERSE_TRIGGER_KEYS
     if unknown:
-        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
-            where, sorted( unknown ), sorted( REVERSE_TRIGGER_KEYS ) ) )
+        errors.append( bu_settings.rule( 'reverse_trigger.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_TRIGGER_KEYS ) ) ) )
     labels = trigger.get( 'labels' )
-    if labels is not None:
-        if not isinstance( labels, ( list, tuple ) ) or not labels:
-            errors.append( "%s['labels'] must be None (every censored label) or a non-empty list of "
-                           "class names, got %r"%( where, labels ) )
-        else:
-            for label in labels:
-                if label not in valid_classes:
-                    errors.append( "%s['labels'] contains unknown class %r"%( where, label ) )
+    if isinstance( labels, ( list, tuple ) ) and not labels:
+        errors.append( bu_settings.rule( 'reverse_trigger.empty_list', "%s['labels'] must be None (every censored label) or a non-empty list of "
+                       "class names, got %r"%( where, labels ) ) )
     if 'min_prob' in trigger:
         min_prob = trigger['min_prob']
         global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
         if ( not isinstance( min_prob, ( int, float ) ) or isinstance( min_prob, bool )
                 or not ( 0 <= min_prob < 1 ) ):
-            errors.append( "%s['min_prob'] must be a number from 0 up to (not including) 1, got %r"%(
-                where, min_prob ) )
+            pass   # the registry reports it
         elif isinstance( global_min_prob, ( int, float ) ) and min_prob < global_min_prob:
-            errors.append( "%s['min_prob'] (%r) is below global_min_prob (%r). Detections under the "
+            errors.append( bu_settings.rule( 'reverse_trigger.below_floor', "%s['min_prob'] (%r) is below global_min_prob (%r). Detections under the "
                            "floor are never stored, so the trigger would silently use the floor; set "
-                           "it at or above global_min_prob"%( where, min_prob, global_min_prob ) )
-    if 'hold_seconds' in trigger:
-        hold = trigger['hold_seconds']
-        if not isinstance( hold, ( int, float ) ) or isinstance( hold, bool ) or hold < 0:
-            errors.append( "%s['hold_seconds'] must be a number of seconds >= 0, got %r"%(
-                where, hold ) )
+                           "it at or above global_min_prob"%( where, min_prob, global_min_prob ) ) )
 
 
 def _check_reverse_censor( censor, windows, valid_classes, errors ):
     where = "reverse['censor']"
     if not isinstance( censor, dict ):
-        errors.append( "%s must be a dict like {'labels': None, 'overrides': {}}, got %r"%(
-            where, censor ) )
+        errors.append( bu_settings.rule( 'reverse_censor.not_a_mapping', "%s must be a dict like {'labels': None, 'overrides': {}}, got %r"%(
+            where, censor ) ) )
         return
     unknown = set( censor ) - REVERSE_CENSOR_KEYS
     if unknown:
-        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
-            where, sorted( unknown ), sorted( REVERSE_CENSOR_KEYS ) ) )
+        errors.append( bu_settings.rule( 'reverse_censor.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_CENSOR_KEYS ) ) ) )
     labels = censor.get( 'labels' )
     if labels is None:
         labels = list( getattr( betaconfig, 'items_to_censor', [] ) )
     elif not isinstance( labels, ( list, tuple ) ):
-        errors.append( "%s['labels'] must be None (items_to_censor) or a list of class names, "
-                       "got %r"%( where, labels ) )
-        labels = []
-    else:
-        for label in labels:
-            if label not in valid_classes:
-                errors.append( "%s['labels'] contains unknown class %r"%( where, label ) )
+        labels = []   # the registry reports it
     if isinstance( windows, dict ):
         both = sorted( set( labels ) & set( windows ) )
         if both:
-            errors.append( "%s %s: a label can't be both a window (shown) and censored. Remove it "
+            errors.append( bu_settings.rule( 'reverse_censor.window_and_censored', "%s %s: a label can't be both a window (shown) and censored. Remove it "
                            "from reverse['windows'] or from the censored labels%s"%(
                                'label' if len( both ) == 1 else 'labels', both,
-                               " (None means items_to_censor)" if censor.get( 'labels' ) is None else '' ) )
+                               " (None means items_to_censor)" if censor.get( 'labels' ) is None else '' ) ) )
     overrides = censor.get( 'overrides', {} )
     if not isinstance( overrides, dict ):
-        errors.append( "%s['overrides'] must be a dict of {label: settings}, got %r"%( where, overrides ) )
+        errors.append( bu_settings.rule( 'reverse_censor.not_a_mapping', "%s['overrides'] must be a dict of {label: settings}, got %r"%( where, overrides ) ) )
         return
     allowed = bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS | bu_reverse.LOOK_KEYS
     for label, entry in overrides.items():
         entry_where = "%s['overrides']['%s']"%( where, label )
         if label not in labels:
-            errors.append( "%s: '%s' is not a censored label, so this override would never apply "
-                           "(censored: %s)"%( entry_where, label, sorted( labels ) ) )
+            errors.append( bu_settings.rule( 'reverse_censor.override_not_censored', "%s: '%s' is not a censored label, so this override would never apply "
+                           "(censored: %s)"%( entry_where, label, sorted( labels ) ) ) )
             continue
         if not isinstance( entry, dict ):
-            errors.append( "%s must be a dict, got %r"%( entry_where, entry ) )
+            errors.append( bu_settings.rule( 'reverse_censor.not_a_mapping', "%s must be a dict, got %r"%( entry_where, entry ) ) )
             continue
         unknown = set( entry ) - allowed
         if unknown:
-            errors.append( "%s has unrecognized key(s) %s (valid: censor_style, censor_shape and "
+            errors.append( bu_settings.rule( 'reverse_censor.unknown_keys', "%s has unrecognized key(s) %s (valid: censor_style, censor_shape and "
                            "the backend-tunable keys %s)"%(
                                entry_where, sorted( unknown ),
-                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) )
+                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) ) )
         _check_item_override_values( { key: value for key, value in entry.items() if key in allowed },
                                      entry_where, errors )
 
@@ -719,52 +638,34 @@ def _check_reverse_censor( censor, windows, valid_classes, errors ):
 def _check_reverse_person_windows( person_windows, valid_classes, errors ):
     where = "reverse['person_windows']"
     if not isinstance( person_windows, dict ):
-        errors.append( "%s must be a dict, got %r"%( where, person_windows ) )
+        errors.append( bu_settings.rule( 'person_windows.not_a_mapping', "%s must be a dict, got %r"%( where, person_windows ) ) )
         return
     unknown = set( person_windows ) - REVERSE_PERSON_WINDOW_KEYS
     if unknown:
-        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
-            where, sorted( unknown ), sorted( REVERSE_PERSON_WINDOW_KEYS ) ) )
-    if 'enabled' in person_windows and not isinstance( person_windows['enabled'], bool ):
-        errors.append( "%s['enabled'] must be True/False, got %r"%( where, person_windows['enabled'] ) )
+        errors.append( bu_settings.rule( 'person_windows.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
+            where, sorted( unknown ), sorted( REVERSE_PERSON_WINDOW_KEYS ) ) ) )
     label_sets = {}
     for key in ( 'male_labels', 'female_labels' ):
         labels = person_windows.get( key, bu_reverse.DEFAULTS['person_windows'][key] )
         if key not in person_windows:
             label_sets[key] = set( labels )
             continue
-        if not isinstance( labels, ( list, tuple ) ) or not labels:
-            errors.append( "%s['%s'] must be a non-empty list of class names, got %r"%( where, key, labels ) )
+        if not isinstance( labels, ( list, tuple ) ):
+            continue   # the registry reports it
+        if not labels:
+            errors.append( bu_settings.rule( 'person_windows.empty_list', "%s['%s'] must be a non-empty list of class names, got %r"%( where, key, labels ) ) )
             continue
         label_sets[key] = set( labels )
-        for label in labels:
-            if label not in valid_classes:
-                errors.append( "%s['%s'] contains unknown class %r"%( where, key, label ) )
     both = label_sets.get( 'male_labels', set() ) & label_sets.get( 'female_labels', set() )
     if both:
-        errors.append( "%s: %s can't be male and female evidence at once"%( where, sorted( both ) ) )
+        errors.append( bu_settings.rule( 'person_windows.male_and_female', "%s: %s can't be male and female evidence at once"%( where, sorted( both ) ) ) )
     # key: (low, low allowed, high, high allowed); None = no bound
-    ranges = { 'evidence_min_prob': ( 0, True, 1, False ), 'track_iou': ( 0, False, 1, True ),
-               'track_max_gap_seconds': ( 0, True, None, True ), 'shrink': ( 0, True, 0.5, False ) }
-    for key, ( low, low_ok, high, high_ok ) in ranges.items():
-        if key not in person_windows:
-            continue
-        value = person_windows[key]
-        if not isinstance( value, ( int, float ) ) or isinstance( value, bool ):
-            errors.append( "%s['%s'] must be a number, got %r"%( where, key, value ) )
-            continue
-        too_low = value < low or ( value == low and not low_ok )
-        too_high = high is not None and ( value > high or ( value == high and not high_ok ) )
-        if too_low or too_high:
-            errors.append( "%s['%s'] = %r is out of range (%s%s to %s%s)"%(
-                where, key, value, low, '' if low_ok else ' exclusive',
-                'any' if high is None else high, '' if high_ok or high is None else ' exclusive' ) )
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     floor = person_windows.get( 'evidence_min_prob' )
     if ( isinstance( floor, ( int, float ) ) and isinstance( global_min_prob, ( int, float ) )
             and floor < global_min_prob ):
-        errors.append( "%s['evidence_min_prob'] (%r) is below global_min_prob (%r): detections under the "
-                       "floor are never stored"%( where, floor, global_min_prob ) )
+        errors.append( bu_settings.rule( 'person_windows.below_floor', "%s['evidence_min_prob'] (%r) is below global_min_prob (%r): detections under the "
+                       "floor are never stored"%( where, floor, global_min_prob ) ) )
 
 
 def _validate_person_backend( errors ):
@@ -776,21 +677,21 @@ def _validate_person_backend( errors ):
     block = getattr( betaconfig, 'person_backend', None )
     if block is not None:
         if not isinstance( block, dict ):
-            errors.append( "person_backend must be a dict, got %r"%( block, ) )
+            errors.append( bu_settings.rule( 'person_backend.not_a_mapping', "person_backend must be a dict, got %r"%( block, ) ) )
             return
         for key, entry in block.items():
             if key == 'selected':
                 continue
             if key not in bu_person.registered_backend_names():
-                errors.append( "person_backend has unknown backend %r (valid: %s)"%(
-                    key, bu_person.registered_backend_names() ) )
+                errors.append( bu_settings.rule( 'person_backend.unknown_keys', "person_backend has unknown backend %r (valid: %s)"%(
+                    key, bu_person.registered_backend_names() ) ) )
             elif not isinstance( entry, dict ):
-                errors.append( "person_backend[%r] must be a dict, got %r"%( key, entry ) )
+                errors.append( bu_settings.rule( 'person_backend.not_a_mapping', "person_backend[%r] must be a dict, got %r"%( key, entry ) ) )
     selected = bu_person.selected_backend_name()
     try:
         segmenter = bu_person.get_segmenter( selected )
     except ValueError as err:
-        errors.append( str( err ) )
+        errors.append( bu_settings.rule( 'person_backend.unknown_variant', str( err ) ) )
         return
     if not bu_reverse.person_windows_enabled():
         return
@@ -802,31 +703,31 @@ def _validate_person_backend( errors ):
     except ValueError:
         return
     if not os.path.exists( model_path ):
-        errors.append( "reverse['person_windows'] is on but the person model %s is missing. Run setup "
+        errors.append( bu_settings.rule( 'person_backend.model_missing', "reverse['person_windows'] is on but the person model %s is missing. Run setup "
                        "again (tools/setup/fetch_models.py exports it), or set "
-                       "reverse['person_windows']['enabled'] = False"%( model_path, ) )
+                       "reverse['person_windows']['enabled'] = False"%( model_path, ) ) )
 
 
 def _check_reverse_windows( windows, valid_classes, errors ):
     where_base = "reverse['windows']"
     if not isinstance( windows, dict ):
-        errors.append( "%s must be a dict of {label: window settings}, got %r"%( where_base, windows ) )
+        errors.append( bu_settings.rule( 'reverse_windows.not_a_mapping', "%s must be a dict of {label: window settings}, got %r"%( where_base, windows ) ) )
         return
     allowed = bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS | bu_reverse.LOOK_KEYS
     for label, entry in windows.items():
         where = "%s['%s']"%( where_base, label )
         if label not in valid_classes:
-            errors.append( "%s: '%s' is not a known class"%( where_base, label ) )
+            errors.append( bu_settings.rule( 'reverse_windows.unknown_label', "%s: '%s' is not a known class"%( where_base, label ) ) )
             continue
         if not isinstance( entry, dict ):
-            errors.append( "%s must be a dict ({} inherits every tuning key), got %r"%( where, entry ) )
+            errors.append( bu_settings.rule( 'reverse_windows.not_a_mapping', "%s must be a dict ({} inherits every tuning key), got %r"%( where, entry ) ) )
             continue
         unknown = set( entry ) - allowed
         if unknown:
-            errors.append( "%s has unrecognized key(s) %s (valid: censor_style (show only), "
+            errors.append( bu_settings.rule( 'reverse_windows.unknown_keys', "%s has unrecognized key(s) %s (valid: censor_style (show only), "
                            "censor_shape and the backend-tunable keys %s)"%(
                                where, sorted( unknown ),
-                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) )
+                               sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) ) )
         if 'censor_style' in entry:
             _check_window_style( entry['censor_style'], "%s['censor_style']"%( where, ), errors )
         tuning = { key: value for key, value in entry.items() if key not in bu_reverse.LOOK_KEYS }
@@ -845,23 +746,14 @@ def _validate_reverse( errors, valid_classes ):
     if block is None:
         return
     if not isinstance( block, dict ):
-        errors.append( "reverse must be a dict, got %r"%( block, ) )
+        errors.append( bu_settings.rule( 'reverse.not_a_mapping', "reverse must be a dict, got %r"%( block, ) ) )
         return
     unknown = set( block ) - REVERSE_KEYS
     if unknown:
-        errors.append( "reverse has unrecognized key(s) %s (valid: %s)"%(
-            sorted( unknown ), sorted( REVERSE_KEYS ) ) )
-    if 'enabled' in block and not isinstance( block['enabled'], bool ):
-        errors.append( "reverse['enabled'] must be True/False, got %r"%( block['enabled'], ) )
+        errors.append( bu_settings.rule( 'reverse.unknown_keys', "reverse has unrecognized key(s) %s (valid: %s)"%(
+            sorted( unknown ), sorted( REVERSE_KEYS ) ) ) )
     if 'frame_style' in block:
         _check_reverse_frame_style( block['frame_style'], errors )
-    if 'empty_frame' in block and block['empty_frame'] not in bu_reverse.EMPTY_FRAME_POLICIES:
-        errors.append( "reverse['empty_frame'] = %r is not one of %s"%(
-            block['empty_frame'], list( bu_reverse.EMPTY_FRAME_POLICIES ) ) )
-    if 'fade_seconds' in block:
-        fade = block['fade_seconds']
-        if not isinstance( fade, ( int, float ) ) or isinstance( fade, bool ) or fade < 0:
-            errors.append( "reverse['fade_seconds'] must be a number of seconds >= 0, got %r"%( fade, ) )
     if 'trigger' in block:
         _check_reverse_trigger( block['trigger'], valid_classes, errors )
     if 'windows' in block:
@@ -901,14 +793,9 @@ def _warn_reverse( warnings ):
 # --- Top-level betaconfig.py section validators -----------------------------
 
 def _validate_items_to_censor( errors, valid_classes ):
-    """Check that items_to_censor is defined and every entry is a real class."""
-    items_to_censor = getattr( betaconfig, 'items_to_censor', None )
-    if items_to_censor is None:
-        errors.append( "items_to_censor is not defined" )
-        return
-    for item in items_to_censor:
-        if item not in valid_classes:
-            errors.append( "items_to_censor contains unknown class '%s' (valid: %s)"%(item, sorted(valid_classes)) )
+    """items_to_censor is defined. Its type and labels are registry checks."""
+    if getattr( betaconfig, 'items_to_censor', None ) is None:
+        errors.append( bu_settings.rule( 'items_to_censor.missing', "items_to_censor is not defined" ) )
 
 
 def _validate_class_suppression( errors, valid_classes ):
@@ -941,10 +828,10 @@ def _validate_class_suppression( errors, valid_classes ):
     known_rule_keys = { 'suppressed_by', 'margin', 'min_iou' }
 
     if getattr( betaconfig, 'class_suppression', None ) is not None:
-        errors.append( "betaconfig.class_suppression is no longer read - label "
+        errors.append( bu_settings.rule( 'class_suppression.removed_setting', "betaconfig.class_suppression is no longer read - label "
             "vocabularies differ between models, so a shared ruleset can name classes a backend has "
             "never heard of. Move it into detector_backend[<name>]['class_suppression'], or delete "
-            "it. Leaving it here would silently do nothing." )
+            "it. Leaving it here would silently do nothing." ) )
 
     for backend_name in bu_detector.registered_backend_names():
         class_suppression = bu_detector.get_class_suppression( backend_name )
@@ -952,49 +839,48 @@ def _validate_class_suppression( errors, valid_classes ):
             is_list = isinstance( rules, list )
             where_base = "detector_backend[%r]['class_suppression']['%s']"%(backend_name, label)
             if label not in valid_classes:
-                errors.append( "%s: '%s' is not a known class (valid: %s)"%(
-                        "detector_backend[%r]['class_suppression']"%(backend_name), label, sorted(valid_classes)) )
+                errors.append( bu_settings.rule( 'class_suppression.unknown_label', "%s: '%s' is not a known class (valid: %s)"%(
+                        "detector_backend[%r]['class_suppression']"%(backend_name), label, sorted(valid_classes)) ) )
 
             rule_list = rules if is_list else [ rules ]
             seen_suppressors = []
             for idx, rule in enumerate( rule_list ):
                 where = "%s[%d]"%(where_base, idx) if is_list else where_base
                 if not isinstance( rule, dict ):
-                    errors.append( "%s must be a dict, got %r"%(where, rule) )
+                    errors.append( bu_settings.rule( 'class_suppression.not_a_mapping', "%s must be a dict, got %r"%(where, rule) ) )
                     continue
                 unknown_keys = set(rule.keys()) - known_rule_keys
                 if unknown_keys:
-                    errors.append( "%s has unrecognized key(s) %s, likely a typo (valid keys: %s)"%(where, sorted(unknown_keys), sorted(known_rule_keys)) )
+                    errors.append( bu_settings.rule( 'class_suppression.unknown_keys', "%s has unrecognized key(s) %s, likely a typo (valid keys: %s)"%(where, sorted(unknown_keys), sorted(known_rule_keys)) ) )
                 if 'suppressed_by' not in rule:
-                    errors.append( "%s is missing required key 'suppressed_by'"%(where) )
+                    errors.append( bu_settings.rule( 'class_suppression.missing_suppressed_by', "%s is missing required key 'suppressed_by'"%(where) ) )
                 elif rule['suppressed_by'] not in valid_classes:
-                    errors.append( "%s['suppressed_by'] = '%s' is not a known class (valid: %s)"%(where, rule['suppressed_by'], sorted(valid_classes)) )
+                    errors.append( bu_settings.rule( 'class_suppression.unknown_label', "%s['suppressed_by'] = '%s' is not a known class (valid: %s)"%(where, rule['suppressed_by'], sorted(valid_classes)) ) )
                 else:
                     if rule['suppressed_by'] in seen_suppressors:
-                        errors.append( "%s has more than one rule with suppressed_by='%s' - only one will ever match, merge them"%(where_base, rule['suppressed_by']) )
+                        errors.append( bu_settings.rule( 'class_suppression.duplicate_suppressor', "%s has more than one rule with suppressed_by='%s' - only one will ever match, merge them"%(where_base, rule['suppressed_by']) ) )
                     seen_suppressors.append( rule['suppressed_by'] )
                 if 'margin' not in rule:
-                    errors.append( "%s is missing required key 'margin' - a missing margin silently defaults to "
+                    errors.append( bu_settings.rule( 'class_suppression.missing_margin', "%s is missing required key 'margin' - a missing margin silently defaults to "
                         "0.0 (the loosest possible gate) in apply_class_suppression, not a neutral 'off' value, "
                         "so it must be set explicitly (see derive_suppression_rules.py's propose_margin if you "
-                        "need to derive one from real data)"%(where) )
-                elif not isinstance( rule['margin'], (int, float) ):
-                    errors.append( "%s['margin'] must be a number, got %r"%(where, rule['margin']) )
-                elif rule['margin'] < 0:
+                        "need to derive one from real data)"%(where) ) )
+                if isinstance( rule.get( 'margin' ), (int, float) ) and rule['margin'] < 0:
                     # apply_class_suppression's check is 'other[score] - raw[score] >= margin' - a
                     # negative margin lets the suppressing label be LESS confident than the label
                     # it's overriding and still win, inverting the entire "require better evidence
                     # to override a real detection" premise the margin gate exists for. No known
                     # legitimate use case - always an error,
                     # unlike margin=0.0, which is only a warning (see _validate_class_suppression_zero_margin).
-                    errors.append( "%s['margin'] = %r is negative - the suppressing label would be allowed to be "
+                    errors.append( bu_settings.rule( 'class_suppression.negative_margin', "%s['margin'] = %r is negative - the suppressing label would be allowed to be "
                         "LESS confident than the label it's overriding and still suppress it, which defeats the "
                         "point of the margin gate. Use 0.0 if you genuinely want IoU alone to gate this rule "
-                        "(that's a warning, not an error), never a negative number."%(where, rule['margin']) )
+                        "(that's a warning, not an error), never a negative number."%(where, rule['margin']) ) )
                 if 'min_iou' not in rule:
-                    errors.append( "%s is missing required key 'min_iou'"%(where) )
-                elif not isinstance( rule['min_iou'], (int, float) ):
-                    errors.append( "%s['min_iou'] must be a number, got %r"%(where, rule['min_iou']) )
+                    errors.append( bu_settings.rule( 'class_suppression.missing_min_iou', "%s is missing required key 'min_iou'"%(where) ) )
+                margin_is_negative = isinstance( rule.get( 'margin' ), (int, float) ) and rule['margin'] < 0
+                _check_fields( rule, bu_settings.RULE_FIELDS['suppression'], where, errors,
+                               skip=( 'suppressed_by', ) + ( ( 'margin', ) if margin_is_negative else () ) )
 
         where = "detector_backend[%r]['class_suppression_refused']"%( backend_name, )
         refused = bu_detector.resolve_backend_setting(
@@ -1002,17 +888,13 @@ def _validate_class_suppression( errors, valid_classes ):
         if refused is None:
             continue
         if not isinstance( refused, ( list, tuple ) ):
-            errors.append( "%s must be a list of 'label<-suppressor' strings, got %r"%( where, refused ) )
+            errors.append( bu_settings.rule( 'class_suppression.not_a_mapping', "%s must be a list of 'label<-suppressor' strings, got %r"%( where, refused ) ) )
             continue
         for pair in refused:
             # Without an arrow the suppressor comes out empty, so it fails the class check.
             label, _sep, suppressor = pair.partition( '<-' ) if isinstance( pair, str ) else ( '', '', '' )
             if label not in valid_classes or suppressor not in valid_classes:
-                errors.append( "%s: %r is not 'label<-suppressor' with two known classes"%( where, pair ) )
-
-
-def _is_fraction( value ):
-    return isinstance( value, (int, float) ) and not isinstance( value, bool ) and 0 <= value <= 1
+                errors.append( bu_settings.rule( 'class_suppression.bad_refused_pair', "%s: %r is not 'label<-suppressor' with two known classes"%( where, pair ) ) )
 
 
 def _validate_class_promotion( errors, valid_classes ):
@@ -1042,78 +924,70 @@ def _validate_class_promotion( errors, valid_classes ):
     for backend_name in bu_detector.registered_backend_names():
         promotion = bu_detector.get_class_promotion( backend_name )
         if not isinstance( promotion, dict ):
-            errors.append( "detector_backend[%r]['class_promotion'] must be a dict, got %r"%(
-                backend_name, promotion ) )
+            errors.append( bu_settings.rule( 'class_promotion.not_a_mapping', "detector_backend[%r]['class_promotion'] must be a dict, got %r"%(
+                backend_name, promotion ) ) )
             continue
         for target, rules in promotion.items():
             where_base = "detector_backend[%r]['class_promotion']['%s']"%( backend_name, target )
             if target not in valid_classes:
-                errors.append( "%s: '%s' is not a known class"%( where_base, target ) )
+                errors.append( bu_settings.rule( 'class_promotion.unknown_label', "%s: '%s' is not a known class"%( where_base, target ) ) )
             rule_list = rules if isinstance( rules, list ) else [ rules ]
             if target in valid_classes and target not in censored:
                 losing = sorted( { rule.get( 'from' ) for rule in rule_list
                                    if isinstance( rule, dict ) and rule.get( 'from' ) in censored } )
                 if losing:
-                    errors.append( "%s: '%s' is not in %s, so %s boxes promoted to it would lose "
+                    errors.append( bu_settings.rule( 'class_promotion.target_not_rendered', "%s: '%s' is not in %s, so %s boxes promoted to it would lose "
                                    "their censor. Render '%s' too, or remove the rule"%(
                                        where_base, target, censored_name,
-                                       ', '.join( repr( label ) for label in losing ), target ) )
+                                       ', '.join( repr( label ) for label in losing ), target ) ) )
             for index, rule in enumerate( rule_list ):
                 where = "%s[%d]"%( where_base, index ) if isinstance( rules, list ) else where_base
                 if not isinstance( rule, dict ):
-                    errors.append( "%s must be a dict, got %r"%( where, rule ) )
+                    errors.append( bu_settings.rule( 'class_promotion.not_a_mapping', "%s must be a dict, got %r"%( where, rule ) ) )
                     continue
                 unknown = set( rule ) - bu_track.PROMOTION_RULE_KEYS
                 if unknown:
-                    errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
-                        where, sorted( unknown ), sorted( bu_track.PROMOTION_RULE_KEYS ) ) )
+                    errors.append( bu_settings.rule( 'class_promotion.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
+                        where, sorted( unknown ), sorted( bu_track.PROMOTION_RULE_KEYS ) ) ) )
                 source = rule.get( 'from' )
                 if source is None:
-                    errors.append( "%s is missing required key 'from'"%( where ) )
+                    errors.append( bu_settings.rule( 'class_promotion.missing_from', "%s is missing required key 'from'"%( where ) ) )
                 elif source not in valid_classes:
-                    errors.append( "%s: 'from' %r is not a known class"%( where, source ) )
+                    errors.append( bu_settings.rule( 'class_promotion.unknown_label', "%s: 'from' %r is not a known class"%( where, source ) ) )
                 elif source == target:
-                    errors.append( "%s: 'from' is the same label as the target"%( where ) )
-                for key in ( 'min_prob', 'duplicate_iou' ):
-                    if key in rule and not _is_fraction( rule[key] ):
-                        errors.append( "%s: %s must be a number in [0, 1], got %r"%(
-                            where, key, rule[key] ) )
-                if rule.get( 'requires_mode', 'any' ) not in ( 'any', 'all' ):
-                    errors.append( "%s: requires_mode must be 'any' or 'all', got %r"%(
-                        where, rule.get( 'requires_mode' ) ) )
+                    errors.append( bu_settings.rule( 'class_promotion.from_is_target', "%s: 'from' is the same label as the target"%( where ) ) )
+                _check_fields( rule, bu_settings.RULE_FIELDS['promotion'], where, errors,
+                               skip=( 'from', 'requires' ) )
                 requires = rule.get( 'requires', [] )
                 if not isinstance( requires, list ):
-                    errors.append( "%s: requires must be a list of evidence dicts"%( where ) )
+                    errors.append( bu_settings.rule( 'class_promotion.not_a_mapping', "%s: requires must be a list of evidence dicts"%( where ) ) )
                     continue
                 for req_index, requirement in enumerate( requires ):
                     req_where = "%s['requires'][%d]"%( where, req_index )
                     if not isinstance( requirement, dict ):
-                        errors.append( "%s must be a dict, got %r"%( req_where, requirement ) )
+                        errors.append( bu_settings.rule( 'class_promotion.not_a_mapping', "%s must be a dict, got %r"%( req_where, requirement ) ) )
                         continue
                     unknown = set( requirement ) - bu_track.PROMOTION_EVIDENCE_KEYS
                     if unknown:
-                        errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
+                        errors.append( bu_settings.rule( 'class_promotion.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
                             req_where, sorted( unknown ),
-                            sorted( bu_track.PROMOTION_EVIDENCE_KEYS ) ) )
+                            sorted( bu_track.PROMOTION_EVIDENCE_KEYS ) ) ) )
                     if requirement.get( 'label' ) not in valid_classes:
-                        errors.append( "%s: label %r is not a known class"%(
-                            req_where, requirement.get( 'label' ) ) )
-                    for key in ( 'min_prob', 'min_iou', 'min_source_overlap' ):
-                        if key in requirement and not _is_fraction( requirement[key] ):
-                            errors.append( "%s: %s must be a number in [0, 1], got %r"%(
-                                req_where, key, requirement[key] ) )
+                        errors.append( bu_settings.rule( 'class_promotion.unknown_label', "%s: label %r is not a known class"%(
+                            req_where, requirement.get( 'label' ) ) ) )
+                    _check_fields( requirement, bu_settings.RULE_FIELDS['promotion_requirement'],
+                                   req_where, errors, skip=( 'label', ) )
                     if 'overlap' in requirement:
                         if requirement['overlap'] != 'anywhere':
-                            errors.append( "%s: overlap must be 'anywhere' (the only mode), "
-                                           "got %r"%( req_where, requirement['overlap'] ) )
+                            pass   # the field check above reports it
                         elif ( 'min_iou' in requirement
                                or 'min_source_overlap' in requirement ):
                             # Silently ignoring one of two contradictory
                             # settings is how a rule ends up not doing what
                             # its config says.
-                            errors.append( "%s: overlap 'anywhere' means no spatial test, so "
+                            errors.append( bu_settings.rule( 'class_promotion.anywhere_with_bounds', "%s: overlap 'anywhere' means no spatial test, so "
                                            "min_iou / min_source_overlap cannot also be set"%(
-                                               req_where, ) )
+                                               req_where, ) ) )
 
 
 def _warn_promotion_evidence_also_suppresses( warnings ):
@@ -1173,37 +1047,24 @@ def _validate_profiles( errors ):
         where_base = "detector_backend[%r]['profiles']"%( backend_name, )
         unknown = set( profiles ) - { 'default', 'match_on', 'variants' }
         if unknown:
-            errors.append( "%s has unrecognized key(s) %s"%( where_base, sorted( unknown ) ) )
+            errors.append( bu_settings.rule( 'profiles.unknown_keys', "%s has unrecognized key(s) %s"%( where_base, sorted( unknown ) ) ) )
         match_on = profiles.get( 'match_on', 'cuts_per_min' )
         if match_on not in known_match_signals:
-            errors.append( "%s['match_on'] must be one of %s, got %r"%(
-                where_base, list( known_match_signals ), match_on ) )
-            match_on = None
+            match_on = None   # the registry reports it
         variants = profiles.get( 'variants' ) or {}
         default = profiles.get( 'default' )
         if default is not None and default not in variants:
-            errors.append( "%s['default'] %r names no variant (have: %s)"%(
-                where_base, default, sorted( variants ) ) )
+            errors.append( bu_settings.rule( 'profiles.default_unknown', "%s['default'] %r names no variant (have: %s)"%(
+                where_base, default, sorted( variants ) ) ) )
         for name, variant in variants.items():
             where = "%s['variants'][%r]"%( where_base, name )
             if not isinstance( variant, dict ):
-                errors.append( "%s must be a dict"%( where, ) )
+                errors.append( bu_settings.rule( 'profiles.not_a_mapping', "%s must be a dict"%( where, ) ) )
                 continue
             unknown = set( variant ) - known_variant_keys
             if unknown:
-                errors.append( "%s has unrecognized key(s) %s (valid: %s)"%(
-                    where, sorted( unknown ), sorted( known_variant_keys ) ) )
-            for key in sorted( threshold_key_for.values() ):
-                if key not in variant:
-                    continue
-                threshold = variant[key]
-                if not isinstance( threshold, (int, float) ) \
-                   or isinstance( threshold, bool ) or threshold < 0:
-                    errors.append( "%s: %s must be a number >= 0, got %r"%(
-                        where, key, threshold ) )
-                elif key == 'min_short_shot_fraction' and threshold > 1:
-                    errors.append( "%s: min_short_shot_fraction is a fraction of "
-                                   "runtime from 0 to 1, got %r"%( where, threshold ) )
+                errors.append( bu_settings.rule( 'profiles.unknown_keys', "%s has unrecognized key(s) %s (valid: %s)"%(
+                    where, sorted( unknown ), sorted( known_variant_keys ) ) ) )
             # A threshold for the signal that is NOT being matched on is
             # read by nothing. That is the silent-neighbour failure this
             # whole function exists to catch: the variant looks tuned and
@@ -1215,46 +1076,38 @@ def _validate_profiles( errors ):
                 wrong = set( threshold_key_for.values() ) - { threshold_key_for[match_on] }
                 present_wrong = sorted( wrong & set( variant ) )
                 if present_wrong and threshold_key_for[match_on] not in variant:
-                    errors.append(
+                    errors.append( bu_settings.rule( 'profiles.threshold_for_other_signal',
                         "%s sets %s but %s['match_on'] is %r, which reads %s. "
                         "This variant would never match automatically."%(
                             where, present_wrong[0], where_base, match_on,
-                            threshold_key_for[match_on] ) )
-            if 'manual_only' in variant and not isinstance( variant['manual_only'], bool ):
-                errors.append( "%s: manual_only must be True/False, got %r"%(
-                    where, variant['manual_only'] ) )
-            if 'video_censor_fps' in variant:
-                fps = variant['video_censor_fps']
-                if not isinstance( fps, (int, float) ) or isinstance( fps, bool ) or fps <= 0:
-                    errors.append( "%s: video_censor_fps must be a positive number, got %r"%(
-                        where, fps ) )
+                            threshold_key_for[match_on] ) ) )
             for label, overrides in ( variant.get( 'item_overrides' ) or {} ).items():
                 if not isinstance( overrides, dict ):
-                    errors.append( "%s['item_overrides'][%r] must be a dict"%( where, label ) )
+                    errors.append( bu_settings.rule( 'profiles.not_a_mapping', "%s['item_overrides'][%r] must be a dict"%( where, label ) ) )
                     continue
                 unknown = set( overrides ) - detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
                 if unknown:
-                    errors.append( "%s['item_overrides'][%r] has unrecognized key(s) %s"%(
-                        where, label, sorted( unknown ) ) )
+                    errors.append( bu_settings.rule( 'profiles.unknown_keys', "%s['item_overrides'][%r] has unrecognized key(s) %s"%(
+                        where, label, sorted( unknown ) ) ) )
 
     # Path rules must name real variants too, for the same reason.
     mapping = getattr( betaconfig, 'profile_by_path_pattern', None )
     if mapping is not None:
         if not isinstance( mapping, dict ):
-            errors.append( "profile_by_path_pattern must be a dict of "
-                           "{glob: profile_name}, got %r"%( type( mapping ).__name__, ) )
+            errors.append( bu_settings.rule( 'profiles.not_a_mapping', "profile_by_path_pattern must be a dict of "
+                           "{glob: profile_name}, got %r"%( type( mapping ).__name__, ) ) )
         else:
             selected = detector.selected_backend_name()
             variants = detector.get_profiles( selected ).get( 'variants' ) or {}
             for pattern, name in mapping.items():
                 if not isinstance( pattern, str ) or not pattern:
-                    errors.append( "profile_by_path_pattern has a non-string "
-                                   "pattern %r"%( pattern, ) )
+                    errors.append( bu_settings.rule( 'profiles.path_pattern_not_string', "profile_by_path_pattern has a non-string "
+                                   "pattern %r"%( pattern, ) ) )
                 if name not in variants:
-                    errors.append(
+                    errors.append( bu_settings.rule( 'profiles.path_pattern_unknown_profile',
                         "profile_by_path_pattern[%r] is %r, which names no variant for "
                         "backend %r (have: %s)"%( pattern, name, selected,
-                                                  sorted( variants ) or 'none' ) )
+                                                  sorted( variants ) or 'none' ) ) )
 
     # The folder convention. Same reasoning as the path patterns above: a
     # key naming no variant would quietly fall through to measurement
@@ -1262,9 +1115,9 @@ def _validate_profiles( errors ):
     folders = getattr( betaconfig, 'profile_by_source_dir', None )
     if folders is not None:
         if not isinstance( folders, dict ):
-            errors.append( "profile_by_source_dir must be a dict of "
+            errors.append( bu_settings.rule( 'profiles.not_a_mapping', "profile_by_source_dir must be a dict of "
                            "{folder: profile_name}, got %r"%(
-                               type( folders ).__name__, ) )
+                               type( folders ).__name__, ) ) )
         else:
             selected = detector.selected_backend_name()
             variants = detector.get_profiles( selected ).get( 'variants' ) or {}
@@ -1272,38 +1125,38 @@ def _validate_profiles( errors ):
             for folder, name in folders.items():
                 where = "profile_by_source_dir[%r]"%( folder, )
                 if not isinstance( folder, str ) or not folder.strip():
-                    errors.append( "profile_by_source_dir has an empty or "
-                                   "non-string folder key %r"%( folder, ) )
+                    errors.append( bu_settings.rule( 'profiles.source_dir_empty_key', "profile_by_source_dir has an empty or "
+                                   "non-string folder key %r"%( folder, ) ) )
                     continue
                 parts = detector._dir_key_parts( folder )
                 if not parts:
                     # '/' or '.' normalise away to nothing, which would
                     # match every file and silently override the
                     # root-falls-through-to-measurement rule.
-                    errors.append( "%s normalises to an empty folder, which would "
+                    errors.append( bu_settings.rule( 'profiles.source_dir_matches_everything', "%s normalises to an empty folder, which would "
                                    "match every source file. Remove it, or name a "
-                                   "real folder"%( where, ) )
+                                   "real folder"%( where, ) ) )
                     continue
                 if '..' in parts:
-                    errors.append( "%s climbs above the uncensored root with '..', "
-                                   "which can never match"%( where, ) )
+                    errors.append( bu_settings.rule( 'profiles.source_dir_climbs', "%s climbs above the uncensored root with '..', "
+                                   "which can never match"%( where, ) ) )
                     continue
                 if os.path.isabs( str( folder ).replace( '\\', '/' ) ):
-                    errors.append( "%s is an absolute path. Keys are named relative "
-                                   "to betaconst.video_path_uncensored"%( where, ) )
+                    errors.append( bu_settings.rule( 'profiles.source_dir_absolute', "%s is an absolute path. Keys are named relative "
+                                   "to betaconst.video_path_uncensored"%( where, ) ) )
                     continue
                 # Two spellings of one folder ('comps', '/comps/') would
                 # both match, and which won would depend on dict order.
                 if parts in seen:
-                    errors.append( "%s and profile_by_source_dir[%r] are the same "
-                                   "folder spelled differently"%( where, seen[parts] ) )
+                    errors.append( bu_settings.rule( 'profiles.source_dir_duplicate', "%s and profile_by_source_dir[%r] are the same "
+                                   "folder spelled differently"%( where, seen[parts] ) ) )
                 else:
                     seen[parts] = folder
                 if name not in variants:
-                    errors.append(
+                    errors.append( bu_settings.rule( 'profiles.source_dir_unknown_profile',
                         "%s is %r, which names no variant for backend %r "
                         "(have: %s)"%( where, name, selected,
-                                       sorted( variants ) or 'none' ) )
+                                       sorted( variants ) or 'none' ) ) )
 
     # A forced profile that names nothing is an error, not a fallback.
     # Silently rendering unprofiled after --profile comp was typed is the
@@ -1313,9 +1166,9 @@ def _validate_profiles( errors ):
         selected = detector.selected_backend_name()
         variants = detector.get_profiles( selected ).get( 'variants' ) or {}
         if forced not in variants:
-            errors.append(
+            errors.append( bu_settings.rule( 'profiles.forced_unknown_profile',
                 "force_structure_profile (--profile) is %r, which names no variant for "
-                "backend %r (have: %s)"%( forced, selected, sorted( variants ) or 'none' ) )
+                "backend %r (have: %s)"%( forced, selected, sorted( variants ) or 'none' ) ) )
 
 
 def _validate_class_suppression_zero_margin( warnings, valid_classes ):
@@ -1408,152 +1261,83 @@ def _collect_validation_warnings():
 
 def _check_item_override_values( override, where, errors ):
     """
-    Check one already-resolved item_overrides-shaped dict (either the
-    shared betaconfig.item_overrides[label] block - which should only
-    ever actually HAVE censor_style/censor_shape
-    set, since every backend-tunable key now lives in each backend's own
-    block instead - or the effective per-backend-merged result from
-    bu_detector.get_item_overrides) for individually well-formed values -
-    censor_style, censor_shape, interpolation_max_gap,
-    interpolation_enabled, paired_style, track_max_gap and its
-    relationship to interpolation_max_gap, match_distance_multiplier,
-    paired_style_max_distance. Every check here is guarded by "if <key>
-    in override", so calling this against the shared block is safe even
-    though it will now typically only ever find censor_style/
-    censor_shape present - shared between _validate_item_overrides (the
-    shared block) and _validate_backend_item_overrides (each backend's
-    resolved result, where the tunable keys actually do show up) so the
-    same checks apply to both, not just whichever one happens to be
-    selected.
+    One item_overrides-shaped dict: the shared block, a backend's or
+    variant's resolved result, a reverse window or override. Each value's
+    kind and range is a registry check where it is set; what is left here
+    is the censor style, geometry_action, and the checks that only make
+    sense between values, which can fail only once tiers are merged (a
+    variant lowering track_max_gap below the backend's
+    interpolation_max_gap is fine in each block and wrong together).
     """
     if 'censor_style' in override:
         _check_censor_style( override['censor_style'], "%s['censor_style']"%(where), errors )
-    if 'censor_shape' in override and override['censor_shape'] not in VALID_CENSOR_SHAPES:
-        errors.append( "%s['censor_shape'] = '%s' is not one of %s"%(where, override['censor_shape'], sorted(VALID_CENSOR_SHAPES)) )
-    if 'interpolation_max_gap' in override and not isinstance( override['interpolation_max_gap'], (int, float) ):
-        errors.append( "%s['interpolation_max_gap'] must be a number, got %r"%(where, override['interpolation_max_gap']) )
-    if 'interpolation_enabled' in override and not isinstance( override['interpolation_enabled'], bool ):
-        errors.append( "%s['interpolation_enabled'] must be True/False, got %r"%(where, override['interpolation_enabled']) )
-    if 'paired_style' in override and not isinstance( override['paired_style'], bool ):
-        errors.append( "%s['paired_style'] must be True/False, got %r"%(where, override['paired_style']) )
-    if 'track_max_gap' in override:
-        track_max_gap = override['track_max_gap']
-        if not isinstance( track_max_gap, (int, float) ) or track_max_gap <= 0:
-            errors.append( "%s['track_max_gap'] must be a positive number (seconds), got %r"%(where, track_max_gap) )
+
+    track_max_gap = override.get( 'track_max_gap' )
+    if _is_positive_number( track_max_gap ):
         # track_max_gap tighter than this label's own interpolation_max_gap
         # isn't invalid, but it silently makes that interpolation_max_gap
         # partly moot (a gap has to pass the track_max_gap test before
-        # interpolation ever gets a chance to fill it) - see the
-        # track_max_gap comment in betatv.py's smooth_boxes for the real
-        # bug this distinction fixed. Flagged as a likely-unintentional
-        # combination rather than an error.
-        elif isinstance( track_max_gap, (int, float) ) and track_max_gap > 0:
-            label_interp_max_gap = override.get( 'interpolation_max_gap', betaconfig.default_interpolation_max_gap )
-            if isinstance( label_interp_max_gap, (int, float) ) and track_max_gap < label_interp_max_gap:
-                errors.append( "%s['track_max_gap'] (%r) is less than this label's interpolation_max_gap (%r) - interpolation_max_gap will never get the chance to matter for gaps between track_max_gap and interpolation_max_gap, since the track hard-resets before interpolation is ever considered. This may be intentional, but if not, raise track_max_gap to at least interpolation_max_gap."%(where, track_max_gap, label_interp_max_gap) )
-    if 'match_distance_multiplier' in override:
-        match_distance_multiplier = override['match_distance_multiplier']
-        if not isinstance( match_distance_multiplier, (int, float) ) or match_distance_multiplier <= 0:
-            errors.append( "%s['match_distance_multiplier'] must be a positive number, got %r"%(where, match_distance_multiplier) )
-    if 'paired_style_max_distance' in override:
-        paired_style_max_distance = override['paired_style_max_distance']
-        if not isinstance( paired_style_max_distance, (int, float) ) or paired_style_max_distance <= 0:
-            errors.append( "%s['paired_style_max_distance'] must be a positive number, got %r"%(where, paired_style_max_distance) )
-    if 'paired_style_tiebreak_margin' in override:
-        tiebreak = override['paired_style_tiebreak_margin']
-        if not isinstance( tiebreak, (int, float) ) or not ( 0 <= tiebreak <= 1 ):
-            errors.append( "%s['paired_style_tiebreak_margin'] must be between 0 and 1 (a fraction of the "
-                "second-nearest candidate's distance), got %r"%(where, tiebreak) )
+        # interpolation ever gets a chance to fill it). Flagged as a
+        # likely-unintentional combination rather than allowed quietly.
+        label_interp_max_gap = override.get( 'interpolation_max_gap', betaconfig.default_interpolation_max_gap )
+        if isinstance( label_interp_max_gap, (int, float) ) and track_max_gap < label_interp_max_gap:
+            errors.append( bu_settings.rule( 'label.track_gap_below_interpolation_gap', "%s['track_max_gap'] (%r) is less than this label's interpolation_max_gap (%r) - interpolation_max_gap will never get the chance to matter for gaps between track_max_gap and interpolation_max_gap, since the track hard-resets before interpolation is ever considered. This may be intentional, but if not, raise track_max_gap to at least interpolation_max_gap."%(where, track_max_gap, label_interp_max_gap) ) )
 
     # --- score hysteresis ---
-    if 'min_prob_continue' in override:
-        min_prob_continue = override['min_prob_continue']
-        if min_prob_continue is not None:
-            if not isinstance( min_prob_continue, (int, float) ) or not ( 0 < min_prob_continue < 1 ):
-                errors.append( "%s['min_prob_continue'] must be None or a number strictly between 0 and 1, "
-                    "got %r"%(where, min_prob_continue) )
-            else:
-                label_min_prob = override.get( 'min_prob', betaconfig.default_min_prob )
-                if isinstance( label_min_prob, (int, float) ) and min_prob_continue > label_min_prob:
-                    errors.append( "%s['min_prob_continue'] (%r) is ABOVE this label's min_prob (%r), which "
-                        "inverts hysteresis: the bar to keep tracking something would be higher than the bar "
-                        "to start. min_prob_continue is the lower, 'stay' threshold - set it below min_prob "
-                        "(or to None to disable hysteresis)."%(where, min_prob_continue, label_min_prob) )
-                global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
-                if isinstance( global_min_prob, (int, float) ) and min_prob_continue <= global_min_prob:
-                    errors.append( "%s['min_prob_continue'] (%r) is at or below global_min_prob (%r) - nothing "
-                        "that low ever reaches it, so hysteresis would extend no further than the global floor "
-                        "already does. Raise it, or lower global_min_prob."%(
-                            where, min_prob_continue, global_min_prob ) )
-
-    # --- track confirmation ---
-    if 'min_track_hits' in override:
-        min_track_hits = override['min_track_hits']
-        if not isinstance( min_track_hits, int ) or isinstance( min_track_hits, bool ) or min_track_hits < 1:
-            errors.append( "%s['min_track_hits'] must be an integer >= 1 (1 means 'render every track', the "
-                "historical behaviour), got %r"%(where, min_track_hits) )
-        elif min_track_hits > 10:
-            errors.append( "%s['min_track_hits'] = %r would require %r consecutive-ish detections before ANY "
-                "censoring appears for a new instance. At video_censor_fps=%r that is about %.2fs of visible, "
-                "uncensored footage on every new appearance - almost certainly not intended."%(
-                    where, min_track_hits, min_track_hits,
-                    getattr( betaconfig, 'video_censor_fps', 9 ),
-                    min_track_hits / max( getattr( betaconfig, 'video_censor_fps', 9 ), 1 ) ) )
-
-    if override.get( 'confirm_score' ) is not None:
-        confirm_score = override['confirm_score']
-        if ( not isinstance( confirm_score, ( int, float ) ) or isinstance( confirm_score, bool )
-                or not ( 0 < confirm_score <= 1 ) ):
-            errors.append( "%s['confirm_score'] must be None or a score above 0 and at most 1 (a track "
-                "short of min_track_hits renders once one of its detections scores this much), got %r"%(
-                    where, confirm_score ) )
+    min_prob_continue = override.get( 'min_prob_continue' )
+    if isinstance( min_prob_continue, (int, float) ) and not isinstance( min_prob_continue, bool ) \
+            and 0 < min_prob_continue < 1:
+        label_min_prob = override.get( 'min_prob', betaconfig.default_min_prob )
+        if isinstance( label_min_prob, (int, float) ) and min_prob_continue > label_min_prob:
+            errors.append( bu_settings.rule( 'label.hysteresis_inverted', "%s['min_prob_continue'] (%r) is ABOVE this label's min_prob (%r), which "
+                "inverts hysteresis: the bar to keep tracking something would be higher than the bar "
+                "to start. min_prob_continue is the lower, 'stay' threshold - set it below min_prob "
+                "(or to None to disable hysteresis)."%(where, min_prob_continue, label_min_prob) ) )
+        global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+        if isinstance( global_min_prob, (int, float) ) and min_prob_continue <= global_min_prob:
+            errors.append( bu_settings.rule( 'label.hysteresis_below_floor', "%s['min_prob_continue'] (%r) is at or below global_min_prob (%r) - nothing "
+                "that low ever reaches it, so hysteresis would extend no further than the global floor "
+                "already does. Raise it, or lower global_min_prob."%(
+                    where, min_prob_continue, global_min_prob ) ) )
 
     # --- geometry sanity filter ---
-    for area_key in ( 'min_area_fraction', 'max_area_fraction' ):
-        if area_key in override and override[area_key] is not None:
-            value = override[area_key]
-            if not isinstance( value, (int, float) ) or not ( 0 <= value <= 1 ):
-                errors.append( "%s['%s'] must be None or a fraction of the frame's area between 0 and 1, "
-                    "got %r"%(where, area_key, value) )
     min_area = override.get( 'min_area_fraction' )
     max_area = override.get( 'max_area_fraction' )
     if ( isinstance( min_area, (int, float) ) and isinstance( max_area, (int, float) )
             and min_area >= max_area ):
-        errors.append( "%s['min_area_fraction'] (%r) is not below ['max_area_fraction'] (%r) - no box can "
+        errors.append( bu_settings.rule( 'label.area_bounds_crossed', "%s['min_area_fraction'] (%r) is not below ['max_area_fraction'] (%r) - no box can "
             "satisfy both, so every detection of this label violates a bound (what that then DOES depends "
-            "on geometry_action)."%(where, min_area, max_area) )
+            "on geometry_action)."%(where, min_area, max_area) ) )
 
     if 'geometry_action' in override:
-        import betautils_track as bu_track  # deferred: bu_track imports this module
-        action = override['geometry_action']
-        if isinstance( action, dict ):
-            unknown_bounds = set( action ) - { 'min', 'max' }
-            if unknown_bounds:
-                errors.append( "%s['geometry_action'] mapping keys must be 'min'/'max', got %s"%(
-                    where, sorted( unknown_bounds ) ) )
-            bad = [ value for value in action.values()
-                    if value not in bu_track.GEOMETRY_ACTIONS ]
-            if bad:
-                errors.append( "%s['geometry_action'] values must be one of %s, got %r"%(
-                    where, sorted( bu_track.GEOMETRY_ACTIONS ), bad ) )
-        elif action not in bu_track.GEOMETRY_ACTIONS:
-            errors.append( "%s['geometry_action'] must be one of %s, or a {'min':..,'max':..} "
-                           "mapping, got %r"%(
-                               where, sorted( bu_track.GEOMETRY_ACTIONS ), action ) )
+        _check_geometry_action( override['geometry_action'], "%s['geometry_action']"%( where, ), errors )
 
-    for aspect_key in ( 'min_aspect_ratio', 'max_aspect_ratio' ):
-        if aspect_key in override and override[aspect_key] is not None:
-            value = override[aspect_key]
-            if not isinstance( value, (int, float) ) or value <= 0:
-                errors.append( "%s['%s'] must be None or a positive width/height ratio, got %r"%(
-                    where, aspect_key, value ) )
     min_aspect = override.get( 'min_aspect_ratio' )
     max_aspect = override.get( 'max_aspect_ratio' )
     if ( isinstance( min_aspect, (int, float) ) and isinstance( max_aspect, (int, float) )
             and min_aspect >= max_aspect ):
-        errors.append( "%s['min_aspect_ratio'] (%r) is not below ['max_aspect_ratio'] (%r) - no box can satisfy "
+        errors.append( bu_settings.rule( 'label.aspect_bounds_crossed', "%s['min_aspect_ratio'] (%r) is not below ['max_aspect_ratio'] (%r) - no box can satisfy "
             "both, so every detection of this label violates a bound (what that then DOES depends on "
-            "geometry_action)."%(where, min_aspect, max_aspect) )
+            "geometry_action)."%(where, min_aspect, max_aspect) ) )
+
+
+def _is_positive_number( value ):
+    return isinstance( value, (int, float) ) and not isinstance( value, bool ) and value > 0
+
+
+def _check_geometry_action( action, where, errors ):
+    """One action for both bounds, or a {'min': .., 'max': ..} mapping of them."""
+    valid = bu_settings.geometry_actions()
+    if isinstance( action, dict ):
+        unknown_bounds = sorted( set( action ) - { 'min', 'max' } )
+        if unknown_bounds:
+            errors.append( bu_settings.rule( 'geometry_action.unknown_bounds', "%s mapping keys must be 'min'/'max', got %s"%( where, unknown_bounds ) ) )
+        bad = [ value for value in action.values() if value not in valid ]
+        if bad:
+            errors.append( bu_settings.rule( 'geometry_action.bad_value', "%s values must be one of %s, got %r"%( where, sorted( valid ), bad ) ) )
+    elif action not in valid:
+        errors.append( bu_settings.rule( 'geometry_action.bad_value', "%s must be one of %s, or a {'min':..,'max':..} mapping, got %r"%(
+            where, sorted( valid ), action ) ) )
 
 
 def _validate_item_overrides( errors, valid_classes ):
@@ -1596,22 +1380,22 @@ def _validate_item_overrides( errors, valid_classes ):
     for label, override in item_overrides.items():
         where = "item_overrides['%s']"%(label)
         if label not in valid_classes:
-            errors.append( "item_overrides key '%s' is not a known class (valid: %s)"%(label, sorted(valid_classes)) )
+            errors.append( bu_settings.rule( 'item_overrides.unknown_label', "item_overrides key '%s' is not a known class (valid: %s)"%(label, sorted(valid_classes)) ) )
         if not isinstance( override, dict ):
-            errors.append( "%s must be a dict, got %r"%(where, override) )
+            errors.append( bu_settings.rule( 'item_overrides.not_a_mapping', "%s must be a dict, got %r"%(where, override) ) )
             continue
         backend_tunable_keys_present = set(override.keys()) & bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
         if backend_tunable_keys_present:
-            errors.append( "%s has backend-tunable key(s) %s in the SHARED item_overrides block - these moved to "
+            errors.append( bu_settings.rule( 'item_overrides.tunable_in_shared_block', "%s has backend-tunable key(s) %s in the SHARED item_overrides block - these moved to "
                 "each backend's own detector_backend[<name>]['item_overrides']['%s'] block and are no "
                 "longer read from here at all (bu_detector.get_item_overrides only reads backend-tunable keys from "
                 "a backend's own block), so this is silently doing nothing - move %s into detector_backend['nudenet_v3']"
                 "['item_overrides']['%s'] and detector_backend['retinanet_v2']['item_overrides']['%s'] (with "
                 "whatever value is actually correct for each model - don't just copy the same number to both) "
-                "instead."%(where, sorted(backend_tunable_keys_present), label, sorted(backend_tunable_keys_present), label, label) )
+                "instead."%(where, sorted(backend_tunable_keys_present), label, sorted(backend_tunable_keys_present), label, label) ) )
         unknown_keys = set(override.keys()) - known_shared_keys - bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
         if unknown_keys:
-            errors.append( "%s has unrecognized key(s) %s, likely a typo (valid keys here: %s)"%(where, sorted(unknown_keys), sorted(known_shared_keys)) )
+            errors.append( bu_settings.rule( 'item_overrides.unknown_keys', "%s has unrecognized key(s) %s, likely a typo (valid keys here: %s)"%(where, sorted(unknown_keys), sorted(known_shared_keys)) ) )
         _check_item_override_values( override, where, errors )
 
     return item_overrides
@@ -1661,18 +1445,18 @@ def _validate_backend_item_overrides( errors, valid_classes ):
         backend_config = bu_detector.get_backend_config( backend_name )
         backend_item_overrides = backend_config.get( 'item_overrides', {} )
         if not isinstance( backend_item_overrides, dict ):
-            errors.append( "detector_backend[%r]['item_overrides'] must be a dict, got %r"%(backend_name, backend_item_overrides) )
+            errors.append( bu_settings.rule( 'backend_item_overrides.not_a_mapping', "detector_backend[%r]['item_overrides'] must be a dict, got %r"%(backend_name, backend_item_overrides) ) )
             continue
         for label, override in backend_item_overrides.items():
             where = "detector_backend[%r]['item_overrides']['%s']"%(backend_name, label)
             if label not in valid_classes:
-                errors.append( "detector_backend[%r]['item_overrides'] key '%s' is not a known class (valid: %s)"%(backend_name, label, sorted(valid_classes)) )
+                errors.append( bu_settings.rule( 'backend_item_overrides.unknown_label', "detector_backend[%r]['item_overrides'] key '%s' is not a known class (valid: %s)"%(backend_name, label, sorted(valid_classes)) ) )
             if not isinstance( override, dict ):
-                errors.append( "%s must be a dict, got %r"%(where, override) )
+                errors.append( bu_settings.rule( 'backend_item_overrides.not_a_mapping', "%s must be a dict, got %r"%(where, override) ) )
                 continue
             unknown_keys = set(override.keys()) - bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
             if unknown_keys:
-                errors.append( "%s has key(s) %s that aren't backend-tunable (censor_style/censor_shape always come from the shared item_overrides block - see ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS) - valid keys here: %s"%(where, sorted(unknown_keys), sorted(bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS)) )
+                errors.append( bu_settings.rule( 'backend_item_overrides.unknown_keys', "%s has key(s) %s that aren't backend-tunable (censor_style/censor_shape always come from the shared item_overrides block - see ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS) - valid keys here: %s"%(where, sorted(unknown_keys), sorted(bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS)) ) )
 
         # now check the fully resolved result for every label that has
         # EITHER a shared or a backend-specific override, not just the
@@ -1717,41 +1501,41 @@ def _validate_variant_item_overrides( errors, valid_classes, backend_name, share
     if not variants_block:
         return
     if not isinstance( variants_block, dict ):
-        errors.append( "detector_backend[%r]['variants'] must be a dict, got %r"%(
-            backend_name, variants_block ) )
+        errors.append( bu_settings.rule( 'variant_item_overrides.not_a_mapping', "detector_backend[%r]['variants'] must be a dict, got %r"%(
+            backend_name, variants_block ) ) )
         return
 
     declared = set( bu_detector.variant_names( backend_name ) )
     for variant_name, variant_block in variants_block.items():
         where_variant = "detector_backend[%r]['variants'][%r]"%(backend_name, variant_name)
         if declared and variant_name not in declared:
-            errors.append( "%s is not a variant %s declares (valid: %s) - a block under an "
+            errors.append( bu_settings.rule( 'variant_item_overrides.unknown_variant', "%s is not a variant %s declares (valid: %s) - a block under an "
                            "unknown variant name never resolves, so this would silently do "
-                           "nothing"%( where_variant, backend_name, sorted( declared ) ) )
+                           "nothing"%( where_variant, backend_name, sorted( declared ) ) ) )
             continue
         if not isinstance( variant_block, dict ):
-            errors.append( "%s must be a dict, got %r"%(where_variant, variant_block) )
+            errors.append( bu_settings.rule( 'variant_item_overrides.not_a_mapping', "%s must be a dict, got %r"%(where_variant, variant_block) ) )
             continue
 
         variant_item_overrides = variant_block.get( 'item_overrides', {} )
         if not isinstance( variant_item_overrides, dict ):
-            errors.append( "%s['item_overrides'] must be a dict, got %r"%(
-                where_variant, variant_item_overrides ) )
+            errors.append( bu_settings.rule( 'variant_item_overrides.not_a_mapping', "%s['item_overrides'] must be a dict, got %r"%(
+                where_variant, variant_item_overrides ) ) )
             continue
 
         for label, override in variant_item_overrides.items():
             where = "%s['item_overrides']['%s']"%(where_variant, label)
             if label not in valid_classes:
-                errors.append( "%s['item_overrides'] key '%s' is not a known class (valid: %s)"%(
-                    where_variant, label, sorted( valid_classes ) ) )
+                errors.append( bu_settings.rule( 'variant_item_overrides.unknown_label', "%s['item_overrides'] key '%s' is not a known class (valid: %s)"%(
+                    where_variant, label, sorted( valid_classes ) ) ) )
             if not isinstance( override, dict ):
-                errors.append( "%s must be a dict, got %r"%(where, override) )
+                errors.append( bu_settings.rule( 'variant_item_overrides.not_a_mapping', "%s must be a dict, got %r"%(where, override) ) )
                 continue
             unknown_keys = set( override.keys() ) - bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
             if unknown_keys:
-                errors.append( "%s has key(s) %s that aren't backend-tunable - valid keys "
+                errors.append( bu_settings.rule( 'variant_item_overrides.unknown_keys', "%s has key(s) %s that aren't backend-tunable - valid keys "
                                "here: %s"%( where, sorted( unknown_keys ),
-                                            sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) )
+                                            sorted( bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS ) ) ) )
 
         for label in shared_labels | set( variant_item_overrides.keys() ):
             resolved = bu_detector.get_item_overrides( label, backend_name, variant_name )
@@ -1770,17 +1554,10 @@ def _validate_default_censor_style( errors ):
     """
     default_censor_style = getattr( betaconfig, 'default_censor_style', None )
     if default_censor_style is None:
-        errors.append( "default_censor_style is not defined (or every option is commented out)" )
+        errors.append( bu_settings.rule( 'default_censor_style.missing', "default_censor_style is not defined (or every option is commented out)" ) )
     else:
         _check_censor_style( default_censor_style, "default_censor_style", errors )
     return default_censor_style
-
-
-def _validate_default_censor_shape( errors ):
-    """Check that default_censor_shape (if set) is a recognized shape."""
-    default_censor_shape = getattr( betaconfig, 'default_censor_shape', 'box' )
-    if default_censor_shape not in VALID_CENSOR_SHAPES:
-        errors.append( "default_censor_shape = '%s' is not one of %s"%(default_censor_shape, sorted(VALID_CENSOR_SHAPES)) )
 
 
 def _validate_type_default_shapes( errors ):
@@ -1793,13 +1570,11 @@ def _validate_type_default_shapes( errors ):
     """
     type_default_shapes = getattr( betaconfig, 'type_default_shapes', {} )
     if not isinstance( type_default_shapes, dict ):
-        errors.append( "type_default_shapes must be a dict of {style_type: shape}, got %r"%(type_default_shapes) )
+        errors.append( bu_settings.rule( 'type_default_shapes.not_a_mapping', "type_default_shapes must be a dict of {style_type: shape}, got %r"%(type_default_shapes) ) )
         return
     for style_type, shape in type_default_shapes.items():
         if style_type not in VALID_CENSOR_STYLES:
-            errors.append( "type_default_shapes key '%s' is not a known censor style type (valid: %s)"%(style_type, sorted(VALID_CENSOR_STYLES)) )
-        if shape not in VALID_CENSOR_SHAPES:
-            errors.append( "type_default_shapes['%s'] = '%s' is not one of %s"%(style_type, shape, sorted(VALID_CENSOR_SHAPES)) )
+            errors.append( bu_settings.rule( 'type_default_shapes.unknown_type', "type_default_shapes key '%s' is not a known censor style type (valid: %s)"%(style_type, sorted(VALID_CENSOR_STYLES)) ) )
 
 
 def _collect_style_types_in_use( style_config, styles_in_use ):
@@ -1842,14 +1617,7 @@ def _validate_censor_overlap_strategy_coverage( errors, default_censor_style, it
             _collect_style_types_in_use( override['censor_style'], styles_in_use )
     for style_type in styles_in_use:
         if style_type not in censor_overlap_strategy:
-            errors.append( "censor_overlap_strategy is missing an entry for '%s', which is used by default_censor_style/item_overrides"%(style_type) )
-
-
-def _validate_video_censor_fps( errors ):
-    """Check that video_censor_fps is a positive number."""
-    video_censor_fps = getattr( betaconfig, 'video_censor_fps', None )
-    if not isinstance( video_censor_fps, (int, float) ) or video_censor_fps <= 0:
-        errors.append( "video_censor_fps must be a positive number, got %r"%(video_censor_fps) )
+            errors.append( bu_settings.rule( 'censor_overlap_strategy.missing_type', "censor_overlap_strategy is missing an entry for '%s', which is used by default_censor_style/item_overrides"%(style_type) ) )
 
 
 def _validate_picture_sizes( errors ):
@@ -1868,191 +1636,47 @@ def _validate_picture_sizes( errors ):
     enforced by that adapter's own validate_backend_config.
     """
     if getattr( betaconfig, 'picture_sizes', None ) is not None:
-        errors.append( "betaconfig.picture_sizes is no longer read - a detection "
+        errors.append( bu_settings.rule( 'picture_sizes.removed_setting', "betaconfig.picture_sizes is no longer read - a detection "
             "size is a property of the model, so move this value into "
             "detector_backend[<name>]['picture_sizes'], or delete it and let the adapter's native "
-            "size apply. Leaving it here would silently do nothing." )
+            "size apply. Leaving it here would silently do nothing." ) )
 
     for backend_name in bu_detector.registered_backend_names():
         resolved = bu_detector.get_picture_sizes( backend_name )
         where = "detector_backend[%r]'s resolved picture_sizes"%(backend_name)
         if not resolved:
-            errors.append( "%s is empty - set detector_backend[%r]['picture_sizes'] or "
+            errors.append( bu_settings.rule( 'picture_sizes.empty', "%s is empty - set detector_backend[%r]['picture_sizes'] or "
                 "detector_backend['defaults']['picture_sizes'], or give the adapter a "
-                "native_picture_sizes()"%( where, backend_name ) )
+                "native_picture_sizes()"%( where, backend_name ) ) )
             continue
         if not all( isinstance( size, int ) and size >= 0 for size in resolved ):
-            errors.append( "%s must be non-negative ints, got %r"%(where, resolved) )
+            errors.append( bu_settings.rule( 'picture_sizes.not_sizes', "%s must be non-negative ints, got %r"%(where, resolved) ) )
         if len( set( resolved ) ) != len( resolved ):
-            errors.append( "%s has duplicate entries (%r) - the model would run twice on identical "
-                "input and every detection would be duplicated"%(where, resolved) )
-
-
-def _validate_blur_approximation( errors ):
-    """Check the fast-blur approximation settings."""
-    approximate = getattr( betaconfig, 'blur_fast_approximation', True )
-    if not isinstance( approximate, bool ):
-        errors.append( "blur_fast_approximation must be True/False, got %r"%(approximate,) )
-    min_kernel = getattr( betaconfig, 'blur_approximation_min_kernel', 21 )
-    if not isinstance( min_kernel, int ) or min_kernel < 3 or min_kernel % 2 == 0:
-        errors.append( "blur_approximation_min_kernel must be an odd integer >= 3 (a Gaussian kernel size), "
-            "got %r"%(min_kernel,) )
-    margin = getattr( betaconfig, 'blur_edge_margin', True )
-    if not isinstance( margin, bool ):
-        errors.append( "blur_edge_margin must be True/False, got %r"%(margin,) )
-    motion = getattr( betaconfig, 'render_motion_interpolation', True )
-    if not isinstance( motion, bool ):
-        errors.append( "render_motion_interpolation must be True/False, got %r"%(motion,) )
-    burst_window = getattr( betaconfig, 'shot_cut_burst_window', 0.0 )
-    if ( not isinstance( burst_window, (int, float) ) or isinstance( burst_window, bool )
-         or burst_window < 0 ):
-        errors.append( "shot_cut_burst_window must be a number of seconds >= 0 (0 turns burst "
-                       "merging off), got %r"%(burst_window,) )
-    burst_span = getattr( betaconfig, 'shot_cut_burst_max_span', None )
-    if burst_span is not None and ( not isinstance( burst_span, (int, float) )
-                                    or isinstance( burst_span, bool ) or burst_span <= 0 ):
-        errors.append( "shot_cut_burst_max_span must be a positive number of seconds or None "
-                       "(merge a burst of any length), got %r"%(burst_span,) )
-    burst_keep = getattr( betaconfig, 'shot_cut_burst_keep', 'first' )
-    if burst_keep not in ( 'first', 'last' ):
-        errors.append( "shot_cut_burst_keep must be 'first' or 'last', got %r"%(burst_keep,) )
-    span = getattr( betaconfig, 'render_motion_max_span_seconds', None )
-    if span is not None and ( not isinstance( span, (int, float) )
-                              or isinstance( span, bool ) or span <= 0 ):
-        errors.append( "render_motion_max_span_seconds must be a positive number of "
-                       "seconds or None (meaning two sampling intervals), got %r"%(span,) )
-    growth = getattr( betaconfig, 'render_motion_collapse_max_growth', 1.15 )
-    if ( not isinstance( growth, (int, float) ) or isinstance( growth, bool )
-         or growth < 1.0 ):
-        # Below 1.0 no pair of samples could ever collapse (a union is never
-        # smaller than the box it contains), so the flicker fix would be
-        # silently off while still reading as enabled.
-        errors.append( "render_motion_collapse_max_growth must be a number >= 1.0 "
-                       "(the union of two samples is never smaller than either, "
-                       "so anything below 1.0 disables the collapse entirely), "
-                       "got %r"%(growth,) )
-    window = getattr( betaconfig, 'render_motion_size_window_seconds', 0.25 )
-    if window is not None and ( not isinstance( window, (int, float) )
-                                or isinstance( window, bool ) or window < 0 ):
-        errors.append( "render_motion_size_window_seconds must be a non-negative "
-                       "number of seconds (0 means the whole track), or None to "
-                       "leave box sizes alone, got %r"%(window,) )
-
+            errors.append( bu_settings.rule( 'picture_sizes.duplicates', "%s has duplicate entries (%r) - the model would run twice on identical "
+                "input and every detection would be duplicated"%(where, resolved) ) )
 
 
 def _validate_label_defaults( errors ):
     """
-    Check the label defaults that were read with a code fallback and
-    unvalidated until betaconfig.py listed them. A per-label value is
-    checked in _check_item_override_values; the default is the value
-    every label without one falls back to, so a typo here was wrong for
-    every label at once, silently.
+    default_geometry_action, the one label default with a structure of
+    its own. Every other default's kind and range is a registry check.
     """
     import betautils_track as bu_track  # deferred: bu_track imports this module
     action = getattr( betaconfig, 'default_geometry_action', bu_track.DEFAULT_GEOMETRY_ACTION )
-    valid = sorted( bu_track.GEOMETRY_ACTIONS )
-    if isinstance( action, dict ):
-        unknown_bounds = sorted( set( action ) - { 'min', 'max' } )
-        bad = [ value for value in action.values() if value not in bu_track.GEOMETRY_ACTIONS ]
-        if unknown_bounds:
-            errors.append( "default_geometry_action keys must be 'min'/'max', got %s"%( unknown_bounds, ) )
-        if bad:
-            errors.append( "default_geometry_action values must be one of %s, got %r"%( valid, bad ) )
-    elif action not in bu_track.GEOMETRY_ACTIONS:
-        errors.append( "default_geometry_action must be one of %s, or a {'min':..,'max':..} "
-                       "mapping, got %r"%( valid, action ) )
-    for name, meaning in ( ( 'default_confirm_score', 'a track score above 0 and at most 1' ),
-                           ( 'default_size_smoothing', 'a weight above 0 and at most 1 (None = a '
-                                                       'third of position_smoothing)' ) ):
-        value = getattr( betaconfig, name, None )
-        if value is None:
-            continue
-        if ( not isinstance( value, (int, float) ) or isinstance( value, bool )
-                or not ( 0 < value <= 1 ) ):
-            errors.append( "%s must be None or %s, got %r"%( name, meaning, value ) )
+    _check_geometry_action( action, "default_geometry_action", errors )
 
 
 def _validate_cross_size_dedup( errors ):
     """Check the cross-size dedup settings."""
     settings = getattr( betaconfig, 'cross_size_dedup', {} )
     if not isinstance( settings, dict ):
-        errors.append( "cross_size_dedup must be a dict, got %r"%(settings,) )
+        errors.append( bu_settings.rule( 'cross_size_dedup.not_a_mapping', "cross_size_dedup must be a dict, got %r"%(settings,) ) )
         return
     unknown = set( settings.keys() ) - { 'enabled', 'iou_threshold' }
     if unknown:
-        errors.append( "cross_size_dedup has unrecognized key(s) %s (valid: enabled, iou_threshold)"%(
-            sorted( unknown ),) )
-    if 'enabled' in settings and not isinstance( settings['enabled'], bool ):
-        errors.append( "cross_size_dedup['enabled'] must be True/False, got %r"%(settings['enabled'],) )
-    if 'iou_threshold' in settings:
-        threshold = settings['iou_threshold']
-        if not isinstance( threshold, (int, float) ) or not ( 0 < threshold <= 1 ):
-            errors.append( "cross_size_dedup['iou_threshold'] must be between 0 (exclusive) and 1, "
-                "got %r"%(threshold,) )
+        errors.append( bu_settings.rule( 'cross_size_dedup.unknown_keys', "cross_size_dedup has unrecognized key(s) %s (valid: enabled, iou_threshold)"%(
+            sorted( unknown ),) ) )
 
-
-def _validate_render_settings( errors ):
-    """Check the render/encode settings introduced with the parallel renderer."""
-    workers = getattr( betaconfig, 'render_workers', 0 )
-    if not isinstance( workers, int ) or isinstance( workers, bool ) or workers < 0:
-        errors.append( "render_workers must be a non-negative integer (0 = auto-detect from CPU count), "
-            "got %r"%(workers,) )
-
-    per_megapixel = getattr( betaconfig, 'render_worker_mb_per_megapixel', 200 )
-    if per_megapixel is not None and ( not isinstance( per_megapixel, (int, float) )
-                                       or isinstance( per_megapixel, bool ) or per_megapixel <= 0 ):
-        errors.append( "render_worker_mb_per_megapixel must be a positive number of MB, or None to turn "
-            "the memory cap on render workers off, got %r"%(per_megapixel,) )
-
-    reserve = getattr( betaconfig, 'render_memory_reserve_mb', 2048 )
-    if not isinstance( reserve, (int, float) ) or isinstance( reserve, bool ) or reserve < 0:
-        errors.append( "render_memory_reserve_mb must be a non-negative number of MB, got %r"%(reserve,) )
-
-    container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
-    if container not in ( 'mkv', 'mp4' ):
-        errors.append( "render_chunk_container must be 'mkv' or 'mp4', got %r - these are the two the "
-            "concat demuxer handles reliably for stream-copied H.264"%(container,) )
-
-    codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
-    if not isinstance( codec, str ) or not codec:
-        errors.append( "encode_video_codec must be a non-empty ffmpeg encoder name, got %r"%(codec,) )
-
-    crf = getattr( betaconfig, 'encode_crf', 17 )
-    if not isinstance( crf, int ) or isinstance( crf, bool ) or not ( 0 <= crf <= 51 ):
-        errors.append( "encode_crf must be an integer between 0 (lossless) and 51 (worst), got %r"%(crf,) )
-
-    verify = getattr( betaconfig, 'render_verify_frame_counts', True )
-    if not isinstance( verify, bool ):
-        errors.append( "render_verify_frame_counts must be True/False, got %r"%(verify,) )
-
-
-def _whole_number( value ):
-    return isinstance( value, int ) and not isinstance( value, bool )
-
-
-def _validate_hardware_settings( errors ):
-    """Settings that describe the computer, which tune_machine writes to the local config."""
-    threads = getattr( betaconfig, 'render_decode_threads', None )
-    if threads is not None and not ( _whole_number( threads ) and threads >= 0 ):
-        errors.append( "render_decode_threads must be None (OpenCV's own thread count), 0 (the cores "
-            "shared out between render workers) or a whole number of threads, got %r"%(threads,) )
-
-    prefetch = getattr( betaconfig, 'detection_prefetch_frames', 0 )
-    if not ( _whole_number( prefetch ) and prefetch >= 0 ):
-        errors.append( "detection_prefetch_frames must be a whole number of frames, 0 to decode and "
-            "detect in turn, got %r"%(prefetch,) )
-
-    scan_workers = getattr( betaconfig, 'structure_scan_workers', 0 )
-    if not ( _whole_number( scan_workers ) and scan_workers >= 0 ):
-        errors.append( "structure_scan_workers must be a whole number, 0 for auto, got %r"%(scan_workers,) )
-
-    gpu = getattr( betaconfig, 'gpu_enabled', 0 )
-    if gpu not in ( 0, 1 ):   # True and False compare equal to 1 and 0
-        errors.append( "gpu_enabled must be 1 (GPU) or 0 (CPU), got %r"%(gpu,) )
-
-    device = getattr( betaconfig, 'cuda_device_id', 0 )
-    if not ( _whole_number( device ) and device >= 0 ):
-        errors.append( "cuda_device_id must be a GPU index (0 for the first), got %r"%(device,) )
 
 
 def _validate_local_config( errors ):
@@ -2060,7 +1684,11 @@ def _validate_local_config( errors ):
     loaded = bu_local.LOADED
     if loaded is None:
         return
-    errors.extend( loaded.problems )
+    # A line of the file that could not be applied. Its text names the
+    # file and line; the path is the setting it tried to set, if any.
+    errors.extend( problem if isinstance( problem, bu_settings.Problem )
+                   else bu_settings.rule( 'local_config.line_not_applied', problem, path='' )
+                   for problem in loaded.problems )
 
 
 def _warn_local_config( warnings ):
@@ -2069,12 +1697,6 @@ def _warn_local_config( warnings ):
         if warning:
             warnings.append( warning )
     warnings.extend( bu_local.new_key_warnings( loaded ) )
-
-
-def _validate_input_delete_probability_range( errors ):
-    """Check that input_delete_probability is between 0 and 1."""
-    if not ( 0 <= getattr( betaconfig, 'input_delete_probability', 0 ) <= 1 ):
-        errors.append( "input_delete_probability must be between 0 and 1, got %r"%(betaconfig.input_delete_probability) )
 
 
 def valid_encode_presets( codec ):
@@ -2092,77 +1714,10 @@ def valid_encode_presets( codec ):
     return VALID_ENCODE_PRESETS
 
 
-def _validate_encode_preset( errors ):
-    """Check that encode_preset is a preset name encode_video_codec accepts."""
-    codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
-    encode_preset = getattr( betaconfig, 'encode_preset', 'slow' )
-    valid = valid_encode_presets( codec )
-    if encode_preset not in valid:
-        errors.append( "encode_preset = '%s' is not a known preset for %s (valid: %s)"%(
-            encode_preset, codec, sorted( valid ) ) )
-
-
-def _validate_preview_settings( errors ):
-    """
-    When preview_mode_enabled is on, check preview_max_seconds,
-    preview_encode_preset, preview_start_seconds, and
-    preview_random_slice are all well-formed. No-op entirely when
-    preview mode is off.
-    """
-    if not getattr( betaconfig, 'preview_mode_enabled', False ):
-        return
-    preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
-    if not isinstance( preview_max_seconds, (int, float) ) or preview_max_seconds <= 0:
-        errors.append( "preview_max_seconds must be a positive number, got %r"%(preview_max_seconds) )
-    preview_encode_preset = getattr( betaconfig, 'preview_encode_preset', 'ultrafast' )
-    codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
-    valid = valid_encode_presets( codec )
-    if preview_encode_preset not in valid:
-        errors.append( "preview_encode_preset = '%s' is not a known preset for %s (valid: %s)"%(
-            preview_encode_preset, codec, sorted( valid ) ) )
-    preview_start_seconds = getattr( betaconfig, 'preview_start_seconds', None )
-    if preview_start_seconds is not None and ( not isinstance( preview_start_seconds, (int, float) ) or preview_start_seconds < 0 ):
-        errors.append( "preview_start_seconds must be None or a non-negative number, got %r"%(preview_start_seconds) )
-    preview_random_slice = getattr( betaconfig, 'preview_random_slice', False )
-    if not isinstance( preview_random_slice, bool ):
-        errors.append( "preview_random_slice must be True/False, got %r"%(preview_random_slice) )
-
-
 def _validate_logging_settings( errors ):
-    """
-    Check console_level always (the console handler is attached whether
-    or not file logging is on), and log_level/log_path only when
-    logging_enabled is set.
-    """
-    import betautils_log as bu_log
-    valid_levels = sorted( bu_log.LEVEL_NAMES.keys() )
-
-    console_level = getattr( betaconfig, 'console_level', 'info' )
-    if console_level not in bu_log.LEVEL_NAMES:
-        errors.append( "console_level = %r is not one of %s"%(console_level, valid_levels) )
-
-    console_color = getattr( betaconfig, 'console_color', 'auto' )
-    if console_color not in bu_log.COLOR_MODES:
-        errors.append( "console_color = %r is not one of %s"%(console_color, list( bu_log.COLOR_MODES )) )
-
-    console_palette = getattr( betaconfig, 'console_palette', 'standard' )
-    if console_palette not in bu_log.PALETTE_NAMES:
-        errors.append( "console_palette = %r is not one of %s"%(console_palette, list( bu_log.PALETTE_NAMES )) )
-
-    if not getattr( betaconfig, 'logging_enabled', False ):
-        return
-    log_level = getattr( betaconfig, 'log_level', 'info' )
-    if log_level not in bu_log.LEVEL_NAMES:
-        errors.append( "log_level = %r is not one of %s"%(log_level, valid_levels) )
-    if not getattr( betaconfig, 'log_path', None ):
-        errors.append( "logging_enabled is True but log_path is not set" )
-
-
-def _validate_pipeline_settings( errors ):
-    """move_completed_sources is True/False."""
-    value = getattr( betaconfig, 'move_completed_sources', False )
-    if not isinstance( value, bool ):
-        errors.append( "move_completed_sources must be True/False, got %r"%( value, ) )
+    """log_path is set while logging is on. Levels, colors and palettes are registry choices."""
+    if getattr( betaconfig, 'logging_enabled', False ) and not getattr( betaconfig, 'log_path', None ):
+        errors.append( bu_settings.rule( 'logging.log_path_required', "logging_enabled is True but log_path is not set" ) )
 
 
 def _validate_stats_settings( errors ):
@@ -2173,35 +1728,20 @@ def _validate_stats_settings( errors ):
     if not getattr( betaconfig, 'stats_enabled', False ):
         return
     if not getattr( betaconfig, 'stats_path', None ):
-        errors.append( "stats_enabled is True but stats_path is not set" )
+        errors.append( bu_settings.rule( 'stats.stats_path_required', "stats_enabled is True but stats_path is not set" ) )
 
 
 def _validate_nn_batch_size( errors ):
     """
-    Check that every registered backend's resolved nn_batch_size (see
-    betautils_detector.get_nn_batch_size) is a positive integer - not
-    just the currently selected backend's, so a typo in an unselected
-    backend's override is still caught before it's ever relied on (e.g.
-    switching betaconfig.detector_backend['selected'] later shouldn't be
-    the first time a bad value there is noticed).
-
-    Unlike picture_sizes and class_suppression, nn_batch_size keeps its
-    detector_backend['defaults'] tier: it is a VRAM/throughput knob, not
-    a statement about what the model means, so one sensible value can
-    legitimately cover a backend that has not expressed a preference.
-    Only the module-level betaconfig.nn_batch_size tier was removed.
+    The module-level nn_batch_size is no longer read. Each backend's own
+    and the shared detector_backend['defaults'] value are registry checks
+    (a positive whole number).
     """
     if getattr( betaconfig, 'nn_batch_size', None ) is not None:
-        errors.append( "betaconfig.nn_batch_size is no longer read - move it to "
+        errors.append( bu_settings.rule( 'nn_batch_size.removed_setting', "betaconfig.nn_batch_size is no longer read - move it to "
             "detector_backend['defaults']['nn_batch_size'] for a value shared by every backend, or "
             "to detector_backend[<name>]['nn_batch_size'] for one model. Leaving it here would "
-            "silently do nothing." )
-
-    for name in bu_detector.registered_backend_names():
-        nn_batch_size = bu_detector.get_nn_batch_size( name )
-        if not isinstance( nn_batch_size, int ) or nn_batch_size < 1:
-            errors.append( "detector_backend[%r]'s nn_batch_size must be a positive integer, got %r"%(
-                    name, nn_batch_size ) )
+            "silently do nothing." ) )
 
 
 def _validate_min_prob_floor_consistency( errors ):
@@ -2220,12 +1760,11 @@ def _validate_min_prob_floor_consistency( errors ):
     """
     global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
     if not isinstance( global_min_prob, (int, float) ) or not (0 <= global_min_prob < 1):
-        errors.append( "global_min_prob must be a number between 0 (inclusive) and 1 (exclusive), got %r"%(global_min_prob) )
-        return
+        return   # the registry reports it
 
     default_min_prob = getattr( betaconfig, 'default_min_prob', None )
     if isinstance( default_min_prob, (int, float) ) and default_min_prob <= global_min_prob:
-        errors.append( "default_min_prob (%r) is at or below global_min_prob (%r) - it can never reject anything, since nothing that low ever survives to be checked against it. Raise default_min_prob above global_min_prob, or lower global_min_prob."%(default_min_prob, global_min_prob) )
+        errors.append( bu_settings.rule( 'min_prob.default_below_floor', "default_min_prob (%r) is at or below global_min_prob (%r) - it can never reject anything, since nothing that low ever survives to be checked against it. Raise default_min_prob above global_min_prob, or lower global_min_prob."%(default_min_prob, global_min_prob) ) )
 
     # min_prob is backend-tunable (see bu_detector.ITEM_OVERRIDE_BACKEND_
     # TUNABLE_KEYS), so check every registered backend's RESOLVED value
@@ -2238,30 +1777,7 @@ def _validate_min_prob_floor_consistency( errors ):
             if 'min_prob' in resolved:
                 label_min_prob = resolved['min_prob']
                 if isinstance( label_min_prob, (int, float) ) and label_min_prob <= global_min_prob:
-                    errors.append( "detector_backend[%r]'s resolved item_overrides['%s']['min_prob'] (%r) is at or below global_min_prob (%r) - it can never reject anything for this label under this backend, since nothing that low ever survives to be checked against it. Raise it above global_min_prob, or lower global_min_prob."%(backend_name, label, label_min_prob, global_min_prob) )
-
-
-def _validate_checkpoint_and_chunk_settings( errors ):
-    """
-    Check detection_checkpoint_frames, render_chunk_seconds,
-    ffmpeg_max_retries, and ffmpeg_retry_backoff_seconds are all
-    well-formed (non-negative numbers of the right type).
-    """
-    detection_checkpoint_frames = getattr( betaconfig, 'detection_checkpoint_frames', 500 )
-    if not isinstance( detection_checkpoint_frames, int ) or detection_checkpoint_frames < 0:
-        errors.append( "detection_checkpoint_frames must be a non-negative integer (0 disables checkpointing), got %r"%(detection_checkpoint_frames) )
-
-    render_chunk_seconds = getattr( betaconfig, 'render_chunk_seconds', 600 )
-    if not isinstance( render_chunk_seconds, (int, float) ) or render_chunk_seconds < 0:
-        errors.append( "render_chunk_seconds must be a non-negative number (0 disables chunking), got %r"%(render_chunk_seconds) )
-
-    ffmpeg_max_retries = getattr( betaconfig, 'ffmpeg_max_retries', 2 )
-    if not isinstance( ffmpeg_max_retries, int ) or ffmpeg_max_retries < 0:
-        errors.append( "ffmpeg_max_retries must be a non-negative integer, got %r"%(ffmpeg_max_retries) )
-
-    ffmpeg_retry_backoff_seconds = getattr( betaconfig, 'ffmpeg_retry_backoff_seconds', 5 )
-    if not isinstance( ffmpeg_retry_backoff_seconds, (int, float) ) or ffmpeg_retry_backoff_seconds < 0:
-        errors.append( "ffmpeg_retry_backoff_seconds must be a non-negative number, got %r"%(ffmpeg_retry_backoff_seconds) )
+                    errors.append( bu_settings.rule( 'min_prob.label_below_floor', "detector_backend[%r]'s resolved item_overrides['%s']['min_prob'] (%r) is at or below global_min_prob (%r) - it can never reject anything for this label under this backend, since nothing that low ever survives to be checked against it. Raise it above global_min_prob, or lower global_min_prob."%(backend_name, label, label_min_prob, global_min_prob) ) )
 
 
 def _validate_detector_backend( errors ):
@@ -2279,21 +1795,21 @@ def _validate_detector_backend( errors ):
     """
     backend_setting = getattr( betaconfig, 'detector_backend', {} )
     if not isinstance( backend_setting, dict ):
-        errors.append( "detector_backend must be a dict, got %r"%(backend_setting,) )
+        errors.append( bu_settings.rule( 'detector_backend.not_a_mapping', "detector_backend must be a dict, got %r"%(backend_setting,) ) )
         return
 
     known_names = set( bu_detector.registered_backend_names() )
     unknown_sections = set( backend_setting.keys() ) - known_names - { 'selected', 'defaults' }
     if unknown_sections:
-        errors.append( "detector_backend has section(s) %s that are neither a registered adapter nor "
+        errors.append( bu_settings.rule( 'detector_backend.unknown_sections', "detector_backend has section(s) %s that are neither a registered adapter nor "
             "'selected'/'defaults' - a typo here is silently ignored at runtime, which is why it is an "
             "error here (registered adapters: %s)"%(
-                sorted( unknown_sections ), ', '.join( sorted( known_names ) ) ) )
+                sorted( unknown_sections ), ', '.join( sorted( known_names ) ) ) ) )
 
     backend = bu_detector.selected_backend_name()
     if backend not in known_names:
-        errors.append( "detector_backend['selected'] %r is not a registered detector adapter - valid "
-            "choices: %s"%(backend, ', '.join( sorted( known_names ) )) )
+        errors.append( bu_settings.rule( 'detector_backend.unknown_backend', "detector_backend['selected'] %r is not a registered detector adapter - valid "
+            "choices: %s"%(backend, ', '.join( sorted( known_names ) )) ) )
         return
 
     # Validate EVERY registered backend's own block, not just the
@@ -2303,6 +1819,28 @@ def _validate_detector_backend( errors ):
         module = bu_detector.get_detector( name )
         if hasattr( module, 'validate_backend_config' ):
             module.validate_backend_config( bu_detector.get_backend_config( name ), errors )
+
+
+def _validate_registry( errors ):
+    """
+    Every registered setting's kind, range and choices, from
+    betautils_settings. A structured setting (a censor style, a rule
+    list) is checked by its own checker below, which reads the
+    registry's field tables.
+    """
+    for path, value, entry in bu_settings.concrete_leaves( vars( betaconfig ) ):
+        if entry is None or len( entry.path ) != len( path ):
+            continue
+        errors.extend( bu_settings.check_value(
+            bu_local.format_setting_path( path ), value, entry,
+            '.'.join( str( part ) for part in path ) ) )
+
+
+def _check_fields( value, fields, where, errors, skip=() ):
+    """A dict's keys against a registry field table (STYLE_FIELDS, RULE_FIELDS)."""
+    for key, spec in fields.items():
+        if key in value and key not in skip:
+            errors.extend( bu_settings.check_value( "%s['%s']"%( where, key ), value[key], spec ) )
 
 
 def _collect_validation_errors():
@@ -2323,36 +1861,41 @@ def _collect_validation_errors():
     errors = []
     valid_classes = _valid_class_names()
 
-    _validate_items_to_censor( errors, valid_classes )
-    _validate_class_suppression( errors, valid_classes )
-    _validate_class_promotion( errors, valid_classes )
-    _validate_profiles( errors )
-    item_overrides = _validate_item_overrides( errors, valid_classes )
-    _validate_backend_item_overrides( errors, valid_classes )
-    default_censor_style = _validate_default_censor_style( errors )
-    _validate_default_censor_shape( errors )
-    _validate_type_default_shapes( errors )
-    _validate_censor_overlap_strategy_coverage( errors, default_censor_style, item_overrides )
-    _validate_video_censor_fps( errors )
-    _validate_picture_sizes( errors )
-    _validate_input_delete_probability_range( errors )
-    _validate_encode_preset( errors )
-    _validate_preview_settings( errors )
-    _validate_logging_settings( errors )
-    _validate_stats_settings( errors )
-    _validate_pipeline_settings( errors )
-    _validate_nn_batch_size( errors )
-    _validate_min_prob_floor_consistency( errors )
-    _validate_checkpoint_and_chunk_settings( errors )
-    _validate_blur_approximation( errors )
-    _validate_label_defaults( errors )
-    _validate_cross_size_dedup( errors )
-    _validate_render_settings( errors )
-    _validate_hardware_settings( errors )
-    _validate_detector_backend( errors )
-    _validate_reverse( errors, valid_classes )
-    _validate_person_backend( errors )
-    _validate_local_config( errors )
+    _validate_registry( errors )
+    registry_found_problems = bool( errors )
+
+    def run( check, *args ):
+        # A wrong-typed value the registry already reported can make a
+        # later check fail before it gets to its own test; that value's
+        # error is already in the list. Without a registry error a crash
+        # is a real bug and is raised.
+        try:
+            return check( errors, *args )
+        except Exception:
+            if not registry_found_problems:
+                raise
+            return None
+
+    run( _validate_items_to_censor, valid_classes )
+    run( _validate_class_suppression, valid_classes )
+    run( _validate_class_promotion, valid_classes )
+    run( _validate_profiles )
+    item_overrides = run( _validate_item_overrides, valid_classes ) or {}
+    run( _validate_backend_item_overrides, valid_classes )
+    default_censor_style = run( _validate_default_censor_style )
+    run( _validate_type_default_shapes )
+    run( _validate_censor_overlap_strategy_coverage, default_censor_style, item_overrides )
+    run( _validate_picture_sizes )
+    run( _validate_logging_settings )
+    run( _validate_stats_settings )
+    run( _validate_nn_batch_size )
+    run( _validate_min_prob_floor_consistency )
+    run( _validate_label_defaults )
+    run( _validate_cross_size_dedup )
+    run( _validate_detector_backend )
+    run( _validate_reverse, valid_classes )
+    run( _validate_person_backend )
+    run( _validate_local_config )
 
     return errors
 
