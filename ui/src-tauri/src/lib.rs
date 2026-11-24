@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
 use tauri::{Manager, WebviewWindow};
 
 /// The release version, from the repository's VERSION file.
@@ -32,6 +33,19 @@ fn elapsed_ms() -> u128 {
 
 /// Whether the main window has been shown, by the page or the fallback.
 struct Shown(AtomicBool);
+
+/// What the page needs before its first render.
+#[derive(Clone, Serialize)]
+struct StartupInfo {
+    version: &'static str,
+    /// The `--locale` option, if given.
+    locale: Option<String>,
+}
+
+#[tauri::command]
+fn startup_info(info: tauri::State<'_, StartupInfo>) -> StartupInfo {
+    info.inner().clone()
+}
 
 fn show_window(window: &WebviewWindow, shown: &Shown, why: &str) {
     if shown.0.swap(true, Ordering::SeqCst) {
@@ -131,10 +145,15 @@ pub fn run() -> i32 {
         log::warn!("ignoring unknown argument {arg:?}");
     }
 
+    let startup = StartupInfo {
+        version: VERSION,
+        locale: options.locale.clone(),
+    };
     let app = tauri::Builder::default()
         .manage(Shown(AtomicBool::new(false)))
+        .manage(startup)
         .setup(setup)
-        .invoke_handler(tauri::generate_handler![ui_log, ui_ready])
+        .invoke_handler(tauri::generate_handler![startup_info, ui_log, ui_ready])
         .build(tauri::generate_context!());
     let app = match app {
         Ok(app) => app,

@@ -1,7 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { log, logUncaughtErrors } from './log';
+import { initCatalog } from './i18n/format';
+import { describeError, log, logUncaughtErrors } from './log';
+import { startupInfo } from './shell';
 import './styles.css';
 
 logUncaughtErrors();
@@ -11,4 +13,18 @@ const root = document.getElementById( 'root' );
 if ( !root ) {
   throw new Error( 'index.html has no #root element' );
 }
-createRoot( root ).render( <StrictMode><App /></StrictMode> );
+const element = root;
+
+function start( requested: readonly string[] ): void {
+  const locale = initCatalog( requested );
+  log.info( `UI locale ${locale.tag}` );
+  createRoot( element ).render( <StrictMode><App /></StrictMode> );
+}
+
+startupInfo().then(
+  ( info ) => { start( info.locale === null ? navigator.languages : [ info.locale ] ); },
+  ( error: unknown ) => {
+    log.error( `startup_info failed: ${describeError( error )}` );
+    start( navigator.languages );
+  },
+);

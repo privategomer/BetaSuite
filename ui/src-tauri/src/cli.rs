@@ -8,10 +8,13 @@ use log::LevelFilter;
 
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
+                 [--locale TAG]
 
   --log-level LEVEL      log file level (default info)
   --console-level LEVEL  terminal level (default info)
   --log-file PATH        log file (default: logs/ui.log in the app's state folder)
+  --locale TAG           UI language, a BCP 47 tag such as en-US, or qps-ploc
+                         for the pseudo-locale (default: the system's)
 
 LEVEL is trace, debug, info, warn or error.";
 
@@ -20,6 +23,8 @@ pub struct Options {
     pub log_level: LevelFilter,
     pub console_level: LevelFilter,
     pub log_file: Option<PathBuf>,
+    /// The UI language asked for; the page picks the closest catalog.
+    pub locale: Option<String>,
     pub help: bool,
     /// Arguments this version does not know. Logged and ignored, so a
     /// launcher that adds its own arguments cannot stop the app starting.
@@ -32,6 +37,7 @@ impl Default for Options {
             log_level: LevelFilter::Info,
             console_level: LevelFilter::Info,
             log_file: None,
+            locale: None,
             help: false,
             unknown: Vec::new(),
         }
@@ -75,6 +81,7 @@ where
             "--log-level" => options.log_level = level_value(&value("--log-level")?)?,
             "--console-level" => options.console_level = level_value(&value("--console-level")?)?,
             "--log-file" => options.log_file = Some(PathBuf::from(value("--log-file")?)),
+            "--locale" => options.locale = Some(value("--locale")?),
             "-h" | "--help" => options.help = true,
             _ => options.unknown.push(arg),
         }

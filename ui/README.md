@@ -25,19 +25,25 @@ There is no development server. Both commands build the page into `dist/` first,
 ## Checks
 
 ```
-npm run check                                                    # eslint and tsc
+npm run check                                                    # eslint, tsc, catalog check and its self-test
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
 ```
 
 CI runs the same, and builds a Windows release binary kept as an artifact for a week.
 
+## Text and the message catalog
+
+Every string the app shows comes from the catalogs in the repository's `i18n/<locale>/` folders: flat JSON files of dotted keys to ICU MessageFormat messages, shared with the engine's settings registry. `ui.json` holds the app's own text and `errors.json` the wording for every error code the engine or the shell can send; the engine and shell send codes and parameters, never sentences. In code, `t('key', values)` or `<Msg id="key" values={...} />`; keys built at run time go through `msgKey('prefix.', part)`.
+
+`npm run catalog:check` enforces this (the rules are listed at the top of `scripts/check-catalog.mjs`): no user-visible text in the source, every key used exists with matching values, every error code has a message, catalogs parse, CSS uses logical properties. A line that must hold text anyway takes `// catalog-ignore: <reason>`. `--locale qps-ploc` starts the pseudo-locale: accented, padded text that shows any string that skipped the catalog and any layout that cannot take longer translations.
+
 ## Options
 
 ```
-betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
+betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH] [--locale TAG]
 ```
 
-LEVEL is `trace`, `debug`, `info`, `warn` or `error`; both default to `info`. Unknown options are logged and ignored.
+LEVEL is `trace`, `debug`, `info`, `warn` or `error`; both default to `info`. `--locale` picks the UI language (default: the system's; `qps-ploc` for the pseudo-locale). Unknown options are logged and ignored.
 
 ## Logs
 

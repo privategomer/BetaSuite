@@ -11,18 +11,22 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0 .",
-    "check": "npm run lint && npm run typecheck",
+    "check": "npm run lint && npm run typecheck && npm run catalog:check && npm run catalog:selftest",
     "tauri": "tauri",
     "app:dev": "tauri dev",
-    "app:build": "tauri build --no-bundle"
+    "app:build": "tauri build --no-bundle",
+    "catalog:check": "node scripts/check-catalog.mjs",
+    "catalog:selftest": "node scripts/check-catalog.selftest.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.12.5",
+    "intl-messageformat": "~12.2.1",
     "react": "~19.3.1",
     "react-dom": "~19.3.1"
   },
   "devDependencies": {
     "@eslint/js": "~10.0.1",
+    "@formatjs/icu-messageformat-parser": "~3.5.23",
     "@tauri-apps/cli": "~2.12.6",
     "@types/react": "~19.3.0",
     "@types/react-dom": "~19.3.0",

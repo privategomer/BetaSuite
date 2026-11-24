@@ -13,3 +13,12 @@ export function uiLog( level: LogLevel, message: string ): Promise<void> {
 export function uiReady( title: string | null ): Promise<void> {
   return invoke( 'ui_ready', { title } );
 }
+
+export interface StartupInfo {
+  version: string;
+  locale: string | null;
+}
+
+export function startupInfo(): Promise<StartupInfo> {
+  return invoke( 'startup_info' );
+}

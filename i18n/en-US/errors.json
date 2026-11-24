@@ -1,0 +1,12 @@
+{
+ "error.command.bad_params": "The engine refused a request because its {field} value was not valid. Restart the engine; if this keeps happening, the app log has details.",
+ "error.command.unknown": "This version of the engine does not support the request {name}. The app and the engine may be from different versions.",
+ "error.engine.internal": "The engine hit an internal error ({exception_type}) and kept running. The engine log has details.",
+ "error.protocol.bad_encoding": "The engine received a message that was not valid text. Restart the engine; if this keeps happening, the app log has details.",
+ "error.protocol.bad_envelope": "The engine received a malformed message (field {field}). Restart the engine; if this keeps happening, the app log has details.",
+ "error.protocol.bad_json": "The engine received a message it could not read. Restart the engine; if this keeps happening, the app log has details.",
+ "error.protocol.hello_required": "The app sent the request {name} before the engine was ready. Restart the engine.",
+ "error.protocol.line_too_long": "A message to the engine was over its limit of {limit_bytes, number} bytes and was dropped.",
+ "error.protocol.unsupported_version": "The app and the engine speak different protocol versions. Install matching versions of both.",
+ "error.unknown": "Something went wrong (code {code}). The app log has details."
+}
