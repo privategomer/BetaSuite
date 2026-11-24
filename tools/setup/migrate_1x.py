@@ -104,18 +104,17 @@ def build_parser():
 
 def main( argv=None, stdin=None, stdout=None, clock=time.time ):
     args = build_parser().parse_args( argv )
+    opened = []
     try:
-        return _run( args, argv, stdin, stdout, clock )
+        return _run( args, argv, stdin, stdout, clock, opened )
     finally:
         # Let go of the log file, so it can be moved or deleted once the run
         # is over (on Windows an open file cannot be).
-        import logging
-        for handler in list( logging.getLogger( 'migrate_1x' ).handlers ):
-            logging.getLogger( 'migrate_1x' ).removeHandler( handler )
-            handler.close()
+        for logger in opened:
+            bu_log.close_logger( logger )
 
 
-def _run( args, argv, stdin, stdout, clock ):
+def _run( args, argv, stdin, stdout, clock, opened ):
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     try:
@@ -126,6 +125,7 @@ def _run( args, argv, stdin, stdout, clock ):
     log_path = args.log_file or os.path.join( targets['state'], 'logs', 'migrate_1x.log' )
     logger = bu_log.tool_logger( 'migrate_1x', log_path=log_path, file_level=args.log_level,
                                  console_level=args.console_level, console_stream=stdout )
+    opened.append( logger )
     logger.debug( "command: %s %s"%( os.path.abspath( __file__ ), ' '.join( sys.argv[1:] if argv is None else argv ) ) )
     interactive = not args.yes and not args.dry_run and stdin.isatty()
 
