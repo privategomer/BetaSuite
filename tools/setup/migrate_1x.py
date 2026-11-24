@@ -104,6 +104,18 @@ def build_parser():
 
 def main( argv=None, stdin=None, stdout=None, clock=time.time ):
     args = build_parser().parse_args( argv )
+    try:
+        return _run( args, argv, stdin, stdout, clock )
+    finally:
+        # Let go of the log file, so it can be moved or deleted once the run
+        # is over (on Windows an open file cannot be).
+        import logging
+        for handler in list( logging.getLogger( 'migrate_1x' ).handlers ):
+            logging.getLogger( 'migrate_1x' ).removeHandler( handler )
+            handler.close()
+
+
+def _run( args, argv, stdin, stdout, clock ):
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     try:

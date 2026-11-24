@@ -498,6 +498,11 @@ class TestCommandLine( _TreeCase ):
         self.assertEqual( code, 0, out )
         self.assertTrue( os.path.isfile( os.path.join( self.targets['config'], 'betaconfig_local.py' ) ) )
 
+    def test_the_log_file_is_let_go_when_it_returns( self ):
+        import logging
+        self.main( '--dry-run' )
+        self.assertEqual( logging.getLogger( 'migrate_1x' ).handlers, [] )
+
     def test_a_refusal_exits_1_with_the_reason( self ):
         code, out = self.main( '--from', self.checkout, '--yes' )
         self.assertEqual( code, 1 )
