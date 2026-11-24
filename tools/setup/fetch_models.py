@@ -53,7 +53,7 @@ REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( __file__ ), '..', '.
 sys.path.insert( 0, REPO_ROOT )
 import betautils_paths as bu_paths  # noqa: E402  (stdlib only)
 
-MODEL_DIR = os.path.normpath( bu_paths.beside_repo( REPO_ROOT, 'resources', 'model' ) )
+MODEL_DIR = os.path.normpath( bu_paths.legacy_path( 'resources', 'model' ) )
 
 
 def relaunch_in_venv():

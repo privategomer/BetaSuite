@@ -27,6 +27,10 @@ where the reasoning lives.
 - [Rendering and encoding](#rendering-and-encoding)
 - [Preview mode](#preview-mode)
 - [Logging and stats](#logging-and-stats)
+- [Hardware](#hardware)
+- [BetaVision screen capture](#betavision-screen-capture)
+- [Miscellaneous](#miscellaneous)
+- [The settings registry](#the-settings-registry)
 - [Why the shipped values are what they are](#why-the-shipped-values-are-what-they-are)
 - [Re-deriving values from your own footage](#re-deriving-values-from-your-own-footage)
 
@@ -120,6 +124,12 @@ changes rendered output, add it to `censor_identity()` and to that file.
 > outputs get new filenames on the next run. Nothing is lost, the old
 > files remain, under their old names, but a full re-render is a real
 > cost, so expect it rather than being surprised by it.
+
+> **Changed:** per-label `size_smoothing`, `style_min_dwell_seconds`
+> and `paired_style_max_age` joined the censor key's `labels` entry.
+> Tracking read them from a backend's or model variant's
+> `item_overrides`, and the key did not. Every config that censors
+> something re-renders once, for the same reason as above.
 
 ---
 
@@ -405,24 +415,56 @@ logs.
 
 ## Where data lives: `BETASUITE_DATA_ROOT`
 
-Paths in this file and in `betaconfig.py` that start with `../resources`
-or `../output` are relative to the folder the app runs in, the repo
-root, so by default the data sits beside the repo. The environment
-variable `BETASUITE_DATA_ROOT` names the folder that holds `resources/`
-and `output/` instead, for a second checkout that should work on the
-same library and caches.
+Each kind of data has its own folder, where the operating system keeps
+that kind for each user, with no admin rights needed:
 
-- Unset or empty: every path is exactly as written.
-- Set: it must be an absolute path to an existing folder. A relative
-  value, `~`, or a missing folder stops the run with an error naming the
-  variable.
-- Only the `../resources` and `../output` prefixes move. An absolute
-  path, or any other relative path, means what it always did.
-- Path settings keep their written value in every cache key. A model
-  path is part of the detection key and a sticker folder part of the
-  censor key, and they are resolved only where a file is opened, so a
-  checkout using the variable computes the same keys as one without it
-  and reuses its caches.
+| Kind | Holds | Linux | Windows |
+|---|---|---|---|
+| settings | `betaconfig_local.py` | `~/.config/betasuite` | `%LOCALAPPDATA%\BetaSuite\config` |
+| data | models, stickers, run-key records | `~/.local/share/betasuite/data` | `%LOCALAPPDATA%\BetaSuite\data` |
+| cache | detections, shot cuts, transcodes, file hashes | `~/.cache/betasuite` | `%LOCALAPPDATA%\BetaSuite\cache` |
+| state | logs, stats, benchmarks | `~/.local/state/betasuite` | `%LOCALAPPDATA%\BetaSuite\state` |
+| inputs, outputs | `uncensored_vids`, `uncensored_pics`, `source`; `censored_vids`, `censored_pics` | `~/.local/share/betasuite/library` | `%LOCALAPPDATA%\BetaSuite\library` |
+
+On Linux, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and
+`XDG_STATE_HOME` move them when set to absolute paths. macOS uses
+`~/Library/Application Support/BetaSuite/<kind>`,
+`~/Library/Caches/BetaSuite` for the cache and
+`~/Library/Application Support/BetaSuite/library.noindex` for the videos.
+
+The video folders sit in app data on purpose. What goes in them is
+mostly explicit, and the usual video folders are indexed and shown off
+by the desktop: file search and media apps list `~/Videos`, Windows
+Search indexes the profile's libraries. The app data folders are not
+indexed by default (KDE's Baloo skips hidden folders, GNOME's Tracker
+indexes only the user folders, Windows Search skips AppData, Spotlight
+skips a `.noindex` folder). The video folder is still its own kind,
+beside the data folder rather than inside it, so clearing the cache or
+app data never touches it. `python3 tools/lib/where.py inputs outputs`
+prints where they are, and every run logs them.
+
+Three variables move one kind each. Each must be an absolute path:
+
+- `BETASUITE_CACHE_DIR`: the cache, the large one
+- `BETASUITE_INPUT_DIR`: the folders runs read from
+- `BETASUITE_OUTPUT_DIR`: the folders runs write to
+
+`BETASUITE_DATA_ROOT` uses a 1.x tree instead: a folder holding
+`resources/` and `output/` laid out as 1.x had them, with
+`betaconfig_local.py` beside `betaconfig.py`. Every path is then exactly
+the 1.x one under that folder. It must be an absolute path to an
+existing folder, and it cannot be combined with the three variables
+above. A relative value, `~`, or a missing folder stops the run with an
+error naming the variable.
+
+Paths in this file and in `betaconfig.py` keep their 1.x names
+(`../resources/model/...`, `../output/logs/...`), and the app maps them
+to the folders above. Only the `../resources` and `../output` prefixes
+are mapped; an absolute path, or any other relative path, means what it
+always did. Path settings keep their written value in every cache key.
+A model path is part of the detection key and a sticker folder part of
+the censor key, and they are resolved only where a file is opened, so
+every layout computes the same keys and reuses the same caches.
 
 This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
 `images`, betaconst's folders, and the tools' own output folders.
@@ -603,6 +645,9 @@ detector_backend['defaults']['picture_sizes']     ← shared default
 the variant's native size                         ← convention
 ```
 
+The native size comes from the variant; a backend block may set
+`model_path` and `native_size` to run a model file of its own.
+
 > **Changed.** The module-level `betaconfig.picture_sizes`
 > fallback was removed. A detection size is a property of the model and
 > its export, so a single shared number could only ever be right for one
@@ -772,7 +817,8 @@ real, look at output at two or three values before committing.
 
 The **lower** threshold a detection needs to **continue** an
 already-established track. `None` disables hysteresis entirely, which is
-the default and is exactly the earlier behaviour.
+the default and is exactly the earlier behaviour. `default_min_prob_continue`
+is the value for every label that sets none.
 
 **The analogy.** A thermostat. If it started and stopped heating at the
 same temperature it would chatter on and off around the set point, so it
@@ -816,6 +862,10 @@ filter is **off** and cannot remove anything.
 | `max_area_fraction` | box area / frame area, upper bound |
 | `min_aspect_ratio` | box width / box height, lower bound |
 | `max_aspect_ratio` | box width / box height, upper bound |
+
+Each has a global default (`default_min_area_fraction`,
+`default_max_area_fraction`, `default_min_aspect_ratio`,
+`default_max_aspect_ratio`) that a label without its own value uses.
 
 **The analogy.** A coin sorter. Confidence asks "does this look like a
 coin?" The geometry filter asks "is it coin-sized?", a different
@@ -1732,6 +1782,9 @@ label's `interpolation_max_gap`.
 ### `interpolation_max_gap` (per-label, per-backend) and `default_interpolation_enabled`
 
 The longest gap that gets filled with synthetic in-between boxes.
+`default_interpolation_max_gap` (**0.5** s) applies to every label that
+sets none. `default_interpolation_enabled` (per-label:
+`interpolation_enabled`) turns the filling on or off.
 
 **These two are not the same thing, and conflating them was a real bug.**
 
@@ -1810,6 +1863,11 @@ people, and resolve independently.
 > frame while both are continuously visible. Observed distances (median
 > 0.09x box size, 99% under 1.0x) confirmed these were overwhelmingly
 > the same pair.
+
+`default_paired_style_max_age` (**1.0** s, per-label: `paired_style_max_age`)
+is how long a track may go undetected and still donate its style to a
+new box. It is capped by the label's `track_max_gap`, since a track
+older than that has ended.
 
 ---
 
@@ -2793,6 +2851,12 @@ flips through the whole folder like a flipbook.
 | `shape` | Overrides the item's shape for this variant only |
 | `merge` | Overrides `censor_overlap_strategy` for this variant only |
 | `width_area_safety` / `height_area_safety` | Overrides the item's padding for this variant only |
+
+The shape resolves from the style's own `shape`, then
+`type_default_shapes` (the shape a style type uses when the style sets
+none; it ships `'bar': 'box'`, since a bar only makes sense as a
+rectangle), then the label's `censor_shape`, then
+`default_censor_shape`.
 
 ### `feather`
 
@@ -4161,6 +4225,81 @@ With bit 1 set, render ffmpeg also runs at its normal log level
 instead of `-loglevel error`. That output goes to the log file at
 debug when each ffmpeg exits, no longer live to the terminal; pass
 `--console-level debug` to see it there.
+
+---
+
+## Hardware
+
+Settings that describe the computer. Setup and `tune_machine.sh` write
+them to the hardware section of `betaconfig_local.py`.
+
+| Setting | Meaning |
+|---|---|
+| `gpu_enabled` | `1` runs detection on the GPU, `0` on the CPU. Setup sets it to match the install |
+| `cuda_device_id` | Which GPU, counting from `0`, when there is more than one |
+| `detection_prefetch_frames` | See [Detection sampling](#detection_prefetch_frames) |
+| `structure_scan_workers` | Parallel workers for `betabench structure`; `0` is one per core, at most 4 |
+
+None of them is in a cache key. They change how fast a run goes; GPU
+and CPU inference can differ in the last digits of a score, and
+detections cached on one are reused on the other.
+
+---
+
+## BetaVision screen capture
+
+BetaVision censors a region of the screen live instead of a file.
+
+| Setting | Meaning |
+|---|---|
+| `vision_cap_monitor` | Which monitor to capture, counting from `0` |
+| `vision_cap_top`, `vision_cap_left` | The capture region's top-left corner, in pixels |
+| `vision_cap_height`, `vision_cap_width` | The capture region's size, in pixels |
+| `vision_cursor_color` | The `(r, g, b)` color the cursor is drawn in |
+| `betavision_delay` | Seconds between captures |
+| `betavision_interpolate` | Slide boxes between captures instead of jumping |
+
+---
+
+## Miscellaneous
+
+`enable_betasuite_watermark` adds a small BetaSuite mark to rendered
+output. It is in the censor key, since it changes every frame.
+
+---
+
+## The settings registry
+
+`betautils_settings.py` lists every setting above, one entry per key
+path. A path segment in angle brackets stands for any key of that map:
+`detector_backend.<backend>.item_overrides.<label>.min_prob` covers
+every backend's per-label `min_prob`. Each entry records:
+
+- **kind and limits**: the type, its range or choices, and whether
+  `None` is allowed and what it means. Validation reads these, so a
+  limit is stated once
+- **scope**: where it may be set (everywhere, per backend, per label,
+  per model variant, per structure profile, per person backend)
+- **level**: `simple` settings are on the app's main screens, the rest
+  behind "More options"
+- **moves**: the cache keys it moves (detection, censor, encode), and
+  the conditions under which it does, such as "only while reverse mode
+  is on"
+- **tip and help**: a message key in `i18n/en-US/settings.json` and an
+  anchor in this file
+
+The engine sends the registry to the app (`config.schema` in
+`protocol/`), and the app's settings pages are built from it.
+
+**Adding a setting.** Add it to `betaconfig.py`, its entry to
+`betautils_settings.py`, its label and tip to
+`i18n/en-US/settings.json`, and its text here. The tests then require:
+
+- every setting `betaconfig.py` has matches exactly one entry
+- every tip and anchor exists
+- the cache keys it declares are exactly the ones it moves, checked by
+  changing it
+- a setting that moves no censor key leaves a test render unchanged
 
 ---
 

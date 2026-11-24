@@ -201,9 +201,10 @@ def gpu_requested( args, c ):
             int( value ), loaded.path if from_local else 'betaconfig.py' ) )
         if loaded is not None:
             c.log.info( 'note  %s'%( loaded.describe(), ) )
-            legacy = betautils_local.legacy_warning( loaded )
-            if legacy:
-                c.warn( legacy )
+            for warning in ( betautils_local.legacy_warning( loaded ),
+                             betautils_local.ignored_repo_warning( loaded ) ):
+                if warning:
+                    c.warn( warning )
             for problem in loaded.problems:
                 c.fail( problem )
         return value
@@ -290,11 +291,16 @@ def main():
     import betautils_paths as bu_paths
     try:
         root = bu_paths.data_root()
-    except bu_paths.DataRootError as e:
+        folders = { kind: bu_paths.kind_dir( kind ) for kind in bu_paths.KINDS }
+    except bu_paths.PathsError as e:
         log.error( str( e ) )
         return 1
-    log.info( 'data folder: %s (%s)'%( root or os.path.dirname( REPO_ROOT ),
-        '%s'%( bu_paths.ENV_VAR, ) if root else 'beside the repo; %s unset'%( bu_paths.ENV_VAR, ) ) )
+    if root:
+        log.info( 'data folder: %s (the 1.x layout, from %s)'%( root, bu_paths.ENV_VAR ) )
+    else:
+        log.info( 'data folders by kind (%s unset):'%( bu_paths.ENV_VAR, ) )
+        for kind, folder in folders.items():
+            log.info( '  %-8s %s'%( kind, folder ) )
     check_python( c )
     check_packages( c )
     check_ffmpeg( c )

@@ -32,6 +32,25 @@ An error is `{"code": "...", "params": {...}}` with exactly the params `v1/error
 - `v` changes only on a breaking change.
 - `hello` must come first: the client sends the versions it speaks, the engine answers with the one it chose, its own version, and the commands and events it has. Any other command before a successful `hello` (except `shutdown`) gets `protocol.hello_required`.
 
+## Settings
+
+Four commands read and change the settings. They use the same local config file and the same checks as `tools/setup/local_config.py`, so a value set here is what the command-line tools read on their next run.
+
+| command | does |
+|---|---|
+| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, the cache keys it moves, and its message and help keys |
+| `config.get` | current values, with their defaults and where each came from (`default`, `local`, or `run` for an override sent with the request) |
+| `config.set` | checks a change as a run would and writes it to the local config only if it passes; `dry_run` checks without writing |
+| `config.reset` | removes settings from the local config, so the shipped values apply again |
+
+A path is the setting's name, then the keys inside it, joined by dots: `encode_crf`, `detector_backend.nudenet_v3.nms_iou`. A value set whole, such as a censor style or a list of rules, is set at its own path, never inside.
+
+`config.set` and `config.reset` answer `moves`, the cache keys the change moves: `detection` (re-detect), `censor` (re-render) or `encode` (re-encode). The engine works it out by comparing the keys before and after, which is how a client says what a change will cost before making it.
+
+A change that would fail validation answers `config.invalid`, listing every problem as `config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id. Nothing is written then.
+
+Settings must not change while a job runs.
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

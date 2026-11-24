@@ -346,9 +346,9 @@ class TestSettingsAreKeyedAndValidated( unittest.TestCase ):
 
     def test_an_unknown_blur_method_is_rejected( self ):
         errors = []
-        bu_config._check_blur_style_fields(
-            { 'type': 'blur', 'method': 'stack' }, 'test', errors )
+        bu_config._check_one_style_dict( { 'type': 'blur', 'method': 'stack' }, 'test', errors )
         self.assertTrue( errors )
+        self.assertEqual( 'config.bad_choice', errors[0].code )
 
 
 if __name__ == '__main__':

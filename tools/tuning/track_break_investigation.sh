@@ -44,10 +44,10 @@ ANALYSIS_DIR="$CORE_DIR/tools/analysis"
 cd "$CORE_DIR"
 # shellcheck source=/dev/null
 source "$CORE_DIR/tools/lib/data_root.sh"
-DATA_ROOT="$(betasuite_data_root "$CORE_DIR")" || exit 1
+LOGS_DIR="$(betasuite_path "$CORE_DIR" output/logs)" || exit 1
 
-mkdir -p "$DATA_ROOT/output/logs"
-export HARNESS_LOG_FILE="$DATA_ROOT/output/logs/track_break_investigation.log"
+mkdir -p "$LOGS_DIR"
+export HARNESS_LOG_FILE="$LOGS_DIR/track_break_investigation.log"
 source "$SCRIPT_DIR/harness_lib.sh"
 
 if [ -f ../bin/activate ]; then

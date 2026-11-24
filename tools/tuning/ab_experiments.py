@@ -46,8 +46,7 @@ import betautils_tuning as bu_tuning
 TRACKING_CAUSE = 'tracking'
 BUCKET_SECONDS = 0.5
 CORE_DIR = os.path.dirname( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ) )
-ANALYSIS_RUNS = os.path.join( bu_paths.data_root() or os.path.dirname( CORE_DIR ),
-                              'output', 'logs', 'analysis_runs' )
+ANALYSIS_RUNS = bu_paths.legacy_path( 'output', 'logs', 'analysis_runs' )
 
 
 def parse_value( text ):

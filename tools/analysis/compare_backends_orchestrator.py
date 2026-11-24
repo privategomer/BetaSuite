@@ -189,7 +189,7 @@ def main():
                "for an actual before/after comparison."%(backends[0]) )
 
     ts = datetime.datetime.now().strftime( '%Y%m%d_%H%M%S' )
-    log_dir = bu_paths.beside_repo( _CORE_DIR, 'output', 'logs', 'backend_comparison_runs', ts )
+    log_dir = bu_paths.legacy_path( 'output', 'logs', 'backend_comparison_runs', ts )
     log_dir = os.path.abspath( log_dir )
     os.makedirs( log_dir, exist_ok=True )
 

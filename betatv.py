@@ -61,6 +61,7 @@ import betautils_log as bu_log
 import betautils_person as bu_person
 import betautils_render as bu_render
 import betautils_reverse as bu_reverse
+import betautils_runlock as bu_runlock
 import betautils_signals as bu_signals
 import betautils_track as bu_track
 import betautils_video as bu_video
@@ -95,6 +96,9 @@ def _startup():
 
     logger = bu_log.get_logger()
     bu_signals.install_handler( logger )
+    bu_log.log_data_layout( logger )
+    logger.info( "videos: put them in %s; results go to %s"%(
+        betaconst.video_path_uncensored, betaconst.video_path_censored ) )
 
     bu_config.validate_config()
     bu_config.exit_if_nothing_to_render( logger )
@@ -939,21 +943,33 @@ def main():
 
     Returns:
         A process exit code: 0 for a clean finish, 1 for a run stopped
-        by a full disk, 130 for a user interrupt (the conventional
+        by a full disk, 3 when another run holds the library's run lock
+        (betautils_runlock), 130 for a user interrupt (the conventional
         128 + SIGINT).
     """
     logger = _startup()
-    _log_run_banner( logger )
+    try:
+        run_lock = bu_runlock.acquire_library( 'betatv', logger=logger )
+    except bu_runlock.RunLocked as locked:
+        logger.error( locked.message() )
+        return bu_runlock.EXIT_LOCKED
+    try:
+        _log_run_banner( logger )
 
-    preview_mode_enabled = getattr( betaconfig, 'preview_mode_enabled', False )
-    preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
-    active_encode_preset = _resolve_active_encode_preset()
+        preview_mode_enabled = getattr( betaconfig, 'preview_mode_enabled', False )
+        preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
+        active_encode_preset = _resolve_active_encode_preset()
 
-    run_marker = bu_log.RunMarker(
-        bu_log.run_marker_path_for( bu_log.configured_stats_path() ),
-        logger, boot_id=bu_log.current_boot_id() )
-    run_marker.report_previous()
-    run_marker.start()
+        run_marker = bu_log.RunMarker(
+            bu_log.run_marker_path_for( bu_log.configured_stats_path() ),
+            logger, boot_id=bu_log.current_boot_id() )
+        run_marker.report_previous()
+        run_marker.start()
+    except BaseException:
+        # Anything that stops the run before its main loop still gives the
+        # lock back, so the next run does not report it left behind.
+        run_lock.release()
+        raise
 
     counts = { 'processed': 0, 'skipped': 0, 'failed': 0 }
     exit_code = 0
@@ -996,6 +1012,7 @@ def main():
         # Every ending this process can still act on removes the marker,
         # so one left behind means the run died without a chance to log.
         run_marker.finish()
+        run_lock.release()
 
     logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(
         bu_log.format_duration( time.perf_counter() - run_started_at ),

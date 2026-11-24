@@ -101,10 +101,13 @@ class LiveConfig( TempDir ):
 
 class TestWhereItLives( unittest.TestCase ):
 
-    def test_the_default_is_beside_betaconfig( self ):
-        self.assertEqual( bu_local.default_path(), os.path.join( REPO, 'betaconfig_local.py' ) )
+    def test_the_default_is_the_config_folder( self ):
+        # test_paths.py covers the 1.x layout, where it stays beside betaconfig.
+        import betautils_paths as bu_paths
+        self.assertEqual( bu_local.default_path(), os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_local.py' ) )
+        self.assertEqual( bu_local.repo_path(), os.path.join( REPO, 'betaconfig_local.py' ) )
         self.assertEqual( bu_local.legacy_machine_path(),
-                          os.path.normpath( os.path.join( REPO, '..', 'resources', 'betaconfig_machine.py' ) ) )
+                          os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_machine.py' ) )
 
     def test_the_environment_variable_moves_or_turns_it_off( self ):
         self.assertEqual( bu_local.configured_path( {} ), bu_local.default_path() )
@@ -473,7 +476,7 @@ class TestValidation( LiveConfig ):
         self.assertEqual( text.count( 'local overrides active:' ), 1 )
         self.assertIn( "local overrides active: render_workers=-2, console_palette='deuteranopia' (from %s)"%(
             self.path, ), text )
-        self.assertIn( 'render_workers must be a non-negative integer', text )
+        self.assertIn( 'render_workers must be at least 0, got -2', text )
         self.assertIn( "%s sets console_palette, render_workers; an error naming one of those"%( self.path, ), text )
 
     def test_warnings_reach_the_log( self ):
@@ -493,9 +496,8 @@ class TestHardwareSettingValidation( unittest.TestCase ):
         try:
             for name, value in values.items():
                 setattr( betaconfig, name, value )
-            errors = []
-            bu_config._validate_hardware_settings( errors )
-            return errors
+            # The hardware settings' kinds and ranges are registry checks.
+            return bu_config._collect_validation_errors()
         finally:
             for name, value in saved.items():
                 setattr( betaconfig, name, value )
