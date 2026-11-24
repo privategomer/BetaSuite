@@ -238,6 +238,13 @@ class TestProbeAndHolder( _LockCase ):
         self.assertEqual( len( reads ), 3 )
 
 
+def _engine_packages_installed():
+    import importlib.util
+    return importlib.util.find_spec( 'cv2' ) is not None
+
+
+@unittest.skipUnless( _engine_packages_installed(), "betatv and betastare need the engine's packages "
+                      "(the Windows CI job installs only the protocol's)" )
 class TestTheCommandLineTakesIt( unittest.TestCase ):
     """betatv and betastare refuse with exit 3 and give the lock back however they end."""
 
