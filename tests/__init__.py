@@ -39,12 +39,11 @@ os.environ.pop( 'BETASUITE_DATA_ROOT', None )
 # Without a data root the app uses the OS folders by kind, which are the
 # user's real ones (~/.cache/betasuite, %LOCALAPPDATA%\BetaSuite). Every
 # variable those folders come from points under the temp root instead,
-# before betaconst resolves anything and for every subprocess. The input
-# and output folders follow the Videos folder: on XDG systems through a
-# user-dirs.dirs in the temp config folder, on Windows through the
-# profile folder. The folder overrides are dropped, not set, since they
-# cannot be combined with a data root and tests of the root set one.
-# Tests of the layout pass their own environment.
+# before betaconst resolves anything and for every subprocess; the video
+# folders sit in app data, so they follow. The folder overrides are
+# dropped, not set, since they cannot be combined with a data root and
+# tests of the root set one. Tests of the layout pass their own
+# environment.
 TEST_OS_ROOT = os.path.join( TEST_OUTPUT_ROOT, 'os' )
 TEST_OS_ENV = {
     'XDG_CONFIG_HOME': os.path.join( TEST_OS_ROOT, 'config' ),
@@ -53,14 +52,9 @@ TEST_OS_ENV = {
     'XDG_STATE_HOME':  os.path.join( TEST_OS_ROOT, 'state' ),
     'LOCALAPPDATA':    os.path.join( TEST_OS_ROOT, 'localappdata' ),
 }
-if os.name == 'nt':
-    TEST_OS_ENV['USERPROFILE'] = os.path.join( TEST_OS_ROOT, 'profile' )
 os.environ.update( TEST_OS_ENV )
 for _name in ( 'BETASUITE_CACHE_DIR', 'BETASUITE_INPUT_DIR', 'BETASUITE_OUTPUT_DIR' ):
     os.environ.pop( _name, None )
-os.makedirs( TEST_OS_ENV['XDG_CONFIG_HOME'] )
-with open( os.path.join( TEST_OS_ENV['XDG_CONFIG_HOME'], 'user-dirs.dirs' ), 'w', encoding='utf-8' ) as _handle:
-    _handle.write( 'XDG_VIDEOS_DIR="%s"\n'%( os.path.join( TEST_OS_ROOT, 'videos' ), ) )
 
 # The data folder exists, as after a first run, so the warning about a 1.x
 # tree beside the code (which a developer's own checkout has) never adds

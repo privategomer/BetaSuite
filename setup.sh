@@ -282,6 +282,7 @@ for rel in logs; do
     if [ ! -d "$d" ]; then mkdir -p "$d" && log_info "created $d"; fi
 done
 INPUT_VIDS="$(betasuite_path "$REPO_DIR" resources/uncensored_vids)" || die "a data folder variable is not usable"
+OUTPUT_VIDS="$(betasuite_path "$REPO_DIR" output/censored_vids)" || die "a data folder variable is not usable"
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
@@ -329,6 +330,7 @@ cat <<EOF
 Next steps:
   source .venv/bin/activate          # once per terminal
   # put videos in $INPUT_VIDS
+  # results land in $OUTPUT_VIDS (python3 tools/lib/where.py lists every folder)
   python3 betatv.py --preview on --preview-seconds 20
   tools/bench/tune_machine.sh        # optional: measure this machine's hardware settings
 

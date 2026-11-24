@@ -66,8 +66,8 @@ def library_paths():
     state lock alone would let both write the same outputs at once. A
     lock in each non-default media folder makes them meet: under a data
     root the output folder's lock is the tree's output/run.lock itself.
-    The default OS media folder gets none, so nothing is left in the
-    user's Videos folder.
+    The default media folder (in app data) gets none: the state lock
+    already covers it.
     """
     import betautils_paths as bu_paths
     paths = [ default_path() ]
