@@ -105,6 +105,14 @@ jobs:
       - name: Clippy
         working-directory: ui/src-tauri
         run: cargo clippy --all-targets --locked -- -D warnings
+      # The supervisor tests drive the real betaengine.py serve, which needs
+      # only the standard library.
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - name: Engine supervisor tests
+        working-directory: ui/src-tauri
+        run: cargo test --locked
 
   ui-windows:
     name: ui (windows, build)

@@ -31,6 +31,20 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
 
 CI runs the same, and builds a Windows release binary kept as an artifact for a week.
 
+## The engine
+
+The shell starts the engine as a child process, `python betaengine.py serve`, and speaks the protocol in `protocol/README.md` with it (`src-tauri/src/engine.rs`). It looks for the engine in `BETASUITE_ENGINE_DIR` when that is set, else in the executable's folder or one of its parents, so a binary built in the repository, or copied into a checkout's root, finds it. Python is `PYTHON_BIN` when set, else the checkout's `.venv`, else `python3` or `python` on PATH. Serve mode needs only the standard library. The engine inherits the app's environment, `BETASUITE_DATA_ROOT` included, and runs in the engine's folder.
+
+Closing the window hides it, sends `shutdown`, waits up to 5 s, kills the engine if it is still running, then exits. If the engine ends on its own, the page is told (`exited`, with the exit code or signal) and can restart it. Every message to and from the engine is recorded in `engine-transcript.jsonl` beside the log (the previous run's copy is kept as `.1`), and the engine's stderr goes into the log at debug.
+
+`cargo test` (in `src-tauri/`) runs the supervisor against the real engine and a fake one: handshake, concurrent requests, rejected lines, the line limit, a stderr flood, kills, shutdown, a stuck engine, a missing engine or Python, and restart.
+
+### Running a CI build on Windows
+
+1. Download `betasuite-windows` from the pull request's checks (Actions run, Artifacts) and the branch's source as a zip.
+2. Unzip the source, and in that folder run `py -3.12 -m venv .venv` (no packages needed).
+3. Put `betasuite.exe` in that folder and start it.
+
 ## Text and the message catalog
 
 Every string the app shows comes from the catalogs in the repository's `i18n/<locale>/` folders: flat JSON files of dotted keys to ICU MessageFormat messages, shared with the engine's settings registry. `ui.json` holds the app's own text and `errors.json` the wording for every error code the engine or the shell can send; the engine and shell send codes and parameters, never sentences. In code, `t('key', values)` or `<Msg id="key" values={...} />`; keys built at run time go through `msgKey('prefix.', part)`.

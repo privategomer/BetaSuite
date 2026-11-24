@@ -5,17 +5,21 @@
 //! and the page words them from the message catalog.
 
 mod cli;
+mod engine;
 #[cfg(target_os = "linux")]
 mod linux;
 mod logging;
 mod paths;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{Manager, WebviewWindow};
+use serde_json::{json, Value};
+use tauri::{Emitter, Manager, RunEvent, WebviewWindow, WindowEvent};
+
+use engine::{Engine, ErrorCode};
 
 /// The release version, from the repository's VERSION file.
 pub const VERSION: &str = env!("BETASUITE_VERSION");
@@ -79,7 +83,82 @@ fn ui_ready(window: WebviewWindow, shown: tauri::State<'_, Shown>, title: Option
     show_window(&window, &shown, "page ready");
 }
 
-fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+/// The engine's current status, for the page's first read. Changes after
+/// that arrive as `engine-status` events.
+#[tauri::command]
+fn engine_status(engine: tauri::State<'_, Engine>) -> engine::Status {
+    engine.status()
+}
+
+/// Sends one command to the engine and returns its result data, or an error
+/// code: the engine's own, or a `ui.engine.*` one.
+#[tauri::command]
+async fn engine_request(
+    engine: tauri::State<'_, Engine>,
+    name: String,
+    data: Option<Value>,
+) -> Result<Value, ErrorCode> {
+    let engine = engine.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || engine.request(&name, data.unwrap_or(json!({}))))
+        .await
+        .unwrap_or_else(|_| Err(ErrorCode::new("ui.engine.write_failed", json!({}))))
+}
+
+/// Starts the engine again after it stopped, exited or failed to start.
+#[tauri::command]
+fn engine_restart(engine: tauri::State<'_, Engine>) {
+    engine.restart();
+}
+
+/// Set once the app has begun closing, so a second close request does not
+/// start a second shutdown.
+struct Closing(AtomicBool);
+
+/// Closing the window hides it at once, shuts the engine down (shutdown,
+/// then a kill after the timeout), and then exits.
+fn close(app: &tauri::AppHandle) {
+    if app.state::<Closing>().0.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    log::info!("window closed; shutting the engine down");
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        app.state::<Engine>().shutdown();
+        app.exit(0);
+    });
+}
+
+fn create_engine(app: &tauri::AppHandle, transcript: Option<std::path::PathBuf>) -> Engine {
+    let mut config = engine::Config::new(VERSION);
+    config.transcript = transcript;
+    let status_app = app.clone();
+    let event_app = app.clone();
+    Engine::new(
+        config,
+        Arc::new(move |status: &engine::Status| {
+            if let Err(error) = status_app.emit("engine-status", status) {
+                log::warn!("cannot send the engine status to the page: {error}");
+            }
+        }),
+        Arc::new(move |event: &Value| {
+            if let Err(error) = event_app.emit("engine-event", event) {
+                log::warn!("cannot send an engine event to the page: {error}");
+            }
+        }),
+    )
+}
+
+fn setup(
+    app: &mut tauri::App,
+    transcript: Option<std::path::PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let engine = create_engine(app.handle(), transcript);
+    engine.start();
+    app.manage(engine);
+
     let window = app
         .get_webview_window("main")
         .ok_or("tauri.conf.json defines no main window")?;
@@ -149,11 +228,30 @@ pub fn run() -> i32 {
         version: VERSION,
         locale: options.locale.clone(),
     };
+    let transcript = log_file
+        .path
+        .as_ref()
+        .and_then(|path| path.parent())
+        .map(|dir| dir.join("engine-transcript.jsonl"));
     let app = tauri::Builder::default()
         .manage(Shown(AtomicBool::new(false)))
+        .manage(Closing(AtomicBool::new(false)))
         .manage(startup)
-        .setup(setup)
-        .invoke_handler(tauri::generate_handler![startup_info, ui_log, ui_ready])
+        .setup(move |app| setup(app, transcript))
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                close(window.app_handle());
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            startup_info,
+            ui_log,
+            ui_ready,
+            engine_status,
+            engine_request,
+            engine_restart
+        ])
         .build(tauri::generate_context!());
     let app = match app {
         Ok(app) => app,
@@ -162,7 +260,14 @@ pub fn run() -> i32 {
             return 1;
         }
     };
-    let code = app.run_return(|_handle, _event| {});
+    let code = app.run_return(|app, event| {
+        if let RunEvent::Exit = event {
+            // Returns at once when the window close already stopped it.
+            if let Some(engine) = app.try_state::<Engine>() {
+                engine.shutdown();
+            }
+        }
+    });
     log::info!("exiting with code {code}");
     log::logger().flush();
     code
