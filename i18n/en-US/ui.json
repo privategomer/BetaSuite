@@ -1,3 +1,25 @@
 {
- "app.window_title": "BetaSuite"
+ "app.name": "BetaSuite",
+ "app.window_title": "BetaSuite",
+ "player.dialog_filter": "Videos",
+ "player.dialog_title": "Open a video",
+ "player.empty": "Open a video file to play it here.",
+ "player.error.aborted": "Loading the video was stopped.",
+ "player.error.decode": "This video could not be decoded. The file may be damaged, or this computer may be missing a video decoder.",
+ "player.error.open_failed": "This file could not be opened. Check that it still exists and that you can read it.",
+ "player.error.read": "The video file could not be read. Check that it is still there.",
+ "player.error.unknown": "This video could not be played.",
+ "player.error.unsupported": "This video format is not supported, or this computer is missing a decoder for it.",
+ "player.open": "Open video…",
+ "status.engine.exit_code": "Exit code {code}",
+ "status.engine.exit_signal": "Ended by signal {signal}",
+ "status.engine.exited": "The engine stopped unexpectedly.",
+ "status.engine.failed": "The engine could not start.",
+ "status.engine.ready": "Engine ready",
+ "status.engine.restart": "Restart engine",
+ "status.engine.starting": "Starting the engine…",
+ "status.engine.stopped": "Engine stopped",
+ "status.engine.stopping": "Stopping the engine…",
+ "status.engine.version": "Version {version}",
+ "status.strip_label": "Status"
 }

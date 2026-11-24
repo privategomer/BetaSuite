@@ -364,7 +364,7 @@ function checkSource( file, base, usage, report, exemptions ) {
     if ( ts.isCallExpression( node ) || ts.isNewExpression( node ) ) {
       const name = calleeName( node.expression ) ?? '';
       const args = node.arguments ?? [];
-      if ( /^(log|console)\.\w+$/.test( name ) || name === 'import.meta.glob' || /Error$/.test( name ) ) {
+      if ( /^(log|console)\.\w+$/.test( name ) || name === 'import.meta.glob' || /^([A-Z]\w*)?Error$/.test( name ) ) {
         return; // logs and errors stay English; they are never shown
       }
       if ( ts.isCallExpression( node ) && node.expression.kind === ts.SyntaxKind.ImportKeyword ) {
@@ -436,8 +436,9 @@ function checkSource( file, base, usage, report, exemptions ) {
           }
           continue;
         }
-        if ( ts.isJsxExpression( init ) && init.expression !== undefined ) {
-          visit( init.expression, !code );
+        // A code attribute's expression (className={...}) builds tokens, not text.
+        if ( !code && ts.isJsxExpression( init ) && init.expression !== undefined ) {
+          visit( init.expression, true );
         }
       }
       return;

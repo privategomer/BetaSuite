@@ -11,12 +11,13 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0 .",
-    "check": "npm run lint && npm run typecheck && npm run catalog:check && npm run catalog:selftest",
+    "check": "npm run lint && npm run typecheck && npm run catalog:check && npm run catalog:selftest && npm run contrast:check",
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build --no-bundle",
     "catalog:check": "node scripts/check-catalog.mjs",
-    "catalog:selftest": "node scripts/check-catalog.selftest.mjs"
+    "catalog:selftest": "node scripts/check-catalog.selftest.mjs",
+    "contrast:check": "node scripts/check-contrast.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.12.5",
