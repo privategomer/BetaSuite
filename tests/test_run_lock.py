@@ -214,7 +214,8 @@ class TestProbeAndHolder( _LockCase ):
                 ( '[1, 2]', { 'program': None, 'pid': None, 'started_at': None } ),
                 ( '{"program": "engine", "pid": "12", "started_at": true}',
                   { 'program': 'engine', 'pid': None, 'started_at': None } ),
-                ( '{"program": 3, "pid": 12, "started_at": 5}', { 'program': None, 'pid': 12, 'started_at': 5 } ) ):
+                ( '{"program": 3, "pid": 12, "started_at": 5}', { 'program': None, 'pid': 12, 'started_at': 5 } ),
+                ( '{"program": "x", "pid": true, "started_at": 5}', { 'program': 'x', 'pid': None, 'started_at': 5 } ) ):
             with open( target, 'w' ) as handle:
                 handle.write( body )
             self.assertEqual( bu_runlock.read_holder( self.path ), expected, body )
@@ -243,6 +244,17 @@ class TestProbeAndHolder( _LockCase ):
              mock.patch.object( bu_runlock, '_HOLDER_READ_GAP_SECONDS', 0 ):
             self.assertEqual( bu_runlock._read_holder_of_live_lock( self.path )['program'], 'late' )
         self.assertEqual( len( reads ), 3 )
+
+    def test_a_record_without_a_pid_yet_is_read_again( self ):
+        reads = []
+        empty = { 'program': None, 'pid': None, 'started_at': None }
+
+        def partial( path ):
+            reads.append( path )
+            return dict( empty ) if len( reads ) < 2 else { 'program': 'whole', 'pid': 9, 'started_at': 1 }
+        with mock.patch.object( bu_runlock, 'read_holder', partial ), \
+             mock.patch.object( bu_runlock, '_HOLDER_READ_GAP_SECONDS', 0 ):
+            self.assertEqual( bu_runlock._read_holder_of_live_lock( self.path )['program'], 'whole' )
 
 
 def _engine_packages_installed():
@@ -278,6 +290,17 @@ class TestTheCommandLineTakesIt( unittest.TestCase ):
     def test_betatv_gives_it_back_when_the_model_fails( self ):
         import betatv
         with mock.patch.object( betatv, '_startup', return_value=self.logger ), \
+             mock.patch.object( betatv.bu_detector, 'get_detector', side_effect=RuntimeError( 'no model' ) ):
+            with self.assertRaises( RuntimeError ):
+                betatv.main()
+        self.assertIsNone( bu_runlock.probe( self.path ) )
+        self.assertIsNone( bu_runlock.read_holder( self.path ) )
+
+    def test_betatv_gives_it_back_when_the_main_loop_fails( self ):
+        import betatv
+        with mock.patch.object( betatv, '_startup', return_value=self.logger ), \
+             mock.patch.object( betatv, '_log_run_banner' ), \
+             mock.patch.object( betatv, '_resolve_active_encode_preset', return_value='fast' ), \
              mock.patch.object( betatv.bu_detector, 'get_detector', side_effect=RuntimeError( 'no model' ) ):
             with self.assertRaises( RuntimeError ):
                 betatv.main()
