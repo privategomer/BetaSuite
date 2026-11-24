@@ -57,13 +57,13 @@ import numpy as np
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+import betautils_log as bu_log
 
 
 def _rule( rule_id, text ):
     """An error with a stable rule id for the engine protocol (betautils_settings.rule)."""
     import betautils_settings as bu_settings
     return bu_settings.rule( rule_id, text )
-import betautils_log as bu_log
 
 
 # This model family's class-index order, exactly as baked into each

@@ -44,6 +44,7 @@ def _rule( rule_id, text ):
     import betautils_settings as bu_settings
     return bu_settings.rule( rule_id, text )
 
+
 VARIANTS = {
     'n': { 'model_path': '../resources/model/yolo11n-seg.onnx', 'native_size': 640 },
     's': { 'model_path': '../resources/model/yolo11s-seg.onnx', 'native_size': 640 },

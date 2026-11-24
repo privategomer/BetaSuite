@@ -152,7 +152,7 @@ def config_steps( session, logger ):
     if 'error' in checked:
         logger.info( "config.set dry run: the local config is turned off, so it answers config.local_off" )
         return
-    if checked != { 'moves': [ 'encode' ], 'written': False, 'dry_run': True }:
+    if checked != { 'moves': [ 'encode' ], 'may_move': [], 'written': False, 'dry_run': True }:
         raise StepFailed( "config.set dry run of encode_crf=%d answered %r"%( other, checked ) )
     logger.info( "config.set dry run: encode_crf=%d would move %s, nothing written"%(
         other, ', '.join( checked['moves'] ) ) )

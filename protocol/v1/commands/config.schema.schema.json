@@ -21,7 +21,7 @@
     },
     "setting": {
       "type": "object",
-      "required": [ "path", "kind", "scope", "level", "moves", "when", "per_run", "tip", "label", "help" ],
+      "required": [ "path", "kind", "scope", "level", "moves", "may_move", "when", "per_run", "tip", "label", "help" ],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
         "kind": { "type": "string" },
@@ -29,6 +29,7 @@
                              "profile", "profile_label", "person_backend" ] },
         "level": { "enum": [ "simple", "advanced" ] },
         "moves": { "type": "array", "items": { "enum": [ "detection", "censor", "encode" ] }, "uniqueItems": true },
+        "may_move": { "type": "array", "items": { "enum": [ "detection", "censor", "encode" ] }, "uniqueItems": true },
         "when": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "per_run": { "type": "boolean" },
         "tip": { "type": "string" },

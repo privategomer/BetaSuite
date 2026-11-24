@@ -59,6 +59,7 @@ def _rule( rule_id, text ):
     import betautils_settings as bu_settings
     return bu_settings.rule( rule_id, text )
 
+
 # native_size: the square picture size the export is fixed at, Roboflow's
 # own resolution for that size. Not a setting: it is baked into the .onnx
 # file, and persons_for_imgs reads it from there.
