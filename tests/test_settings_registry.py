@@ -245,6 +245,19 @@ class TestLookup( unittest.TestCase ):
         entry = bu_settings.find( 'detector_backend.nudenet_v3.nn_batch_size' )
         self.assertEqual( '<backend>', entry.path[1] )
 
+    def test_the_most_specific_entry_wins_whatever_the_registry_order( self ):
+        import unittest.mock as mock
+        reordered = tuple( reversed( bu_settings.REGISTRY ) )
+        bu_settings._find.cache_clear()
+        try:
+            with mock.patch.object( bu_settings, 'REGISTRY', reordered ):
+                entry = bu_settings.find( 'detector_backend.defaults.nn_batch_size' )
+                self.assertEqual( ( 'detector_backend', 'defaults', 'nn_batch_size' ), entry.path )
+                entry = bu_settings.find( 'detector_backend.defaults.picture_sizes' )
+                self.assertEqual( 'defaults', entry.path[1] )
+        finally:
+            bu_settings._find.cache_clear()
+
     def test_a_path_inside_a_structured_entry_finds_that_entry( self ):
         entry = bu_settings.find( 'item_overrides.exposed_breast.censor_style.0.strength' )
         self.assertEqual( 'censor_style', entry.kind )

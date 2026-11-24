@@ -224,6 +224,14 @@ class TestSchemaAndGet( _ConfigEngineTest ):
         self.assertError( engine.request( 'config.get', { 'overrides': { 'encode_crf': 'x' } } ), 'config.invalid' )
         self.assertError( engine.request( 'config.get', { 'overrides': { 'encod_crf': 1 } } ), 'config.unknown_key' )
 
+    def test_a_value_the_file_sets_whole_makes_everything_inside_it_local( self ):
+        with open( self.local, 'w', encoding='utf-8' ) as handle:
+            handle.write( "reverse = { 'windows': { 'face_femme': { 'censor_style': { 'type': 'show' } } } }\n" )
+        engine = self.engine()
+        rows = engine.request( 'config.get', { 'paths': [ 'reverse.windows' ] } )['data']['settings']
+        self.assertEqual( [ ( 'reverse.windows.face_femme.censor_style', 'local' ) ],
+                          [ ( row['path'], row['source'] ) for row in rows ] )
+
     def test_a_path_prefix_selects_a_block( self ):
         engine = self.engine()
         rows = engine.request( 'config.get', { 'paths': [ 'reverse.trigger' ] } )['data']['settings']
@@ -276,6 +284,13 @@ class TestPrecedence( unittest.TestCase ):
             store = bu_store.ConfigStore( path=self.local )
             store.evaluate( 'encode_crf = 30\n', { ( 'render_workers', ): 7 } )
             self.assertEqual( before, harness.snapshot() )
+
+    def test_a_problem_betaconfig_py_already_has_is_not_the_local_files_fault( self ):
+        with harness.shipped():
+            store = bu_store.ConfigStore( path=self.local )
+            store.base['encode_crf'] = 99   # as if the shipped value were out of range
+            self.assertTrue( store.evaluate( 'render_workers = 2\n' ).ok )
+            self.assertFalse( store.evaluate( 'render_workers = -2\n' ).ok )
 
     def test_the_baseline_is_betaconfig_py_without_the_local_layer( self ):
         with open( self.local, 'w', encoding='utf-8' ) as handle:
