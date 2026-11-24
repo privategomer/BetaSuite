@@ -199,6 +199,13 @@ class TestProbeAndHolder( _LockCase ):
         self.assertIsNone( bu_runlock.probe( self.path ) )
         self.assertFalse( os.path.exists( os.path.dirname( self.path ) ) )
 
+    def test_probe_works_on_a_read_only_lock_file( self ):
+        held = bu_runlock.acquire( 'holder', path=self.path )
+        held.release()
+        os.chmod( self.path, 0o400 )
+        self.addCleanup( os.chmod, self.path, 0o600 )
+        self.assertIsNone( bu_runlock.probe( self.path ) )
+
     def test_a_damaged_record_names_what_it_can( self ):
         os.makedirs( os.path.dirname( self.path ) )
         target = bu_runlock.holder_path( self.path )

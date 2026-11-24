@@ -258,7 +258,9 @@ def probe( path=None ):
     """
     path = default_path() if path is None else path
     try:
-        fd = os.open( path, os.O_RDWR )
+        # Read-only: probing another tree (a 1.x one being migrated) must not
+        # open anything in it for writing. Both locks accept such a descriptor.
+        fd = os.open( path, os.O_RDONLY )
     except FileNotFoundError:
         return None
     try:
