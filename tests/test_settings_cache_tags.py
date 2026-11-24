@@ -10,7 +10,10 @@ wide re-renders for nothing and tells the user so.
 
 Key side, for every entry and every instantiation of its placeholders:
 set up the conditions its tags depend on, change it to its probe value,
-and require the set of keys that moved to EQUAL its tags. Then, for each
+and require the set of keys that moved to EQUAL its tags. The keys are
+the ones config.set reports (betautils_config_store.current_keys): for
+detection, every key a run can use, one per picture size and per sample
+rate a structure profile can select. Then, for each
 condition, the same change with only that condition off must move
 nothing, which proves the condition is real.
 
@@ -22,6 +25,7 @@ import copy
 import unittest
 
 import betaconfig
+import betautils_config_store as bu_store
 import betautils_detector as bu_detector
 import betautils_person as bu_person
 import betautils_settings as bu_settings
@@ -128,8 +132,7 @@ def moved_by( entry, path, bindings, conditions_on, condition_off=None ):
     with harness.shipped():
         for condition in entry.when:
             set_up( condition, bindings, condition != condition_off, path )
-        backend_name = bu_detector.selected_backend_name()
-        before = harness.keys( backend_name )
+        before = bu_store.current_keys()
         try:
             current = harness.get_path( path )
         except ( KeyError, IndexError, TypeError ):
@@ -139,7 +142,7 @@ def moved_by( entry, path, bindings, conditions_on, condition_off=None ):
             raise AssertionError( "%s: the probe equals the current value %r"%(
                 '.'.join( path ), current ) )
         harness.set_path( path, probe )
-        after = harness.keys( bu_detector.selected_backend_name() )
+        after = bu_store.current_keys()
     return { kind for kind in before if before[kind] != after[kind] }
 
 

@@ -6,7 +6,9 @@ Each entry says what a value may be (kind, range, choices, whether None
 is allowed and what it means), where it may be set (scope, from the
 placeholders in its path), whether the UI shows it by default (level),
 what changing it costs (the cache keys it moves, and under which
-conditions), and where its words live (a catalog tip key and a
+conditions; and the keys it can move for some files only, by changing
+which structure profile or preview slice a file gets), and where its
+words live (a catalog tip key and a
 CONFIG_REFERENCE.md anchor).
 
 Paths are tuples. A segment in angle brackets matches any key of that
@@ -73,11 +75,12 @@ class Setting( object ):
 
     __slots__ = ( 'path', 'kind', 'family', 'help', 'level', 'moves', 'when', 'minimum',
                   'maximum', 'min_open', 'max_open', 'choices', 'nullable', 'none_means',
-                  'odd', 'cli', 'probe', 'note' )
+                  'odd', 'cli', 'probe', 'note', 'may_move' )
 
     def __init__( self, path, kind, family, help, level=ADVANCED, moves=(), when=(),
                   minimum=None, maximum=None, min_open=False, max_open=False, choices=None,
-                  nullable=False, none_means=None, odd=False, cli=None, probe=None, note=None ):
+                  nullable=False, none_means=None, odd=False, cli=None, probe=None, note=None,
+                  may_move=() ):
         self.path = tuple( path.split( '.' ) ) if isinstance( path, str ) else tuple( path )
         self.kind = kind
         self.family = family
@@ -96,6 +99,7 @@ class Setting( object ):
         self.cli = cli
         self.probe = probe
         self.note = note
+        self.may_move = frozenset( may_move )
 
     @property
     def dotted( self ):
@@ -535,7 +539,7 @@ _ENTRIES = [
        minimum=0, moves=( CENSOR, ), when=( 'backend_selected', ), probe=12 ),
     S( 'detector_backend.<backend>.profiles.variants.<profile>.video_censor_fps', 'number',
        'profile_video_censor_fps', 'structure-profiles', minimum=0, min_open=True,
-       moves=( CENSOR, ), when=( 'backend_selected', ), probe=14 ),
+       moves=( DETECTION, CENSOR ), when=( 'backend_selected', ), probe=14 ),
     S( 'detector_backend.<backend>.profiles.variants.<profile>.manual_only', 'bool', 'profile_manual_only',
        'manual_only', moves=( CENSOR, ), when=( 'backend_selected', ), probe=True ),
 
@@ -638,8 +642,8 @@ _ENTRIES = [
        probe={ 'type': 'blur', 'method': 'triple_box', 'strength': 55 } ),
     S( 'default_censor_shape', 'choice', 'censor_shape', 'common-keys', choices=CENSOR_SHAPES,
        moves=( CENSOR, ), probe='ellipse' ),
-    S( 'default_profile_enabled', 'bool', 'profile_enabled', 'structure-profiles', moves=( CENSOR, ),
-       probe=False ),
+    S( 'default_profile_enabled', 'bool', 'profile_enabled', 'structure-profiles',
+       moves=( DETECTION, CENSOR ), probe=False ),
     S( 'type_default_shapes.<style_type>', 'choice', 'type_default_shapes', 'common-keys',
        choices=CENSOR_SHAPES, moves=( CENSOR, ), probe='ellipse' ),
     S( 'censor_overlap_strategy.<style_type>', 'choice', 'censor_overlap_strategy',
@@ -778,6 +782,36 @@ _ENTRIES = [
     S( 'enable_betasuite_watermark', 'bool', 'enable_betasuite_watermark', 'miscellaneous',
        moves=( CENSOR, ), probe=True ),
 ]
+
+# Keys an entry can move for some files only. A config-level key cannot
+# show these: what changes is which structure profile, and so which
+# sample rate, a file gets, or which preview slice. The app says "may
+# re-detect some files" for them.
+_PROFILE_CHOICE = ( DETECTION, )   # the profile a file gets sets its sample rate
+_PREVIEW_SLICE = ( DETECTION, CENSOR )   # a new slice is detected and rendered afresh
+MAY_MOVE = {
+    'detector_backend.<backend>.profiles.default': _PROFILE_CHOICE,
+    'detector_backend.<backend>.profiles.match_on': _PROFILE_CHOICE,
+    'detector_backend.<backend>.profiles.variants.<profile>.min_short_shot_fraction': _PROFILE_CHOICE,
+    'detector_backend.<backend>.profiles.variants.<profile>.min_cuts_per_min': _PROFILE_CHOICE,
+    'detector_backend.<backend>.profiles.variants.<profile>.manual_only': _PROFILE_CHOICE,
+    'profile_by_source_dir.<folder>': _PROFILE_CHOICE,
+    'profile_by_path_pattern': _PROFILE_CHOICE,
+    'force_structure_profile': _PROFILE_CHOICE,
+    # The shot cuts a file has decide which profile it measures as.
+    'shot_cut_detection_enabled': _PROFILE_CHOICE,
+    'shot_cut_threshold': _PROFILE_CHOICE,
+    'shot_cut_burst_window': _PROFILE_CHOICE,
+    'shot_cut_burst_max_span': _PROFILE_CHOICE,
+    'shot_cut_burst_keep': _PROFILE_CHOICE,
+    'preview_mode_enabled': _PREVIEW_SLICE,
+    'preview_max_seconds': _PREVIEW_SLICE,
+    'preview_start_seconds': _PREVIEW_SLICE,
+    'preview_random_slice': _PREVIEW_SLICE,
+}
+for _entry in _ENTRIES:
+    if _entry.dotted in MAY_MOVE:
+        _entry.may_move = frozenset( MAY_MOVE[_entry.dotted] )
 
 REGISTRY = tuple( _ENTRIES + _default_entries() + _label_field_entries() )
 
@@ -1127,7 +1161,8 @@ def schema():
     for entry in REGISTRY:
         item = {
             'path': entry.dotted, 'kind': entry.kind, 'scope': entry.scope, 'level': entry.level,
-            'moves': sorted( entry.moves ), 'when': list( entry.when ), 'per_run': entry.per_run,
+            'moves': sorted( entry.moves ), 'may_move': sorted( entry.may_move ),
+            'when': list( entry.when ), 'per_run': entry.per_run,
             'tip': entry.tip, 'label': entry.label_key, 'help': entry.help,
         }
         for key in ( 'minimum', 'maximum' ):

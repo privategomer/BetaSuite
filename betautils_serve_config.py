@@ -146,6 +146,7 @@ def config_get( _server, data ):
 
 
 def _edit( data, updates, removals ):
+    import betautils_settings as bu_settings
     _local_on()
     dry_run = data.get( 'dry_run', False )
     if not isinstance( dry_run, bool ):
@@ -160,17 +161,29 @@ def _edit( data, updates, removals ):
                                       { 'reason': errno.errorcode.get( err.errno, 'unknown' ) } )
     if not evaluation.ok:
         raise _invalid( evaluation.errors )
-    return { 'moves': moves, 'written': written, 'dry_run': dry_run }
+    # Keys the change can move for some files only (a file's profile or
+    # preview slice), on top of the config's own, for each setting whose
+    # value actually changes.
+    import betautils_config_store as bu_store
+    may_move = set()
+    for path in list( updates ) + list( removals ):
+        if bu_store._get( evaluation.before_values, path ) != bu_store._get( evaluation.values, path ):
+            may_move |= bu_settings.find( path ).may_move
+    return { 'moves': moves, 'may_move': [ kind for kind in bu_settings.CACHE_KEYS
+                                           if kind in may_move and kind not in moves ],
+             'written': written, 'dry_run': dry_run }
 
 
 def config_set( _server, data ):
     """
     data: { values: { dotted path: value }, dry_run?: bool }
-    result: { moves: [ cache key ], written: bool, dry_run: bool }
+    result: { moves: [ cache key ], may_move: [ cache key ], written: bool, dry_run: bool }
 
     moves names the cache keys the change moves, worked out from the
     keys themselves: what the change costs (re-detect, re-render,
-    re-encode) before it is made.
+    re-encode) before it is made. may_move names keys it can move for
+    some files only, by changing their structure profile or preview
+    slice (betautils_settings.MAY_MOVE).
     """
     values = data.get( 'values' )
     if not isinstance( values, dict ):

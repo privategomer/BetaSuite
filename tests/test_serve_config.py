@@ -71,7 +71,8 @@ class TestWhatIsSetIsWhatTheCliReads( _ConfigEngineTest ):
         engine = self.engine()
         result = engine.request( 'config.set', { 'values': { 'encode_crf': 21 } } )
         self.assertTrue( result['ok'], result )
-        self.assertEqual( { 'moves': [ 'encode' ], 'written': True, 'dry_run': False }, result['data'] )
+        self.assertEqual( { 'moves': [ 'encode' ], 'may_move': [], 'written': True, 'dry_run': False },
+                          result['data'] )
         self.assertEqual( 21, read_setting( self.local, 'betaconfig.encode_crf' ) )
 
         result = engine.request( 'config.reset', { 'paths': [ 'encode_crf' ] } )
@@ -127,6 +128,27 @@ class TestNothingIsWrittenUnlessItPasses( _ConfigEngineTest ):
             self.assertEqual( sorted( moves ), sorted( result['data']['moves'] ), values )
             self.assertFalse( result['data']['written'] )
         self.assertIsNone( self.text() )
+
+    def test_a_profile_or_preview_change_says_what_it_may_cost_some_files( self ):
+        engine = self.engine()
+        result = engine.request( 'config.set', { 'values': { 'force_structure_profile': 'compilation' },
+                                                 'dry_run': True } )
+        self.assertEqual( ( [ 'censor' ], [ 'detection' ] ), ( result['data']['moves'], result['data']['may_move'] ) )
+        result = engine.request( 'config.set', { 'values': { 'preview_max_seconds': 30 }, 'dry_run': True } )
+        self.assertEqual( ( [], [ 'detection', 'censor' ] ), ( result['data']['moves'], result['data']['may_move'] ) )
+        # Setting what is already there moves nothing and may move nothing.
+        result = engine.request( 'config.set', { 'values': { 'preview_max_seconds': 20 }, 'dry_run': True } )
+        self.assertEqual( ( [], [] ), ( result['data']['moves'], result['data']['may_move'] ) )
+
+    def test_moves_is_worked_out_from_the_file_as_it_is_now( self ):
+        engine = self.engine()
+        # Another program (local_config.py, an editor) changes the file behind the engine's back.
+        with open( self.local, 'w', encoding='utf-8' ) as handle:
+            handle.write( "encode_crf = 21\n" )
+        result = engine.request( 'config.set', { 'values': { 'encode_crf': 21 }, 'dry_run': True } )
+        self.assertEqual( [], result['data']['moves'] )
+        result = engine.request( 'config.set', { 'values': { 'encode_crf': 17 }, 'dry_run': True } )
+        self.assertEqual( [ 'encode' ], result['data']['moves'] )
 
     def test_a_bad_value_is_refused_with_codes_and_the_file_is_untouched( self ):
         with open( self.local, 'w', encoding='utf-8' ) as handle:
@@ -189,7 +211,7 @@ class TestNothingIsWrittenUnlessItPasses( _ConfigEngineTest ):
         engine = self.engine()
         result = engine.request( 'config.reset', { 'paths': [ 'encode_crf' ] } )
         self.assertTrue( result['ok'], result )
-        self.assertEqual( { 'moves': [], 'written': False, 'dry_run': False }, result['data'] )
+        self.assertEqual( { 'moves': [], 'may_move': [], 'written': False, 'dry_run': False }, result['data'] )
 
     def test_with_the_local_layer_off_nothing_can_be_written( self ):
         os.environ[bu_local.ENV_VAR] = 'none'

@@ -108,13 +108,26 @@ def _put( values, path, value ):
         node[path[-1]] = copy.deepcopy( value )
 
 
+def detection_keys( backend_name ):
+    """
+    Every detection key a run of the live config can use: one per
+    picture size and per sample rate a structure profile can select.
+    A file's own key is one of these, so a change that moves none of
+    them re-detects nothing.
+    """
+    sizes = bu_detector.get_picture_sizes( backend_name ) or [ 0 ]
+    rates = sorted( bu_detector.profile_sample_rates( backend_name ), key=float )
+    return [ bu_hash.dictionary_hash( bu_cache.detection_identity( backend_name, size, fps ),
+                                      betaconst.detection_key_len )
+             for size in sizes for fps in rates ]
+
+
 def current_keys():
-    """The three cache keys of the live config, hashed without recording run keys."""
+    """The cache keys of the live config, hashed without recording run keys."""
     backend_name = bu_detector.selected_backend_name()
     bu_config.invalidate_config_caches()
     return {
-        'detection': bu_hash.dictionary_hash( bu_cache.detection_identity( backend_name ),
-                                              betaconst.detection_key_len ),
+        'detection': '+'.join( detection_keys( backend_name ) ),
         'censor': bu_hash.dictionary_hash( bu_cache.censor_identity( backend_name ),
                                            betaconst.censor_key_len ),
         'encode': bu_hash.dictionary_hash( bu_cache.encode_identity(), betaconst.encode_key_len ),
@@ -253,18 +266,24 @@ class ConfigStore( object ):
 
         Returns:
             ( Evaluation, moved cache keys, written ). Nothing is written
-            when the evaluation has errors.
+            when the evaluation has errors. The moved keys are those of
+            the whole config; a change can also move keys for some files
+            only (betautils_settings.MAY_MOVE).
 
         Raises:
             ValueError: the file does not parse, so it cannot be edited safely.
         """
-        before = current_keys()
+        # From the file as it is now, not the engine's memory of it: the
+        # tool or an editor may have changed it since.
+        current = self.evaluate( self.text() )
+        before = current.keys
         text = self.text() or bu_local.template_text()
         if removals and not self.text():
             new_text = self.text()
         else:
             new_text = bu_local.edit_text( text, updates or {}, removals or [], comment, section )
         evaluation = self.evaluate( new_text )
+        evaluation.before_values = current.values
         changes = moved( before, evaluation.keys )
         written = False
         if evaluation.ok and not dry_run and new_text != self.text():
