@@ -74,6 +74,7 @@ ERRORS = {
     'command.unknown':              ( 'name', ),
     'command.bad_params':           ( 'field', 'reason' ),
     'engine.internal':              ( 'exception_type', ),
+    'run.locked':                   ( 'program', 'pid', 'started_at' ),
 }
 
 # Values of the 'reason' parameter.

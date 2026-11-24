@@ -51,6 +51,7 @@ EXAMPLE_PARAMS = {
     'command.unknown':              { 'name': 'no.such' },
     'command.bad_params':           { 'field': 'protocol', 'reason': 'type' },
     'engine.internal':              { 'exception_type': 'KeyError' },
+    'run.locked':                   { 'program': 'betatv', 'pid': 4242, 'started_at': 1000000000.5 },
 }
 
 

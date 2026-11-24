@@ -92,6 +92,7 @@ REDIRECTED_PATHS = {
     'file_hash_cache_path':     _under_root( 'output', 'cache', 'file_hashes.json' ),
     'run_key_dir':              _under_root( 'output', 'cache', 'run_keys' ),
     'benchmark_dir':            _under_root( 'output', 'benchmarks' ),
+    'run_lock_path':            _under_root( 'output', 'run.lock' ),
 }
 
 for _name, _path in REDIRECTED_PATHS.items():

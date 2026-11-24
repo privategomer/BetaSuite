@@ -78,6 +78,13 @@ file_hash_cache_path  = _bu_paths.resolve( '../output/cache/file_hashes.json' )
 run_key_dir           = _bu_paths.resolve( '../output/cache/run_keys' )
 benchmark_dir         = _bu_paths.resolve( '../output/benchmarks' )
 
+# --- Run lock ---------------------------------------------------------------
+#
+# One run at a time per library, CLI and desktop app alike
+# (betautils_runlock.py). It sits with the data it protects.
+
+run_lock_path         = _bu_paths.resolve( '../output/run.lock' )
+
 # --- Detection class labels --------------------------------------------
 #
 # BetaSuite's own canonical vocabulary, not any one model's class list.
