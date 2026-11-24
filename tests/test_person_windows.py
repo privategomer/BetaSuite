@@ -508,6 +508,7 @@ class TestConfig( Harness ):
     def errors( self ):
         bu_config.invalidate_config_caches()
         errors = []
+        bu_config._validate_registry( errors )   # each value's kind and range
         bu_config._validate_reverse( errors, bu_config._valid_class_names() )
         bu_config._validate_person_backend( errors )
         return errors

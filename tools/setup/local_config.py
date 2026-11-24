@@ -33,7 +33,6 @@ import io
 import os
 import re
 import sys
-import tempfile
 
 REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), '..', '..' ) )
 sys.path.insert( 0, REPO_ROOT )
@@ -92,48 +91,34 @@ class Session( object ):
         """
         What betatv.py would make of this text (and these flags).
 
+        The check is betautils_config_store's, the engine's config.set
+        uses the same one.
+
         Returns:
             ( LocalConfig, new errors, { name: value after the local
             file }, { name: value after the flags too }, [ flag applied ] ).
-            Only errors the shipped config does not already have count.
+            Only errors the shipped config does not already have count;
+            the file's own problems are in LocalConfig.problems, not here.
         """
+        import betautils_config_store as bu_store
         self.restore()
         cwd = os.getcwd()
-        os.chdir( REPO_ROOT )
+        os.chdir( REPO_ROOT )   # betaconfig's relative paths assume the repo root
         try:
-            baseline = set( self.bu_config._collect_validation_errors() )
-            handle, candidate = tempfile.mkstemp( suffix='.py', prefix='betaconfig_local.' )
-            try:
-                with os.fdopen( handle, 'w', encoding='utf-8' ) as out:
-                    out.write( text )
-                loaded = bu_local.apply( self.namespace(), path=candidate, stderr=_Null(),
-                                         legacy_path=self.legacy_path )
-                self.bu_config.invalidate_config_caches()
-                after_local = { name: copy.deepcopy( self.namespace().get( name ) ) for name in self.names }
-                flags = apply_flags( self.betaconfig, cli_argv )
-                after_flags = { name: copy.deepcopy( self.namespace().get( name ) ) for name in self.names }
-                # The file's own problems are in validation's errors too; listed once.
-                errors = [ error for error in self.bu_config._collect_validation_errors()
-                           if error not in baseline and error not in loaded.problems ]
-                loaded.path = self.path
-                loaded.problems = [ problem.replace( os.path.basename( candidate ),
-                                                     os.path.basename( self.path ) )
-                                    for problem in loaded.problems ]
-            finally:
-                os.remove( candidate )
+            store = bu_store.ConfigStore( path=self.path, legacy_path=self.legacy_path )
+            evaluation = store.evaluate( text, extra=lambda betaconfig: apply_flags( betaconfig, cli_argv ) )
         finally:
             os.chdir( cwd )
             self.restore()
-        return loaded, errors, after_local, after_flags, flags
+        loaded = evaluation.loaded
+        errors = [ error for error in evaluation.errors if error not in loaded.problems ]
+        after_local = { name: evaluation.local_values.get( name ) for name in self.names }
+        after_flags = { name: evaluation.values.get( name ) for name in self.names }
+        return loaded, errors, after_local, after_flags, evaluation.extra or []
 
     def write( self, text, logger ):
         bu_local.write_text( self.path, text )
         logger.debug( "wrote %s"%( self.path, ) )
-
-
-class _Null( object ):
-    def write( self, _text ):
-        pass
 
 
 def apply_flags( betaconfig, cli_argv ):
@@ -195,9 +180,9 @@ def _report( logger, loaded, errors ):
 
 
 def _warn_legacy( logger, loaded ):
-    warning = bu_local.legacy_warning( loaded )
-    if warning:
-        logger.warning( "warning: %s"%( warning, ) )
+    for warning in ( bu_local.legacy_warning( loaded ), bu_local.ignored_repo_warning( loaded ) ):
+        if warning:
+            logger.warning( "warning: %s"%( warning, ) )
 
 
 def _clip( value ):
@@ -434,7 +419,7 @@ def build_parser():
         bu_local.default_path(), bu_local.ENV_VAR ) )
     parser.add_argument( '--log-level', default='info', choices=LEVELS,
                          help='terminal level (the log file gets everything)' )
-    parser.add_argument( '--log-file', default=bu_paths.beside_repo( REPO_ROOT, 'output', 'logs',
+    parser.add_argument( '--log-file', default=bu_paths.legacy_path( 'output', 'logs',
                                                                      'local_config.log' ) )
     commands = parser.add_subparsers( dest='command' )
     commands.add_parser( 'show', help="every setting, its value and where it came from; "

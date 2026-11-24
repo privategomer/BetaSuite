@@ -306,8 +306,16 @@ class TestSettings( unittest.TestCase ):
             os.environ[ bu_person.VARIANT_OVERRIDE_ENV_VAR ] = self._env
 
     def errors( self, config ):
-        errors = []
-        rf_detr_seg.validate_config( config, errors )
+        # Each value's kind and range is a registry check, run against the
+        # block in place; the adapter adds its own rules.
+        import betaconfig
+        import betautils_config as bu_config
+        from tests import config_harness as harness
+        with harness.preserved():
+            betaconfig.person_backend['rf_detr_seg'] = dict( config )
+            errors = []
+            bu_config._validate_registry( errors )
+            rf_detr_seg.validate_config( config, errors )
         return errors
 
     def test_the_defaults_and_every_size_validate( self ):

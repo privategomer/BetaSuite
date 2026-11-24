@@ -28,17 +28,43 @@ import tempfile
 # starts. Tests of the local config pass their own paths.
 os.environ['BETASUITE_LOCAL_CONFIG'] = 'none'
 
+TEST_OUTPUT_ROOT = tempfile.mkdtemp( prefix='betasuite-tests-' )
+atexit.register( shutil.rmtree, TEST_OUTPUT_ROOT, ignore_errors=True )
+
 # A data root in the caller's environment points at real footage and
 # caches. Dropped before betaconst resolves its paths, and so for every
 # subprocess a test starts too; tests of the data root set their own.
 os.environ.pop( 'BETASUITE_DATA_ROOT', None )
 
+# Without a data root the app uses the OS folders by kind, which are the
+# user's real ones (~/.cache/betasuite, %LOCALAPPDATA%\BetaSuite). Every
+# variable those folders come from points under the temp root instead,
+# before betaconst resolves anything and for every subprocess; the video
+# folders sit in app data, so they follow. The folder overrides are
+# dropped, not set, since they cannot be combined with a data root and
+# tests of the root set one. Tests of the layout pass their own
+# environment.
+TEST_OS_ROOT = os.path.join( TEST_OUTPUT_ROOT, 'os' )
+TEST_OS_ENV = {
+    'XDG_CONFIG_HOME': os.path.join( TEST_OS_ROOT, 'config' ),
+    'XDG_DATA_HOME':   os.path.join( TEST_OS_ROOT, 'data' ),
+    'XDG_CACHE_HOME':  os.path.join( TEST_OS_ROOT, 'cache' ),
+    'XDG_STATE_HOME':  os.path.join( TEST_OS_ROOT, 'state' ),
+    'LOCALAPPDATA':    os.path.join( TEST_OS_ROOT, 'localappdata' ),
+}
+os.environ.update( TEST_OS_ENV )
+for _name in ( 'BETASUITE_CACHE_DIR', 'BETASUITE_INPUT_DIR', 'BETASUITE_OUTPUT_DIR' ):
+    os.environ.pop( _name, None )
+
+# The data folder exists, as after a first run, so the warning about a 1.x
+# tree beside the code (which a developer's own checkout has) never adds
+# a line to what a test sees. Tests of that warning pass their own folders.
+import betautils_paths
+os.makedirs( betautils_paths.kind_dir( 'data' ), exist_ok=True )
+
 import betaconfig
 import betaconst
 import betautils_log
-
-TEST_OUTPUT_ROOT = tempfile.mkdtemp( prefix='betasuite-tests-' )
-atexit.register( shutil.rmtree, TEST_OUTPUT_ROOT, ignore_errors=True )
 
 def _under_root( *parts ):
     return os.path.join( TEST_OUTPUT_ROOT, *parts )
@@ -60,6 +86,7 @@ REDIRECTED_PATHS = {
     'file_hash_cache_path':     _under_root( 'output', 'cache', 'file_hashes.json' ),
     'run_key_dir':              _under_root( 'output', 'cache', 'run_keys' ),
     'benchmark_dir':            _under_root( 'output', 'benchmarks' ),
+    'run_lock_path':            _under_root( 'output', 'run.lock' ),
 }
 
 for _name, _path in REDIRECTED_PATHS.items():

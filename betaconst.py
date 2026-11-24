@@ -46,8 +46,8 @@ model_input = 'input_1:0'
 
 # --- Default input/output directory layout ----------------------------------
 #
-# Relative to the repo root, or under BETASUITE_DATA_ROOT when that is set
-# (betautils_paths.py).
+# Named by their 1.x paths and resolved once, here: the OS folders by kind,
+# or the 1.x tree under BETASUITE_DATA_ROOT (betautils_paths.py).
 
 picture_path_uncensored = _bu_paths.resolve( '../resources/uncensored_pics/' )
 picture_path_censored   = _bu_paths.resolve( '../output/censored_pics/' )
@@ -77,6 +77,13 @@ transcode_cache_dir   = _bu_paths.resolve( '../output/cache/transcode_cache' )
 file_hash_cache_path  = _bu_paths.resolve( '../output/cache/file_hashes.json' )
 run_key_dir           = _bu_paths.resolve( '../output/cache/run_keys' )
 benchmark_dir         = _bu_paths.resolve( '../output/benchmarks' )
+
+# --- Run lock ---------------------------------------------------------------
+#
+# One run at a time per library, CLI and desktop app alike
+# (betautils_runlock.py). It sits with the data it protects.
+
+run_lock_path         = _bu_paths.resolve( '../output/run.lock' )
 
 # --- Detection class labels --------------------------------------------
 #

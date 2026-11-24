@@ -34,6 +34,7 @@ import sys
 import tempfile
 import shutil
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname( os.path.abspath( __file__ ) )
 _REPO_ROOT = os.path.dirname( _HERE )
@@ -64,6 +65,10 @@ class TestClearEverythingExcludesOwnLogHistory( unittest.TestCase ):
         os.makedirs( self._core_dir, exist_ok=True )
         self.mod._CORE_DIR = self._core_dir
         self.mod._CLEAR_DIRS = [ '../output/logs' ]
+        # A 1.x tree beside the stand-in checkout: the data root names it.
+        patcher = mock.patch.dict( os.environ, { 'BETASUITE_DATA_ROOT': self._tmpdir } )
+        patcher.start()
+        self.addCleanup( patcher.stop )
 
         self._logs_dir = os.path.join( self._tmpdir, 'output', 'logs' )
 

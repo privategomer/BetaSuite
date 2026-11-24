@@ -32,6 +32,7 @@ import betaconfig
 
 import betautils_cache_paths as bu_cache
 import betautils_config as bu_config
+import betautils_detector as bu_detector
 
 
 class CensorKeyHarness( unittest.TestCase ):
@@ -132,6 +133,36 @@ class TestStyleDwellIsKeyed( CensorKeyHarness ):
             lambda config: setattr( config, 'default_style_min_dwell_seconds',
                                     current + 7.5 ),
             "default_style_min_dwell_seconds" )
+
+
+class TestPerLabelTrackingFieldsAreKeyed( CensorKeyHarness ):
+    """
+    size_smoothing, style_min_dwell_seconds and paired_style_max_age are
+    read per label by tracking, from the backend and model-variant tiers,
+    but were missing from the resolved label settings the key hashes.
+    A changed value reused the old render. Found by the settings
+    registry's tag test.
+    """
+
+    def _backend_label( self, config, tier ):
+        backend = config.detector_backend[bu_detector.selected_backend_name()]
+        if tier == 'variant':
+            variant = bu_detector.selected_variant_name()
+            backend = backend.setdefault( 'variants', {} ).setdefault( variant, {} )
+        return backend.setdefault( 'item_overrides', {} ).setdefault( 'exposed_breast', {} )
+
+    def test_each_field_at_each_tier_changes_the_key( self ):
+        for field, value in ( ( 'size_smoothing', 0.42 ), ( 'style_min_dwell_seconds', 1.75 ),
+                              ( 'paired_style_max_age', 0.33 ) ):
+            for tier in ( 'backend', 'variant' ):
+                with self.subTest( field=field, tier=tier ):
+                    self.setUp()
+                    try:
+                        self.assert_key_changes(
+                            lambda config: self._backend_label( config, tier ).__setitem__( field, value ),
+                            "%s at the %s tier"%( field, tier ) )
+                    finally:
+                        self.tearDown()
 
 
 class TestShotCutSettingsAreKeyed( CensorKeyHarness ):

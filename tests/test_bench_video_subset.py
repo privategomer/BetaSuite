@@ -18,6 +18,8 @@ import subprocess
 import tempfile
 import types
 import unittest
+
+from tests import shell_harness
 from unittest import mock
 
 import betaconst
@@ -250,13 +252,13 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
     Runs the real launchers against a stand-in Python that records its
     arguments, so a phase that forgets the subset (and quietly measures
     the whole library) fails here. The scripts are copied into a scratch
-    repo: they write to <repo>/../output, which for the real checkout is
-    the user's own output folder.
+    repo, with BETASUITE_DATA_ROOT naming a 1.x tree beside it unless a
+    test sets its own.
     """
 
     SCRIPTS = ( 'tools/bench/structure_survey.sh', 'tools/bench/reverse_cost.sh',
                 'tools/bench/video_subset.sh', 'tools/tuning/harness_lib.sh',
-                'tools/lib/python_env.sh', 'tools/lib/data_root.sh' )
+                'tools/lib/python_env.sh' ) + shell_harness.WHERE_FILES
 
     def setUp( self ):
         self.root = tempfile.mkdtemp( prefix='betasuite-harness-' )
@@ -268,7 +270,7 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
         self.calls = os.path.join( self.root, 'calls.txt' )
         self.fake_python = os.path.join( self.root, 'fake_python' )
         with open( self.fake_python, 'w' ) as handle:
-            handle.write( '#!/bin/bash\n'
+            handle.write( '#!/bin/bash\n' + shell_harness.where_line() +
                           'if [ "${1:-}" = "-c" ]; then exit 0; fi\n'
                           'echo "$*" >> "%s"\n'%( self.calls, ) )
         os.chmod( self.fake_python, 0o755 )
@@ -278,7 +280,8 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
 
     def run_script( self, relative, **env ):
         environment = dict( os.environ, PYTHON_BIN=self.fake_python,
-                            PYTHON_BIN_SOURCE='test stand-in', LOG_LEVEL='error' )
+                            PYTHON_BIN_SOURCE='test stand-in', LOG_LEVEL='error',
+                            BETASUITE_DATA_ROOT=self.root )
         environment.pop( 'VIDEOS_FIRST', None )
         environment.pop( 'VIDEOS_PER_FOLDER', None )
         environment.update( env )
@@ -315,7 +318,14 @@ class TestHarnessesPassTheSubsetToEveryBenchCall( unittest.TestCase ):
             self.assertNotIn( '--first-videos', call )
             self.assertNotIn( '--videos-per-folder', call )
 
-    def test_the_survey_writes_beside_the_repo_or_under_the_data_root( self ):
+    def test_the_survey_writes_under_the_data_root_or_in_the_state_folder( self ):
+        import betautils_paths as bu_paths
+        result, _calls = self.run_script( 'tools/bench/structure_survey.sh', BETASUITE_DATA_ROOT='' )
+        self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
+        state_runs = glob.glob( os.path.join( bu_paths.kind_dir( 'state' ), 'benchmarks', 'structure_survey_*' ) )
+        self.assertTrue( state_runs )
+        for folder in state_runs:
+            shutil.rmtree( folder )
         result, _calls = self.run_script( 'tools/bench/structure_survey.sh' )
         self.assertEqual( result.returncode, 0, result.stdout + result.stderr )
         self.assertTrue( glob.glob( os.path.join( self.root, 'output', 'benchmarks', 'structure_survey_*' ) ) )

@@ -1,11 +1,12 @@
 """
-test_data_root.py - BETASUITE_DATA_ROOT moves resources/ and output/.
+test_data_root.py - BETASUITE_DATA_ROOT keeps the 1.x layout whole.
 
-Unset, every path is byte-identical to the literal the code used before
-the variable existed. Set, every data path lands under the root, while
-the strings that feed cache keys (model paths, sticker folders) stay as
-configured, so a second checkout computes the same keys and finds the
-same caches. A relative or missing root is refused.
+Set, every data path is the 1.x path under the root, byte for byte.
+Unset, the same names resolve to the OS folders by kind (test_paths.py
+checks those per OS). Either way the strings that feed cache keys
+(model paths, sticker folders) stay as configured, so every layout
+computes the same keys and finds the same caches. A relative or missing
+root is refused.
 
 The betaconst checks run in a subprocess: betaconst resolves its paths
 once, at import, and the suite's own import has already been redirected
@@ -27,6 +28,7 @@ import betautils_detector as bu_detector
 import betautils_local as bu_local
 import betautils_log as bu_log
 import betautils_paths as bu_paths
+import tests
 
 
 REPO_ROOT = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
@@ -76,9 +78,9 @@ def _probe( root=None ):
     """
     Run _PROBE with the data root set to `root` (None: unset).
 
-    From a scratch folder, with the repo on PYTHONPATH: computing a key
-    writes its run-key record, and unset that goes to '../output' of the
-    working folder, which from the repo root is the real output folder.
+    From a scratch folder, with the repo on PYTHONPATH. Computing a key
+    writes its run-key record: unset, that goes to the OS data folder,
+    which the suite's environment points under its temp root.
     """
     env = dict( os.environ, BETASUITE_LOCAL_CONFIG='none', PYTHONPATH=REPO_ROOT )
     env.pop( ENV, None )
@@ -170,9 +172,15 @@ class TestResolve( _RootCase ):
                    '../outputs/x', '../output_old/x', '../resourcesx', '..', '../',
                    '../../output/x', 'x/../output/y', 'ab/output/x', '.x/resources', '' )
 
-    def test_unset_returns_the_same_string( self ):
-        for path in self.MOVED + self.LEFT_ALONE:
+    def test_unset_leaves_other_paths_alone( self ):
+        for path in self.LEFT_ALONE:
             self.assertIs( bu_paths.resolve( path ), path )
+
+    def test_unset_moves_data_paths_into_the_os_folders( self ):
+        for path in self.MOVED:
+            moved = bu_paths.resolve( path )
+            self.assertTrue( moved.startswith( tests.TEST_OS_ROOT + os.sep ), ( path, moved ) )
+            self.assertEqual( moved.endswith( '/' ), path.endswith( '/' ) )
 
     def test_set_moves_data_paths_under_the_root_keeping_trailing_separators( self ):
         self.set_root()
@@ -212,22 +220,15 @@ class TestResolve( _RootCase ):
             self.assertEqual( bu_paths.resolve( '..\\output\\logs' ), '..\\output\\logs' )
 
 
-class TestBesideRepo( _RootCase ):
-
-    def test_unset_is_the_join_the_tools_built_before( self ):
-        for parts in ( ( 'output', ), ( 'output', 'logs', 'x.log' ), ( 'bar_smoothing_test_results', ) ):
-            self.assertEqual( bu_paths.beside_repo( REPO_ROOT, *parts ),
-                              os.path.join( REPO_ROOT, '..', *parts ) )
+class TestLegacyPath( _RootCase ):
 
     def test_set_is_under_the_root( self ):
         self.set_root()
-        self.assertEqual( bu_paths.beside_repo( REPO_ROOT, 'output', 'logs' ),
+        self.assertEqual( bu_paths.legacy_path( 'output', 'logs' ),
                           os.path.join( self.root, 'output', 'logs' ) )
-        self.assertEqual( bu_paths.beside_repo( REPO_ROOT ), self.root )
+        self.assertEqual( bu_paths.legacy_path(), self.root )
 
     def test_legacy_machine_config_follows_the_root( self ):
-        self.assertEqual( bu_local.legacy_machine_path(),
-                          os.path.normpath( os.path.join( REPO_ROOT, '..', 'resources', 'betaconfig_machine.py' ) ) )
         self.set_root()
         self.assertEqual( bu_local.legacy_machine_path(),
                           os.path.join( self.root, 'resources', 'betaconfig_machine.py' ) )
@@ -256,11 +257,14 @@ class TestLayoutAndKeys( unittest.TestCase ):
     def tearDownClass( cls ):
         cls._tmp.cleanup()
 
-    def test_unset_paths_are_byte_identical_to_today( self ):
-        self.assertEqual( self.out['unset']['paths'], TODAY )
-        self.assertEqual( self.out['empty']['paths'], TODAY )
+    def test_unset_and_empty_are_the_os_folders( self ):
+        expected = { name: bu_paths.resolve( today ) for name, today in TODAY.items() }
+        self.assertEqual( self.out['unset']['paths'], expected )
+        self.assertEqual( self.out['empty']['paths'], expected )
+        for name, path in expected.items():
+            self.assertTrue( path.startswith( tests.TEST_OS_ROOT + os.sep ), ( name, path ) )
 
-    def test_set_puts_every_layout_path_under_the_root( self ):
+    def test_set_is_byte_identical_to_1x_under_the_root( self ):
         paths = self.out['set']['paths']
         self.assertEqual( set( paths ), set( TODAY ) )
         for name, today in TODAY.items():
@@ -319,8 +323,9 @@ class TestFilesystemBoundary( _RootCase ):
     def test_log_and_stats_paths_resolve_under_the_root( self ):
         with mock.patch.object( betaconfig, 'log_path', '../output/logs/x.log' ), \
              mock.patch.object( betaconfig, 'stats_path', '../output/stats/x.jsonl' ):
-            self.assertEqual( bu_log.configured_log_path(), '../output/logs/x.log' )
-            self.assertEqual( bu_log.configured_stats_path(), '../output/stats/x.jsonl' )
+            self.assertEqual( bu_log.configured_log_path(), bu_paths.resolve( '../output/logs/x.log' ) )
+            self.assertEqual( bu_log.configured_stats_path(), bu_paths.resolve( '../output/stats/x.jsonl' ) )
+            self.assertTrue( bu_log.configured_log_path().startswith( tests.TEST_OS_ROOT + os.sep ) )
             self.set_root()
             self.assertEqual( bu_log.configured_log_path(), os.path.join( self.root, 'output', 'logs', 'x.log' ) )
             self.assertEqual( bu_log.configured_stats_path(),

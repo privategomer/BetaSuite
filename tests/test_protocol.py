@@ -51,6 +51,21 @@ EXAMPLE_PARAMS = {
     'command.unknown':              { 'name': 'no.such' },
     'command.bad_params':           { 'field': 'protocol', 'reason': 'type' },
     'engine.internal':              { 'exception_type': 'KeyError' },
+    'config.bad_type':              { 'path': 'encode_crf', 'expected': 'int' },
+    'config.out_of_range':          { 'path': 'encode_crf', 'minimum': 0, 'maximum': 51,
+                                      'min_open': False, 'max_open': False, 'odd': False },
+    'config.bad_choice':            { 'path': 'render_chunk_container', 'choices': [ 'mkv', 'mp4' ] },
+    'config.rule':                  { 'rule': 'label.hysteresis_inverted',
+                                      'path': 'detector_backend.nudenet_v3.item_overrides.exposed_breast' },
+    'config.invalid':               { 'problems': [ { 'code': 'config.bad_type',
+                                                      'params': { 'path': 'encode_crf', 'expected': 'int' } } ] },
+    'config.unknown_key':           { 'path': 'render_worker', 'suggestion': 'render_workers' },
+    'config.not_settable':          { 'path': 'item_overrides.exposed_breast.censor_style.0',
+                                      'setting': 'item_overrides.exposed_breast.censor_style' },
+    'config.local_off':             {},
+    'config.local_unparsable':      {},
+    'config.local_unwritable':      { 'reason': 'EACCES' },
+    'run.locked':                   { 'program': 'betatv', 'pid': 4242, 'started_at': 1000000000.5 },
 }
 
 
