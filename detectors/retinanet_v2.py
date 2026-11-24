@@ -24,6 +24,12 @@ import betaconst
 import betautils_detector as bu_detector
 
 
+def _rule( rule_id, text ):
+    """An error with a stable rule id for the engine protocol (betautils_settings.rule)."""
+    import betautils_settings as bu_settings
+    return bu_settings.rule( rule_id, text )
+
+
 MODEL_PATH = '../resources/model/detector_v2_default_checkpoint.onnx'
 
 # Fixed detections per image in this export's output tensors.
@@ -89,8 +95,8 @@ def validate_backend_config( config, errors ):
     """Sanity-check detector_backend['retinanet_v2'], appending to errors."""
     for size in bu_detector.get_picture_sizes( 'retinanet_v2' ):
         if not isinstance( size, int ) or size < 0:
-            errors.append( "retinanet_v2 picture sizes must be non-negative ints "
-                           "(0 means 'native resolution, no resize'), got %r"%(size,) )
+            errors.append( _rule( 'backend.size_negative', "retinanet_v2 picture sizes must be non-negative ints "
+                           "(0 means 'native resolution, no resize'), got %r"%(size,) ) )
 
 
 def get_session():

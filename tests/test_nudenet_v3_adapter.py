@@ -78,28 +78,41 @@ class TestClassMapping( unittest.TestCase ):
 
 
 class TestValidateBackendConfig( unittest.TestCase ):
+    """
+    The adapter's own settings. Their kinds and ranges are registry
+    checks (betautils_settings), so these go through full validation.
+    """
+
+    def errors_with( self, **values ):
+        import betaconfig
+        import betautils_config as bu_config
+        from tests import config_harness as harness
+        with harness.preserved():
+            betaconfig.detector_backend['nudenet_v3'].update( values )
+            bu_config.invalidate_config_caches()
+            return [ error for error in bu_config._collect_validation_errors() if 'nudenet_v3' in error ]
 
     def test_defaults_produce_no_errors( self ):
         errors = []
         nudenet_v3.validate_backend_config( {}, errors )
         self.assertEqual( errors, [] )
+        self.assertEqual( self.errors_with(), [] )
 
     def test_candidate_floor_out_of_range_is_caught( self ):
-        errors = []
-        nudenet_v3.validate_backend_config( { 'candidate_floor': 1.5 }, errors )
+        errors = self.errors_with( candidate_floor=1.5 )
         self.assertEqual( len( errors ), 1 )
         self.assertIn( 'candidate_floor', errors[0] )
+        self.assertEqual( 'config.out_of_range', errors[0].code )
 
     def test_negative_nms_iou_is_caught( self ):
-        errors = []
-        nudenet_v3.validate_backend_config( { 'nms_iou': -0.1 }, errors )
+        errors = self.errors_with( nms_iou=-0.1 )
         self.assertEqual( len( errors ), 1 )
         self.assertIn( 'nms_iou', errors[0] )
 
     def test_non_numeric_candidate_floor_is_caught( self ):
-        errors = []
-        nudenet_v3.validate_backend_config( { 'candidate_floor': 'high' }, errors )
+        errors = self.errors_with( candidate_floor='high' )
         self.assertEqual( len( errors ), 1 )
+        self.assertEqual( 'config.bad_type', errors[0].code )
 
 
 class TestDecodeOutput( unittest.TestCase ):
