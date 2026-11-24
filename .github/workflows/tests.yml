@@ -31,8 +31,10 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
+      # Recommends (hardware video drivers and the like) are most of the
+      # download, and the mirror is sometimes slow enough to run out the clock.
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
       - name: Run tests
