@@ -200,6 +200,15 @@ class TestRerun( _TreeCase ):
         lines = bu_migrate.summary_lines( bu_migrate.report( plan, outcome ) )
         self.assertTrue( any( 'conflict' in line and changed in line for line in lines ) )
 
+    def test_same_size_different_bytes_is_a_conflict( self ):
+        self.run_migration()
+        changed = self.resolved( 'output/logs/betasuite.log' )
+        _set_read_only( self.os_root, False )
+        with open( changed, 'wb' ) as handle:
+            handle.write( b'LOG LINE\n' )
+        actions = { item.relative: item.action for item in self.plan().items }
+        self.assertEqual( actions['output/logs/betasuite.log'], bu_migrate.CONFLICT )
+
     def test_a_full_disk_stops_cleanly_and_a_rerun_finishes( self ):
         real_copy = shutil.copy2
         calls = []
