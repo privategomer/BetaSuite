@@ -10,24 +10,32 @@ expects, per user and without admin rights:
             the file-hash memo. The large one, so it can be moved
   state     logs, stats, benchmarks, the run lock
   inputs    the folders runs read from (uncensored_vids, uncensored_pics,
-  outputs   source) and write to (censored_vids, censored_pics). These
-            are the user's files, never app data, so they live where
-            the user keeps videos
+  outputs   source) and write to (censored_vids, censored_pics)
 
 Default folders:
 
-  kind      Linux and other XDG systems   Windows                           macOS
-  config    ~/.config/betasuite           %LOCALAPPDATA%\\BetaSuite\\config   ~/Library/Application Support/BetaSuite/config
-  data      ~/.local/share/betasuite      %LOCALAPPDATA%\\BetaSuite\\data     ~/Library/Application Support/BetaSuite/data
-  cache     ~/.cache/betasuite            %LOCALAPPDATA%\\BetaSuite\\cache    ~/Library/Caches/BetaSuite
-  state     ~/.local/state/betasuite      %LOCALAPPDATA%\\BetaSuite\\state    ~/Library/Application Support/BetaSuite/state
-  inputs    <videos>/BetaSuite            %USERPROFILE%\\Videos\\BetaSuite    ~/Movies/BetaSuite
-  outputs   <videos>/BetaSuite            %USERPROFILE%\\Videos\\BetaSuite    ~/Movies/BetaSuite
+  kind      Linux and other XDG systems        Windows                            macOS
+  config    ~/.config/betasuite                %LOCALAPPDATA%\\BetaSuite\\config    ~/Library/Application Support/BetaSuite/config
+  data      ~/.local/share/betasuite/data      %LOCALAPPDATA%\\BetaSuite\\data      ~/Library/Application Support/BetaSuite/data
+  cache     ~/.cache/betasuite                 %LOCALAPPDATA%\\BetaSuite\\cache     ~/Library/Caches/BetaSuite
+  state     ~/.local/state/betasuite           %LOCALAPPDATA%\\BetaSuite\\state     ~/Library/Application Support/BetaSuite/state
+  inputs    ~/.local/share/betasuite/library   %LOCALAPPDATA%\\BetaSuite\\library   ~/Library/Application Support/BetaSuite/library.noindex
+  outputs   (the same folder as inputs)
+
+WHY THE VIDEOS SIT IN APP DATA. They are mostly explicit, and the
+usual video folders are indexed and shown off by the desktop: Baloo and
+Tracker search ~/Videos, media apps list it, Windows Search indexes the
+profile's libraries. App data is not: Baloo skips hidden folders, Tracker
+indexes only the XDG user folders, Windows Search skips AppData, and
+Spotlight skips a folder named *.noindex. The folders stay their own
+kinds, never inside data or cache, so clearing app data or the cache
+can never take them: no kind's folder contains another's
+(test_paths.py checks it). BETASUITE_INPUT_DIR and BETASUITE_OUTPUT_DIR
+put them anywhere else; `tools/lib/where.py inputs outputs` prints them.
 
 On XDG systems XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME and
 XDG_STATE_HOME are honored when absolute (the XDG spec says to ignore a
-relative one), and <videos> is XDG_VIDEOS_DIR from user-dirs.dirs, else
-~/Videos. BETASUITE_CACHE_DIR, BETASUITE_INPUT_DIR and
+relative one). BETASUITE_CACHE_DIR, BETASUITE_INPUT_DIR and
 BETASUITE_OUTPUT_DIR move one kind each; they must be absolute.
 
 THE 1.x SHAPE. BETASUITE_DATA_ROOT names a folder that holds resources/
@@ -215,64 +223,35 @@ def _home( environ, family, platform ):
     return _pathmod( family ).normpath( value )
 
 
-def _read_text( path ):
-    with open( path, 'r', encoding='utf-8' ) as handle:
-        return handle.read()
-
-
-_USER_DIRS_LINE = re.compile( r'^\s*XDG_VIDEOS_DIR\s*=\s*"(.*)"\s*$' )
-
-
 def _xdg_base( environ, name, default ):
     """An XDG base folder: the variable when absolute, else the default."""
     value = environ.get( name, '' )
     return posixpath.normpath( value ) if value and posixpath.isabs( value ) else default
 
 
-def _xdg_videos( environ, home, read_text ):
-    """XDG_VIDEOS_DIR from user-dirs.dirs, else ~/Videos. A value equal to the home folder means 'disabled'."""
-    config_home = _xdg_base( environ, 'XDG_CONFIG_HOME', posixpath.join( home, '.config' ) )
-    try:
-        text = read_text( posixpath.join( config_home, 'user-dirs.dirs' ) )
-    except ( OSError, UnicodeDecodeError ):
-        text = ''
-    for line in text.splitlines():
-        match = _USER_DIRS_LINE.match( line )
-        if not match:
-            continue
-        value = match.group( 1 )
-        if value.startswith( '$HOME' ):
-            value = home + value[len( '$HOME' ):]
-        if posixpath.isabs( value ) and posixpath.normpath( value ) != home:
-            return posixpath.normpath( value )
-    return posixpath.join( home, 'Videos' )
-
-
-def _os_kind_dir( kind, platform, environ, read_text ):
+def _os_kind_dir( kind, platform, environ ):
     family = _family( platform )
     path = _pathmod( family )
     override = _override( kind, environ, family )
     if override is not None:
         return override
     home = _home( environ, family, platform )
+    media = kind in ( 'inputs', 'outputs' )
     if family == 'windows':
-        if kind in ( 'inputs', 'outputs' ):
-            return path.join( home, 'Videos', APP_NAME )
         local = environ.get( 'LOCALAPPDATA', '' )
         if not ( local and _is_absolute( local, family ) ):
             local = path.join( home, 'AppData', 'Local' )
-        return path.join( path.normpath( local ), APP_NAME, kind )
+        return path.join( path.normpath( local ), APP_NAME, 'library' if media else kind )
     if family == 'macos':
-        if kind in ( 'inputs', 'outputs' ):
-            return path.join( home, 'Movies', APP_NAME )
         if kind == 'cache':
             return path.join( home, 'Library', 'Caches', APP_NAME )
-        return path.join( home, 'Library', 'Application Support', APP_NAME, kind )
-    if kind in ( 'inputs', 'outputs' ):
-        return path.join( _xdg_videos( environ, home, read_text ), APP_NAME )
+        return path.join( home, 'Library', 'Application Support', APP_NAME,
+                          'library.noindex' if media else kind )
+    if kind in ( 'data', 'inputs', 'outputs' ):
+        share = _xdg_base( environ, 'XDG_DATA_HOME', path.join( home, '.local', 'share' ) )
+        return path.join( share, XDG_APP_NAME, 'library' if media else 'data' )
     variable, default = {
         'config': ( 'XDG_CONFIG_HOME', ( '.config', ) ),
-        'data':   ( 'XDG_DATA_HOME', ( '.local', 'share' ) ),
         'cache':  ( 'XDG_CACHE_HOME', ( '.cache', ) ),
         'state':  ( 'XDG_STATE_HOME', ( '.local', 'state' ) ),
     }[kind]
@@ -284,19 +263,17 @@ def _check_kind( kind ):
         raise ValueError( "unknown kind of data %r; one of %s"%( kind, ', '.join( KINDS ) ) )
 
 
-def os_dirs( platform=None, environ=None, read_text=_read_text ):
+def os_dirs( platform=None, environ=None ):
     """
     The OS folder for every kind, whatever BETASUITE_DATA_ROOT says.
 
     The migration's targets, and what kind_dir() returns when the root
-    is unset. Nothing here touches the filesystem except reading
-    user-dirs.dirs on XDG systems.
+    is unset. Nothing here touches the filesystem.
 
     Args:
         platform: A sys.platform value; default this one. 'win32' gives
             Windows paths on any OS, so tests can check them anywhere.
         environ: The environment to read; default os.environ.
-        read_text: Reads user-dirs.dirs; injected for tests.
 
     Returns:
         { kind: absolute folder }.
@@ -306,10 +283,10 @@ def os_dirs( platform=None, environ=None, read_text=_read_text ):
     """
     platform = sys.platform if platform is None else platform
     environ = os.environ if environ is None else environ
-    return { kind: _os_kind_dir( kind, platform, environ, read_text ) for kind in KINDS }
+    return { kind: _os_kind_dir( kind, platform, environ ) for kind in KINDS }
 
 
-def kind_dir( kind, platform=None, environ=None, read_text=_read_text ):
+def kind_dir( kind, platform=None, environ=None ):
     """
     The folder for one kind of data in the layout in use.
 
@@ -326,7 +303,7 @@ def kind_dir( kind, platform=None, environ=None, read_text=_read_text ):
     root = _checked_root( environ )
     if root is not None:
         return os.path.join( root, *LEGACY_KIND_DIRS[kind].split( '/' ) )
-    return _os_kind_dir( kind, platform, environ, read_text )
+    return _os_kind_dir( kind, platform, environ )
 
 
 def legacy_entry( parts ):
@@ -348,22 +325,22 @@ def legacy_entry( parts ):
     return best
 
 
-def _os_location( parts, trailing, platform, environ, read_text ):
+def _os_location( parts, trailing, platform, environ ):
     """Where a 1.x path, as parts under the data folder, is in the OS layout."""
     prefix, kind, sub, rest = legacy_entry( parts )
     path = _pathmod( _family( platform ) )
     pieces = [ piece for piece in ( sub, ) + tuple( rest ) if piece ]
-    location = path.join( _os_kind_dir( kind, platform, environ, read_text ), *pieces )
+    location = path.join( _os_kind_dir( kind, platform, environ ), *pieces )
     return location + path.sep if trailing else location
 
 
-def resolve( path, platform=None, environ=None, read_text=_read_text ):
+def resolve( path, platform=None, environ=None ):
     """
     Where a '../resources/...' or '../output/...' path really is.
 
     Args:
         path: Any path string, as betaconst or a config wrote it.
-        platform, environ, read_text: For tests; see os_dirs().
+        platform, environ: For tests; see os_dirs().
 
     Returns:
         path itself when it does not start with '../resources' or
@@ -390,10 +367,10 @@ def resolve( path, platform=None, environ=None, read_text=_read_text ):
         return os.path.join( root, path[3:] )
     rest = path[3:]
     parts = [ part for part in re.split( '[%s]'%( re.escape( separators ), ), rest ) if part ]
-    return _os_location( parts, rest[-1:] in separators, platform, environ, read_text )
+    return _os_location( parts, rest[-1:] in separators, platform, environ )
 
 
-def legacy_path( *parts, platform=None, environ=None, read_text=_read_text ):
+def legacy_path( *parts, platform=None, environ=None ):
     """
     A path inside the 1.x data folder, given as parts ( 'output', 'logs' ),
     wherever the layout in use puts it. For tools that name folders
@@ -410,9 +387,9 @@ def legacy_path( *parts, platform=None, environ=None, read_text=_read_text ):
     if root is not None:
         return os.path.join( root, *parts )
     if parts and parts[0] in ( 'resources', 'output' ):
-        return _os_location( parts, False, platform, environ, read_text )
+        return _os_location( parts, False, platform, environ )
     return _pathmod( _family( platform ) ).join(
-        _os_kind_dir( 'state', platform, environ, read_text ), *parts )
+        _os_kind_dir( 'state', platform, environ ), *parts )
 
 
 def legacy_tree_hint( repo_dir, environ=None ):
@@ -426,7 +403,7 @@ def legacy_tree_hint( repo_dir, environ=None ):
     try:
         if _checked_root( environ ) is not None:
             return None
-        data = _os_kind_dir( 'data', sys.platform, environ, _read_text )
+        data = _os_kind_dir( 'data', sys.platform, environ )
     except PathsError:
         return None
     beside = os.path.normpath( os.path.join( repo_dir, '..' ) )

@@ -421,17 +421,27 @@ that kind for each user, with no admin rights needed:
 | Kind | Holds | Linux | Windows |
 |---|---|---|---|
 | settings | `betaconfig_local.py` | `~/.config/betasuite` | `%LOCALAPPDATA%\BetaSuite\config` |
-| data | models, stickers, run-key records | `~/.local/share/betasuite` | `%LOCALAPPDATA%\BetaSuite\data` |
+| data | models, stickers, run-key records | `~/.local/share/betasuite/data` | `%LOCALAPPDATA%\BetaSuite\data` |
 | cache | detections, shot cuts, transcodes, file hashes | `~/.cache/betasuite` | `%LOCALAPPDATA%\BetaSuite\cache` |
 | state | logs, stats, benchmarks | `~/.local/state/betasuite` | `%LOCALAPPDATA%\BetaSuite\state` |
-| inputs, outputs | `uncensored_vids`, `uncensored_pics`, `source`; `censored_vids`, `censored_pics` | `~/Videos/BetaSuite` | `%USERPROFILE%\Videos\BetaSuite` |
+| inputs, outputs | `uncensored_vids`, `uncensored_pics`, `source`; `censored_vids`, `censored_pics` | `~/.local/share/betasuite/library` | `%LOCALAPPDATA%\BetaSuite\library` |
 
 On Linux, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and
-`XDG_STATE_HOME` move the first four when set to absolute paths, and the
-Videos folder is the one `user-dirs.dirs` names. macOS uses
-`~/Library/Application Support/BetaSuite`, `~/Library/Caches/BetaSuite`
-and `~/Movies/BetaSuite`. Inputs and outputs are your files, not app
-data, which is why they sit with your videos.
+`XDG_STATE_HOME` move them when set to absolute paths. macOS uses
+`~/Library/Application Support/BetaSuite/<kind>`,
+`~/Library/Caches/BetaSuite` for the cache and
+`~/Library/Application Support/BetaSuite/library.noindex` for the videos.
+
+The video folders sit in app data on purpose. What goes in them is
+mostly explicit, and the usual video folders are indexed and shown off
+by the desktop: file search and media apps list `~/Videos`, Windows
+Search indexes the profile's libraries. The app data folders are not
+indexed by default (KDE's Baloo skips hidden folders, GNOME's Tracker
+indexes only the user folders, Windows Search skips AppData, Spotlight
+skips a `.noindex` folder). The video folder is still its own kind,
+beside the data folder rather than inside it, so clearing the cache or
+app data never touches it. `python3 tools/lib/where.py inputs outputs`
+prints where they are, and every run logs them.
 
 Three variables move one kind each. Each must be an absolute path:
 

@@ -83,10 +83,13 @@ checkpoints and completed render chunks are already on disk, so
 re-running resumes rather than restarting. A second Ctrl-C exits
 immediately.
 
-Settings, models, caches, logs and your videos each live in the folder
-the operating system keeps for that kind of data (on Linux
-`~/.config/betasuite`, `~/.local/share/betasuite`, `~/.cache/betasuite`,
-`~/.local/state/betasuite` and `~/Videos/BetaSuite`). To use a 1.x tree
+Settings, models, caches, logs and videos each live in the folder the
+operating system keeps for that kind of data, per user. The videos go in
+app data, out of the folders desktop search and media apps index, since
+what goes in them is mostly explicit. `python3 tools/lib/where.py` lists
+every folder; `python3 tools/lib/where.py inputs outputs` says where to
+put videos and where results go (on Linux
+`~/.local/share/betasuite/library`). To use a 1.x tree
 (`resources/` and `output/` side by side) instead, set
 `BETASUITE_DATA_ROOT` to the absolute path of the folder that holds them
 (CONFIG_REFERENCE.md, "Where data lives").

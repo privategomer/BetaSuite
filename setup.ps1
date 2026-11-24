@@ -284,7 +284,7 @@ if ($Vision -or (Ask-YesNo 'Install betavision-* live screen censoring dependenc
 # The 1.x tree under BETASUITE_DATA_ROOT, else the OS folders by kind.
 # tools\lib\where.py asks betautils_paths, so setup and the app agree.
 $Rels = @('resources/model','resources/uncensored_vids','resources/uncensored_pics','resources/source',
-          'resources/stickers/breasts','resources/stickers/vulva','output/logs')
+          'resources/stickers/breasts','resources/stickers/vulva','output/logs','output/censored_vids')
 $Folders = @(& $VenvPy (Join-Path $RepoDir 'tools\lib\where.py') @Rels)
 if ($LASTEXITCODE -ne 0 -or $Folders.Count -ne $Rels.Count) {
     Stop-Setup 'a data folder variable (BETASUITE_DATA_ROOT, BETASUITE_CACHE_DIR, BETASUITE_INPUT_DIR, BETASUITE_OUTPUT_DIR) is not usable'
@@ -296,6 +296,7 @@ foreach ($full in $Folders) {
     }
 }
 $InputVids = $Folders[1]
+$OutputVids = $Folders[7]
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
@@ -338,6 +339,7 @@ Write-Host @"
 Next steps:
   .venv\Scripts\Activate.ps1          # PowerShell, once per terminal (cmd: .venv\Scripts\activate.bat)
   # put videos in $InputVids
+  # results land in $OutputVids (python tools\lib\where.py lists every folder)
   python betatv.py --preview on --preview-seconds 20
 
 A script cannot activate a venv in the window that launched it, so the

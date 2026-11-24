@@ -18,18 +18,14 @@ import betautils_local as bu_local
 import betautils_paths as bu_paths
 
 
-def _no_user_dirs( path ):
-    raise FileNotFoundError( path )
-
-
 LINUX_HOME = { 'HOME': '/home/u' }
 LINUX_DEFAULTS = {
     'config':  '/home/u/.config/betasuite',
-    'data':    '/home/u/.local/share/betasuite',
+    'data':    '/home/u/.local/share/betasuite/data',
     'cache':   '/home/u/.cache/betasuite',
     'state':   '/home/u/.local/state/betasuite',
-    'inputs':  '/home/u/Videos/BetaSuite',
-    'outputs': '/home/u/Videos/BetaSuite',
+    'inputs':  '/home/u/.local/share/betasuite/library',
+    'outputs': '/home/u/.local/share/betasuite/library',
 }
 
 WINDOWS_ENV = { 'USERPROFILE': 'C:\\Users\\u', 'LOCALAPPDATA': 'C:\\Users\\u\\AppData\\Local' }
@@ -38,8 +34,8 @@ WINDOWS_DEFAULTS = {
     'data':    'C:\\Users\\u\\AppData\\Local\\BetaSuite\\data',
     'cache':   'C:\\Users\\u\\AppData\\Local\\BetaSuite\\cache',
     'state':   'C:\\Users\\u\\AppData\\Local\\BetaSuite\\state',
-    'inputs':  'C:\\Users\\u\\Videos\\BetaSuite',
-    'outputs': 'C:\\Users\\u\\Videos\\BetaSuite',
+    'inputs':  'C:\\Users\\u\\AppData\\Local\\BetaSuite\\library',
+    'outputs': 'C:\\Users\\u\\AppData\\Local\\BetaSuite\\library',
 }
 
 MAC_HOME = { 'HOME': '/Users/u' }
@@ -48,37 +44,37 @@ MAC_DEFAULTS = {
     'data':    '/Users/u/Library/Application Support/BetaSuite/data',
     'cache':   '/Users/u/Library/Caches/BetaSuite',
     'state':   '/Users/u/Library/Application Support/BetaSuite/state',
-    'inputs':  '/Users/u/Movies/BetaSuite',
-    'outputs': '/Users/u/Movies/BetaSuite',
+    'inputs':  '/Users/u/Library/Application Support/BetaSuite/library.noindex',
+    'outputs': '/Users/u/Library/Application Support/BetaSuite/library.noindex',
 }
 
 # Every path betaconst and betautils_log name, and where the OS layout
 # puts it on Linux with LINUX_DEFAULTS.
 LINUX_LAYOUT = {
-    '../resources/uncensored_pics/':      '/home/u/Videos/BetaSuite/uncensored_pics/',
-    '../output/censored_pics/':           '/home/u/Videos/BetaSuite/censored_pics/',
-    '../resources/uncensored_vids/':      '/home/u/Videos/BetaSuite/uncensored_vids/',
-    '../output/censored_vids/':           '/home/u/Videos/BetaSuite/censored_vids/',
-    '../resources/source/':               '/home/u/Videos/BetaSuite/source/',
-    '../resources/source/completed/':     '/home/u/Videos/BetaSuite/source/completed/',
+    '../resources/uncensored_pics/':      '/home/u/.local/share/betasuite/library/uncensored_pics/',
+    '../output/censored_pics/':           '/home/u/.local/share/betasuite/library/censored_pics/',
+    '../resources/uncensored_vids/':      '/home/u/.local/share/betasuite/library/uncensored_vids/',
+    '../output/censored_vids/':           '/home/u/.local/share/betasuite/library/censored_vids/',
+    '../resources/source/':               '/home/u/.local/share/betasuite/library/source/',
+    '../resources/source/completed/':     '/home/u/.local/share/betasuite/library/source/completed/',
     '../output/cache':                    '/home/u/.cache/betasuite',
     '../output/cache/vid_hashes':         '/home/u/.cache/betasuite/vid_hashes',
     '../output/cache/pic_hashes':         '/home/u/.cache/betasuite/pic_hashes',
     '../output/cache/shot_cuts':          '/home/u/.cache/betasuite/shot_cuts',
     '../output/cache/transcode_cache':    '/home/u/.cache/betasuite/transcode_cache',
     '../output/cache/file_hashes.json':   '/home/u/.cache/betasuite/file_hashes.json',
-    '../output/cache/run_keys':           '/home/u/.local/share/betasuite/run_keys',
+    '../output/cache/run_keys':           '/home/u/.local/share/betasuite/data/run_keys',
     '../output/benchmarks':               '/home/u/.local/state/betasuite/benchmarks',
     '../output/logs/betasuite.log':       '/home/u/.local/state/betasuite/logs/betasuite.log',
     '../output/stats/betasuite_stats.jsonl': '/home/u/.local/state/betasuite/stats/betasuite_stats.jsonl',
     '../output/run.lock':                 '/home/u/.local/state/betasuite/run.lock',
-    '../resources/model/v3.4-320n.onnx':  '/home/u/.local/share/betasuite/model/v3.4-320n.onnx',
-    '../resources/stickers/vulva/':       '/home/u/.local/share/betasuite/stickers/vulva/',
+    '../resources/model/v3.4-320n.onnx':  '/home/u/.local/share/betasuite/data/model/v3.4-320n.onnx',
+    '../resources/stickers/vulva/':       '/home/u/.local/share/betasuite/data/stickers/vulva/',
     '../resources/betaconfig_machine.py': '/home/u/.config/betasuite/betaconfig_machine.py',
-    '../output/betafied/x.mp4':           '/home/u/Videos/BetaSuite/betafied/x.mp4',
+    '../output/betafied/x.mp4':           '/home/u/.local/share/betasuite/library/betafied/x.mp4',
     # Anything else keeps its name in data (under resources/) or state (under output/).
-    '../resources':                       '/home/u/.local/share/betasuite',
-    '../resources/my_models/a.onnx':      '/home/u/.local/share/betasuite/my_models/a.onnx',
+    '../resources':                       '/home/u/.local/share/betasuite/data',
+    '../resources/my_models/a.onnx':      '/home/u/.local/share/betasuite/data/my_models/a.onnx',
     '../output':                          '/home/u/.local/state/betasuite',
     '../output/':                         '/home/u/.local/state/betasuite/',
     '../output/ab_round_1/ranking.json':  '/home/u/.local/state/betasuite/ab_round_1/ranking.json',
@@ -92,52 +88,28 @@ LEFT_ALONE = ( '/abs/output/x', 'output/x', './output/x', '../elsewhere/x', '../
 class TestOsDirs( unittest.TestCase ):
 
     def test_linux_defaults_hang_off_home( self ):
-        self.assertEqual( bu_paths.os_dirs( 'linux', LINUX_HOME, _no_user_dirs ), LINUX_DEFAULTS )
+        self.assertEqual( bu_paths.os_dirs( 'linux', LINUX_HOME ), LINUX_DEFAULTS )
 
     def test_other_unix_systems_use_xdg_too( self ):
-        self.assertEqual( bu_paths.os_dirs( 'freebsd14', LINUX_HOME, _no_user_dirs ), LINUX_DEFAULTS )
+        self.assertEqual( bu_paths.os_dirs( 'freebsd14', LINUX_HOME ), LINUX_DEFAULTS )
 
     def test_xdg_base_folders_are_honored_when_absolute( self ):
         env = dict( LINUX_HOME, XDG_CONFIG_HOME='/x/conf', XDG_DATA_HOME='/x/data/',
                     XDG_CACHE_HOME='/x/cache', XDG_STATE_HOME='/x/state' )
-        dirs = bu_paths.os_dirs( 'linux', env, _no_user_dirs )
+        dirs = bu_paths.os_dirs( 'linux', env )
         self.assertEqual( dirs['config'], '/x/conf/betasuite' )
-        self.assertEqual( dirs['data'], '/x/data/betasuite' )
+        self.assertEqual( dirs['data'], '/x/data/betasuite/data' )
+        self.assertEqual( dirs['inputs'], '/x/data/betasuite/library' )
         self.assertEqual( dirs['cache'], '/x/cache/betasuite' )
         self.assertEqual( dirs['state'], '/x/state/betasuite' )
 
     def test_relative_xdg_values_are_ignored_as_the_spec_says( self ):
         env = dict( LINUX_HOME, XDG_CONFIG_HOME='conf', XDG_DATA_HOME='./data', XDG_CACHE_HOME='~/c',
                     XDG_STATE_HOME='' )
-        self.assertEqual( bu_paths.os_dirs( 'linux', env, _no_user_dirs ), LINUX_DEFAULTS )
-
-    def test_videos_folder_comes_from_user_dirs( self ):
-        read = []
-
-        def user_dirs( path ):
-            read.append( path )
-            return '# comment\nXDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_VIDEOS_DIR="$HOME/Filme"\n'
-        dirs = bu_paths.os_dirs( 'linux', dict( LINUX_HOME, XDG_CONFIG_HOME='/x/conf' ), user_dirs )
-        self.assertEqual( dirs['inputs'], '/home/u/Filme/BetaSuite' )
-        self.assertEqual( dirs['outputs'], '/home/u/Filme/BetaSuite' )
-        self.assertEqual( set( read ), { '/x/conf/user-dirs.dirs' } )
-
-    def test_user_dirs_absolute_disabled_and_unreadable( self ):
-        def text( body ):
-            return lambda path: body
-        absolute = bu_paths.os_dirs( 'linux', LINUX_HOME, text( 'XDG_VIDEOS_DIR="/media/v"\n' ) )
-        self.assertEqual( absolute['inputs'], '/media/v/BetaSuite' )
-        # A value equal to the home folder means the folder is turned off.
-        for body in ( 'XDG_VIDEOS_DIR="$HOME/"\n', 'XDG_VIDEOS_DIR="$HOME"\n', 'XDG_VIDEOS_DIR="rel"\n', '' ):
-            self.assertEqual( bu_paths.os_dirs( 'linux', LINUX_HOME, text( body ) )['inputs'],
-                              '/home/u/Videos/BetaSuite', body )
-
-        def broken( path ):
-            raise UnicodeDecodeError( 'utf-8', b'\xff', 0, 1, 'bad' )
-        self.assertEqual( bu_paths.os_dirs( 'linux', LINUX_HOME, broken )['inputs'], '/home/u/Videos/BetaSuite' )
+        self.assertEqual( bu_paths.os_dirs( 'linux', env ), LINUX_DEFAULTS )
 
     def test_windows_defaults( self ):
-        self.assertEqual( bu_paths.os_dirs( 'win32', WINDOWS_ENV, _no_user_dirs ), WINDOWS_DEFAULTS )
+        self.assertEqual( bu_paths.os_dirs( 'win32', WINDOWS_ENV ), WINDOWS_DEFAULTS )
 
     def test_windows_without_localappdata_uses_the_profile( self ):
         for local in ( None, '', 'relative', '\\no\\drive' ):
@@ -145,29 +117,24 @@ class TestOsDirs( unittest.TestCase ):
             env.pop( 'LOCALAPPDATA' )
             if local is not None:
                 env['LOCALAPPDATA'] = local
-            self.assertEqual( bu_paths.os_dirs( 'win32', env, _no_user_dirs ), WINDOWS_DEFAULTS, local )
+            self.assertEqual( bu_paths.os_dirs( 'win32', env ), WINDOWS_DEFAULTS, local )
 
     def test_windows_profile_from_homedrive_and_homepath( self ):
         env = { 'HOMEDRIVE': 'D:', 'HOMEPATH': '\\Users\\v' }
-        dirs = bu_paths.os_dirs( 'win32', env, _no_user_dirs )
+        dirs = bu_paths.os_dirs( 'win32', env )
         self.assertEqual( dirs['cache'], 'D:\\Users\\v\\AppData\\Local\\BetaSuite\\cache' )
-        self.assertEqual( dirs['inputs'], 'D:\\Users\\v\\Videos\\BetaSuite' )
-
-    def test_windows_never_reads_user_dirs( self ):
-        def fail( path ):
-            raise AssertionError( 'read %s'%( path, ) )
-        bu_paths.os_dirs( 'win32', WINDOWS_ENV, fail )
+        self.assertEqual( dirs['inputs'], 'D:\\Users\\v\\AppData\\Local\\BetaSuite\\library' )
 
     def test_macos_defaults( self ):
-        self.assertEqual( bu_paths.os_dirs( 'darwin', MAC_HOME, _no_user_dirs ), MAC_DEFAULTS )
+        self.assertEqual( bu_paths.os_dirs( 'darwin', MAC_HOME ), MAC_DEFAULTS )
 
     def test_no_home_folder_is_an_error_naming_the_variable( self ):
         for platform, name in ( ( 'linux', 'HOME' ), ( 'darwin', 'HOME' ), ( 'win32', 'USERPROFILE' ) ):
             with self.assertRaises( bu_paths.PathsError ) as raised:
-                bu_paths.os_dirs( platform, {}, _no_user_dirs )
+                bu_paths.os_dirs( platform, {} )
             self.assertIn( name, str( raised.exception ) )
         with self.assertRaises( bu_paths.PathsError ):
-            bu_paths.os_dirs( 'linux', { 'HOME': 'relative' }, _no_user_dirs )
+            bu_paths.os_dirs( 'linux', { 'HOME': 'relative' } )
 
     def test_overrides_move_one_kind_each( self ):
         cases = (
@@ -177,7 +144,7 @@ class TestOsDirs( unittest.TestCase ):
         )
         for platform, env, defaults, cache, cache_normal, inputs, outputs in cases:
             env = dict( env, BETASUITE_CACHE_DIR=cache, BETASUITE_INPUT_DIR=inputs, BETASUITE_OUTPUT_DIR=outputs )
-            dirs = bu_paths.os_dirs( platform, env, _no_user_dirs )
+            dirs = bu_paths.os_dirs( platform, env )
             self.assertEqual( dirs['cache'], cache_normal, platform )
             self.assertEqual( dirs['inputs'], inputs, platform )
             self.assertEqual( dirs['outputs'], outputs, platform )
@@ -186,7 +153,7 @@ class TestOsDirs( unittest.TestCase ):
 
     def test_an_override_needs_no_home( self ):
         env = { 'BETASUITE_CACHE_DIR': '/big/cache' }
-        self.assertEqual( bu_paths.kind_dir( 'cache', 'linux', env, _no_user_dirs ), '/big/cache' )
+        self.assertEqual( bu_paths.kind_dir( 'cache', 'linux', env ), '/big/cache' )
 
     def test_relative_overrides_are_refused_naming_the_variable( self ):
         for name in ( bu_paths.CACHE_ENV_VAR, bu_paths.INPUT_ENV_VAR, bu_paths.OUTPUT_ENV_VAR ):
@@ -194,18 +161,45 @@ class TestOsDirs( unittest.TestCase ):
                                           ( 'linux', LINUX_HOME, '~/c' ), ( 'win32', WINDOWS_ENV, 'cache' ),
                                           ( 'win32', WINDOWS_ENV, '\\cache' ), ( 'win32', WINDOWS_ENV, 'C:cache' ) ):
                 with self.assertRaises( bu_paths.PathsError ) as raised:
-                    bu_paths.os_dirs( platform, dict( env, **{ name: value } ), _no_user_dirs )
+                    bu_paths.os_dirs( platform, dict( env, **{ name: value } ) )
                 self.assertIn( name, str( raised.exception ) )
 
     def test_an_empty_override_is_unset( self ):
         env = dict( LINUX_HOME, BETASUITE_CACHE_DIR='', BETASUITE_INPUT_DIR='', BETASUITE_OUTPUT_DIR='' )
-        self.assertEqual( bu_paths.os_dirs( 'linux', env, _no_user_dirs ), LINUX_DEFAULTS )
+        self.assertEqual( bu_paths.os_dirs( 'linux', env ), LINUX_DEFAULTS )
 
     def test_kind_dir_matches_os_dirs_and_rejects_unknown_kinds( self ):
         for kind in bu_paths.KINDS:
-            self.assertEqual( bu_paths.kind_dir( kind, 'linux', LINUX_HOME, _no_user_dirs ), LINUX_DEFAULTS[kind] )
+            self.assertEqual( bu_paths.kind_dir( kind, 'linux', LINUX_HOME ), LINUX_DEFAULTS[kind] )
         with self.assertRaises( ValueError ):
-            bu_paths.kind_dir( 'logs', 'linux', LINUX_HOME, _no_user_dirs )
+            bu_paths.kind_dir( 'logs', 'linux', LINUX_HOME )
+
+    def test_no_kind_folder_contains_another( self ):
+        # Clearing the cache or removing app data must never reach the
+        # videos (or another kind). Inputs and outputs share one folder.
+        cases = [ ( 'linux', LINUX_HOME ), ( 'darwin', MAC_HOME ), ( 'win32', WINDOWS_ENV ),
+                  ( 'linux', dict( LINUX_HOME, XDG_DATA_HOME='/x', XDG_CACHE_HOME='/x/cache' ) ) ]
+        for platform, env in cases:
+            module = ntpath if platform == 'win32' else posixpath
+            dirs = bu_paths.os_dirs( platform, env )
+            for a in bu_paths.KINDS:
+                for b in bu_paths.KINDS:
+                    if a == b or { a, b } == { 'inputs', 'outputs' }:
+                        continue
+                    inner, outer = module.normcase( dirs[a] ), module.normcase( dirs[b] )
+                    self.assertFalse( inner == outer or inner.startswith( outer.rstrip( module.sep ) + module.sep ),
+                                      ( platform, a, 'inside', b, dirs ) )
+
+    def test_videos_default_to_app_data_out_of_indexed_folders( self ):
+        for platform, env, expected in ( ( 'linux', LINUX_HOME, '/home/u/.local/share/betasuite/library' ),
+                                         ( 'win32', WINDOWS_ENV, 'C:\\Users\\u\\AppData\\Local\\BetaSuite\\library' ),
+                                         ( 'darwin', MAC_HOME, '/Users/u/Library/Application Support/BetaSuite/library.noindex' ) ):
+            dirs = bu_paths.os_dirs( platform, env )
+            self.assertEqual( ( dirs['inputs'], dirs['outputs'] ), ( expected, expected ), platform )
+            for indexed in ( 'Videos', 'Movies', 'Pictures', 'Documents' ):
+                self.assertNotIn( indexed, expected.replace( 'AppData', '' ) )
+        # Spotlight skips a folder whose name ends in .noindex.
+        self.assertTrue( MAC_DEFAULTS['inputs'].endswith( '.noindex' ) )
 
     def test_app_data_is_everything_but_the_users_media( self ):
         self.assertEqual( set( bu_paths.APP_DATA_KINDS ), set( bu_paths.KINDS ) - { 'inputs', 'outputs' } )
@@ -214,7 +208,7 @@ class TestOsDirs( unittest.TestCase ):
 class TestResolveOs( unittest.TestCase ):
 
     def resolve( self, path, platform='linux', env=LINUX_HOME ):
-        return bu_paths.resolve( path, platform, env, _no_user_dirs )
+        return bu_paths.resolve( path, platform, env )
 
     def test_every_layout_path_lands_in_its_kind( self ):
         for logical, expected in LINUX_LAYOUT.items():
@@ -231,7 +225,7 @@ class TestResolveOs( unittest.TestCase ):
             '../output/cache/vid_hashes':        'C:\\Users\\u\\AppData\\Local\\BetaSuite\\cache\\vid_hashes',
             '..\\output\\cache\\vid_hashes':     'C:\\Users\\u\\AppData\\Local\\BetaSuite\\cache\\vid_hashes',
             '..\\resources/model\\v3.4-640m.onnx': 'C:\\Users\\u\\AppData\\Local\\BetaSuite\\data\\model\\v3.4-640m.onnx',
-            '../output/censored_vids/':          'C:\\Users\\u\\Videos\\BetaSuite\\censored_vids\\',
+            '../output/censored_vids/':          'C:\\Users\\u\\AppData\\Local\\BetaSuite\\library\\censored_vids\\',
             '../output/logs/betasuite.log':      'C:\\Users\\u\\AppData\\Local\\BetaSuite\\state\\logs\\betasuite.log',
         }
         for logical, path in expected.items():
@@ -251,7 +245,7 @@ class TestResolveOs( unittest.TestCase ):
         self.assertEqual( self.resolve( '../output/cache/vid_hashes', env=env ), '/big/vid_hashes' )
         self.assertEqual( self.resolve( '../output/cache/file_hashes.json', env=env ), '/big/file_hashes.json' )
         self.assertEqual( self.resolve( '../output/cache/run_keys', env=env ),
-                          '/home/u/.local/share/betasuite/run_keys' )
+                          '/home/u/.local/share/betasuite/data/run_keys' )
 
     def test_a_bad_override_is_refused_only_for_mapped_paths( self ):
         env = dict( LINUX_HOME, BETASUITE_CACHE_DIR='rel' )
@@ -285,10 +279,10 @@ class TestLegacyTable( unittest.TestCase ):
     def test_resolve_agrees_with_the_table_for_every_row( self ):
         # What the migration relies on: a file at <1.x>/<prefix>/x is
         # copied to exactly where resolve('../<prefix>/x') looks.
-        dirs = bu_paths.os_dirs( 'linux', LINUX_HOME, _no_user_dirs )
+        dirs = bu_paths.os_dirs( 'linux', LINUX_HOME )
         for prefix, kind, sub in bu_paths.LEGACY_LAYOUT:
             expected = posixpath.join( dirs[kind], *[ p for p in ( sub, 'x' ) if p ] )
-            self.assertEqual( bu_paths.resolve( '../%s/x'%( prefix, ), 'linux', LINUX_HOME, _no_user_dirs ),
+            self.assertEqual( bu_paths.resolve( '../%s/x'%( prefix, ), 'linux', LINUX_HOME ),
                               expected, prefix )
 
     def test_in_the_1x_shape_only_run_keys_sit_outside_their_kind_folder( self ):
@@ -343,14 +337,13 @@ class TestLegacyPath( _EnvCase ):
     def test_os_layout( self ):
         cases = {
             ( 'output', 'logs' ):                    '/home/u/.local/state/betasuite/logs',
-            ( 'resources', 'model' ):                '/home/u/.local/share/betasuite/model',
+            ( 'resources', 'model' ):                '/home/u/.local/share/betasuite/data/model',
             ( 'output', 'cache', '**', '*.checkpoint' ): '/home/u/.cache/betasuite/**/*.checkpoint',
             ( 'bar_smoothing_test_results', ):       '/home/u/.local/state/betasuite/bar_smoothing_test_results',
             ():                                      '/home/u/.local/state/betasuite',
         }
         for parts, expected in cases.items():
-            self.assertEqual( bu_paths.legacy_path( *parts, platform='linux', environ=LINUX_HOME,
-                                                    read_text=_no_user_dirs ), expected, parts )
+            self.assertEqual( bu_paths.legacy_path( *parts, platform='linux', environ=LINUX_HOME ), expected, parts )
 
     def test_windows( self ):
         self.assertEqual( bu_paths.legacy_path( 'output', 'logs', platform='win32', environ=WINDOWS_ENV ),

@@ -106,14 +106,21 @@ class TestShellHelper( unittest.TestCase ):
                 expected = _python_path( value, relative, cwd=self.root )
                 self.assertEqual( out if status == 0 else None, expected, ( value, relative ) )
 
-    def test_where_prints_one_line_per_argument_and_needs_one( self ):
+    def test_where_prints_one_line_per_argument_and_lists_every_kind( self ):
         where = os.path.join( REPO_ROOT, 'tools', 'lib', 'where.py' )
         result = subprocess.run( [ sys.executable, where, 'output/logs', 'resources\\model' ],
                                  capture_output=True, text=True, timeout=30 )
         self.assertEqual( result.returncode, 0, result.stderr )
         self.assertEqual( result.stdout.splitlines(), [ os.path.join( bu_paths.kind_dir( 'state' ), 'logs' ),
                                                         os.path.join( bu_paths.kind_dir( 'data' ), 'model' ) ] )
-        self.assertEqual( subprocess.run( [ sys.executable, where ], capture_output=True, timeout=30 ).returncode, 2 )
+        kinds = subprocess.run( [ sys.executable, where, 'inputs', 'outputs', 'cache' ], capture_output=True,
+                                text=True, timeout=30 )
+        self.assertEqual( kinds.stdout.splitlines(), [ bu_paths.kind_dir( 'inputs' ), bu_paths.kind_dir( 'outputs' ),
+                                                       bu_paths.kind_dir( 'cache' ) ] )
+        listing = subprocess.run( [ sys.executable, where ], capture_output=True, text=True, timeout=30 )
+        self.assertEqual( listing.returncode, 0 )
+        self.assertEqual( [ line.split( '\t' ) for line in listing.stdout.splitlines() ],
+                          [ [ kind, bu_paths.kind_dir( kind ) ] for kind in bu_paths.KINDS ] )
 
 
 class TestToolDefaults( unittest.TestCase ):
