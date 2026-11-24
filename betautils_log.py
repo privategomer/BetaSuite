@@ -297,6 +297,16 @@ def _as_level( level ):
     return level if isinstance( level, int ) else resolve_level( level )
 
 
+def close_logger( logger ):
+    """Remove and close a tool_logger's handlers, so its log file is let go (Windows cannot move an open file)."""
+    for handler in list( logger.handlers ):
+        logger.removeHandler( handler )
+        try:
+            handler.close()
+        except Exception:
+            pass
+
+
 def tool_logger( name, log_path=None, file_level='info', console_level='info', file_mode='a',
                  file_format=FILE_FORMAT, console_format=CONSOLE_FORMAT, console_stream=None ):
     """

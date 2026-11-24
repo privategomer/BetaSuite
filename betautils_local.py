@@ -430,7 +430,7 @@ def ignored_repo_warning( loaded ):
     if loaded is None or loaded.ignored_repo_path is None:
         return None
     return ( "%s is not read, so its settings are not in effect: settings are read from %s. Copy what "
-             "you need there (the 1.x migration copies the whole file), or set %s to keep the 1.x "
+             "you need there (tools/setup/migrate_1x.sh copies the whole file), or set %s to keep the 1.x "
              "layout"%( loaded.ignored_repo_path, loaded.path, bu_paths.ENV_VAR ) )
 
 
