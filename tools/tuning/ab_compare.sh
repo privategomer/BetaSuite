@@ -75,10 +75,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 # shellcheck source=/dev/null
 source "$REPO_ROOT/tools/lib/data_root.sh"
-DATA_ROOT="$(betasuite_data_root "$REPO_ROOT")" || exit 1
 
 MODE="${1:-run}"
-BENCH_ROOT="$DATA_ROOT/output/benchmarks"
+BENCH_ROOT="$(betasuite_path "$REPO_ROOT" output/benchmarks)" || exit 1
 case "$MODE" in
     -h|--help|help)
         awk 'NR == 1 { next } /^#/ { print; next } { exit }' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'

@@ -18,6 +18,7 @@ import unittest
 from unittest import mock
 
 import betautils_paths as bu_paths
+import tests
 
 
 REPO_ROOT = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
@@ -25,28 +26,30 @@ HELPER = os.path.join( REPO_ROOT, 'tools', 'lib', 'data_root.sh' )
 ENV = bu_paths.ENV_VAR
 
 
-def _shell_root( value, cwd=None ):
-    """(exit status, stdout, stderr) of betasuite_data_root with the variable set to value (None: unset)."""
+def _shell_path( value, relative, cwd=None, extra=None ):
+    """(exit status, stdout, stderr) of betasuite_path with the data root set to value (None: unset)."""
     env = dict( os.environ )
     env.pop( ENV, None )
     if value is not None:
         env[ENV] = value
-    result = subprocess.run( [ 'bash', '-c', 'source "$1"; betasuite_data_root "$2"', '_', HELPER, REPO_ROOT ],
+    env.update( extra or {} )
+    result = subprocess.run( [ 'bash', '-c', 'source "$1"; betasuite_path "$2" "$3"', '_', HELPER, REPO_ROOT, relative ],
                              env=env, cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=30 )
     return result.returncode, result.stdout.strip(), result.stderr
 
 
-def _python_root( value, cwd=None ):
-    """What betautils_paths says for the same value: the folder, or None when it refuses."""
+def _python_path( value, relative, cwd=None, extra=None ):
+    """What betautils_paths says for the same case: the folder, or None when it refuses."""
     with mock.patch.dict( os.environ ):
         os.environ.pop( ENV, None )
         if value is not None:
             os.environ[ENV] = value
+        os.environ.update( extra or {} )
         cwd_before = os.getcwd()
         os.chdir( cwd or REPO_ROOT )
         try:
-            return bu_paths.data_root() or os.path.dirname( REPO_ROOT )
-        except bu_paths.DataRootError:
+            return os.path.abspath( bu_paths.legacy_path( *relative.split( '/' ) ) )
+        except bu_paths.PathsError:
             return None
         finally:
             os.chdir( cwd_before )
@@ -62,36 +65,55 @@ def _load_tool( relative ):
 
 class TestShellHelper( unittest.TestCase ):
 
+    RELATIVES = ( 'output/logs', 'output/cache/vid_hashes', 'output/benchmarks', 'resources/model',
+                  'resources/uncensored_vids', 'output', 'bar_smoothing_test_results' )
+
     def setUp( self ):
         self._tmp = tempfile.TemporaryDirectory( prefix='betasuite-data-root-' )
         self.addCleanup( self._tmp.cleanup )
         self.root = self._tmp.name
         os.mkdir( os.path.join( self.root, 'sub' ) )
 
-    def test_unset_and_empty_are_the_folder_beside_the_repo( self ):
-        for value in ( None, '' ):
-            status, out, _err = _shell_root( value )
-            self.assertEqual( status, 0 )
-            self.assertEqual( out, os.path.dirname( REPO_ROOT ) )
+    def test_unset_is_the_os_folders( self ):
+        for relative in self.RELATIVES:
+            status, out, err = _shell_path( None, relative )
+            self.assertEqual( status, 0, err )
+            self.assertTrue( out.startswith( tests.TEST_OS_ROOT + os.sep ), ( relative, out ) )
+        self.assertEqual( _shell_path( None, 'output/logs' )[1], os.path.join( bu_paths.kind_dir( 'state' ), 'logs' ) )
 
-    def test_set_is_the_root_normalised( self ):
+    def test_set_is_the_1x_path_under_the_root_normalised( self ):
         for value in ( self.root, self.root + '/', self.root + '/sub/..' ):
-            status, out, _err = _shell_root( value )
-            self.assertEqual( ( status, out ), ( 0, self.root ), value )
+            status, out, _err = _shell_path( value, 'output/logs' )
+            self.assertEqual( ( status, out ), ( 0, os.path.join( self.root, 'output', 'logs' ) ), value )
 
-    def test_relative_tilde_and_missing_are_refused_naming_the_variable( self ):
+    def test_relative_tilde_missing_and_clashing_are_refused_naming_the_variable( self ):
         for value in ( 'sub', '.', '~', '~/x', os.path.join( self.root, 'absent' ) ):
-            status, out, err = _shell_root( value, cwd=self.root )
+            status, out, err = _shell_path( value, 'output/logs', cwd=self.root )
             self.assertNotEqual( status, 0, value )
             self.assertEqual( out, '' )
             self.assertIn( ENV, err )
+        status, out, err = _shell_path( self.root, 'output/logs', extra={ bu_paths.CACHE_ENV_VAR: self.root } )
+        self.assertNotEqual( status, 0 )
+        self.assertIn( bu_paths.CACHE_ENV_VAR, err )
+        status, out, err = _shell_path( None, 'output/cache', extra={ bu_paths.CACHE_ENV_VAR: 'rel' } )
+        self.assertNotEqual( status, 0 )
+        self.assertIn( bu_paths.CACHE_ENV_VAR, err )
 
     def test_the_shell_and_python_agree( self ):
-        for value in ( None, '', self.root, self.root + '/sub/..', 'sub', '~',
-                       os.path.join( self.root, 'absent' ) ):
-            status, out, _err = _shell_root( value, cwd=self.root )
-            expected = _python_root( value, cwd=self.root )
-            self.assertEqual( out if status == 0 else None, expected, value )
+        for value in ( None, '', self.root, self.root + '/sub/..', 'sub', '~', os.path.join( self.root, 'absent' ) ):
+            for relative in self.RELATIVES:
+                status, out, _err = _shell_path( value, relative, cwd=self.root )
+                expected = _python_path( value, relative, cwd=self.root )
+                self.assertEqual( out if status == 0 else None, expected, ( value, relative ) )
+
+    def test_where_prints_one_line_per_argument_and_needs_one( self ):
+        where = os.path.join( REPO_ROOT, 'tools', 'lib', 'where.py' )
+        result = subprocess.run( [ sys.executable, where, 'output/logs', 'resources\\model' ],
+                                 capture_output=True, text=True, timeout=30 )
+        self.assertEqual( result.returncode, 0, result.stderr )
+        self.assertEqual( result.stdout.splitlines(), [ os.path.join( bu_paths.kind_dir( 'state' ), 'logs' ),
+                                                        os.path.join( bu_paths.kind_dir( 'data' ), 'model' ) ] )
+        self.assertEqual( subprocess.run( [ sys.executable, where ], capture_output=True, timeout=30 ).returncode, 2 )
 
 
 class TestToolDefaults( unittest.TestCase ):
@@ -282,21 +304,22 @@ class TestNoToolBuildsItsOwnDataPath( unittest.TestCase ):
         found = []
         for path in self._sources( '.sh' ):
             for number, line in self._code_lines( path ):
-                # echo/printf text and heredoc help lines are messages, not paths.
-                if re.match( r'\s*(echo|printf|log_\w+)\b', line ):
+                # echo/printf text and heredoc help lines are messages, not paths;
+                # a betasuite_path call names a 1.x path for the resolver to map.
+                if re.match( r'\s*(echo|printf|log_\w+)\b', line ) or 'betasuite_path ' in line:
                     continue
                 if any( p.search( line ) for p in self.SHELL_PATTERNS ):
                     found.append( '%s:%d: %s'%( os.path.relpath( path, REPO_ROOT ), number, line.strip() ) )
         self.assertEqual( found, [], 'use tools/lib/data_root.sh instead:\n' + '\n'.join( found ) )
 
-    def test_every_script_stops_when_the_data_root_is_refused( self ):
-        assignment = re.compile( r'^\s*DATA_ROOT="\$\(betasuite_data_root ' )
+    def test_every_script_stops_when_a_data_folder_is_refused( self ):
+        assignment = re.compile( r'^\s*\w+="\$\(betasuite_path ' )
         unguarded = []
         for path in self._sources( '.sh' ):
             for number, line in self._code_lines( path ):
                 if assignment.match( line ) and not re.search( r'\|\|\s*(exit 1|die\b)', line ):
                     unguarded.append( '%s:%d'%( os.path.relpath( path, REPO_ROOT ), number ) )
-        self.assertEqual( unguarded, [], "add '|| exit 1' so a bad root stops the script" )
+        self.assertEqual( unguarded, [], "add '|| exit 1' so a bad data folder variable stops the script" )
 
     def test_python_tools( self ):
         found = []

@@ -281,25 +281,21 @@ if ($Vision -or (Ask-YesNo 'Install betavision-* live screen censoring dependenc
 }
 
 # ---------------------------------------------------------------- folders
-# BETASUITE_DATA_ROOT, when set, is the folder that holds resources\ and output\
-$Parent = Split-Path $RepoDir -Parent
-if ($env:BETASUITE_DATA_ROOT) {
-    if (-not [System.IO.Path]::IsPathRooted($env:BETASUITE_DATA_ROOT)) {
-        Stop-Setup "BETASUITE_DATA_ROOT must be an absolute path, got '$($env:BETASUITE_DATA_ROOT)'"
-    }
-    if (-not (Test-Path -LiteralPath $env:BETASUITE_DATA_ROOT -PathType Container)) {
-        Stop-Setup "BETASUITE_DATA_ROOT is '$($env:BETASUITE_DATA_ROOT)', which is not an existing folder"
-    }
-    $Parent = $env:BETASUITE_DATA_ROOT
+# The 1.x tree under BETASUITE_DATA_ROOT, else the OS folders by kind.
+# tools\lib\where.py asks betautils_paths, so setup and the app agree.
+$Rels = @('resources/model','resources/uncensored_vids','resources/uncensored_pics','resources/source',
+          'resources/stickers/breasts','resources/stickers/vulva','output/logs')
+$Folders = @(& $VenvPy (Join-Path $RepoDir 'tools\lib\where.py') @Rels)
+if ($LASTEXITCODE -ne 0 -or $Folders.Count -ne $Rels.Count) {
+    Stop-Setup 'a data folder variable (BETASUITE_DATA_ROOT, BETASUITE_CACHE_DIR, BETASUITE_INPUT_DIR, BETASUITE_OUTPUT_DIR) is not usable'
 }
-foreach ($d in @('resources\model','resources\uncensored_vids','resources\uncensored_pics','resources\source',
-                 'resources\stickers\breasts','resources\stickers\vulva','output')) {
-    $full = Join-Path $Parent $d
-    if (-not (Test-Path $full)) {
+foreach ($full in $Folders) {
+    if (-not (Test-Path -LiteralPath $full)) {
         New-Item -ItemType Directory -Path $full -Force | Out-Null
         Write-Log info "created $full"
     }
 }
+$InputVids = $Folders[1]
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
@@ -341,7 +337,7 @@ Write-Host @"
 
 Next steps:
   .venv\Scripts\Activate.ps1          # PowerShell, once per terminal (cmd: .venv\Scripts\activate.bat)
-  # put videos in $(Join-Path $Parent 'resources\uncensored_vids')
+  # put videos in $InputVids
   python betatv.py --preview on --preview-seconds 20
 
 A script cannot activate a venv in the window that launched it, so the
