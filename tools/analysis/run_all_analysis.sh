@@ -151,7 +151,9 @@ CORE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$CORE_DIR"
 # shellcheck source=/dev/null
 source "$CORE_DIR/tools/lib/data_root.sh"
-DATA_ROOT="$(betasuite_data_root "$CORE_DIR")" || exit 1
+RUNS_DIR="$(betasuite_path "$CORE_DIR" output/logs/analysis_runs)" || exit 1
+VID_HASH_DIR="$(betasuite_path "$CORE_DIR" output/cache/vid_hashes)" || exit 1
+PIC_HASH_DIR="$(betasuite_path "$CORE_DIR" output/cache/pic_hashes)" || exit 1
 
 if [ -f ../bin/activate ]; then
     # shellcheck disable=SC1091
@@ -207,7 +209,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 TS="$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="$DATA_ROOT/output/logs/analysis_runs/$TS"
+LOG_DIR="$RUNS_DIR/$TS"
 mkdir -p "$LOG_DIR"
 
 echo "=== run_all_analysis.sh starting at $(date) ==="
@@ -313,7 +315,6 @@ TOTAL=$(( ${#STEPS[@]} + ${#TIMING_STEPS[@]} ))
 # --no-parallel restores strict sequencing for debugging one step.
 
 METER="$CORE_DIR/tools/lib/step_meter.py"
-RUNS_DIR="$DATA_ROOT/output/logs/analysis_runs"
 
 run_one_step() {
     # $1 label, $2 command. Output to the step's log only; wall time and
@@ -381,7 +382,7 @@ CACHE_FACTOR=8
 
 cache_size_mb() {
     local kb=0 dir size
-    for dir in "$DATA_ROOT/output/cache/vid_hashes" "$DATA_ROOT/output/cache/pic_hashes"; do
+    for dir in "$VID_HASH_DIR" "$PIC_HASH_DIR"; do
         [ -d "$dir" ] || continue
         size="$(du -sk "$dir" 2>/dev/null | awk '{ print $1 }')"
         kb=$(( kb + ${size:-0} ))

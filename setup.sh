@@ -272,12 +272,16 @@ run_logged "install requirements-$MODE.txt" pip_install -r "requirements-$MODE.t
 # ---------------------------------------------------------------- folders
 # shellcheck source=/dev/null
 source "$REPO_DIR/tools/lib/data_root.sh"
-DATA_ROOT="$(betasuite_data_root "$REPO_DIR")" || die "BETASUITE_DATA_ROOT is not usable"
-for d in "$DATA_ROOT"/resources/model "$DATA_ROOT"/resources/uncensored_vids "$DATA_ROOT"/resources/uncensored_pics \
-         "$DATA_ROOT"/resources/source "$DATA_ROOT"/resources/stickers/breasts "$DATA_ROOT"/resources/stickers/vulva \
-         "$DATA_ROOT"/output; do
-    if [ ! -d "$d" ]; then mkdir -p "$d" && log_info "created $(cd "$d" && pwd)"; fi
+# The 1.x tree under BETASUITE_DATA_ROOT, else the OS folders by kind.
+for rel in model uncensored_vids uncensored_pics source stickers/breasts stickers/vulva; do
+    d="$(betasuite_path "$REPO_DIR" "resources/$rel")" || die "a data folder variable is not usable"
+    if [ ! -d "$d" ]; then mkdir -p "$d" && log_info "created $d"; fi
 done
+for rel in logs; do
+    d="$(betasuite_path "$REPO_DIR" "output/$rel")" || die "a data folder variable is not usable"
+    if [ ! -d "$d" ]; then mkdir -p "$d" && log_info "created $d"; fi
+done
+INPUT_VIDS="$(betasuite_path "$REPO_DIR" resources/uncensored_vids)" || die "a data folder variable is not usable"
 
 # ---------------------------------------------------------------- models
 # 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
@@ -324,7 +328,7 @@ cat <<EOF
 
 Next steps:
   source .venv/bin/activate          # once per terminal
-  # put videos in $DATA_ROOT/resources/uncensored_vids
+  # put videos in $INPUT_VIDS
   python3 betatv.py --preview on --preview-seconds 20
   tools/bench/tune_machine.sh        # optional: measure this machine's hardware settings
 

@@ -34,7 +34,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=/dev/null
 source ../lib/data_root.sh
-DATA_ROOT="$(betasuite_data_root "$(cd ../.. && pwd)")" || exit 1
+LOG_DIR="$(betasuite_path "$(cd ../.. && pwd)" output/logs)" || exit 1
+RESULTS_DIR="$(betasuite_path "$(cd ../.. && pwd)" bar_smoothing_test_results)" || exit 1
 
 if [ -f ../../../bin/activate ]; then
     source ../../../bin/activate
@@ -53,8 +54,8 @@ STATUS=$?
 
 echo
 if [ $STATUS -ne 0 ]; then
-    echo "run_bar_smoothing_test.py exited with status $STATUS - check $DATA_ROOT/output/logs/run_bar_smoothing_test.log for details."
+    echo "run_bar_smoothing_test.py exited with status $STATUS - check $LOG_DIR/run_bar_smoothing_test.log for details."
 else
-    echo "done. Results are in $DATA_ROOT/bar_smoothing_test_results/ - full log in $DATA_ROOT/output/logs/run_bar_smoothing_test.log"
+    echo "done. Results are in $RESULTS_DIR/ - full log in $LOG_DIR/run_bar_smoothing_test.log"
 fi
 exit $STATUS

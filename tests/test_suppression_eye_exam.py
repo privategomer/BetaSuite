@@ -18,6 +18,8 @@ import subprocess
 import tempfile
 import types
 import unittest
+
+from tests import shell_harness
 from unittest import mock
 
 import numpy as np
@@ -295,7 +297,7 @@ class TestDecide( unittest.TestCase ):
 
 
 FAKE_PYTHON = r'''#!/bin/bash
-if [ "${1:-}" = "-c" ]; then exit 0; fi
+__WHERE__if [ "${1:-}" = "-c" ]; then exit 0; fi
 case " $* " in *" --run-experiment "*) echo "min_track_hits"; exit 0 ;; esac
 case " $* " in *" --status "*) cat "${FAKE_STATUS:-/dev/null}"; exit 0 ;; esac
 case " $* " in *" --summary "*) echo "${FAKE_RENDERS:-0 0}"; exit 0 ;; esac
@@ -309,22 +311,22 @@ class TestWrapperModes( unittest.TestCase ):
         self.root = tempfile.mkdtemp( prefix='betasuite-abwrap-' )
         self.repo = os.path.join( self.root, 'repo' )
         for relative in ( 'tools/tuning/suppression_ab.sh', 'tools/tuning/ab_compare.sh',
-                          'tools/tuning/harness_lib.sh', 'tools/lib/python_env.sh',
-                          'tools/lib/data_root.sh' ):
+                          'tools/tuning/harness_lib.sh', 'tools/lib/python_env.sh' ) + shell_harness.WHERE_FILES:
             target = os.path.join( self.repo, relative )
             os.makedirs( os.path.dirname( target ), exist_ok=True )
             shutil.copy( os.path.join( REPO, relative ), target )
         self.calls = os.path.join( self.root, 'calls.txt' )
         self.python = os.path.join( self.root, 'python' )
         with open( self.python, 'w' ) as handle:
-            handle.write( FAKE_PYTHON.replace( '__CALLS__', self.calls ) )
+            handle.write( FAKE_PYTHON.replace( '__CALLS__', self.calls ).replace( '__WHERE__', shell_harness.where_line() ) )
         os.chmod( self.python, 0o755 )
 
     def tearDown( self ):
         shutil.rmtree( self.root, ignore_errors=True )
 
     def run_mode( self, *args, **env ):
-        environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in', **env )
+        environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in',
+                            BETASUITE_DATA_ROOT=self.root, **env )  # a 1.x tree beside the scratch repo
         return subprocess.run( [ 'bash', 'tools/tuning/suppression_ab.sh' ] + list( args ),
                                cwd=self.repo, env=environment, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=60 )
@@ -465,7 +467,8 @@ class TestWrapperModes( unittest.TestCase ):
         master, slave = pty.openpty()
         try:
             os.write( master, answers.encode() )
-            environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in', **env )
+            environment = dict( os.environ, PYTHON_BIN=self.python, PYTHON_BIN_SOURCE='stand-in',
+                            BETASUITE_DATA_ROOT=self.root, **env )  # a 1.x tree beside the scratch repo
             return subprocess.run( [ 'bash', 'tools/tuning/suppression_ab.sh', 'resume' ], cwd=self.repo,
                                    env=environment, stdin=slave, capture_output=True, text=True,
                                    timeout=60 )
