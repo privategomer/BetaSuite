@@ -157,9 +157,27 @@ fn close(app: &tauri::AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         app.state::<Engine>().shutdown();
+        log::debug!("asking the event loop to exit");
         app.exit(0);
+        // The engine is already down, so a stuck event loop must not keep a
+        // hidden process alive: it would hold the webview profile and stall
+        // the next start.
+        std::thread::sleep(EXIT_WATCHDOG);
+        log::warn!(
+            "the event loop did not exit within {} s; ending the process with code {EXIT_FORCED}",
+            EXIT_WATCHDOG.as_secs()
+        );
+        log::logger().flush();
+        std::process::exit(EXIT_FORCED);
     });
 }
+
+/// How long the event loop gets to finish after the window closes.
+const EXIT_WATCHDOG: Duration = Duration::from_secs(3);
+
+/// The exit code when the watchdog ended the process: the engine stopped
+/// cleanly, but the app did not exit the normal way, so 0 would hide it.
+const EXIT_FORCED: i32 = 2;
 
 fn create_engine(app: &tauri::AppHandle, transcript: Option<std::path::PathBuf>) -> Engine {
     let mut config = engine::Config::new(VERSION);
@@ -289,6 +307,17 @@ pub fn run() -> i32 {
         .setup(move |app| setup(app, transcript, startup, open))
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // Once closing has begun, a further request (the exit
+                // itself closing the window) is let through.
+                if window
+                    .app_handle()
+                    .state::<Closing>()
+                    .0
+                    .load(Ordering::SeqCst)
+                {
+                    log::debug!("close requested again while closing; allowing it");
+                    return;
+                }
                 api.prevent_close();
                 close(window.app_handle());
             }
@@ -312,7 +341,11 @@ pub fn run() -> i32 {
         }
     };
     let code = app.run_return(|app, event| {
+        if let RunEvent::ExitRequested { code, .. } = &event {
+            log::debug!("exit requested (code {code:?})");
+        }
         if let RunEvent::Exit = event {
+            log::debug!("event loop exiting");
             // Returns at once when the window close already stopped it.
             if let Some(engine) = app.try_state::<Engine>() {
                 engine.shutdown();

@@ -51,7 +51,24 @@ export function Player( { openAtStart, openError }: PlayerProps ) {
       return;
     }
     log.info( `playing ${video.name}` );
-    node.requestVideoFrameCallback( () => { void uiMark( 'first_frame' ); } );
+    // Where the time to the first frame goes, at debug: milliseconds since
+    // the page started loading.
+    const steps = [ 'loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing' ];
+    const onStep = ( event: Event ) => {
+      log.debug( `video ${event.type} at ${Math.round( performance.now() ).toString()} ms` );
+    };
+    for ( const step of steps ) {
+      node.addEventListener( step, onStep, { once: true } );
+    }
+    node.requestVideoFrameCallback( () => {
+      log.debug( `video first frame at ${Math.round( performance.now() ).toString()} ms` );
+      void uiMark( 'first_frame' );
+    } );
+    return () => {
+      for ( const step of steps ) {
+        node.removeEventListener( step, onStep );
+      }
+    };
   }, [ video ] );
 
   const open = () => {
