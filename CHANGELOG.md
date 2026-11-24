@@ -11,13 +11,28 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 - `tools/engine/stub_client.py`: starts the engine the way the UI will, runs hello, ping and shutdown, checks each step and records the session as JSON lines
 - `tools/setup/migrate_1x.sh` (`migrate_1x.ps1` on Windows): copies a 1.x tree's settings, models, stickers, run keys, logs, stats, benchmarks and caches into the 2.x folders by kind, each file exactly where the app looks for it. It copies and never moves: the 1.x tree is opened read-only and stays usable. Running it again copies only what is missing, a 2.x file that differs is never overwritten but reported, and a full disk stops it with only whole files written. The videos (input and output folders) are not copied: the summary names each folder and its size and the two variables (`BETASUITE_INPUT_DIR`, `BETASUITE_OUTPUT_DIR`) that keep them in use where they are. It refuses before copying when a run holds either side's lock, when the folders overlap, or when a target disk lacks the room. `--dry-run` shows the plan; `--no-cache` leaves the rebuildable cache out. Each run writes a file-by-file JSON report to the state folder. Settings are copied byte for byte, so every cache copied is a cache hit. Upgrade cost: none; run it once to move a 1.x setup over
 - Run lock: one run at a time per library. betatv and betastare take an operating-system file lock in the state folder (`output/` of a 1.x tree) before they start; a second run is refused with exit code 3 and a message naming the run that holds it (program, pid, start time). The kernel releases the lock when the holder ends, however it ends, so a killed run never leaves the library locked; the next run notes the record it left. The engine protocol has the matching error, `run.locked {program, pid, started_at}`, for the desktop app's jobs. Upgrade cost: none
+- The settings registry, `betautils_settings.py`: one entry for every setting, with its kind, range or choices, where it may be set, whether the app shows it by default, which cache keys it moves and when, and its tip and help anchor. Tips and labels are in `i18n/en-US/settings.json`. See CONFIG_REFERENCE.md, "The settings registry". Upgrade cost: none
+- Engine commands `config.schema`, `config.get`, `config.set` and `config.reset` (`protocol/README.md`, "Settings"). They read and change the same local config as `tools/setup/local_config.py`, through one shared module, `betautils_config_store.py`. A change is checked as a run would check it and written only if it passes; the answer says which cache keys it moves. `tools/engine/stub_client.py` also reads the settings and dry-runs a change, writing nothing. Upgrade cost: none
 
 ### Changed
 
+- Validation reads the settings registry, so each limit is stated once. Each error is reported once, at the setting's own path, and carries a code for the engine (`config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id); the CLI keeps printing English. Some messages are worded differently. Validation now rejects values it used to let through:
+  - a per-label `min_prob` outside 0 to 1
+  - a per-label `position_smoothing` or `size_smoothing` outside 0 (exclusive) to 1
+  - a negative `interpolation_max_gap`, `style_min_dwell_seconds` or `paired_style_max_age`
+  - a suppression rule's `margin` or `min_iou` above 1
+  - a bar `color` that is not three whole numbers from 0 to 255
+  - `shot_cut_threshold` outside 0 to 1
+  - `debug_mode` outside 0 to 3
+  - BetaVision capture settings that are not whole numbers
+  - preview, logging and person-model settings, which are now checked while their feature is off too
+
+  A wrong-typed `items_to_censor`, `input_delete_probability` or `picture_sizes` is now an error, where it used to crash validation. Upgrade cost: a local config with one of those values stops at validation, naming it
 - License: AGPL-3.0-or-later replaces PolyForm Noncommercial 1.0.0. Free to use, modify and share for any purpose, commercial use included; anyone who distributes BetaSuite, changed or not, or runs a changed version as a network service, must offer the full source under the same license. `LICENSE` is the verbatim text published by the FSF. `NOTICE` states what the license covers, that releases 1.4.0 to 1.5.2 keep their PolyForm terms, and that the upstream code's license is still an open question. Upgrade cost: none to the app or its caches
 
 ### Fixed
 
+- The censor key now covers per-label `size_smoothing`, `style_min_dwell_seconds` and `paired_style_max_age`. Tracking reads them per label from a backend's or model variant's `item_overrides`, but the key did not, so changing one there reused the old render and reported it as the new result. Upgrade cost: every config that censors something gets a new censor key, so finished outputs re-render once on their next run. The old files stay, under their old names. Detection and encode keys are unchanged, and the shipped `items_to_censor = []` keeps all three keys
 - `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
 
 ## 1.5.2 (2026-11-14)

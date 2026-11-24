@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.reset.schema.json",
+  "title": "config.reset",
+  "description": "Remove settings from the local config, so betaconfig.py's values apply again. A path the local config does not set changes nothing. Checked, answered and dry-run like config.set.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [ "paths" ],
+      "properties": {
+        "paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "dry_run": { "type": "boolean" }
+      }
+    },
+    "result": { "$ref": "https://betasuite.invalid/protocol/v1/commands/config.set.schema.json#/$defs/result" }
+  }
+}

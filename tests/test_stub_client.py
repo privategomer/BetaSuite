@@ -33,12 +33,19 @@ class TestStubClient( unittest.TestCase ):
                 engine_log = handle.read()
         self.assertEqual( [ ( r['dir'], r['message']['name'] ) for r in records ], [
             ( 'send', 'hello' ), ( 'recv', 'hello' ), ( 'send', 'ping' ), ( 'recv', 'ping' ),
+            ( 'send', 'config.schema' ), ( 'recv', 'config.schema' ),
+            ( 'send', 'config.get' ), ( 'recv', 'config.get' ),
+            ( 'send', 'config.set' ), ( 'recv', 'config.set' ),
             ( 'send', 'shutdown' ), ( 'recv', 'shutdown' ) ] )
         times = [ r['ms'] for r in records ]
         self.assertEqual( times, sorted( times ) )
         for sent, received in zip( records[::2], records[1::2] ):
             self.assertEqual( received['message']['id'], sent['message']['id'] )
-            self.assertTrue( received['message']['ok'] )
+            # The suite turns the local config off, so the dry run is refused as config.local_off.
+            if received['message']['name'] == 'config.set':
+                self.assertEqual( 'config.local_off', received['message']['error']['code'] )
+            else:
+                self.assertTrue( received['message']['ok'] )
         self.assertIn( 'ready in', log )
         self.assertIn( 'engine stderr: engine serving', log )
         self.assertIn( 'engine exited 0', log )
