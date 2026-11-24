@@ -298,6 +298,23 @@ class TestCheckValue( unittest.TestCase ):
         self.assertEqual( [ 'config.out_of_range' ], self.codes( 'blur_approximation_min_kernel', 22 ) )
         self.assertEqual( [], self.codes( 'blur_approximation_min_kernel', 23 ) )
 
+    def test_a_color_is_three_whole_numbers_from_0_to_255( self ):
+        self.assertEqual( [], self.codes( 'vision_cursor_color', ( 0, 128, 255 ) ) )
+        for bad in ( ( 0, 0, 256 ), ( -1, 0, 0 ), ( 0, 0 ), ( 0.5, 0, 0 ), 'red' ):
+            self.assertEqual( [ 'config.bad_type' ], self.codes( 'vision_cursor_color', bad ), bad )
+
+    def test_picture_sizes_are_a_non_empty_list_of_whole_numbers_from_0( self ):
+        path = 'detector_backend.retinanet_v2.picture_sizes'
+        self.assertEqual( [], self.codes( path, [ 0, 1280 ] ) )
+        for bad in ( [ -32 ], [], [ 320.0 ], 320 ):
+            self.assertEqual( [ 'config.bad_type' ], self.codes( path, bad ), bad )
+
+    def test_a_string_or_path_must_not_be_empty( self ):
+        self.assertEqual( [ 'config.bad_type' ], self.codes( 'encode_video_codec', '' ) )
+        self.assertEqual( [ 'config.bad_type' ], self.codes( 'log_path', '' ) )
+        self.assertEqual( [], self.codes( 'log_path', None ) )
+        self.assertEqual( [], self.codes( 'encode_video_codec', 'libx264' ) )
+
     def test_gpu_enabled_takes_true_and_false_as_one_and_zero( self ):
         self.assertEqual( [], self.codes( 'gpu_enabled', True ) )
         self.assertEqual( [ 'config.bad_choice' ], self.codes( 'gpu_enabled', 2 ) )
