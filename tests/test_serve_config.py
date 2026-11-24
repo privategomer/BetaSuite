@@ -146,6 +146,8 @@ class TestNothingIsWrittenUnlessItPasses( _ConfigEngineTest ):
         problem, = result['error']['params']['problems']
         self.assertEqual( 'config.rule', problem['code'] )
         self.assertEqual( 'label.hysteresis_inverted', problem['params']['rule'] )
+        self.assertEqual( 'detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob_continue',
+                          problem['params']['path'] )
         self.assertIsNone( self.text() )
 
     def test_an_unknown_path_names_the_closest_real_one( self ):

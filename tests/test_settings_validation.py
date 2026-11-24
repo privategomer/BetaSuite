@@ -73,8 +73,9 @@ class TestEveryErrorIsACode( unittest.TestCase ):
         self.assertEqual( 'detector_backend.nudenet_v3.nms_iou',
                           bu_settings.located( "detector_backend['nudenet_v3']['nms_iou'] must be ..." ) )
         self.assertEqual( 'nn_batch_size', bu_settings.located( "betaconfig.nn_batch_size is no longer read" ) )
-        self.assertEqual( 'detector_backend.nudenet_v3',
-                          bu_settings.located( "detector_backend['nudenet_v3']'s resolved item_overrides" ) )
+        self.assertEqual( 'detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob_continue',
+                          bu_settings.located( "detector_backend['nudenet_v3']'s resolved "
+                                               "item_overrides['exposed_breast']['min_prob_continue'] (0.5) is ABOVE" ) )
         self.assertEqual( '', bu_settings.located( "%%s is wrong" ) )
 
 

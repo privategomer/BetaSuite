@@ -892,7 +892,7 @@ def rule( rule_id, text, **params ):
     return Problem( text, 'config.rule', **params )
 
 
-_LOCATION = re.compile( r"^(?:betaconfig\.)?([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\])*)" )
+_LOCATION = re.compile( r"^(?:betaconfig\.)?([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\]|\.[A-Za-z_][A-Za-z0-9_]*)*)" )
 
 
 def located( text ):
@@ -900,12 +900,13 @@ def located( text ):
     "detector_backend['nudenet_v3']['nms_iou'] must be ..." -> 'detector_backend.nudenet_v3.nms_iou'.
     The longest setting path the text starts with, or '' when it starts with none.
     """
-    match = _LOCATION.match( str( text ) )
+    # "x['a']'s resolved item_overrides['b']" names x.a.item_overrides.b.
+    match = _LOCATION.match( str( text ).replace( "]'s resolved ", "]." ) )
     if not match:
         return ''
     parts = [ match.group( 1 ) ]
-    for subscript in re.findall( r"\[([^\]]*)\]", match.group( 2 ) ):
-        parts.append( subscript.strip( "'\"" ) )
+    for subscript, name in re.findall( r"\[([^\]]*)\]|\.([A-Za-z_][A-Za-z0-9_]*)", match.group( 2 ) ):
+        parts.append( name or subscript.strip( "'\"" ) )
     return '.'.join( parts )
 
 
