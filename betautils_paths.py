@@ -435,5 +435,5 @@ def legacy_tree_hint( repo_dir, environ=None ):
     if not any( os.path.isdir( os.path.join( beside, name ) ) for name in ( 'resources', 'output' ) ):
         return None
     return ( "a 1.x layout (resources/, output/) is in %s, and this run does not read it: it uses the "
-             "2.x folders by kind (data in %s). Copy it over with the 1.x migration, or set %s=%s to "
-             "keep using it"%( beside, data, ENV_VAR, beside ) )
+             "2.x folders by kind (data in %s). Copy it over with tools/setup/migrate_1x.sh (copies, never "
+             "moves), or set %s=%s to keep using it"%( beside, data, ENV_VAR, beside ) )

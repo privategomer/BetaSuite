@@ -54,8 +54,8 @@ jobs:
           cache-dependency-path: requirements*.txt
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
-      - name: Run protocol, serve, stub client, paths and run lock tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client tests.test_paths tests.test_run_lock
+      - name: Run protocol, serve, stub client, paths, run lock and migration tests
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client tests.test_paths tests.test_run_lock tests.test_migrate
 
   tests:
     if: always()
