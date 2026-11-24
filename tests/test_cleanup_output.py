@@ -307,7 +307,8 @@ class TestWrapper( unittest.TestCase ):
                 shutil.copy( os.path.join( REPO_ROOT, name ), repo )
         render = os.path.join( top, 'output', 'benchmarks', 'ab_suppression_20011019_100748',
                                'a_clip01_ab.mp4' )
-        environment = dict( os.environ, PYTHON_BIN=shutil.which( 'python3' ), PYTHON_BIN_SOURCE='test' )
+        environment = dict( os.environ, PYTHON_BIN=shutil.which( 'python3' ), PYTHON_BIN_SOURCE='test',
+                            BETASUITE_DATA_ROOT=top )
         environment.pop( 'HARNESS_LOG_FILE', None )
         result = subprocess.run( [ 'bash', 'tools/maintenance/cleanup_output.sh' ], cwd=repo,
                                  env=environment, stdin=subprocess.DEVNULL, capture_output=True,

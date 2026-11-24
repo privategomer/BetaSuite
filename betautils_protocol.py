@@ -86,6 +86,7 @@ ERRORS = {
     'config.local_off':             (),
     'config.local_unparsable':      (),
     'config.local_unwritable':      ( 'reason', ),
+    'run.locked':                   ( 'program', 'pid', 'started_at' ),
 }
 
 # Values of the 'reason' parameter.

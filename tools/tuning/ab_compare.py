@@ -1105,10 +1105,8 @@ def main( argv=None, default_experiment=None ):
         return 0
     if args.confirm_from:
         confirming( args )
-    data_folder = bu_paths.data_root() or os.path.dirname( CORE_DIR )
-    args.out_dir = args.out_dir or os.path.join(
-        data_folder, 'output', 'benchmarks',
-        'ab_%s_%s'%( args.experiment, time.strftime( '%Y%m%d_%H%M%S' ) ) )
+    args.out_dir = args.out_dir or bu_paths.legacy_path(
+        'output', 'benchmarks', 'ab_%s_%s'%( args.experiment, time.strftime( '%Y%m%d_%H%M%S' ) ) )
     os.makedirs( args.out_dir, exist_ok=True )
     betabench = _load_betabench()
     logger = betabench.build_logger( args.out_dir, args.log_level, args.console_level )

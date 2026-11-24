@@ -65,6 +65,7 @@ EXAMPLE_PARAMS = {
     'config.local_off':             {},
     'config.local_unparsable':      {},
     'config.local_unwritable':      { 'reason': 'EACCES' },
+    'run.locked':                   { 'program': 'betatv', 'pid': 4242, 'started_at': 1000000000.5 },
 }
 
 

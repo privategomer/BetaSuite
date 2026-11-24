@@ -22,6 +22,7 @@ fits the memory budget beside the steps already running.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -31,8 +32,10 @@ REPO_ROOT = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
 # call, sleeping long enough that overlapping steps really do overlap.
 # Called as step_meter.py it does what the meter does: runs the command
 # after "--" and writes a record (FAKE_KILL names a tool whose step dies
-# as an OOM kill would, exit 137).
+# as an OOM kill would, exit 137). Asked where a data folder is
+# (tools/lib/where.py), it asks the real interpreter.
 FAKE_PYTHON = r'''#!/bin/bash
+if [ "$(basename "${1:-}")" = "where.py" ]; then exec "__REAL_PYTHON__" "$@"; fi
 if [ "${1:-}" = "-" ]; then cat >/dev/null; exit 0; fi
 if [ "${1:-}" = "-c" ]; then exit 0; fi
 if [ "$(basename "${1:-}")" = "step_meter.py" ]; then
@@ -56,14 +59,14 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
         self.root = tempfile.mkdtemp( prefix='betasuite-suite-' )
         self.repo = os.path.join( self.root, 'repo' )
         for relative in ( 'tools/analysis/run_all_analysis.sh', 'tools/lib/python_env.sh',
-                          'tools/lib/data_root.sh' ):
+                          'tools/lib/data_root.sh', 'tools/lib/where.py', 'betautils_paths.py' ):
             target = os.path.join( self.repo, relative )
             os.makedirs( os.path.dirname( target ), exist_ok=True )
             shutil.copy( os.path.join( REPO_ROOT, relative ), target )
         self.calls = os.path.join( self.root, 'calls.txt' )
         self.fake_python = os.path.join( self.root, 'fake_python' )
         with open( self.fake_python, 'w' ) as handle:
-            handle.write( FAKE_PYTHON.replace( '__CALLS__', self.calls ) )
+            handle.write( FAKE_PYTHON.replace( '__CALLS__', self.calls ).replace( '__REAL_PYTHON__', sys.executable ) )
         os.chmod( self.fake_python, 0o755 )
 
     def tearDown( self ):
@@ -72,7 +75,8 @@ class TestRunAllAnalysisOrdering( unittest.TestCase ):
     def run_suite( self, *flags, status=0, **environment_extra ):
         environment = dict( os.environ, PYTHON_BIN=self.fake_python,
                             PYTHON_BIN_SOURCE='test stand-in', BETASUITE_ANALYSIS_JOBS='3',
-                            **environment_extra )
+                            # The 1.x tree beside the stand-in checkout.
+                            BETASUITE_DATA_ROOT=self.root, **environment_extra )
         environment.pop( 'BETASUITE_ANALYSIS_MEMORY_MB', None )
         result = subprocess.run( [ 'bash', 'tools/analysis/run_all_analysis.sh' ] + list( flags ),
                                  cwd=self.repo, env=environment, stdin=subprocess.DEVNULL,

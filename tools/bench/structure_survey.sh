@@ -48,10 +48,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 # shellcheck source=/dev/null
 source "$REPO_ROOT/tools/lib/data_root.sh"
-DATA_ROOT="$(betasuite_data_root "$REPO_ROOT")" || exit 1
+BENCH_DIR="$(betasuite_path "$REPO_ROOT" output/benchmarks)" || exit 1
 
 STAMP="$(date '+%Y%m%d_%H%M%S')"
-SURVEY_DIR="$DATA_ROOT/output/benchmarks/structure_survey_$STAMP"
+SURVEY_DIR="$BENCH_DIR/structure_survey_$STAMP"
 mkdir -p "$SURVEY_DIR"
 export HARNESS_LOG_FILE="$SURVEY_DIR/structure_survey.log"
 

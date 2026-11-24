@@ -28,7 +28,8 @@
     { "$ref": "#/$defs/config.not_settable" },
     { "$ref": "#/$defs/config.local_off" },
     { "$ref": "#/$defs/config.local_unparsable" },
-    { "$ref": "#/$defs/config.local_unwritable" }
+    { "$ref": "#/$defs/config.local_unwritable" },
+    { "$ref": "#/$defs/run.locked" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -273,6 +274,22 @@
           "type": "object",
           "required": [ "reason" ],
           "properties": { "reason": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "run.locked": {
+      "description": "Another run (the command line or the engine) holds this library's run lock, so this one did not start. A param is null when the holder's record could not be read.",
+      "properties": {
+        "code": { "const": "run.locked" },
+        "params": {
+          "type": "object",
+          "required": [ "program", "pid", "started_at" ],
+          "properties": {
+            "program": { "type": [ "string", "null" ], "description": "betatv, betastare, engine or migrate" },
+            "pid": { "type": [ "integer", "null" ] },
+            "started_at": { "type": [ "number", "null" ], "description": "Epoch seconds." }
+          },
           "additionalProperties": false
         }
       }

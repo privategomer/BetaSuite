@@ -83,9 +83,16 @@ checkpoints and completed render chunks are already on disk, so
 re-running resumes rather than restarting. A second Ctrl-C exits
 immediately.
 
-`resources/` and `output/` live beside the repo. To use them from
-another checkout, set `BETASUITE_DATA_ROOT` to the absolute path of the
-folder that holds them (CONFIG_REFERENCE.md, "Where data lives").
+Settings, models, caches, logs and videos each live in the folder the
+operating system keeps for that kind of data, per user. The videos go in
+app data, out of the folders desktop search and media apps index, since
+what goes in them is mostly explicit. `python3 tools/lib/where.py` lists
+every folder; `python3 tools/lib/where.py inputs outputs` says where to
+put videos and where results go (on Linux
+`~/.local/share/betasuite/library`). To use a 1.x tree
+(`resources/` and `output/` side by side) instead, set
+`BETASUITE_DATA_ROOT` to the absolute path of the folder that holds them
+(CONFIG_REFERENCE.md, "Where data lives").
 
 ---
 
