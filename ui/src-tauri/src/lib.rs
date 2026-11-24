@@ -164,16 +164,20 @@ fn close(app: &tauri::AppHandle) {
         // the next start.
         std::thread::sleep(EXIT_WATCHDOG);
         log::warn!(
-            "the event loop did not exit within {} s; ending the process",
+            "the event loop did not exit within {} s; ending the process with code {EXIT_FORCED}",
             EXIT_WATCHDOG.as_secs()
         );
         log::logger().flush();
-        std::process::exit(0);
+        std::process::exit(EXIT_FORCED);
     });
 }
 
 /// How long the event loop gets to finish after the window closes.
 const EXIT_WATCHDOG: Duration = Duration::from_secs(3);
+
+/// The exit code when the watchdog ended the process: the engine stopped
+/// cleanly, but the app did not exit the normal way, so 0 would hide it.
+const EXIT_FORCED: i32 = 2;
 
 fn create_engine(app: &tauri::AppHandle, transcript: Option<std::path::PathBuf>) -> Engine {
     let mut config = engine::Config::new(VERSION);
