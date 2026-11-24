@@ -1,0 +1,5 @@
+# Read by rustup (CI, Windows). A distro toolchain of the same version works too.
+[toolchain]
+channel = "1.93.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
