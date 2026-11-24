@@ -383,6 +383,58 @@ class TestRefusals( _TreeCase ):
         self.assertIsNone( bu_runlock.probe( os.path.join( self.targets['state'], 'run.lock' ) ) )
 
 
+_CACHE_PATHS = r'''
+import json, os, sys
+import betautils_cache_paths as c
+c.record_run_key = lambda *a, **k: None
+det = c.detection_key()
+paths = [ c.box_hash_path_for( 'f' * 16, 640, 2.0, 0.2, 'nudenet_v3', det_key=det ),
+          c.pic_hash_path_for( 'e' * 16, 640, 0.2, 'nudenet_v3', det_key=det ),
+          c.shot_cut_path_for( 'f' * 16, 2.0, 0.3 ),
+          c.transcode_path_for( 'f' * 16 ),
+          os.path.join( c.betaconst.run_key_dir, 'detection-%s.json'%( det, ) ) ]
+if sys.argv[1] == 'write':
+    for path in paths:
+        os.makedirs( os.path.dirname( path ), exist_ok=True )
+        with open( path, 'w' ) as handle:
+            handle.write( 'cached' )
+print( json.dumps( { 'paths': paths, 'found': [ os.path.isfile( p ) for p in paths ], 'det': det } ) )
+'''
+
+
+def _engine_packages_installed():
+    import importlib.util
+    return importlib.util.find_spec( 'numpy' ) is not None and importlib.util.find_spec( 'cv2' ) is not None
+
+
+@unittest.skipUnless( _engine_packages_installed(), "needs the engine's packages" )
+class TestCachesStayHits( _TreeCase ):
+    """The app's own cache paths, written in the 1.x layout, are found in the 2.x one after migrating."""
+
+    def probe( self, mode, env ):
+        import subprocess
+        import sys
+        repo = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
+        full = dict( os.environ, PYTHONPATH=repo, BETASUITE_LOCAL_CONFIG=self.local_config, **env )
+        for name in bu_paths.OVERRIDES.values():
+            full.pop( name, None )
+        result = subprocess.run( [ sys.executable, '-c', _CACHE_PATHS, mode ], cwd=self.checkout, env=full,
+                                 capture_output=True, text=True, timeout=120 )
+        self.assertEqual( result.returncode, 0, result.stderr )
+        return json.loads( result.stdout.strip().splitlines()[-1] )
+
+    def test_every_cache_written_in_1x_is_found_in_2x( self ):
+        written = self.probe( 'write', dict( self.env, BETASUITE_DATA_ROOT=self.source ) )
+        self.assertTrue( all( p.startswith( self.source + os.sep ) for p in written['paths'] ) )
+        before = self.probe( 'read', dict( self.env, BETASUITE_DATA_ROOT='' ) )
+        self.assertEqual( before['found'], [ False ] * 5, "nothing there before the migration" )
+        self.run_migration()
+        after = self.probe( 'read', dict( self.env, BETASUITE_DATA_ROOT='' ) )
+        self.assertEqual( after['det'], written['det'], "the same detection key in both layouts" )
+        self.assertEqual( after['found'], [ True ] * 5, after['paths'] )
+        self.assertTrue( all( p.startswith( self.os_root + os.sep ) for p in after['paths'] ) )
+
+
 class TestCommandLine( _TreeCase ):
 
     def main( self, *argv, stdin=None ):
