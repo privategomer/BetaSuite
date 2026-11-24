@@ -378,13 +378,12 @@ class TestLegacyTreeHint( _EnvCase ):
 
     def test_a_1x_tree_beside_the_code_with_no_data_folder_yet( self ):
         self.assertIsNone( bu_paths.legacy_tree_hint( self.repo, self.env ) )
-        for name in ( 'resources', 'output' ):
-            folder = os.path.join( self.tmp, 'checkout', name )
-            os.mkdir( folder )
-            hint = bu_paths.legacy_tree_hint( self.repo, self.env )
-            self.assertIn( os.path.join( self.tmp, 'checkout' ), hint )
-            self.assertIn( bu_paths.ENV_VAR, hint )
-            os.rmdir( folder )
+        os.mkdir( os.path.join( self.tmp, 'checkout', 'output' ) )
+        self.assertIsNone( bu_paths.legacy_tree_hint( self.repo, self.env ), "a stray output/ is not a 1.x tree" )
+        os.mkdir( os.path.join( self.tmp, 'checkout', 'resources' ) )
+        hint = bu_paths.legacy_tree_hint( self.repo, self.env )
+        self.assertIn( os.path.join( self.tmp, 'checkout' ), hint )
+        self.assertIn( bu_paths.ENV_VAR, hint )
 
     def test_quiet_once_the_data_folder_exists_or_under_a_data_root( self ):
         os.mkdir( os.path.join( self.tmp, 'checkout', 'resources' ) )

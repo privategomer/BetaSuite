@@ -947,7 +947,7 @@ def main():
     """
     logger = _startup()
     try:
-        run_lock = bu_runlock.acquire( 'betatv', logger=logger )
+        run_lock = bu_runlock.acquire_library( 'betatv', logger=logger )
     except bu_runlock.RunLocked as locked:
         logger.error( locked.message() )
         return bu_runlock.EXIT_LOCKED
