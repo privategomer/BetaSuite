@@ -354,7 +354,7 @@ def main():
 
     logger = bu_log.get_logger()
     try:
-        run_lock = bu_runlock.acquire( 'betastare', logger=logger )
+        run_lock = bu_runlock.acquire_library( 'betastare', logger=logger )
     except bu_runlock.RunLocked as locked:
         logger.error( locked.message() )
         return bu_runlock.EXIT_LOCKED

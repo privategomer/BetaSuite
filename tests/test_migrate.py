@@ -465,6 +465,24 @@ class TestCommandLine( _TreeCase ):
         with open( report ) as handle:
             self.assertEqual( json.load( handle )['outcome'], 'dry_run' )
 
+    def test_a_dry_run_without_a_log_file_logs_to_the_temp_folder( self ):
+        import importlib.util
+        tool = os.path.join( os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) ),
+                             'tools', 'setup', 'migrate_1x.py' )
+        spec = importlib.util.spec_from_file_location( '_migrate_1x_log', tool )
+        module = importlib.util.module_from_spec( spec )
+        spec.loader.exec_module( module )
+        temp = os.path.join( self.checkout, 'tmp' )
+        os.makedirs( temp )
+        with mock.patch.dict( os.environ, self.env ), mock.patch.object( tempfile, 'tempdir', temp ):
+            for name in ( bu_paths.ENV_VAR, ) + tuple( bu_paths.OVERRIDES.values() ):
+                os.environ.pop( name, None )
+            code = module.main( [ '--from', self.source, '--local-config', self.local_config, '--dry-run' ],
+                                stdin=io.StringIO(), stdout=io.StringIO() )
+        self.assertEqual( code, 0 )
+        self.assertFalse( os.path.exists( self.os_root ) )
+        self.assertTrue( os.path.isfile( os.path.join( temp, 'betasuite-migrate_1x-dry-run.log' ) ) )
+
     def test_unattended_without_yes_copies_nothing( self ):
         code, out = self.main()
         self.assertEqual( code, 0 )

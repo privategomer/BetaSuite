@@ -193,6 +193,79 @@ class TestAcrossProcesses( _LockCase ):
             pass
 
 
+class TestLibraryLocks( _LockCase ):
+    """A run takes the state lock, plus one in each media folder that is not its OS default."""
+
+    def setUp( self ):
+        super().setUp()
+        import betautils_paths as bu_paths
+        self.bu_paths = bu_paths
+        patcher = mock.patch.dict( os.environ )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+        for name in ( bu_paths.ENV_VAR, ) + tuple( bu_paths.OVERRIDES.values() ):
+            os.environ.pop( name, None )
+        self.tree = os.path.join( self._tmp.name, 'tree' )
+        os.makedirs( os.path.join( self.tree, 'resources' ) )
+        os.makedirs( os.path.join( self.tree, 'output' ) )
+        import betaconst
+        self.state_lock = betaconst.run_lock_path
+
+    def test_the_default_os_layout_locks_only_the_state_folder( self ):
+        self.assertEqual( bu_runlock.library_paths(), [ self.state_lock ] )
+
+    def test_media_folders_moved_onto_a_1x_tree_lock_where_that_tree_does( self ):
+        os.environ[self.bu_paths.INPUT_ENV_VAR] = os.path.join( self.tree, 'resources' )
+        os.environ[self.bu_paths.OUTPUT_ENV_VAR] = os.path.join( self.tree, 'output' )
+        os_layout = bu_runlock.library_paths()
+        self.assertEqual( os_layout, [ self.state_lock, os.path.join( self.tree, 'resources', 'run.lock' ),
+                                       os.path.join( self.tree, 'output', 'run.lock' ) ] )
+        for name in self.bu_paths.OVERRIDES.values():
+            os.environ.pop( name, None )
+        os.environ[self.bu_paths.ENV_VAR] = self.tree
+        on_the_tree = bu_runlock.library_paths()
+        self.assertIn( os.path.join( self.tree, 'output', 'run.lock' ), on_the_tree )
+        self.assertIn( os.path.join( self.tree, 'resources', 'run.lock' ), on_the_tree )
+
+    def test_the_two_layouts_on_one_tree_refuse_each_other( self ):
+        os.environ[self.bu_paths.ENV_VAR] = self.tree
+        on_the_tree = bu_runlock.library_paths()
+        del os.environ[self.bu_paths.ENV_VAR]
+        os.environ[self.bu_paths.OUTPUT_ENV_VAR] = os.path.join( self.tree, 'output' )
+        os_layout = bu_runlock.library_paths()
+        with bu_runlock.acquire_library( 'betatv', paths=on_the_tree ):
+            with self.assertRaises( bu_runlock.RunLocked ):
+                bu_runlock.acquire_library( 'betatv', paths=os_layout )
+        # Refused part way, it gave back what it had taken.
+        self.assertIsNone( bu_runlock.probe( self.state_lock ) )
+        with bu_runlock.acquire_library( 'betatv', paths=os_layout ) as held:
+            self.assertEqual( len( held.locks ), 2 )
+        self.assertFalse( held.held )
+
+    def test_refused_part_way_it_gives_back_what_it_took( self ):
+        mine, other, shared = ( os.path.join( self.tree, name ) for name in ( 'mine.lock', 'other.lock', 'shared.lock' ) )
+        with bu_runlock.acquire_library( 'engine', paths=[ other, shared ] ):
+            with self.assertRaises( bu_runlock.RunLocked ):
+                bu_runlock.acquire_library( 'betatv', paths=[ mine, shared ] )
+            self.assertIsNone( bu_runlock.probe( mine ), "the lock taken before the refusal was released" )
+
+    def test_a_lock_named_twice_is_taken_once( self ):
+        # Under a data root the output folder's lock is the tree's own run lock.
+        os.environ[self.bu_paths.ENV_VAR] = self.tree
+        same = os.path.join( self.tree, 'output', 'run.lock' )
+        with mock.patch.object( bu_runlock, 'default_path', return_value=same ):
+            paths = bu_runlock.library_paths()
+        self.assertEqual( paths.count( same ), 1 )
+        self.assertEqual( len( paths ), 2 )
+
+    def test_a_recovered_record_from_any_lock_is_reported( self ):
+        paths = [ os.path.join( self.tree, 'a.lock' ), os.path.join( self.tree, 'b.lock' ) ]
+        with open( bu_runlock.holder_path( paths[1] ), 'w' ) as handle:
+            json.dump( { 'program': 'old', 'pid': 1, 'started_at': 1 }, handle )
+        with bu_runlock.acquire_library( 'betatv', paths=paths ) as held:
+            self.assertEqual( held.recovered['program'], 'old' )
+
+
 class TestProbeAndHolder( _LockCase ):
 
     def test_probe_creates_nothing( self ):
@@ -316,6 +389,19 @@ class TestTheCommandLineTakesIt( unittest.TestCase ):
             self.assertEqual( betastare.main(), bu_runlock.EXIT_LOCKED )
         detector.assert_not_called()
         self.assertIn( 'engine (pid', self.logger.error.call_args[0][0] )
+
+    def test_betastare_gives_it_back_when_the_main_loop_fails( self ):
+        import betastare
+        with mock.patch.object( betastare, '_parse_cli_args_and_validate_config' ), \
+             mock.patch.object( betastare.bu_log, 'get_logger', return_value=self.logger ), \
+             mock.patch.object( betastare.bu_signals, 'install_handler' ), \
+             mock.patch.object( betastare.bu_detector, 'get_detector' ), \
+             mock.patch.object( betastare, '_count_total_files', return_value=1 ), \
+             mock.patch.object( betastare.os, 'walk', side_effect=RuntimeError( 'disk gone' ) ):
+            with self.assertRaises( RuntimeError ):
+                betastare.main()
+        self.assertIsNone( bu_runlock.probe( self.path ) )
+        self.assertIsNone( bu_runlock.read_holder( self.path ) )
 
     def test_betastare_gives_it_back_when_the_model_fails( self ):
         import betastare

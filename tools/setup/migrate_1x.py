@@ -17,8 +17,9 @@ the two variables that keep the 2.x layout using them where they are.
 
 Without a terminal and without --yes it shows the plan and copies
 nothing. Everything goes to the log file (default
-<state folder>/logs/migrate_1x.log); --console-level filters the
-terminal only. A run writes its full report, file by file, to
+<state folder>/logs/migrate_1x.log, or betasuite-migrate_1x-dry-run.log
+in the system temp folder for --dry-run, so a dry run writes nothing in
+the app's folders); --console-level filters the terminal only. A run writes its full report, file by file, to
 <state folder>/migration/report-<time>.json.
 
 Exit codes: 0 done (or nothing to do, or a plan shown), 1 refused or
@@ -122,7 +123,14 @@ def _run( args, argv, stdin, stdout, clock, opened ):
     except bu_paths.PathsError as err:
         sys.stderr.write( "%s\n"%( err, ) )
         return 1
-    log_path = args.log_file or os.path.join( targets['state'], 'logs', 'migrate_1x.log' )
+    if args.log_file:
+        log_path = args.log_file
+    elif args.dry_run:
+        # A dry run writes nothing in the app's folders, its log included.
+        import tempfile
+        log_path = os.path.join( tempfile.gettempdir(), 'betasuite-migrate_1x-dry-run.log' )
+    else:
+        log_path = os.path.join( targets['state'], 'logs', 'migrate_1x.log' )
     logger = bu_log.tool_logger( 'migrate_1x', log_path=log_path, file_level=args.log_level,
                                  console_level=args.console_level, console_stream=stdout )
     opened.append( logger )

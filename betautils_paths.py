@@ -432,7 +432,9 @@ def legacy_tree_hint( repo_dir, environ=None ):
     beside = os.path.normpath( os.path.join( repo_dir, '..' ) )
     if os.path.exists( data ):
         return None
-    if not any( os.path.isdir( os.path.join( beside, name ) ) for name in ( 'resources', 'output' ) ):
+    # resources/ is what makes a 1.x tree: a stray output/ (a tool run from
+    # an odd folder) is not one.
+    if not os.path.isdir( os.path.join( beside, 'resources' ) ):
         return None
     return ( "a 1.x layout (resources/, output/) is in %s, and this run does not read it: it uses the "
              "2.x folders by kind (data in %s). Copy it over with tools/setup/migrate_1x.sh (copies, never "

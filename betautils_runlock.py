@@ -53,6 +53,40 @@ def default_path():
     return betaconst.run_lock_path
 
 
+def library_paths():
+    """
+    Every lock file a run on this library takes: betaconst.run_lock_path,
+    plus run.lock in the input and output folders wherever they are not
+    their OS defaults.
+
+    WHY. Two layouts can share one set of video folders: an OS-layout run
+    pointed at a 1.x tree's folders (BETASUITE_INPUT_DIR and
+    BETASUITE_OUTPUT_DIR, as the migration suggests) and a run on that
+    tree through BETASUITE_DATA_ROOT. Their state folders differ, so the
+    state lock alone would let both write the same outputs at once. A
+    lock in each non-default media folder makes them meet: under a data
+    root the output folder's lock is the tree's output/run.lock itself.
+    The default OS media folder gets none, so nothing is left in the
+    user's Videos folder.
+    """
+    import betautils_paths as bu_paths
+    paths = [ default_path() ]
+    plain = { name: value for name, value in os.environ.items()
+              if name not in bu_paths.OVERRIDES.values() and name != bu_paths.ENV_VAR }
+    defaults = bu_paths.os_dirs( environ=plain )
+    for kind in ( 'inputs', 'outputs' ):
+        folder = bu_paths.kind_dir( kind )
+        if os.path.normcase( os.path.abspath( folder ) ) != os.path.normcase( os.path.abspath( defaults[kind] ) ):
+            paths.append( os.path.join( folder, 'run.lock' ) )
+    unique, seen = [], set()
+    for path in paths:
+        key = os.path.normcase( os.path.abspath( path ) )
+        if key not in seen:
+            seen.add( key )
+            unique.append( path )
+    return unique
+
+
 def holder_path( lock_path ):
     return lock_path + HOLDER_SUFFIX
 
@@ -215,7 +249,7 @@ def acquire( program, path=None, clock=time.time, logger=None ):
     Take the run lock or raise RunLocked naming who has it.
 
     Args:
-        program: Who is asking: 'betatv', 'betastare', 'engine'.
+        program: Who is asking: 'betatv', 'betastare', 'engine', 'migrate'.
         path: The lock file; default betaconst.run_lock_path.
         clock: Epoch seconds, for the record.
         logger: Told when a holder record from a run that ended without
@@ -246,6 +280,49 @@ def acquire( program, path=None, clock=time.time, logger=None ):
         logger.warning( "the run lock was left by %s, which ended without releasing it; taken over"%(
             describe( recovered ), ) )
     return RunLock( path, fd, record, recovered )
+
+
+class LibraryLock:
+    """The locks of library_paths(), held together. release() gives them all up."""
+
+    def __init__( self, locks ):
+        self.locks = locks
+        self.path = locks[0].path
+        self.recovered = next( ( lock.recovered for lock in locks if lock.recovered is not None ), None )
+
+    @property
+    def held( self ):
+        return any( lock.held for lock in self.locks )
+
+    def release( self ):
+        for lock in reversed( self.locks ):
+            lock.release()
+
+    def __enter__( self ):
+        return self
+
+    def __exit__( self, *exc ):
+        self.release()
+        return False
+
+
+def acquire_library( program, paths=None, clock=time.time, logger=None ):
+    """
+    Take every lock of this library (library_paths()) or none of them.
+
+    Raises:
+        RunLocked: another process holds one; those already taken are
+            given back first.
+    """
+    taken = []
+    try:
+        for path in ( library_paths() if paths is None else paths ):
+            taken.append( acquire( program, path=path, clock=clock, logger=logger ) )
+    except BaseException:
+        for lock in reversed( taken ):
+            lock.release()
+        raise
+    return LibraryLock( taken )
 
 
 def probe( path=None ):

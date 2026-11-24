@@ -286,7 +286,7 @@
           "type": "object",
           "required": [ "program", "pid", "started_at" ],
           "properties": {
-            "program": { "type": [ "string", "null" ], "description": "betatv, betastare or engine" },
+            "program": { "type": [ "string", "null" ], "description": "betatv, betastare, engine or migrate" },
             "pid": { "type": [ "integer", "null" ] },
             "started_at": { "type": [ "number", "null" ], "description": "Epoch seconds." }
           },
