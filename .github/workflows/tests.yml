@@ -153,5 +153,8 @@ jobs:
           UI_WINDOWS: ${{ needs.ui-windows.result }}
         run: |
           echo "linux: $LINUX, windows: $WINDOWS, ui-linux: $UI_LINUX, ui-windows: $UI_WINDOWS"
-          test "$LINUX" = success && test "$WINDOWS" = success
-          test "$UI_LINUX" = success && test "$UI_WINDOWS" = success
+          # One command: bash -e ignores a failure early in an && list, so a
+          # failing test on an earlier line would not fail the step.
+          for result in "$LINUX" "$WINDOWS" "$UI_LINUX" "$UI_WINDOWS"; do
+            test "$result" = success || exit 1
+          done
