@@ -892,7 +892,7 @@ def rule( rule_id, text, **params ):
     return Problem( text, 'config.rule', **params )
 
 
-_LOCATION = re.compile( r"^(?:betaconfig\.)?([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\])*)" )
+_LOCATION = re.compile( r"^(?:betaconfig\.)?([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\]|\.[A-Za-z_][A-Za-z0-9_]*)*)" )
 
 
 def located( text ):
@@ -900,12 +900,13 @@ def located( text ):
     "detector_backend['nudenet_v3']['nms_iou'] must be ..." -> 'detector_backend.nudenet_v3.nms_iou'.
     The longest setting path the text starts with, or '' when it starts with none.
     """
-    match = _LOCATION.match( str( text ) )
+    # "x['a']'s resolved item_overrides['b']" names x.a.item_overrides.b.
+    match = _LOCATION.match( str( text ).replace( "]'s resolved ", "]." ) )
     if not match:
         return ''
     parts = [ match.group( 1 ) ]
-    for subscript in re.findall( r"\[([^\]]*)\]", match.group( 2 ) ):
-        parts.append( subscript.strip( "'\"" ) )
+    for subscript, name in re.findall( r"\[([^\]]*)\]|\.([A-Za-z_][A-Za-z0-9_]*)", match.group( 2 ) ):
+        parts.append( name or subscript.strip( "'\"" ) )
     return '.'.join( parts )
 
 
@@ -928,10 +929,13 @@ def _range_text( spec ):
 
 
 def _range_params( spec ):
-    """The bounds an out_of_range error carries. 0 is a bound; only None means none."""
-    params = { key: spec[key] for key in ( 'minimum', 'maximum' ) if spec.get( key ) is not None }
-    params.update( { key: True for key in ( 'min_open', 'max_open' ) if spec.get( key ) is True } )
-    return params
+    """
+    The bounds an out_of_range error carries: always the same six, as
+    the protocol requires (None where there is no bound).
+    """
+    return { 'minimum': spec.get( 'minimum' ), 'maximum': spec.get( 'maximum' ),
+             'min_open': bool( spec.get( 'min_open' ) ), 'max_open': bool( spec.get( 'max_open' ) ),
+             'odd': bool( spec.get( 'odd' ) ) }
 
 
 def _in_range( value, spec ):
@@ -995,7 +999,7 @@ def check_value( where, value, spec, params_path=None ):
                               **_range_params( spec ) ) ]
         if spec.get( 'odd' ) and value % 2 == 0:
             return [ Problem( "%s must be an odd number, got %r"%( where, value ),
-                              'config.out_of_range', path=path, odd=True ) ]
+                              'config.out_of_range', path=path, **_range_params( spec ) ) ]
         return []
     if kind == 'choice':
         choices = spec['choices']() if callable( spec['choices'] ) else spec['choices']

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.schema.schema.json",
+  "title": "config.schema",
+  "description": "The settings registry: every setting the engine has, one entry per key path. A segment in angle brackets (<backend>, <label>, ...) stands for any key of that map; placeholders lists the values each takes. tip, label and none are message keys in the catalog file named by catalog; help is an anchor in the reference document named by help. styles and rules describe the fields inside censor styles and suppression and promotion rules.",
+  "$defs": {
+    "data": { "type": "object" },
+    "field": {
+      "type": "object",
+      "required": [ "kind", "tip", "label" ],
+      "properties": {
+        "kind": { "type": "string" },
+        "tip": { "type": "string" },
+        "label": { "type": "string" },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "min_open": { "const": true },
+        "max_open": { "const": true },
+        "choices": { "type": "array" }
+      }
+    },
+    "setting": {
+      "type": "object",
+      "required": [ "path", "kind", "scope", "level", "moves", "when", "per_run", "tip", "label", "help" ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string" },
+        "scope": { "enum": [ "global", "label", "backend", "backend_label", "model_variant_label",
+                             "profile", "profile_label", "person_backend" ] },
+        "level": { "enum": [ "simple", "advanced" ] },
+        "moves": { "type": "array", "items": { "enum": [ "detection", "censor", "encode" ] }, "uniqueItems": true },
+        "when": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "per_run": { "type": "boolean" },
+        "tip": { "type": "string" },
+        "label": { "type": "string" },
+        "help": { "type": "string" },
+        "none": { "type": "string" },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "min_open": { "const": true },
+        "max_open": { "const": true },
+        "nullable": { "const": true },
+        "odd": { "const": true },
+        "choices": { "type": "array" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [ "settings", "styles", "rules", "placeholders", "conditions", "catalog", "help" ],
+      "properties": {
+        "settings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/setting" } },
+        "styles": {
+          "type": "object",
+          "required": [ "common", "types", "frame_extra" ],
+          "properties": {
+            "common": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } },
+            "types": {
+              "type": "object",
+              "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } }
+            },
+            "frame_extra": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } }
+          }
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } }
+        },
+        "placeholders": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "conditions": { "type": "array", "items": { "type": "string" } },
+        "catalog": { "type": "string" },
+        "help": { "type": "string" }
+      }
+    }
+  }
+}

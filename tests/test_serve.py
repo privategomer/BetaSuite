@@ -221,7 +221,8 @@ class TestHandshake( _EngineTest ):
         hello = self.hello( engine )['data']
         self.assertEqual( hello['protocol'], 1 )
         self.assertEqual( hello['pid'], engine.proc.pid )
-        self.assertEqual( hello['commands'], [ 'hello', 'ping', 'shutdown' ] )
+        self.assertEqual( hello['commands'], [ 'config.get', 'config.reset', 'config.schema', 'config.set',
+                                               'hello', 'ping', 'shutdown' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )

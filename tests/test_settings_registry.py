@@ -245,6 +245,19 @@ class TestLookup( unittest.TestCase ):
         entry = bu_settings.find( 'detector_backend.nudenet_v3.nn_batch_size' )
         self.assertEqual( '<backend>', entry.path[1] )
 
+    def test_the_most_specific_entry_wins_whatever_the_registry_order( self ):
+        import unittest.mock as mock
+        reordered = tuple( reversed( bu_settings.REGISTRY ) )
+        bu_settings._find.cache_clear()
+        try:
+            with mock.patch.object( bu_settings, 'REGISTRY', reordered ):
+                entry = bu_settings.find( 'detector_backend.defaults.nn_batch_size' )
+                self.assertEqual( ( 'detector_backend', 'defaults', 'nn_batch_size' ), entry.path )
+                entry = bu_settings.find( 'detector_backend.defaults.picture_sizes' )
+                self.assertEqual( 'defaults', entry.path[1] )
+        finally:
+            bu_settings._find.cache_clear()
+
     def test_a_path_inside_a_structured_entry_finds_that_entry( self ):
         entry = bu_settings.find( 'item_overrides.exposed_breast.censor_style.0.strength' )
         self.assertEqual( 'censor_style', entry.kind )
@@ -298,6 +311,23 @@ class TestCheckValue( unittest.TestCase ):
         self.assertEqual( [ 'config.out_of_range' ], self.codes( 'blur_approximation_min_kernel', 22 ) )
         self.assertEqual( [], self.codes( 'blur_approximation_min_kernel', 23 ) )
 
+    def test_a_color_is_three_whole_numbers_from_0_to_255( self ):
+        self.assertEqual( [], self.codes( 'vision_cursor_color', ( 0, 128, 255 ) ) )
+        for bad in ( ( 0, 0, 256 ), ( -1, 0, 0 ), ( 0, 0 ), ( 0.5, 0, 0 ), 'red' ):
+            self.assertEqual( [ 'config.bad_type' ], self.codes( 'vision_cursor_color', bad ), bad )
+
+    def test_picture_sizes_are_a_non_empty_list_of_whole_numbers_from_0( self ):
+        path = 'detector_backend.retinanet_v2.picture_sizes'
+        self.assertEqual( [], self.codes( path, [ 0, 1280 ] ) )
+        for bad in ( [ -32 ], [], [ 320.0 ], 320 ):
+            self.assertEqual( [ 'config.bad_type' ], self.codes( path, bad ), bad )
+
+    def test_a_string_or_path_must_not_be_empty( self ):
+        self.assertEqual( [ 'config.bad_type' ], self.codes( 'encode_video_codec', '' ) )
+        self.assertEqual( [ 'config.bad_type' ], self.codes( 'log_path', '' ) )
+        self.assertEqual( [], self.codes( 'log_path', None ) )
+        self.assertEqual( [], self.codes( 'encode_video_codec', 'libx264' ) )
+
     def test_gpu_enabled_takes_true_and_false_as_one_and_zero( self ):
         self.assertEqual( [], self.codes( 'gpu_enabled', True ) )
         self.assertEqual( [ 'config.bad_choice' ], self.codes( 'gpu_enabled', 2 ) )
@@ -308,7 +338,8 @@ class TestCheckValue( unittest.TestCase ):
         self.assertIsInstance( problem, str )
         self.assertIn( 'encode_crf', problem )
         self.assertEqual( { 'code': 'config.out_of_range',
-                            'params': { 'path': 'encode_crf', 'minimum': 0, 'maximum': 51 } },
+                            'params': { 'path': 'encode_crf', 'minimum': 0, 'maximum': 51,
+                                        'min_open': False, 'max_open': False, 'odd': False } },
                           problem.as_error() )
 
 

@@ -31,8 +31,10 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
+      # Recommends (hardware video drivers and the like) are most of the
+      # download, and the mirror is sometimes slow enough to run out the clock.
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
       - name: Run tests
@@ -52,10 +54,12 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
+      # The config commands read betaconfig through the detector modules,
+      # which import numpy and OpenCV; onnxruntime is not needed here.
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Run protocol, serve and stub client tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_stub_client
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run protocol, serve, config and stub client tests
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_stub_client
 
   tests:
     if: always()

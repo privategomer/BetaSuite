@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.get.schema.json",
+  "title": "config.get",
+  "description": "Every setting's current value, its default (betaconfig.py's, absent when betaconfig.py has none) and where the value came from: default, local (the local config) or run (an override in this request). paths limits the answer to settings at or under those dotted paths. overrides are per-run values, applied for this answer only and never written; one that would fail validation answers config.invalid, a path that is no setting config.unknown_key.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "paths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "overrides": { "type": "object" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [ "settings" ],
+      "properties": {
+        "settings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "path", "value", "source", "changed" ],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "value": {},
+              "default": {},
+              "source": { "enum": [ "default", "local", "run" ] },
+              "changed": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

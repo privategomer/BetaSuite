@@ -381,6 +381,11 @@ register( 'hello', _hello )
 register( 'ping', _ping )
 register( 'shutdown', _shutdown )
 
+# config.schema, config.get, config.set, config.reset
+from betautils_serve_config import HANDLERS as _CONFIG_HANDLERS   # noqa: E402  (after register)
+for _name, _handler in _CONFIG_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 

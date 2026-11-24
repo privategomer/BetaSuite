@@ -73,9 +73,32 @@ class TestEveryErrorIsACode( unittest.TestCase ):
         self.assertEqual( 'detector_backend.nudenet_v3.nms_iou',
                           bu_settings.located( "detector_backend['nudenet_v3']['nms_iou'] must be ..." ) )
         self.assertEqual( 'nn_batch_size', bu_settings.located( "betaconfig.nn_batch_size is no longer read" ) )
-        self.assertEqual( 'detector_backend.nudenet_v3',
-                          bu_settings.located( "detector_backend['nudenet_v3']'s resolved item_overrides" ) )
+        self.assertEqual( 'detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob_continue',
+                          bu_settings.located( "detector_backend['nudenet_v3']'s resolved "
+                                               "item_overrides['exposed_breast']['min_prob_continue'] (0.5) is ABOVE" ) )
         self.assertEqual( '', bu_settings.located( "%%s is wrong" ) )
+
+
+class TestACrashIsNotHidden( unittest.TestCase ):
+    """
+    A check that crashes after the registry reported a wrong-typed value
+    is skipped, since the value's error is already listed. Without any
+    registry error a crash is a bug in validation and must surface.
+    """
+
+    def test_a_crash_with_a_clean_registry_pass_is_raised( self ):
+        import unittest.mock as mock
+        with harness.shipped(), mock.patch.object( bu_config, '_validate_stats_settings',
+                                                   side_effect=RuntimeError( 'bug' ) ):
+            with self.assertRaises( RuntimeError ):
+                _errors()
+
+    def test_a_crash_after_a_registry_error_is_skipped( self ):
+        import unittest.mock as mock
+        with harness.shipped(), mock.patch.object( bu_config, '_validate_stats_settings',
+                                                   side_effect=RuntimeError( 'bug' ) ):
+            betaconfig.encode_crf = 'x'
+            self.assertEqual( [ 'config.bad_type' ], [ error.code for error in _errors() ] )
 
 
 class TestValidationReadsTheRegistry( unittest.TestCase ):
