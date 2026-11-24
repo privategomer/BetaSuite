@@ -1,0 +1,57 @@
+/* Light and dark themes. The system's choice applies unless the html
+   element carries data-theme="light" or "dark" (the --theme option).
+   Status hues derive from the Okabe-Ito palette, which stays distinct with
+   the common color vision deficiencies; every status also has its own
+   icon shape and words, so color is never the only signal.
+   scripts/check-contrast.mjs checks the pairs it lists against WCAG AA. */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-text: #1b1f24;
+  --color-text-muted: #4a5360;
+  --color-border: #c9d0d8;
+  --color-accent: #0b6560;
+  --color-accent-text: #ffffff;
+  --color-focus: #0060a0;
+  --color-status-ok: #006b4c;
+  --color-status-busy: #005f9e;
+  --color-status-problem: #a84300;
+  --color-video-bg: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #14181d;
+    --color-surface: #1c2229;
+    --color-text: #e6e9ed;
+    --color-text-muted: #a9b2bd;
+    --color-border: #3a434d;
+    --color-accent: #5cc8bd;
+    --color-accent-text: #0d1a19;
+    --color-focus: #7cc4f0;
+    --color-status-ok: #3fcf9f;
+    --color-status-busy: #6ebcec;
+    --color-status-problem: #ff9a5c;
+    --color-video-bg: #000000;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #14181d;
+  --color-surface: #1c2229;
+  --color-text: #e6e9ed;
+  --color-text-muted: #a9b2bd;
+  --color-border: #3a434d;
+  --color-accent: #5cc8bd;
+  --color-accent-text: #0d1a19;
+  --color-focus: #7cc4f0;
+  --color-status-ok: #3fcf9f;
+  --color-status-busy: #6ebcec;
+  --color-status-problem: #ff9a5c;
+  --color-video-bg: #000000;
+}

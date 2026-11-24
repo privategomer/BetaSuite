@@ -172,3 +172,8 @@ tools/release/release-notes.md
 # Claude Code: per-milestone worktrees and this machine's session settings
 /.claude/worktrees/
 /.claude/settings.local.json
+
+# Desktop UI (ui/): npm packages and the schemas Tauri regenerates on every
+# build (the built page and Rust output fall under dist/ and target/ above)
+node_modules/
+/ui/src-tauri/gen/
