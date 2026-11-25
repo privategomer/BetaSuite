@@ -35,6 +35,7 @@ _STATUS_FOR = {
     ( 'skipped', 'source.not_video' ): bu_index.FAILED,
     ( 'failed', 'file.failed' ): bu_index.FAILED,
     ( 'out_of_space', 'disk.full' ): bu_index.FAILED,
+    ( 'failed', 'disk.full' ): bu_index.FAILED,     # as the runs table keeps it
 }
 
 
