@@ -38,7 +38,7 @@ Four commands read and change the settings. They use the same local config file 
 
 | command | does |
 |---|---|
-| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the cache keys it moves, and its message and help keys |
+| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the settings it requires, the cache keys it moves, and its message and help keys |
 | `config.get` | current values, with their defaults and where each came from (`default`, `local`, or `run` for an override sent with the request) |
 | `config.set` | checks a change as a run would and writes it to the local config only if it passes; `dry_run` checks without writing |
 | `config.reset` | removes settings from the local config, so the shipped values apply again |
