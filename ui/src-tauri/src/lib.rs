@@ -9,8 +9,10 @@ mod engine;
 #[cfg(target_os = "linux")]
 mod linux;
 mod logging;
+mod look;
 mod paths;
 mod startup;
+mod unsaved;
 mod video;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -154,6 +156,30 @@ fn engine_restart(engine: tauri::State<'_, Engine>) {
 /// Set once the app has begun closing, so a second close request does not
 /// start a second shutdown.
 struct Closing(AtomicBool);
+
+/// Set when the page has asked the user about unapplied changes and closes
+/// the window itself, so that close goes through.
+struct CloseConfirmed(AtomicBool);
+
+/// The page holds unapplied changes (true) or none (false).
+#[tauri::command]
+fn set_unsaved(unsaved: tauri::State<'_, unsaved::Unsaved>, held: bool) {
+    log::debug!(
+        "page {} unapplied changes",
+        if held { "holds" } else { "has no" }
+    );
+    unsaved.set(held);
+}
+
+/// Closes the window after the page has asked about unapplied changes.
+#[tauri::command]
+fn close_window(app: tauri::AppHandle) {
+    app.state::<CloseConfirmed>()
+        .0
+        .store(true, Ordering::SeqCst);
+    log::info!("page confirmed the close");
+    close(&app);
+}
 
 /// Closing the window lets it close at once and shuts the engine down
 /// (shutdown, then a kill after the timeout) on a thread; the app's exit
@@ -315,12 +341,27 @@ pub fn run() -> i32 {
     let app = tauri::Builder::default()
         .manage(Shown(AtomicBool::new(false)))
         .manage(Closing(AtomicBool::new(false)))
+        .manage(CloseConfirmed(AtomicBool::new(false)))
+        .manage(unsaved::Unsaved::new())
         .manage(startup_timing)
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| setup(app, transcript, startup, open))
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { .. } = event {
-                close(window.app_handle());
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let held = app.state::<unsaved::Unsaved>().held();
+                let confirmed = app.state::<CloseConfirmed>().0.load(Ordering::SeqCst);
+                match unsaved::on_close(held, confirmed) {
+                    unsaved::OnClose::Close => close(app),
+                    unsaved::OnClose::AskPage => {
+                        api.prevent_close();
+                        log::info!("close held: the page has unapplied changes");
+                        if let Err(error) = window.emit("close-requested", ()) {
+                            log::warn!("could not ask the page about closing: {error}; closing");
+                            close(app);
+                        }
+                    }
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -331,7 +372,10 @@ pub fn run() -> i32 {
             engine_request,
             engine_restart,
             ui_mark,
-            video::pick_video
+            video::pick_video,
+            look::look_image,
+            set_unsaved,
+            close_window
         ])
         .build(tauri::generate_context!());
     let app = match app {

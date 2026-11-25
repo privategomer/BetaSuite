@@ -324,13 +324,25 @@ def label_view( label, backend_name=None ):
 
 
 def label_views( backend_name=None ):
-    """Every label: whether this run renders it, whether it is a reverse window, and label_view."""
+    """
+    Every label: whether this run renders it, whether it is a reverse
+    window, whether the selected backend can detect it at all, and
+    label_view. A label the backend cannot detect says why, as a code
+    with parameters ('unavailable').
+    """
     name = backend_name or bu_detector.selected_backend_name()
     rendered = set( rendered_labels() )
-    return [ { 'label': label, 'rendered': label in rendered,
-               'window': bu_reverse.window_entry( label ) is not None,
-               'fields': label_view( label, name ) }
-             for label in bu_settings.label_names() ]
+    supported = bu_detector.supported_labels( name )
+    views = []
+    for label in bu_settings.label_names():
+        view = { 'label': label, 'rendered': label in rendered,
+                 'window': bu_reverse.window_entry( label ) is not None,
+                 'available': label in supported,
+                 'fields': label_view( label, name ) }
+        if label not in supported:
+            view['unavailable'] = { 'code': 'label.not_in_model', 'params': { 'backend': name } }
+        views.append( view )
+    return views
 
 
 def _geometry_action_default():

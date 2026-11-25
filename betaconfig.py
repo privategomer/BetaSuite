@@ -540,6 +540,7 @@ betavision_interpolate = False
 
 debug_mode = 0   # 0 off | 1 debug overlay | 3 also save debug output
 enable_betasuite_watermark = False
+art_style = 'flat'   # the desktop app's figure art: 'flat' | 'angular' | 'ink' | 'cel'
 
 # --- Your own settings: betaconfig_local.py, merged over everything above ---
 

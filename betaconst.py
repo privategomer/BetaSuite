@@ -8,6 +8,7 @@ the reasoning behind every tunable lives in CONFIG_REFERENCE.md.
 Do not rename or reorder anything here without checking every caller.
 """
 
+import betautils_labels as _bu_labels
 import betautils_paths as _bu_paths
 
 # --- Detection confidence floor (fallback only) -----------------------------
@@ -74,6 +75,7 @@ vid_hash_dir          = _bu_paths.resolve( '../output/cache/vid_hashes' )
 pic_hash_dir          = _bu_paths.resolve( '../output/cache/pic_hashes' )
 shot_cut_dir          = _bu_paths.resolve( '../output/cache/shot_cuts' )
 transcode_cache_dir   = _bu_paths.resolve( '../output/cache/transcode_cache' )
+look_preview_dir      = _bu_paths.resolve( '../output/cache/look_previews' )
 file_hash_cache_path  = _bu_paths.resolve( '../output/cache/file_hashes.json' )
 run_key_dir           = _bu_paths.resolve( '../output/cache/run_keys' )
 benchmark_dir         = _bu_paths.resolve( '../output/benchmarks' )
@@ -92,28 +94,10 @@ run_lock_path         = _bu_paths.resolve( '../output/run.lock' )
 # labels. The RGB value is used only by the debug overlay.
 #
 # When a new adapter offers a distinction this vocabulary lacks, ADD a
-# label rather than collapsing it into an existing one.
+# label rather than collapsing it into an existing one. Labels are
+# described in betautils_labels.py; this is their debug overlay colour.
 
-classes = {
-    'exposed_anus':     ( 47,  79,  79), # darkslategray
-    'exposed_armpits':  (139,  69,  19), # saddlebrown
-    'covered_belly':    (  0, 100,   0), # darkgreen
-    'exposed_belly':    (  0,   0, 139), # darkblue
-    'covered_buttocks': (255,   0,   0), # red
-    'exposed_buttocks': (255, 165,   0), # orange
-    'face_femme':       (255, 255,   0), # yellow
-    'face_masc':        (199,  21, 133), # mediumvioletred
-    'covered_feet':     (  0, 255,   0), # lime
-    'exposed_feet':     (  0, 250, 154), # mediumspringgreen
-    'covered_breast':   (  0, 255, 255), # aqua
-    'exposed_breast':   (  0,   0, 255), # blue
-    'covered_vulva':    (216, 191, 216), # thistle
-    'exposed_vulva':    (255,   0, 255), # fuchsia
-    'exposed_chest':    ( 30, 144, 255), # dodgerblue
-    'exposed_penis':    (240, 230, 140), # khaki
-    'covered_armpits':  (160,  82,  45), # sienna
-    'covered_anus':     (220,  20,  60), # crimson
-}
+classes = _bu_labels.debug_colors()
 
 # --- BetaVision shared-memory / IPC names -----------------------------------
 
