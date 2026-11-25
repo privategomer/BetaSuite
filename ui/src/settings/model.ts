@@ -63,6 +63,12 @@ export interface Schema {
   readonly geometry_actions: readonly string[];
   readonly catalog: string;
   readonly help: string;
+  // Every label in display order, the labels each detector backend
+  // reports, and the look presets. Optional: a fixture from before them
+  // has none.
+  readonly labels?: readonly { readonly id: string; readonly part: string; readonly state: string; readonly sex: string; readonly view: string }[];
+  readonly backends?: Readonly<Record<string, { readonly labels: readonly string[] }>>;
+  readonly presets?: readonly { readonly id: string; readonly version: number; readonly name_key?: string; readonly name?: string; readonly style: unknown }[];
 }
 
 export interface Layer {
