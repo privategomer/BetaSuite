@@ -80,6 +80,12 @@ Order: `job.submit`'s result comes before the job's first event. A file's events
 
 The client must keep reading stdout while a job runs, as it does stderr: events are written as they happen, so a client that stops reading without closing the pipe stalls the job once the pipe is full. The engine also ends its jobs when the client closes stdin, so a job that keeps running after the window closes needs the client process to stay alive.
 
+## Look previews
+
+`preview.look` draws censor looks with the engine's own censor code and answers with PNG files in the cache folder. Each entry in `previews` is either a piece of the bundled figure art, `art: {style, item}` (items as `assets/art/<style>/style.json` names them: `figure.<sex>.<view>.<dress>`, `tile.<label>.<sex>`; their authored boxes stand in for detections), or any image file with `boxes`. A preview is exactly what a photo with those detections comes out as: the same steps (`betautils_still.py`) and the same censor. `labels` chooses which labels to censor (default `items_to_censor`), so a label switched off can still show its look; `seed` fixes every random pick; `overrides` are per-run settings, as in `config.get`, never written. Each result is `{path, key, cached, width, height}`; `key` covers the pixels, the resolved looks, every render setting and the censor code, so an unchanged request answers `cached: true`. While a job holds the queue it answers `config.busy`. Errors: `preview.unknown_art {style, item}`, `preview.bad_image`.
+
+`config.schema` also lists the look presets (`presets`: `{id, version, name_key, style}`), each a `censor_style` value with a name.
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

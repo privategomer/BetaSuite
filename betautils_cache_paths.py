@@ -680,6 +680,24 @@ def transcode_path_for( file_hash ):
     return os.path.join( betaconst.transcode_cache_dir, '%s.mp4'%(file_hash) )
 
 
+_LOOK_PREVIEW_NAME = re.compile( r'^[0-9a-f]{64}\.png$' )
+
+
+def look_preview_path( key, cache_dir=None ):
+    """
+    Cache path of one look preview (betautils_preview), named by its
+    sha256 key. Kept under a size cap there, oldest first.
+    """
+    folder = cache_dir or betaconst.look_preview_dir
+    os.makedirs( folder, exist_ok=True )
+    return os.path.join( folder, '%s.png'%( key, ) )
+
+
+def is_look_preview_name( name ):
+    """Whether a file name is one look_preview_path makes."""
+    return bool( _LOOK_PREVIEW_NAME.match( name ) )
+
+
 # ---------------------------------------------------------------------------
 # Output paths
 # ---------------------------------------------------------------------------

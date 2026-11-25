@@ -109,6 +109,7 @@
   "hardware",
   "betavision-screen-capture",
   "miscellaneous",
+  "art_style",
   "the-settings-registry",
   "why-the-shipped-values-are-what-they-are",
   "retinanet_v2-class_suppressionexposed_breast",
@@ -126,6 +127,7 @@
   "reading-structure-and-what-profiles-would-need"
  ],
  "paths": [
+  "art_style",
   "betavision_delay",
   "betavision_interpolate",
   "blur_approximation_min_kernel",
@@ -610,6 +612,71 @@
     "sticker"
    ]
   },
+  "presets": [
+   {
+    "id": "blur",
+    "name_key": "look.preset.blur",
+    "style": {
+     "method": "triple_box",
+     "strength": 65,
+     "type": "blur"
+    },
+    "version": 1
+   },
+   {
+    "id": "pixelate",
+    "name_key": "look.preset.pixelate",
+    "style": {
+     "pattern": "square",
+     "strength": 20,
+     "type": "pixel"
+    },
+    "version": 1
+   },
+   {
+    "id": "bars",
+    "name_key": "look.preset.bars",
+    "style": {
+     "color": [
+      0,
+      0,
+      0
+     ],
+     "thickness": 1.0,
+     "type": "bar"
+    },
+    "version": 1
+   },
+   {
+    "id": "mixed",
+    "name_key": "look.preset.mixed",
+    "style": [
+     {
+      "method": "triple_box",
+      "strength": 65,
+      "type": "blur",
+      "weight": 1
+     },
+     {
+      "pattern": "square",
+      "strength": 20,
+      "type": "pixel",
+      "weight": 1
+     },
+     {
+      "color": [
+       0,
+       0,
+       0
+      ],
+      "thickness": 1.0,
+      "type": "bar",
+      "weight": 1
+     }
+    ],
+    "version": 1
+   }
+  ],
   "rules": {
    "promotion": {
     "duplicate_iou": {
@@ -3420,6 +3487,27 @@
     "scope": "global",
     "screen": "run",
     "tip": "setting.enable_betasuite_watermark.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "angular",
+     "cel",
+     "flat",
+     "ink"
+    ],
+    "help": "art_style",
+    "kind": "choice",
+    "label": "setting.art_style.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "art_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.art_style.tip",
     "when": []
    },
    {

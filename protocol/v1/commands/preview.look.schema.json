@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/preview.look.schema.json",
+  "title": "preview.look",
+  "description": "Draw censor looks onto images with the engine's own censor code, as a photo with those detections would come out. Each entry is either a piece of the bundled figure art (art: a style and an item that assets/art/<style>/style.json lists, with its authored boxes standing in for detections, unless boxes replaces them) or any image file with boxes. labels picks the labels to censor (default: items_to_censor), so a label switched off can still be shown with its look. seed fixes every random pick (a weighted list of styles, a sticker), so the same request draws the same image. overrides are per-run settings for this command only, as in config.get, and are never written. Each result names a PNG in the cache folder; a later request for the same pixels, looks and settings answers cached: true. Refused with preview.unknown_art, preview.bad_image, config.unknown_key, config.not_settable, config.invalid, and config.busy while a job is queued, running or paused.",
+  "$defs": {
+    "box": {
+      "type": "object",
+      "required": [ "label", "x", "y", "w", "h" ],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "data": {
+      "type": "object",
+      "required": [ "previews" ],
+      "properties": {
+        "previews": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "art": {
+                "type": "object",
+                "required": [ "style", "item" ],
+                "properties": {
+                  "style": { "type": "string", "minLength": 1 },
+                  "item": { "type": "string", "minLength": 1, "description": "figure.<sex>.<view>.<dress> or tile.<label>.<sex>" }
+                }
+              },
+              "image": { "type": "string", "minLength": 1, "description": "An image file's absolute path; needs boxes" },
+              "boxes": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/box" } },
+              "labels": { "type": "array", "items": { "type": "string" } },
+              "seed": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "overrides": { "type": "object" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [ "previews" ],
+      "properties": {
+        "previews": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "path", "key", "cached", "width", "height" ],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "cached": { "type": "boolean" },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

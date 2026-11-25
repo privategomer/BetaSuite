@@ -94,6 +94,21 @@
             }
           }
         },
+        "presets": {
+          "description": "Named look presets: each a censor_style value. Data, so a new preset needs no protocol change.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "id", "version", "style" ],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "version": { "type": "integer", "minimum": 1 },
+              "name_key": { "type": "string" },
+              "name": { "type": "string" },
+              "style": {}
+            }
+          }
+        },
         "backends": {
           "description": "Each detector backend and the labels its adapter declares it can report.",
           "type": "object",
