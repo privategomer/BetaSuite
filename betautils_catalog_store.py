@@ -343,13 +343,15 @@ class Store:
     them; this class owns only the file.
     """
 
-    def __init__( self, path=None, clock=time.time, logger=None, exclusive=False ):
+    def __init__( self, path=None, clock=time.time, logger=None, exclusive=False, lock_path=None ):
         self.path = path or default_path()
         self.clock = clock
         self.logger = logger
         os.makedirs( os.path.dirname( os.path.abspath( self.path ) ), exist_ok=True )
-        self._lock = FileLock( os.path.join( os.path.dirname( os.path.abspath( self.path ) ), LOCK_NAME ),
-                               exclusive )
+        # lock_path: another lock file, for a file being built beside the
+        # catalog (the rebuild, which holds catalog.lock itself).
+        self._lock = FileLock( lock_path or os.path.join( os.path.dirname( os.path.abspath( self.path ) ),
+                                                          LOCK_NAME ), exclusive )
         self._mutex = threading.RLock()
         try:
             self._db = _connect( self.path )
