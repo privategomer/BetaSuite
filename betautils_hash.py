@@ -118,7 +118,11 @@ def flush_file_hash_memo():
             pass
 
 
-def md5_for_file( filename, length, use_memo=True ):
+class HashStopped( Exception ):
+    """md5_for_file gave up because should_stop() said so; nothing was memoised."""
+
+
+def md5_for_file( filename, length, use_memo=True, should_stop=None ):
     """
     Short content hash of a file, streamed so the file is never held in
     memory, and memoised on (path, size, mtime) so repeat runs are free.
@@ -133,6 +137,10 @@ def md5_for_file( filename, length, use_memo=True ):
         length: Trailing hex characters to keep (<= 32).
         use_memo: False forces a real re-read, for the memo's own tests
             and for verifying a suspected stale memo entry.
+        should_stop: Optional callable checked before each chunk; when it
+            answers true the read stops with HashStopped. The catalog's
+            scanner passes one, so a file it is hashing in the background
+            lets go of the disk as soon as a run starts.
 
     Returns:
         A `length`-character hex string.
@@ -173,6 +181,8 @@ def md5_for_file( filename, length, use_memo=True ):
     file_hash = hashlib.md5()
     with open( filename, "rb" ) as fin:
         while True:
+            if should_stop is not None and should_stop():
+                raise HashStopped( filename )
             chunk = fin.read( _FILE_HASH_CHUNK_BYTES )
             if not chunk:
                 break

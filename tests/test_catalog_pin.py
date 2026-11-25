@@ -106,14 +106,14 @@ class TestPrecedence( _Config ):
 
 class TestCensorKey( _Config ):
     def test_an_unpinned_file_keeps_its_key( self ):
-        self.assertEqual( bu_cache.censor_key( profile_pin=None ), bu_cache.censor_key() )
-        self.assertNotIn( 'profile_pin', bu_cache.censor_identity() )
+        self.assertEqual( bu_cache.censor_key( catalog_profile=None ), bu_cache.censor_key() )
+        self.assertNotIn( 'catalog_profile', bu_cache.censor_identity() )
 
     def test_a_pin_moves_the_key_and_each_pin_has_its_own( self ):
-        keys = { bu_cache.censor_key(), bu_cache.censor_key( profile_pin='scene' ),
-                 bu_cache.censor_key( profile_pin='compilation' ) }
+        keys = { bu_cache.censor_key(), bu_cache.censor_key( catalog_profile='scene' ),
+                 bu_cache.censor_key( catalog_profile='compilation' ) }
         self.assertEqual( len( keys ), 3 )
-        self.assertEqual( bu_cache.censor_identity( profile_pin='scene' )['profile_pin'], 'scene' )
+        self.assertEqual( bu_cache.censor_identity( catalog_profile='scene' )['catalog_profile'], 'scene' )
 
 
 class TestPinning( unittest.TestCase ):
@@ -213,7 +213,45 @@ class TestARunUsesThePin( BetaTvHarness ):
         self.assertEqual( outcome, 'processed', 'a pin is a new censor key: rendered again' )
         pinned = sorted( set( self.outputs() ) - set( unpinned ) )
         self.assertEqual( len( pinned ), 1 )
-        self.assertIn( '-c%s-'%( bu_cache.censor_key( profile_pin='scene' ) ), pinned[0] )
+        self.assertIn( '-c%s-'%( bu_cache.censor_key( catalog_profile='scene' ) ), pinned[0] )
+
+    def test_a_watched_folders_rule_is_keyed_and_a_1x_folder_is_not( self ):
+        # Turning a watched folder's rule on picks another profile; the
+        # output must be its own, never one rendered under the other.
+        watched = os.path.join( self.tmpdir, 'watched' )
+        clip = os.path.join( watched, 'compilation', 'clip.mp4' )
+        os.makedirs( os.path.dirname( clip ) )
+        shutil.copyfile( self.clip, clip )
+        import betautils_catalog_types as bu_types
+
+        def run_with( roots ):
+            decisions = []
+            reporter = bu_job.FileReporter( lambda name, data: decisions.append( data ), 'cli', 0, self.recorder,
+                                            bu_types.RunTypes( lambda digest: None, lambda path: roots ) )
+            outcome = betatv.process_one_video( os.path.dirname( clip ), 'clip.mp4', self.censored, 0, 1,
+                                                self.detector.get_session(), False, 20, 'ultrafast', self.logger,
+                                                reporter=reporter )
+            [ decision ] = [ data for data in decisions if data['code'] == 'structure.profile' ]
+            return outcome, decision['params']
+        _, plain = run_with( () )
+        before = set( self.outputs() )
+        outcome, ruled = run_with( ( watched, ) )
+        self.assertEqual( ( ruled['profile'], ruled['rule'] ), ( 'compilation', 'source_folder' ) )
+        self.assertEqual( outcome, 'processed', 'a new key: rendered, never the old output reused' )
+        [ made ] = sorted( set( self.outputs() ) - before )
+        self.assertIn( '-c%s-'%( bu_cache.censor_key( catalog_profile='compilation' ) ), made )
+        # The 1.x tree's own folder rule is keyed through the config, as before.
+        decisions = []
+        folder = os.path.join( self.uncensored, 'scene' )
+        os.makedirs( folder )
+        shutil.copyfile( self.clip, os.path.join( folder, 'clip.mp4' ) )
+        reporter = bu_job.FileReporter( lambda name, data: decisions.append( data ), 'cli', 0, self.recorder,
+                                        bu_types.RunTypes( lambda digest: None, lambda path: () ) )
+        os.makedirs( os.path.join( self.censored, 'scene' ) )
+        betatv.process_one_video( folder, 'clip.mp4', os.path.join( self.censored, 'scene' ), 0, 1,
+                                  self.detector.get_session(), False, 20, 'ultrafast', self.logger, reporter=reporter )
+        names = os.listdir( os.path.join( self.censored, 'scene' ) )
+        self.assertTrue( any( '-c%s-'%( bu_cache.censor_key() ) in name for name in names ), names )
 
     def test_without_a_pin_the_types_lookup_changes_nothing( self ):
         outcome, decisions = self.run_file()

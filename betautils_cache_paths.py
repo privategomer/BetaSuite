@@ -280,14 +280,17 @@ def _profiles_identity( backend_name ):
     return backend.get( 'profiles' ) or None
 
 
-def censor_identity( backend_name=None, profile_pin=None ):
+def censor_identity( backend_name=None, catalog_profile=None ):
     """
     Everything that changes rendered output for a FIXED set of detections.
 
-    profile_pin is the video type pinned to this one file in the library
-    catalog (betautils_catalog_types), if any. It chooses the structure
-    profile above every rule keyed below, so it is keyed too, and only
-    while set: every unpinned file keeps its key and its finished output.
+    catalog_profile is the structure profile the library catalog chose for
+    this one file (betautils_catalog_types), if it chose one: a type pin,
+    or the folder rule of a watched folder outside the 1.x roots. Neither
+    is in the config keyed below, so the choice is keyed itself, and only
+    while there is one: every other file keeps its key and its finished
+    output, and turning a pin or a folder rule on or off can never reuse
+    an output rendered under another profile.
 
     Resolved against a specific backend AND variant, because per-label
     tracking settings (track_max_gap, min_prob, interpolation,
@@ -403,8 +406,8 @@ def censor_identity( backend_name=None, profile_pin=None ):
     # without one keeps its key and its finished output.
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
-    if profile_pin:
-        identity['profile_pin'] = profile_pin
+    if catalog_profile:
+        identity['catalog_profile'] = catalog_profile
     return identity
 
 
@@ -462,9 +465,9 @@ def censor_uses_feathered_shape( per_label ):
     return False
 
 
-def censor_key( backend_name=None, profile_pin=None ):
+def censor_key( backend_name=None, catalog_profile=None ):
     """Short key for censor_identity(). See this module's docstring."""
-    identity = censor_identity( backend_name, profile_pin )
+    identity = censor_identity( backend_name, catalog_profile )
     return _keyed( 'censor', identity, betaconst.censor_key_len )
 
 

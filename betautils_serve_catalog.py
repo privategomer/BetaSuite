@@ -139,16 +139,27 @@ def _scan_interval():
         else bu_scan.DEFAULT_INTERVAL_SECONDS
 
 
+_OPENING = threading.Lock()
+
+
 def catalog_for( server ):
-    """The server's catalog, opened on first use."""
+    """
+    The server's catalog, opened on first use. The serve thread (commands)
+    and the job worker (events, records, types) can both be first, so the
+    opening is done under a lock: one catalog per server, never two.
+    """
     served = getattr( server, 'catalog', None )
-    if served is None:
-        import betautils_catalog_store as bu_store
-        try:
-            served = ServedCatalog( server, getattr( server, 'catalog_factory', None ) )
-        except bu_store.CatalogError as err:
-            raise _protocol_error( err )
-        server.catalog = served
+    if served is not None:
+        return served.catalog
+    with _OPENING:
+        served = getattr( server, 'catalog', None )
+        if served is None:
+            import betautils_catalog_store as bu_store
+            try:
+                served = ServedCatalog( server, getattr( server, 'catalog_factory', None ) )
+            except bu_store.CatalogError as err:
+                raise _protocol_error( err )
+            server.catalog = served
     return served.catalog
 
 
@@ -166,10 +177,11 @@ def _open_quietly( server ):
     """The server's catalog for a job, or None when it cannot be opened (logged once)."""
     try:
         return catalog_for( server )
-    except bu_proto.ProtocolError as err:
+    except Exception as err:   # a job never fails because of the catalog
         if not getattr( server, '_catalog_warned', False ):
             server._catalog_warned = True
-            server._logger.warning( "the library catalog is not following jobs (%s)"%( err.code, ) )
+            server._logger.warning( "the library catalog is not following jobs (%s)"%(
+                getattr( err, 'code', type( err ).__name__ ), ) )
         return None
 
 

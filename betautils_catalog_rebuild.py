@@ -96,7 +96,7 @@ def rebuild( path=None, seed_folders=None, hasher=None, logger=None, clock=None 
                 os.remove( leftover )
         summary = _build( new_path, carried, seed_folders, hasher, logger, clock )
         if os.path.exists( path ):
-            shutil.copy2( path, path + OLD_SUFFIX )
+            keep_old( path, path + OLD_SUFFIX )
             for side in ( path + '-wal', path + '-shm' ):
                 if os.path.exists( side ):
                     os.remove( side )
@@ -108,6 +108,34 @@ def rebuild( path=None, seed_folders=None, hasher=None, logger=None, clock=None 
         return summary
     finally:
         lock.release()
+
+
+def keep_old( path, target ):
+    """
+    The old file, whole, as target: through SQLite's backup API, so what
+    is still in its write-ahead log (an engine that was killed never
+    checkpointed) is in the copy. A file SQLite cannot read is copied as
+    it is, with its log beside it.
+    """
+    for leftover in ( target, target + '-wal', target + '-shm' ):
+        if os.path.exists( leftover ):
+            os.remove( leftover )
+    try:
+        source = sqlite3.connect( 'file:%s?mode=ro'%( path, ), uri=True )
+        try:
+            copy = sqlite3.connect( target )
+            try:
+                source.backup( copy )
+            finally:
+                copy.close()
+        finally:
+            source.close()
+        return
+    except sqlite3.DatabaseError:
+        pass
+    shutil.copy2( path, target )
+    if os.path.exists( path + '-wal' ):
+        shutil.copy2( path + '-wal', target + '-wal' )
 
 
 def _build( new_path, carried, seed_folders, hasher, logger, clock ):

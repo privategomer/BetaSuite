@@ -224,7 +224,7 @@ def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_sec
 
 def _build_paths( censored_folder, stem, file_hash, picture_sizes,
                   preview_mode_enabled, preview_offset_seconds, preview_seconds,
-                  duration_seconds, sample_fps=None, output_label='', profile_pin=None ):
+                  duration_seconds, sample_fps=None, output_label='', catalog_profile=None ):
     """
     Every path this file needs, from the one module that owns naming.
 
@@ -244,7 +244,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     preview_suffix = bu_cache.preview_cache_suffix(
         preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
     detection_key = bu_cache.detection_key( fps=sample_fps )
-    censor_key = bu_cache.censor_key( profile_pin=profile_pin )
+    censor_key = bu_cache.censor_key( catalog_profile=catalog_profile )
     encode_key = bu_cache.encode_key( preview_mode_enabled )
     container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
 
@@ -614,8 +614,10 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         # catalog the engine's own ladder decides, as it always has.
         declared = ( reporter.types.declared( source_path, file_hash ) if reporter.types is not None
                      else bu_detector.declared_profile_selection( source_path ) )
-        profile_pin = ( declared[0] if declared is not None and getattr( declared[1], 'code', None ) == 'pinned'
-                        else None )
+        # What the catalog chose (a pin, a watched folder's rule) is keyed;
+        # what the config chose is keyed through the config.
+        catalog_profile = ( declared[0] if declared is not None and getattr( declared[1], 'from_catalog', False )
+                            else None )
         paths = None
         if declared is not None or len( bu_detector.profile_sample_rates() ) == 1:
             early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
@@ -623,7 +625,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, early_fps,
-                                  output_label=output_label, profile_pin=profile_pin )
+                                  output_label=output_label, catalog_profile=catalog_profile )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -677,7 +679,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, sample_fps,
-                                  output_label=output_label, profile_pin=profile_pin )
+                                  output_label=output_label, catalog_profile=catalog_profile )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )

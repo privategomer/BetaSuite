@@ -191,6 +191,34 @@ class TestNewItemsGetTheirBlurredThumbnail( unittest.TestCase ):
         catalog.scanner.hash_ready()
         self.assertTrue( os.path.exists( bu_thumbs.blurred_path( digest ) ) )
 
+    def test_a_thumbnail_a_run_held_back_is_made_once_idle( self ):
+        root = tempfile.mkdtemp( prefix='catalog-thumbs-backlog-' )
+        self.addCleanup( shutil.rmtree, root, ignore_errors=True )
+        busy = [ False ]
+        catalog = bu_catalog.Catalog( path=os.path.join( root, 'c.sqlite' ), seed_folders=[], settle=0.0,
+                                      busy=lambda: busy[0],
+                                      hasher=lambda path: bu_hash.md5_for_file( path, 16, use_memo=False ) )
+        self.addCleanup( catalog.store.close )
+        clip = os.path.join( root, 'videos', 'c.mp4' )
+        _build_clip( clip )
+        digest = bu_hash.md5_for_file( clip, 16, use_memo=False )
+        self.addCleanup( bu_thumbs.forget, digest )
+        catalog.add_folder( os.path.join( root, 'videos' ) )
+        catalog.scanner.pass_now()
+        real = catalog.scanner.on_indexed
+
+        def run_starts_now( digests ):
+            busy[0] = True       # a run starts just as the item is added
+            real( digests )
+
+        catalog.scanner.on_indexed = run_starts_now
+        catalog.scanner.hash_ready()
+        self.assertEqual( len( catalog.list()['items'] ), 1 )
+        self.assertFalse( os.path.exists( bu_thumbs.blurred_path( digest ) ) )
+        busy[0] = False
+        real( set() )            # what the scanner's loop calls when idle
+        self.assertTrue( os.path.exists( bu_thumbs.blurred_path( digest ) ) )
+
 
 @unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the test clips" )
 class TestTheLogNeverHoldsTheImage( unittest.TestCase ):

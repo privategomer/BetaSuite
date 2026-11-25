@@ -42,7 +42,7 @@ def declared_for( source_path, pin=None, folder_roots=(), backend_name=None ):
     """
     if pin:
         if pin in profile_names( backend_name ):
-            return ( pin, bu_detector.Reason( 'pinned in the library', PINNED ) )
+            return ( pin, _from_catalog( bu_detector.Reason( 'pinned in the library', PINNED ) ) )
         # A pin to a profile that is gone (config changed) is ignored, and
         # the library shows it: falling back silently would be wrong output.
     declared = bu_detector.declared_profile_selection( source_path, backend_name )
@@ -51,8 +51,19 @@ def declared_for( source_path, pin=None, folder_roots=(), backend_name=None ):
     for root in folder_roots:
         name, key = bu_detector.source_dir_rule( source_path, backend_name, uncensored_root=root )
         if name:
-            return ( name, bu_detector.Reason( 'source folder %s/'%( key, ), 'source_folder', folder=key ) )
+            return ( name, _from_catalog( bu_detector.Reason( 'source folder %s/'%( key, ), 'source_folder',
+                                                              folder=key ) ) )
     return None
+
+
+def _from_catalog( reason ):
+    """
+    Marks a choice the catalog made (a pin, a watched folder's rule): it
+    is not in the config, so the run keys the profile itself
+    (betautils_cache_paths.censor_identity, catalog_profile).
+    """
+    reason.from_catalog = True
+    return reason
 
 
 def shown_type( source_path, pin=None, folder_roots=(), last=None, backend_name=None ):
