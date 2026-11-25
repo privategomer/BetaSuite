@@ -45,7 +45,7 @@ export function App( { startup }: AppProps ) {
           <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} />
         </div>
         {view === 'all_settings' && (
-          <AllSettings onHelp={( anchor ) => { log.info( `help requested: ${anchor}` ); }} />
+          <AllSettings initialQuery={startup?.search ?? ''} onHelp={( anchor ) => { log.info( `help requested: ${anchor}` ); }} />
         )}
       </main>
       <StatusStrip />

@@ -265,6 +265,11 @@
    "preview_on",
    "reverse_on"
   ],
+  "geometry_actions": [
+   "drop",
+   "clamp",
+   "flag"
+  ],
   "help": "CONFIG_REFERENCE.md",
   "placeholders": {
    "<backend>": [

@@ -1,7 +1,7 @@
 // Whether a per-label value is the one a run uses, from the engine's own
 // resolution (config.get labels: true). The page never works out tiers
 // itself: it reads which layer won, which do not apply, and why.
-import { t } from '../i18n/format';
+import { hasMessage, msgKey, t } from '../i18n/format';
 import type { ChainLayer, LabelView } from './api';
 import { segments } from './model';
 
@@ -13,6 +13,7 @@ export type LabelStatus =
 
 export interface LabelFacts {
   readonly label: string;
+  readonly key: string;
   readonly status: LabelStatus;
   readonly offBy: string | null;
   readonly unused: boolean;
@@ -43,11 +44,17 @@ export function labelFacts( pattern: string, path: string, labels: ReadonlyMap<s
   } else {
     status = { kind: 'not_set', uses: field.source };
   }
-  return { label, status, offBy: field.off ?? null, unused: !view.rendered && !view.window };
+  return { label, key, status, offBy: field.off ?? null, unused: !view.rendered && !view.window };
 }
 
-function sourceText( source: string ): string {
-  return source === 'builtin' ? t( 'settings.label.builtin' ) : source;
+// A value no setting supplies, worded for the keys whose fallback is more
+// than a constant (track memory follows the longest gap filled).
+function sourceText( source: string, key: string ): string {
+  if ( source !== 'builtin' ) {
+    return source;
+  }
+  const own = msgKey( 'settings.builtin.', key );
+  return hasMessage( own ) ? t( own ) : t( 'settings.label.builtin' );
 }
 
 export function labelStatusText( facts: LabelFacts ): string {
@@ -56,9 +63,9 @@ export function labelStatusText( facts: LabelFacts ): string {
     case 'in_effect':
       return t( 'settings.label.in_effect', { label: facts.label } );
     case 'overridden':
-      return t( 'settings.label.overridden', { source: sourceText( status.by ) } );
+      return t( 'settings.label.overridden', { source: sourceText( status.by, facts.key ) } );
     case 'not_set':
-      return t( 'settings.label.not_set', { source: sourceText( status.uses ) } );
+      return t( 'settings.label.not_set', { source: sourceText( status.uses, facts.key ) } );
     case 'inactive':
       switch ( status.reason ) {
         case 'backend_not_selected': return t( 'settings.label.inactive.backend_not_selected' );

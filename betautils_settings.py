@@ -1359,6 +1359,7 @@ def schema():
         },
         'conditions': sorted( CONDITIONS ),
         'screens': list( SCREENS ),
+        'geometry_actions': geometry_actions(),
         'catalog': 'i18n/en-US/settings.json',
         'help': 'CONFIG_REFERENCE.md',
     }

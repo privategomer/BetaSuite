@@ -191,6 +191,10 @@ class TestScreens( unittest.TestCase ):
         got = { entry.dotted: entry.screen for entry in bu_settings.REGISTRY if entry.dotted in expect }
         self.assertEqual( expect, got )
 
+    def test_the_schema_sends_the_geometry_actions_the_track_code_accepts( self ):
+        import betautils_track as bu_track
+        self.assertEqual( list( bu_track.GEOMETRY_ACTIONS ), bu_settings.schema()['geometry_actions'] )
+
     def test_the_schema_sends_each_screen( self ):
         exported = bu_settings.schema()
         self.assertEqual( list( bu_settings.SCREENS ), exported['screens'] )
