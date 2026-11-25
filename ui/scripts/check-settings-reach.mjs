@@ -16,6 +16,7 @@
 //   reach.search      searching for a setting's label does not find it
 //   reach.catalog     a setting's label or tip is not in the catalog
 //   reach.requires    a setting requires a parent All Settings has no row for
+//   reach.nesting     placing settings under their parents loses one (a cycle)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -90,6 +91,18 @@ export function check( model, fixture, catalog ) {
       const parent = byPath.get( requirement.path ) ?? [];
       if ( parent.length !== 1 || parent[ 0 ].pattern ) {
         report( 'reach.requires', entry.path, `requires ${requirement.path}, which has no single row` );
+      }
+    }
+  }
+  // Every tab and fold lists its rows nested under their parents; none may
+  // drop out on the way.
+  const groups = [ rows, ...model.byScreen( rows ).values(),
+    ...[ ...model.byScreen( rows ).values() ].map( ( group ) => group.filter( ( row ) => row.entry.level === 'advanced' ) ) ];
+  for ( const group of groups ) {
+    const placed = new Set( model.nestByParent( group ).map( ( item ) => item.row ) );
+    for ( const row of group ) {
+      if ( !placed.has( row ) ) {
+        report( 'reach.nesting', row.entry.path, 'lost when settings are placed under their parents' );
       }
     }
   }

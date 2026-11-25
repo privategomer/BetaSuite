@@ -445,3 +445,62 @@ button.link {
   margin: 0;
   padding-inline-start: 1.25rem;
 }
+
+.settings-view {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-block-end: 1px solid var(--color-border);
+  padding-block-end: 0.5rem;
+}
+
+.settings-tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.settings-panel {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.fold-toggle {
+  margin-block: 0.25rem 0.75rem;
+}
+
+.fold-toggle::before {
+  display: inline-block;
+  margin-inline-end: 0.5rem;
+  border-block: 0.3em solid transparent;
+  border-inline-start: 0.45em solid currentColor;
+  content: "";
+}
+
+.fold-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+[dir="rtl"] .fold-toggle[aria-expanded="true"]::before {
+  transform: rotate(-90deg);
+}
+
+.setting-nest[data-depth="1"] {
+  margin-inline-start: 1.5rem;
+}
+
+.setting-nest[data-depth="2"] {
+  margin-inline-start: 3rem;
+}
+
+.setting-nest[data-depth="3"] {
+  margin-inline-start: 4.5rem;
+}

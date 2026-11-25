@@ -20,7 +20,7 @@ export interface StartupInfo {
   // light or dark from --theme; null follows the system.
   theme: 'light' | 'dark' | null;
   // The view from --view; null opens on the player.
-  view: 'player' | 'all-settings' | null;
+  view: 'player' | 'settings' | 'all-settings' | null;
   // All Settings' starting search text, from --search.
   search: string | null;
   // The --open video, already allowed, or why it could not be opened.

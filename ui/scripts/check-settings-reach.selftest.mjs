@@ -49,6 +49,11 @@ const CASES = {
     fixture: ( f ) => edited( f, 'preview_max_seconds', ( e ) => { e.requires = [ { path: 'item_overrides.<label>.censor_shape', test: 'on' } ]; } ),
     expect: [ 'reach.requires' ],
   },
+  'two settings that require each other': {
+    fixture: ( f ) => edited( edited( f, 'encode_crf', ( e ) => { e.requires = [ { path: 'encode_preset', test: 'on' } ]; } ),
+      'encode_preset', ( e ) => { e.requires = [ { path: 'encode_crf', test: 'on' } ]; } ),
+    expect: [ 'reach.nesting' ],
+  },
   'search that finds nothing': { model: ( m ) => ( { ...m, searchText: () => '' } ), expect: [ 'reach.search' ] },
   'search that ignores the tip and path': {
     model: ( m ) => ( { ...m, searchText: ( row, label, _tip, schema ) => m.searchText( { ...row, entry: { ...row.entry, path: '' } }, label, '', schema ) } ),
