@@ -145,6 +145,26 @@ def apply_overrides( namespace, overrides ):
         bu_local._set( namespace, tuple( path ), copy.deepcopy( value ) )
 
 
+@contextlib.contextmanager
+def overrides_applied( overrides ):
+    """
+    The live betaconfig with a job's overrides, { path tuple: value }, set
+    on top, for the length of a block; every setting is put back after,
+    however the block ends. No overrides leaves the module untouched.
+    """
+    if not overrides:
+        yield
+        return
+    namespace = vars( betaconfig )
+    saved = { name: copy.deepcopy( namespace[name] ) for name in bu_local.known_names( namespace ) }
+    try:
+        apply_overrides( namespace, overrides )
+        bu_config.invalidate_config_caches()
+        yield
+    finally:
+        ConfigStore._restore( namespace, saved )
+
+
 class ConfigStore( object ):
     """
     The local config file and the live betaconfig it feeds.

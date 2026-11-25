@@ -17,6 +17,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Changed
 
+- `betatv.py` runs its input folder as one job through `betautils_job.py`, the runner the desktop app's jobs use, so the two cannot drift apart. Outputs, cache keys, stats rows, exit codes and the run lock are unchanged (a test pins them for a set of clips). Two log differences: files are listed folder by folder before the first one starts, so a file added to a later folder during a run waits for the next run; and the "1/3" count is over the whole run rather than per folder. Upgrade cost: none
 - Validation reads the settings registry, so each limit is stated once. Each error is reported once, at the setting's own path, and carries a code for the engine (`config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id); the CLI keeps printing English. Some messages are worded differently. Validation now rejects values it used to let through:
   - a per-label `min_prob` outside 0 to 1
   - a per-label `position_smoothing` or `size_smoothing` outside 0 (exclusive) to 1
@@ -33,6 +34,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Fixed
 
+- A run stopped during detection (Ctrl-C) and run again skipped one sample: the detection checkpoint recorded the sample the stop interrupted as done before it was detected. A resumed file now has exactly the detections of an uninterrupted run. Upgrade cost: none; a cache finished from an earlier resumed run stays as it is
 - The censor key now covers per-label `size_smoothing`, `style_min_dwell_seconds` and `paired_style_max_age`. Tracking reads them per label from a backend's or model variant's `item_overrides`, but the key did not, so changing one there reused the old render and reported it as the new result. Upgrade cost: every config that censors something gets a new censor key, so finished outputs re-render once on their next run. The old files stay, under their old names. Detection and encode keys are unchanged, and the shipped `items_to_censor = []` keeps all three keys
 - `tools/tuning/run_test_plan.sh` cleared preview detection caches from `output/` inside the repo, where none are written, so its "every combo below will run fresh" step deleted nothing. It now clears them in the real cache folder. Upgrade cost: none
 

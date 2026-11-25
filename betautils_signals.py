@@ -24,23 +24,48 @@ HOW IT WORKS NOW
 
     A second Ctrl-C restores Python's default handler, so an
     unresponsive run can still be killed immediately.
+
+STOP REASONS
+    The same safe points serve the engine's job commands (betautils_job).
+    request_stop( reason ) says why: 'interrupt' (Ctrl-C), 'pause',
+    'cancel' or 'shutdown' (the engine is ending). Interrupted.reason
+    carries it to whoever handles the stop. When several are asked for
+    before a safe point is reached, the strongest wins: shutdown and
+    interrupt over cancel, cancel over pause.
 """
 
 import signal
 import threading
 
 
+INTERRUPT = 'interrupt'
+PAUSE = 'pause'
+CANCEL = 'cancel'
+SHUTDOWN = 'shutdown'
+
+# Higher wins when two stops are asked for before a safe point.
+_STRENGTH = { PAUSE: 1, CANCEL: 2, INTERRUPT: 3, SHUTDOWN: 3 }
+
+
 class Interrupted( KeyboardInterrupt ):
     """
-    Raised at a safe point after SIGINT.
+    Raised at a safe point after SIGINT or a stop request.
 
     Subclasses KeyboardInterrupt on purpose: it must not be swallowed by
     the `except Exception` blocks that make a single bad file
-    non-fatal.
+    non-fatal. `reason` is one of the stop reasons above.
     """
+
+    def __init__( self, message="stopped by user request", reason=INTERRUPT ):
+        super().__init__( message )
+        self.reason = reason
 
 
 _interrupt_event = threading.Event()
+# Re-entrant: the SIGINT handler takes it on the main thread, which may
+# already hold it when the signal arrives.
+_reason_lock = threading.RLock()
+_reason = None
 _previous_handler = None
 _installed = False
 
@@ -70,7 +95,7 @@ def install_handler( logger=None ):
             # Second Ctrl-C: give the user their immediate exit back.
             signal.signal( signal.SIGINT, _previous_handler or signal.default_int_handler )
             raise KeyboardInterrupt( "interrupted twice - exiting immediately" )
-        _interrupt_event.set()
+        request_stop( INTERRUPT )
         resolved_logger.warning(
             "interrupt received - finishing the current step and stopping. Detection "
             "checkpoints and completed render chunks are already on disk, so re-running "
@@ -92,19 +117,42 @@ def restore_handler():
     _installed = False
 
 
+def request_stop( reason ):
+    """
+    Ask the running work to stop at its next safe point, for `reason`.
+    A weaker reason never replaces a stronger one already pending.
+    """
+    global _reason
+    if reason not in _STRENGTH:
+        raise ValueError( "unknown stop reason %r"%( reason, ) )
+    with _reason_lock:
+        if _reason is None or _STRENGTH[reason] > _STRENGTH[_reason]:
+            _reason = reason
+        _interrupt_event.set()
+
+
 def request_interrupt():
     """Set the interrupt flag without a signal. For tests and tooling."""
-    _interrupt_event.set()
+    request_stop( INTERRUPT )
 
 
 def clear():
-    """Clear the interrupt flag. Test-support only."""
-    _interrupt_event.clear()
+    """Clear any pending stop: after one has been handled, and in tests."""
+    global _reason
+    with _reason_lock:
+        _reason = None
+        _interrupt_event.clear()
 
 
 def interrupted():
     """Whether a stop has been requested."""
     return _interrupt_event.is_set()
+
+
+def stop_reason():
+    """The pending stop's reason, or None."""
+    with _reason_lock:
+        return _reason if _interrupt_event.is_set() else None
 
 
 def check():
@@ -115,4 +163,4 @@ def check():
     The cost is one Event lookup, so per-frame is fine.
     """
     if _interrupt_event.is_set():
-        raise Interrupted( "stopped by user request" )
+        raise Interrupted( "stopped by user request", reason=stop_reason() or INTERRUPT )

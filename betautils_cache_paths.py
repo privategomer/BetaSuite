@@ -781,6 +781,21 @@ def chunk_path_for( intermediate_path, chunk_index ):
     return '%s.part%04d%s'%(base, chunk_index, ext)
 
 
+def partial_outputs( final_path ):
+    """
+    Every file an unfinished render of final_path can leave beside it:
+    render chunks and their metadata and temps, the intermediate, its
+    concat list and temp, and the final's temp. All of them share the
+    final's base name, which carries the source hash and the three
+    cache keys, so nothing else in the folder matches. A complete final
+    is not partial and is not listed.
+    """
+    import glob
+    base, _ext = os.path.splitext( final_path )
+    return sorted( path for path in glob.glob( glob.escape( base ) + '.*' )
+                   if path != final_path )
+
+
 def temp_sibling( path ):
     """
     A '.tmp'-marked sibling of path that keeps path's extension.
