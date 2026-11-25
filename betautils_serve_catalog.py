@@ -377,6 +377,20 @@ def catalog_pin_type( server, data ):
     return _call( catalog.get, item )
 
 
+def catalog_thumbnail( server, data ):
+    """An item's thumbnail: blurred, or with reveal the clear frame (in memory only)."""
+    item = _item_id( data )
+    reveal = data.get( 'reveal', False )
+    if not isinstance( reveal, bool ):
+        raise _bad_params( 'reveal', bu_proto.REASON_TYPE )
+    of = data.get( 'of', 'source' )
+    if of not in ( 'source', 'output' ):
+        raise _bad_params( 'of', bu_proto.REASON_VALUE if isinstance( of, str ) else bu_proto.REASON_TYPE )
+    if reveal and of != 'source':
+        raise _bad_params( 'reveal', bu_proto.REASON_VALUE )
+    return _call( catalog_for( server ).thumbnail, item, reveal, of )
+
+
 def catalog_forget( server, data ):
     item = _item_id( data )
     _call( catalog_for( server ).forget, item )
@@ -393,6 +407,7 @@ HANDLERS = {
     'catalog.rescan':        catalog_rescan,
     'catalog.forget':        catalog_forget,
     'catalog.pin_type':      catalog_pin_type,
+    'catalog.thumbnail':     catalog_thumbnail,
 }
 
 EVENTS = ( 'catalog.changed', )

@@ -46,7 +46,9 @@
     { "$ref": "#/$defs/catalog.no_such_folder" },
     { "$ref": "#/$defs/catalog.bad_folder" },
     { "$ref": "#/$defs/catalog.bad_type" },
-    { "$ref": "#/$defs/catalog.item_busy" }
+    { "$ref": "#/$defs/catalog.item_busy" },
+    { "$ref": "#/$defs/catalog.missing" },
+    { "$ref": "#/$defs/catalog.thumbnail_failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -625,6 +627,30 @@
           "type": "object",
           "required": [ "item", "job" ],
           "properties": { "item": { "type": "string" }, "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.missing": {
+      "description": "The item has no file the engine can read right now (every path is missing or offline), or no censored output on disk when its output's thumbnail was asked for.",
+      "properties": {
+        "code": { "const": "catalog.missing" },
+        "params": {
+          "type": "object",
+          "required": [ "item" ],
+          "properties": { "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.thumbnail_failed": {
+      "description": "No thumbnail could be made. reason: not_video (no frame could be decoded) or error (ffmpeg failed or timed out; the engine log has details).",
+      "properties": {
+        "code": { "const": "catalog.thumbnail_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "reason" ],
+          "properties": { "item": { "type": "string" }, "reason": { "enum": [ "not_video", "error" ] } },
           "additionalProperties": false
         }
       }
