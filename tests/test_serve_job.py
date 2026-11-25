@@ -525,6 +525,103 @@ class TestRunLock( _QueueTest ):
             time.sleep( 0.01 )
         self.assertIsNone( bu_runlock.probe() )
 
+    def record_states( self ):
+        """[ ( job, state, lock free as it was sent ) ] for every job.state sent from here on."""
+        seen = []
+        events = self.server.jobs.events
+        send = events._raw_send
+
+        def recording( name, data ):
+            if name == 'job.state':
+                seen.append( ( data['job'], data['state'], bu_runlock.probe() is None ) )
+            send( name, data )
+
+        events._raw_send = recording
+        return seen
+
+    def final( self, seen, job ):
+        return [ ( state, free ) for seen_job, state, free in seen
+                 if seen_job == job and state in ( 'completed', 'cancelled', 'stopped' ) ]
+
+    def test_the_lock_is_free_when_the_last_job_reports_completed( self ):
+        seen = self.record_states()
+        job = self.submit( 'a.mp4' )
+        self.wait_state( job, 'completed' )
+        self.assertEqual( self.final( seen, job ), [ ( 'completed', True ) ] )
+        self.assertIsNone( bu_runlock.probe(), "free as soon as the client reads completed" )
+        held = bu_runlock.acquire_library( 'betatv' )
+        held.release()
+
+    def test_the_lock_is_free_when_a_running_or_paused_job_reports_cancelled( self ):
+        seen = self.record_states()
+        self.pipeline.auto = False
+        running = self.submit( 'a.mp4' )
+        self.wait_state( running, 'running' )
+        self.ok( 'job.cancel', { 'job': running } )
+        self.pipeline.release.release()
+        self.wait_state( running, 'cancelled' )
+        paused = self.submit( 'b.mp4' )
+        self.wait_state( paused, 'running' )
+        self.ok( 'job.pause', { 'job': paused } )
+        self.pipeline.release.release()
+        self.wait_state( paused, 'paused' )
+        self.ok( 'job.cancel', { 'job': paused } )
+        self.assertEqual( self.final( seen, running ), [ ( 'cancelled', True ) ] )
+        self.assertEqual( self.final( seen, paused ), [ ( 'cancelled', True ) ] )
+
+    def test_the_lock_stays_held_while_another_job_is_left( self ):
+        seen = self.record_states()
+        self.pipeline.auto = False
+        running = self.submit( 'a.mp4' )
+        self.wait_state( running, 'running' )
+        queued = self.submit( 'b.mp4' )
+        self.ok( 'job.cancel', { 'job': queued } )
+        self.assertEqual( self.final( seen, queued ), [ ( 'cancelled', False ) ] )
+        for _ in range( 3 ):
+            self.pipeline.release.release()
+        self.wait_state( running, 'completed' )
+        self.assertEqual( self.final( seen, running ), [ ( 'completed', True ) ] )
+
+    def test_a_full_disk_gives_the_lock_back_with_the_last_stopped_job( self ):
+        seen = self.record_states()
+        self.pipeline.auto = False
+        first = self.submit( 'full.mp4' )
+        self.wait_state( first, 'running' )
+        second = self.submit( 'a.mp4' )
+        for _ in range( 3 ):
+            self.pipeline.release.release()
+        self.wait_state( second, 'stopped' )
+        self.assertEqual( self.final( seen, first ), [ ( 'stopped', False ) ] )
+        self.assertEqual( self.final( seen, second ), [ ( 'stopped', True ) ] )
+
+    def test_a_job_submitted_as_the_last_one_ends_runs_under_the_lock( self ):
+        # The submit lands after the final state went out, before the
+        # worker looks at the queue again: it must take the lock itself.
+        seen = self.record_states()
+        real_run = self.server.jobs.runner.run
+        later = []
+
+        def submit_in_the_gap( job ):
+            state = real_run( job )
+            if not later:
+                later.append( self.submit( 'b.mp4' ) )
+            return state
+
+        with mock.patch.object( self.server.jobs.runner, 'run', submit_in_the_gap ):
+            first = self.submit( 'a.mp4' )
+            self.wait_state( first, 'completed' )
+            self.wait_until( lambda: later )
+            self.wait_state( later[0], 'completed' )
+        self.assertEqual( len( self.lock_calls ), 2 )
+        self.assertIn( ( later[0], 'running', False ), seen, "the second job ran under the lock" )
+        self.assertEqual( self.final( seen, later[0] ), [ ( 'completed', True ) ] )
+
+    def wait_until( self, predicate ):
+        deadline = time.monotonic() + WAIT
+        while not predicate() and time.monotonic() < deadline:
+            time.sleep( 0.01 )
+        self.assertTrue( predicate() )
+
     def test_a_command_line_run_holding_the_library_refuses_a_job( self ):
         held = bu_runlock.acquire_library( 'betatv' )
         self.addCleanup( held.release )
@@ -571,6 +668,12 @@ class TestSettingsWhileBusy( _QueueTest ):
         while self.server.jobs.busy and time.monotonic() < deadline:
             time.sleep( 0.01 )
         self.assertEqual( betaconfig.encode_crf, before )
+        self.assertTrue( self.ok( 'config.set', { 'values': { 'encode_crf': 20 } } )['written'] )
+
+    def test_set_is_accepted_as_soon_as_the_last_job_reports_completed( self ):
+        job = self.submit( 'a.mp4' )
+        self.release_all()
+        self.wait_state( job, 'completed' )
         self.assertTrue( self.ok( 'config.set', { 'values': { 'encode_crf': 20 } } )['written'] )
 
     def test_get_answers_from_the_snapshot_and_refuses_overrides( self ):
