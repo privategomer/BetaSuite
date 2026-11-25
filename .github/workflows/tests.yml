@@ -115,6 +115,10 @@ jobs:
         run: npm run catalog:check
       - name: Catalog check self-test
         run: npm run catalog:selftest
+      - name: Settings reach check (every registry setting is in All Settings)
+        run: npm run settings:reach
+      - name: Settings reach check self-test
+        run: npm run settings:reach:selftest
       - name: Theme contrast check (WCAG AA, both themes)
         run: npm run contrast:check
       - name: Build the page

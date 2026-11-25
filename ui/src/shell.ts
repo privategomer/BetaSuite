@@ -19,6 +19,12 @@ export interface StartupInfo {
   locale: string | null;
   // light or dark from --theme; null follows the system.
   theme: 'light' | 'dark' | null;
+  // The view from --view; null opens on the player.
+  view: 'player' | 'settings' | 'all-settings' | null;
+  // All Settings' starting search text, from --search.
+  search: string | null;
+  // A help section to open at start, from --help-topic.
+  help_topic: string | null;
   // The --open video, already allowed, or why it could not be opened.
   open: PlayableVideo | null;
   open_error: { code: string; params: Readonly<Record<string, unknown>> } | null;

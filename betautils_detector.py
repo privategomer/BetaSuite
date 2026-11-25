@@ -537,8 +537,30 @@ def get_item_overrides( label, backend_name=None, variant_name=None ):
             (which BETASUITE_DETECTOR_VARIANT_OVERRIDE can set), so a
             sweep needs no config edit.
     """
+    return _resolve_item_overrides( label, backend_name, variant_name, None )
+
+
+def get_item_override_sources( label, backend_name=None, variant_name=None ):
+    """
+    ( overrides, sources ): get_item_overrides' result, and for each of its
+    keys the dotted settings path that supplied the value, or
+    SOURCE_BUILTIN for a value the code supplies. The same resolution, so
+    the app can say which tier a label's value comes from.
+    """
+    sources = {}
+    return _resolve_item_overrides( label, backend_name, variant_name, sources ), sources
+
+
+# A value no setting supplies: the code's own fallback.
+SOURCE_BUILTIN = 'builtin'
+
+
+def _resolve_item_overrides( label, backend_name, variant_name, sources ):
+    """get_item_overrides; when sources is a dict, it records where each key came from."""
     name = backend_name or selected_backend_name()
     resolved = dict( getattr( betaconfig, 'item_overrides', {} ).get( label, {} ) )
+    if sources is not None:
+        sources.update( { key: 'item_overrides.%s.%s'%( label, key ) for key in resolved } )
 
     # Reverse mode: a window inherits every tuning key from every tier
     # but never a look key, then its own entry applies last. Without the
@@ -552,19 +574,37 @@ def get_item_overrides( label, backend_name=None, variant_name=None ):
         resolved = { key: value for key, value in resolved.items()
                      if key not in bu_reverse.LOOK_KEYS }
 
-    for block in ( get_backend_config( name ), get_variant_config( name, variant_name ) ):
+    for block, where in ( ( get_backend_config( name ), 'backend' ),
+                          ( get_variant_config( name, variant_name ), 'variant' ) ):
+        if sources is not None:
+            where = ( 'detector_backend.%s.item_overrides'%( name, ) if where == 'backend' else
+                      'detector_backend.%s.variants.%s.item_overrides'%(
+                          name, variant_name or selected_variant_name( name ) ) )
         tier = block.get( 'item_overrides', {} )
         if not isinstance( tier, dict ):
             continue
         for key, value in tier.get( label, {} ).items():
             if key in ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS:
                 resolved[key] = value
+                if sources is not None:
+                    sources[key] = '%s.%s.%s'%( where, label, key )
 
     if window is not None:
         resolved.update( window )
+        if sources is not None:
+            sources.update( { key: 'reverse.windows.%s.%s'%( label, key ) for key in window } )
+            if 'censor_style' not in resolved:
+                sources['censor_style'] = SOURCE_BUILTIN
         resolved.setdefault( 'censor_style', dict( bu_reverse.SHOW_STYLE ) )
     else:
-        resolved.update( bu_reverse.censor_override( label ) or {} )
+        reverse_own = bu_reverse.censor_override( label ) or {}
+        resolved.update( reverse_own )
+        if sources is not None:
+            sources.update( { key: 'reverse.censor.overrides.%s.%s'%( label, key ) for key in reverse_own } )
+    if sources is not None:
+        for key in list( sources ):
+            if key not in resolved:
+                del sources[key]
     return resolved
 
 
