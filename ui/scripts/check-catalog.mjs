@@ -16,6 +16,9 @@
 //   errors.missing        an error code has no error.<code> message
 //   errors.args           an error message uses a value its code does not carry
 //   errors.orphan         an error.<code> message has no code
+//   rules.missing         a rule id config.rule can carry has no rule.<id> message
+//   rules.orphan          a rule.<id> message has no rule id
+//   rules.args            a rule.<id> message uses a value (a rule carries none to show)
 //   source.literal        text in the source that a user could see
 //   source.key_unknown    t(), msg() or <Msg id> names a key that does not exist
 //   source.args           the values given do not match the message's arguments
@@ -190,6 +193,14 @@ function engineCodes( schemaFile ) {
   return codes;
 }
 
+// The ids config.rule can carry: the enum on its rule param. The engine's
+// tests keep that enum equal to the ids its checks return.
+function ruleIds( schemaFile ) {
+  const schema = JSON.parse( fs.readFileSync( schemaFile, 'utf8' ) );
+  const ids = schema.$defs?.[ 'config.rule' ]?.properties?.params?.properties?.rule?.enum;
+  return new Set( Array.isArray( ids ) ? ids : [] );
+}
+
 function shellCodes( rustDir ) {
   const codes = new Map();
   for ( const file of walk( rustDir, ( name ) => name.endsWith( '.rs' ) ) ) {
@@ -222,6 +233,20 @@ function checkErrors( base, errorsSchema, rustDir, report ) {
   for ( const [ code, where ] of shell ) {
     if ( !base.has( `error.${code}` ) ) {
       report( 'errors.missing', where.file, where.line, `shell code ${code} has no error.${code} message` );
+    }
+  }
+  const rules = ruleIds( errorsSchema );
+  for ( const id of rules ) {
+    if ( !base.has( `rule.${id}` ) ) {
+      report( 'rules.missing', errorsSchema, 1, `rule id ${id} has no rule.${id} message` );
+    }
+  }
+  for ( const [ key, entry ] of base ) {
+    if ( key.startsWith( 'rule.' ) && !rules.has( key.slice( 'rule.'.length ) ) ) {
+      report( 'rules.orphan', entry.file, entry.line, `${key} matches no rule id in errors.schema.json` );
+    }
+    if ( key.startsWith( 'rule.' ) && entry.args.size > 0 ) {
+      report( 'rules.args', entry.file, entry.line, `${key} uses {${[ ...entry.args ].join( '}, {' )}}; a rule carries no values to show` );
     }
   }
   if ( !base.has( 'error.unknown' ) ) {
