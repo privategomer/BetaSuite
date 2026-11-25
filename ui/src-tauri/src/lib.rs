@@ -9,6 +9,7 @@ mod engine;
 #[cfg(target_os = "linux")]
 mod linux;
 mod logging;
+mod look;
 mod paths;
 mod startup;
 mod video;
@@ -331,7 +332,8 @@ pub fn run() -> i32 {
             engine_request,
             engine_restart,
             ui_mark,
-            video::pick_video
+            video::pick_video,
+            look::look_image
         ])
         .build(tauri::generate_context!());
     let app = match app {
