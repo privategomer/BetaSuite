@@ -99,6 +99,12 @@ ERRORS = {
     'file.failed':                  ( 'exception_type', 'stage' ),
     'disk.full':                    ( 'free_bytes', ),
     'model.load_failed':            ( 'exception_type', ),
+    # catalog.*
+    'catalog.unavailable':          ( 'reason', ),
+    'catalog.too_new':              ( 'version', 'supported' ),
+    'catalog.no_such_item':         ( 'item', ),
+    'catalog.no_such_folder':       ( 'folder', ),
+    'catalog.bad_folder':           ( 'reason', ),
 }
 
 # Values of the 'reason' parameter.

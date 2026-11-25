@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.remove_folder.schema.json",
+  "title": "catalog.remove_folder",
+  "description": "Stop watching a folder. Its paths leave the catalog; its items keep their history and pins, and are back if the folder is added again or the files turn up elsewhere. items counts the items that lost a path. catalog.no_such_folder for an unknown id.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "folder"
+      ],
+      "properties": {
+        "folder": {
+          "type": "integer"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

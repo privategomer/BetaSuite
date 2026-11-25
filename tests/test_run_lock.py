@@ -266,6 +266,44 @@ class TestLibraryLocks( _LockCase ):
             self.assertEqual( held.recovered['program'], 'old' )
 
 
+class TestLibraryHeld( _LockCase ):
+    """library_held: what the catalog's scanner asks before it reads a file whole."""
+
+    def setUp( self ):
+        super().setUp()
+        patcher = mock.patch.object( bu_runlock, 'library_paths', return_value=[ self.path ] )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+
+    def test_free_when_no_run_ever_locked( self ):
+        self.assertFalse( bu_runlock.library_held() )
+
+    def test_held_while_another_process_runs( self ):
+        proc, _pid, _child = self.start_holder()
+        self.assertTrue( bu_runlock.library_held() )
+        proc.stdin.write( '\n' )
+        proc.stdin.flush()
+        proc.wait( timeout=30 )
+        self.assertFalse( bu_runlock.library_held() )
+
+    def test_held_while_this_process_holds_it( self ):
+        held = bu_runlock.acquire( 'engine', self.path )
+        self.addCleanup( held.release )
+        self.assertTrue( bu_runlock.library_held() )
+
+    def test_a_record_left_by_a_run_that_died_is_not_held( self ):
+        proc, _pid, _child = self.start_holder()
+        proc.kill()
+        proc.wait( timeout=30 )
+        self.assertTrue( os.path.exists( bu_runlock.holder_path( self.path ) ) )
+        self.assertFalse( bu_runlock.library_held() )
+
+    def test_without_a_record_the_lock_is_never_probed( self ):
+        with mock.patch.object( bu_runlock, 'probe' ) as probe:
+            self.assertFalse( bu_runlock.library_held() )
+        probe.assert_not_called()
+
+
 class TestProbeAndHolder( _LockCase ):
 
     def test_probe_creates_nothing( self ):

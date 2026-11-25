@@ -88,13 +88,29 @@ def flush_file_hash_memo():
 
     Called once at the end of a run rather than on every insert, so a
     library scan does not rewrite the memo hundreds of times.
+
+    Merges with what is on disk first: the engine's catalog scanner and
+    a command-line run can each hold the memo, and a plain rewrite by
+    one would drop the entries the other flushed meanwhile, costing a
+    full re-read of those files. Each process writes through its own
+    temporary file, so two flushes never write into one.
     """
     global _file_hash_memo_dirty
     with _file_hash_lock:
         if not _file_hash_memo_dirty or _file_hash_memo is None:
             return
         try:
-            write_json_plain( _file_hash_memo, betaconst.file_hash_cache_path )
+            path = betaconst.file_hash_cache_path
+            try:
+                with open( path, 'r', encoding='UTF-8' ) as fin:
+                    on_disk = json.load( fin )
+            except Exception:
+                on_disk = {}
+            if isinstance( on_disk, dict ):
+                for key, value in on_disk.items():
+                    _file_hash_memo.setdefault( key, value )
+            _write_json_plain_via( _file_hash_memo, path,
+                                   '%s.%d.%d.tmp'%( path, os.getpid(), threading.get_ident() ) )
             _file_hash_memo_dirty = False
         except Exception:
             # Best-effort: losing the memo costs time on the next run and
@@ -197,13 +213,23 @@ def write_json( variable, filename ):
 
 def write_json_plain( variable, filename ):
     """Uncompressed, atomic sibling of write_json, for small readable files."""
+    _write_json_plain_via( variable, filename, filename + '.tmp' )
+
+
+def _write_json_plain_via( variable, filename, tmp_filename ):
     dest_dir = os.path.dirname( filename )
     if dest_dir:
         os.makedirs( dest_dir, exist_ok=True )
-    tmp_filename = filename + '.tmp'
-    with open( tmp_filename, 'w', encoding='UTF-8' ) as fout:
-        json.dump( variable, fout, indent=2, sort_keys=True, default=str )
-    os.replace( tmp_filename, filename )
+    try:
+        with open( tmp_filename, 'w', encoding='UTF-8' ) as fout:
+            json.dump( variable, fout, indent=2, sort_keys=True, default=str )
+        os.replace( tmp_filename, filename )
+    except BaseException:
+        try:
+            os.remove( tmp_filename )
+        except OSError:
+            pass
+        raise
 
 
 def read_json( filename ):

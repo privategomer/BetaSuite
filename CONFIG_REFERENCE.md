@@ -4047,6 +4047,25 @@ Off by default because it moves files you put somewhere yourself.
 
 ---
 
+## Library catalog
+
+### `catalog_scan_interval_seconds`
+
+How often the app's library re-reads its watched folders, in seconds.
+**300**. `0` reads them only when the app starts and when asked ("Scan
+now", `catalog.rescan`).
+
+A pass lists each folder and reads each file's size, modification time
+and inode, never its contents, so it stays cheap on a local disk; on a
+network share each file is a round trip. A pass never starts sooner than
+ten times the last pass's own length after it ended, so a slow share is
+not read back to back. New files are hashed once they hold still for a
+few seconds, and never while a job runs. Files added through the app
+are indexed at once whatever this says. The catalog itself is described
+in `protocol/README.md` ("Catalog"). Moves no cache key.
+
+---
+
 ## Preview mode
 
 ```python

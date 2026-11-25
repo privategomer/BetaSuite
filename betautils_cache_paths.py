@@ -726,6 +726,31 @@ def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
     return base + sanitise_output_label( output_label )
 
 
+_VIDEO_OUTPUT_NAME = re.compile(
+    r'^(?P<stem>.*)-(?P<hash>[0-9a-f]{16})-(?P<sizes>[0-9]+(?:\+[0-9]+)*)-(?P<fps>[0-9.e+-]+?)'
+    r'-d(?P<detection_key>[0-9a-f]+)-c(?P<censor_key>[0-9a-f]+)-e(?P<encode_key>[0-9a-f]+)(?P<tail>.*)$' )
+
+
+def parse_video_output_basename( base ):
+    """
+    The fields video_output_basename put into a name, or None.
+
+    `base` is a final output's file name without its '.mp4'. Returns a
+    dict with stem, hash, sizes (list of ints), fps (text, as %g wrote
+    it), the three keys, preview (True for a preview slice) and tail
+    (preview, mode and label, as written). The rightmost hash-shaped
+    field is the source hash, so a stem that itself looks like a name
+    still parses. Used by the catalog to say which outputs a source has.
+    """
+    match = _VIDEO_OUTPUT_NAME.match( base )
+    if match is None:
+        return None
+    fields = match.groupdict()
+    fields['sizes'] = [ int( size ) for size in fields['sizes'].split( '+' ) ]
+    fields['preview'] = fields['tail'].startswith( '-preview' )
+    return fields
+
+
 def sanitise_output_label( label ):
     """
     A filename-safe form of a cosmetic output label, or '' for none.
