@@ -3,7 +3,7 @@
   "encoder_threads": 4,
   "ffmpeg": "ffmpeg version n8.0.1-66-g27b8d1a017-20260228",
   "machine": "x86_64",
-  "numpy": "2.5.5",
+  "numpy": "2.5.3",
   "opencv": "4.14.0",
   "platform": "linux"
  },
