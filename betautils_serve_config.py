@@ -86,12 +86,17 @@ def _invalid( errors ):
                                    { 'problems': [ _problem( error ) for error in errors ] } )
 
 
+# The rule id for a check that returned plain text. tests/test_settings_validation.py
+# proves no shipped check does; the id is in errors.schema.json all the same.
+UNCLASSIFIED_RULE = 'config.unclassified'
+
+
 def _problem( error ):
     import betautils_settings as bu_settings
     if isinstance( error, bu_settings.Problem ):
         return bu_proto.error( error.code, **_jsonable( error.params ) )
     # A check that has not been given a code yet: still never a sentence.
-    return bu_proto.error( 'config.rule', rule='unclassified', path='' )
+    return bu_proto.error( 'config.rule', rule=UNCLASSIFIED_RULE, path='' )
 
 
 def _local_on():

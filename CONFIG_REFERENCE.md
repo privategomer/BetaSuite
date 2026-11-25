@@ -4282,6 +4282,11 @@ every backend's per-label `min_prob`. Each entry records:
   per model variant, per structure profile, per person backend)
 - **level**: `simple` settings are on the app's main screens, the rest
   behind "More options"
+- **screen**: which screen shows it: `run`, `what_to_hide`, `models`,
+  `library`, `reverse` or `resources`, or `other`, a tab of its own for
+  detection and tracking tuning, logging and capture.
+  `SCREEN_RULES` assigns screens by path pattern, first match winning,
+  and every setting is on All Settings whatever its screen
 - **moves**: the cache keys it moves (detection, censor, encode), and
   the conditions under which it does, such as "only while reverse mode
   is on"
