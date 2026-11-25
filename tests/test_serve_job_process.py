@@ -92,9 +92,7 @@ class TestJobsThroughTheEngine( _EngineTest ):
         engine.send( 'shutdown' )
         seen = self.until( engine, lambda m: self.final( m, job ) )
         final = seen[-1]['data']
-        self.assertIn( final['state'], ( 'stopped', 'completed' ) )
-        if final['state'] == 'stopped':
-            self.assertEqual( final['code'], 'engine.stopping' )
+        self.assertEqual( ( final['state'], final.get( 'code' ) ), ( 'stopped', 'engine.stopping' ) )
         self.assertEqual( engine.wait(), 0 )
         self.assertStdoutOnlyProtocol( engine )
 

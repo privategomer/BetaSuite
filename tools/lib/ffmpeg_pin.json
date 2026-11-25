@@ -1,6 +1,6 @@
 {
   "version": "n8.0.1-66-g27b8d1a017",
-  "source": "BtbN FFmpeg-Builds, GPL build (x264 included), month-end release autobuild-2026-02-28-12-59",
+  "source": "the FFmpeg-Builds project's GPL build (x264 included), month-end release autobuild-2026-02-28-12-59",
   "builds": {
     "linux64": {
       "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-02-28-12-59/ffmpeg-n8.0.1-66-g27b8d1a017-linux64-gpl-8.0.tar.xz",

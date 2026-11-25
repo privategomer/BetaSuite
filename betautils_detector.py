@@ -1112,7 +1112,7 @@ class Reason( str ):
     job.decision event. A str, so every caller that formats or compares
     the phrase is unaffected.
 
-    Codes: forced, forced_unknown {profile}, path_pattern,
+    Codes: forced, forced_unknown {requested}, path_pattern,
     source_folder {folder}, disabled, no_profiles, all_manual, default,
     default_unusable, measured {signal}.
     """
@@ -1122,6 +1122,14 @@ class Reason( str ):
         reason.code = code
         reason.params = params
         return reason
+
+    def __reduce__( self ):
+        # copy, deepcopy and pickle rebuild it from the phrase, code and params.
+        return ( _reason, ( str( self ), self.code, self.params ) )
+
+
+def _reason( text, code, params ):
+    return Reason( text, code, **params )
 
 
 def declared_profile_selection( source_path=None, backend_name=None ):
@@ -1152,7 +1160,7 @@ def declared_profile_selection( source_path=None, backend_name=None ):
     if forced:
         return ( ( forced, Reason( 'forced by --profile', 'forced' ) ) if forced in variants
                  else ( None, Reason( 'forced profile %r is not a variant'%(forced,), 'forced_unknown',
-                                      profile=forced ) ) )
+                                      requested=forced ) ) )
 
     # A path rule is a standing explicit choice, so it outranks the cut
     # rate and the off switch for the same reason --profile does. It loses

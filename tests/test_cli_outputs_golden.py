@@ -10,9 +10,11 @@ output folder (folders included, since the run mirrors the input tree),
 the stats and failure rows without their timings, and the sha256 of each
 output file.
 
-It was recorded before the CLI ran through the job runner
-(betautils_job), so it proves that routing changed no output name, key
-or byte. The clips are built with ffmpeg, so their bytes, and the
+Its first version was recorded on the code from before the CLI ran
+through the job runner (betautils_job), and the runner passed it byte
+for byte; the file is now recorded in CI (see below), and its names,
+keys and stats rows are still those of that first version. The clips
+are built with ffmpeg, so their bytes, and the
 source hash in each output name, depend on the ffmpeg build; each
 source hash is recorded as a token naming its clip ({a.mp4}).
 

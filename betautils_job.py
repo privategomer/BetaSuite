@@ -132,10 +132,14 @@ def output_folder_for( path ):
     import betaconst
     root = os.path.abspath( betaconst.video_path_uncensored )
     folder = os.path.dirname( os.path.abspath( path ) )
-    relative = os.path.relpath( folder, root )
+    try:
+        relative = os.path.relpath( folder, root )
+    except ValueError:
+        # Windows: the file is on another drive than the input folder.
+        return betaconst.video_path_censored
     if relative == os.curdir:
         return betaconst.video_path_censored
-    if relative.startswith( os.pardir ) or os.path.isabs( relative ):
+    if relative.split( os.sep )[0] == os.pardir or os.path.isabs( relative ):
         return betaconst.video_path_censored
     return os.path.join( betaconst.video_path_censored, relative )
 
@@ -312,12 +316,16 @@ class Runner:
         except bu_signals.Interrupted as stop:
             if stop.reason == bu_signals.INTERRUPT:
                 raise
-            bu_signals.clear()
-            if stop.reason == bu_signals.PAUSE:
+            # One step: a cancel or shutdown asked for while this pause is
+            # handled wins instead of being cleared unseen.
+            reason = bu_signals.take( stop.reason )
+            if reason == bu_signals.INTERRUPT:
+                raise
+            if reason == bu_signals.PAUSE:
                 self.logger.info( "job %s paused at file %d of %d"%(
                     job.id, job.next_index + 1, len( job.files ) ) )
                 self.set_state( job, PAUSED )
-            elif stop.reason == bu_signals.CANCEL:
+            elif reason == bu_signals.CANCEL:
                 remove_partial_outputs( job.current, self.logger )
                 job.current = None
                 self.logger.info( "job %s cancelled"%( job.id, ) )
@@ -354,6 +362,7 @@ class Runner:
         try:
             # Inside the try, so a model that fails to load (or a stop
             # while it loads) still removes the run marker on the way out.
+            bu_signals.check()    # a stop asked for before the model loads
             session = self._session()
             total = len( job.files )
             for index in range( job.next_index, total ):

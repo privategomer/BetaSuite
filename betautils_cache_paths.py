@@ -785,15 +785,18 @@ def partial_outputs( final_path ):
     """
     Every file an unfinished render of final_path can leave beside it:
     render chunks and their metadata and temps, the intermediate, its
-    concat list and temp, and the final's temp. All of them share the
-    final's base name, which carries the source hash and the three
-    cache keys, so nothing else in the folder matches. A complete final
-    is not partial and is not listed.
+    concat list and temp, and the final's temp: base.video.* and
+    base.tmp.<ext>, where base is the final's name, carrying the source
+    hash and the three cache keys. A complete final is not listed.
     """
     import glob
     base, _ext = os.path.splitext( final_path )
-    return sorted( path for path in glob.glob( glob.escape( base ) + '.*' )
-                   if path != final_path )
+    # Only the shapes a render writes (video_output_paths, chunk_path_for,
+    # temp_sibling), not base + '.*': an output label may start with '.',
+    # which would make a labelled final of the same source match.
+    found = set( glob.glob( glob.escape( base ) + '.video.*' ) )
+    found.add( temp_sibling( final_path ) )
+    return sorted( path for path in found if os.path.exists( path ) )
 
 
 def temp_sibling( path ):
