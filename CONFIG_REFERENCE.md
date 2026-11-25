@@ -4287,6 +4287,12 @@ every backend's per-label `min_prob`. Each entry records:
   detection and tracking tuning, logging and capture.
   `SCREEN_RULES` assigns screens by path pattern, first match winning,
   and every setting is on All Settings whatever its screen
+- **requires**: the settings it needs before it has any effect, each with
+  a test (`on`, `off`, `above_zero`): `preview_max_seconds` needs
+  `preview_mode_enabled` on, and everything under `reverse` needs
+  `reverse.enabled`. The app nests such a setting under its parent and
+  greys it out while the parent is not as required. `REQUIRES_RULES`
+  lists them, each citing the code that reads the setting
 - **moves**: the cache keys it moves (detection, censor, encode), and
   the conditions under which it does, such as "only while reverse mode
   is on"

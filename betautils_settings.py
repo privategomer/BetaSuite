@@ -5,7 +5,8 @@ betaconfig.py has or the code reads.
 Each entry says what a value may be (kind, range, choices, whether None
 is allowed and what it means), where it may be set (scope, from the
 placeholders in its path), whether the UI shows it by default (level)
-and on which screen (SCREEN_RULES),
+and on which screen (SCREEN_RULES), which settings must be set for it
+to have any effect (REQUIRES_RULES),
 what changing it costs (the cache keys it moves, and under which
 conditions; and the keys it can move for some files only, by changing
 which structure profile or preview slice a file gets), and where its
@@ -110,6 +111,10 @@ class Setting( object ):
     @property
     def screen( self ):
         return screen_of( self )
+
+    @property
+    def requires( self ):
+        return requires_of( self )
 
     @property
     def tip( self ):
@@ -895,6 +900,65 @@ SCREEN_RULES = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Parent settings: a setting that has an effect only while another is set
+# ---------------------------------------------------------------------------
+# The app nests such a setting under its parent and greys it out, still
+# visible and searchable, while the parent is not as required. Every
+# matching rule adds its parents; a parent never requires itself. Each
+# link is read from the code that reads the setting, cited per rule.
+# Per-label tiers have none: whether a label interpolates or pairs its
+# style resolves across tiers, so a sibling flag at one tier decides
+# nothing on its own.
+
+ON = 'on'
+OFF = 'off'
+ABOVE_ZERO = 'above_zero'
+REQUIRE_TESTS = ( ON, OFF, ABOVE_ZERO )
+
+REQUIRES_RULES = (
+    # betatv.py: read only inside `if preview_mode_enabled`; the full run uses encode_preset.
+    ( 'preview_max_seconds', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_start_seconds', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_random_slice', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_encode_preset', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'encode_preset', ( ( 'preview_mode_enabled', OFF ), ) ),
+    # betatv.py hands the threshold to shot-cut detection with its `enabled`
+    # flag; betautils_track.py collapses bursts only when the window is above 0.
+    ( 'shot_cut_threshold', ( ( 'shot_cut_detection_enabled', ON ), ) ),
+    ( 'shot_cut_burst_*', ( ( 'shot_cut_detection_enabled', ON ), ) ),
+    ( 'shot_cut_burst_keep', ( ( 'shot_cut_burst_window', ABOVE_ZERO ), ) ),
+    ( 'shot_cut_burst_max_span', ( ( 'shot_cut_burst_window', ABOVE_ZERO ), ) ),
+    # betautils_track.py: returns before reading iou_threshold when off.
+    ( 'cross_size_dedup.iou_threshold', ( ( 'cross_size_dedup.enabled', ON ), ) ),
+    # betautils_censor.py: the approximation, and so its threshold, is
+    # skipped when off and whenever a blur edge margin is in use.
+    ( 'blur_approximation_min_kernel', ( ( 'blur_fast_approximation', ON ), ( 'blur_edge_margin', OFF ) ) ),
+    # betautils_detector.py: the device id goes to the CUDA provider only.
+    ( 'cuda_device_id', ( ( 'gpu_enabled', ON ), ) ),
+    # betautils_render.py: no motion index is built when interpolation is off.
+    ( 'render_motion_max_span_seconds', ( ( 'render_motion_interpolation', ON ), ) ),
+    ( 'render_motion_collapse_max_growth', ( ( 'render_motion_interpolation', ON ), ) ),
+    ( 'render_motion_size_window_seconds', ( ( 'render_motion_interpolation', ON ), ) ),
+    # betautils_reverse.py and betatv.py: reverse mode, and person windows
+    # within it, which are the only users of the person model.
+    ( 'reverse.*', ( ( 'reverse.enabled', ON ), ) ),
+    ( 'reverse.person_windows.*', ( ( 'reverse.person_windows.enabled', ON ), ) ),
+    ( 'person_backend.*', ( ( 'reverse.enabled', ON ), ( 'reverse.person_windows.enabled', ON ) ) ),
+)
+
+
+def requires_of( entry ):
+    """( parent path, test ) pairs, in rule order, without itself."""
+    found = []
+    for pattern, parents in REQUIRES_RULES:
+        if fnmatch.fnmatchcase( entry.dotted, pattern ):
+            for parent in parents:
+                if parent[0] != entry.dotted:
+                    found.append( parent )
+    return tuple( found )
+
+
 def screen_of( entry ):
     for pattern, screen in SCREEN_RULES:
         if fnmatch.fnmatchcase( entry.dotted, pattern ):
@@ -1251,6 +1315,7 @@ def schema():
             'when': list( entry.when ), 'per_run': entry.per_run,
             'tip': entry.tip, 'label': entry.label_key, 'help': entry.help,
             'screen': entry.screen,
+            'requires': [ { 'path': path, 'test': test } for path, test in entry.requires ],
         }
         for key in ( 'minimum', 'maximum' ):
             if getattr( entry, key ) is not None:

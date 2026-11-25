@@ -21,7 +21,7 @@
     },
     "setting": {
       "type": "object",
-      "required": [ "path", "kind", "scope", "level", "moves", "may_move", "when", "per_run", "tip", "label", "help", "screen" ],
+      "required": [ "path", "kind", "scope", "level", "moves", "may_move", "when", "per_run", "tip", "label", "help", "screen", "requires" ],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
         "kind": { "type": "string" },
@@ -36,6 +36,14 @@
         "label": { "type": "string" },
         "help": { "type": "string" },
         "screen": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "other" ] },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "path", "test" ],
+            "properties": { "path": { "type": "string", "minLength": 1 }, "test": { "enum": [ "on", "off", "above_zero" ] } }
+          }
+        },
         "none": { "type": "string" },
         "minimum": { "type": "number" },
         "maximum": { "type": "number" },

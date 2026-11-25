@@ -198,6 +198,93 @@ class TestScreens( unittest.TestCase ):
                           [ item['screen'] for item in exported['settings'] ] )
 
 
+class TestRequires( unittest.TestCase ):
+    """A setting the app greys out while its parent is off must really
+    need that parent, and the parent must be a setting the app can show."""
+
+    # A condition under which the key proofs show a setting moves its keys,
+    # and the parent and test that condition stands for.
+    CONDITION_PARENTS = {
+        'reverse_on': ( ( 'reverse.enabled', bu_settings.ON ), ),
+        'person_windows_on': ( ( 'reverse.enabled', bu_settings.ON ),
+                               ( 'reverse.person_windows.enabled', bu_settings.ON ) ),
+        'preview_on': ( ( 'preview_mode_enabled', bu_settings.ON ), ),
+        'preview_off': ( ( 'preview_mode_enabled', bu_settings.OFF ), ),
+        'cut_bursts_on': ( ( 'shot_cut_burst_window', bu_settings.ABOVE_ZERO ), ),
+    }
+
+    def test_every_parent_is_a_fixed_setting_its_test_fits( self ):
+        for entry in bu_settings.REGISTRY:
+            for path, test in entry.requires:
+                with self.subTest( entry=entry.dotted, parent=path ):
+                    self.assertIn( test, bu_settings.REQUIRE_TESTS )
+                    parent = bu_settings.find( tuple( path.split( '.' ) ) )
+                    self.assertIsNotNone( parent )
+                    self.assertEqual( path, parent.dotted, 'a parent has no placeholders' )
+                    if test == bu_settings.ABOVE_ZERO:
+                        self.assertIn( parent.kind, ( 'int', 'number' ) )
+                    else:
+                        self.assertTrue( parent.kind == 'bool' or set( parent.choice_list() or () ) <= { 0, 1 } )
+
+    def test_no_setting_lists_a_parent_twice( self ):
+        for entry in bu_settings.REGISTRY:
+            paths = [ path for path, _test in entry.requires ]
+            self.assertEqual( len( set( paths ) ), len( paths ), entry.dotted )
+
+    def test_no_setting_requires_itself_or_a_setting_that_requires_it( self ):
+        for entry in bu_settings.REGISTRY:
+            for path, _test in entry.requires:
+                self.assertNotEqual( entry.dotted, path )
+                parent = bu_settings.find( tuple( path.split( '.' ) ) )
+                self.assertNotIn( entry.dotted, [ p for p, _t in parent.requires ], entry.dotted )
+
+    def test_a_parent_needs_of_its_own_are_needed_by_its_children_too( self ):
+        for entry in bu_settings.REGISTRY:
+            for path, _test in entry.requires:
+                parent = bu_settings.find( tuple( path.split( '.' ) ) )
+                for grand in parent.requires:
+                    self.assertIn( grand, entry.requires, ( entry.dotted, path ) )
+
+    def test_every_feature_condition_the_key_proofs_use_is_a_parent( self ):
+        # The cache-tag tests show these settings move nothing with the
+        # condition off; the app must not show them as live then.
+        for entry in bu_settings.REGISTRY:
+            for condition in entry.when:
+                for parent in self.CONDITION_PARENTS.get( condition, () ):
+                    self.assertIn( parent, entry.requires, ( entry.dotted, condition ) )
+
+    def test_every_rule_adds_a_parent_to_some_entry( self ):
+        for pattern, parents in bu_settings.REQUIRES_RULES:
+            with self.subTest( pattern=pattern ):
+                self.assertTrue( any( bu_settings.fnmatch.fnmatchcase( entry.dotted, pattern )
+                                      and any( parent[0] != entry.dotted for parent in parents )
+                                      for entry in bu_settings.REGISTRY ) )
+
+    def test_these_settings_require_as_listed( self ):
+        on, off, above = bu_settings.ON, bu_settings.OFF, bu_settings.ABOVE_ZERO
+        expect = {
+            'preview_max_seconds': ( ( 'preview_mode_enabled', on ), ),
+            'encode_preset': ( ( 'preview_mode_enabled', off ), ),
+            'shot_cut_burst_keep': ( ( 'shot_cut_detection_enabled', on ), ( 'shot_cut_burst_window', above ) ),
+            'shot_cut_burst_window': ( ( 'shot_cut_detection_enabled', on ), ),
+            'blur_approximation_min_kernel': ( ( 'blur_fast_approximation', on ), ( 'blur_edge_margin', off ) ),
+            'cuda_device_id': ( ( 'gpu_enabled', on ), ),
+            'reverse.enabled': (),
+            'reverse.person_windows.enabled': ( ( 'reverse.enabled', on ), ),
+            'reverse.person_windows.shrink': ( ( 'reverse.enabled', on ), ( 'reverse.person_windows.enabled', on ) ),
+            'person_backend.selected': ( ( 'reverse.enabled', on ), ( 'reverse.person_windows.enabled', on ) ),
+            'preview_mode_enabled': (), 'encode_crf': (), 'default_interpolation_max_gap': (),
+        }
+        got = { entry.dotted: entry.requires for entry in bu_settings.REGISTRY if entry.dotted in expect }
+        self.assertEqual( expect, got )
+
+    def test_the_schema_sends_each_parent( self ):
+        exported = { item['path']: item['requires'] for item in bu_settings.schema()['settings'] }
+        for entry in bu_settings.REGISTRY:
+            self.assertEqual( [ { 'path': path, 'test': test } for path, test in entry.requires ],
+                              exported[entry.dotted] )
+
+
 class TestHelpAnchors( unittest.TestCase ):
 
     @classmethod
