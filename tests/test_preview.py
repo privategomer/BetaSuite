@@ -132,6 +132,7 @@ class PreviewOverProtocolTest( _EngineTest ):
         self.assertTrue( result['ok'], result )
         entry = result['data']['previews'][0]
         self.assertFalse( entry['cached'] )
+        self.assertEqual( entry['boxes'], bu_art.art_item( *FIGURE )['boxes'] )
         served = cv2.imread( entry['path'], cv2.IMREAD_COLOR )
         _art_entry, image, raw = _art( *FIGURE )
         with bu_store.overrides_applied( _settings( CUSTOM ) ):

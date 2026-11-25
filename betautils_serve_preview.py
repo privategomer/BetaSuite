@@ -4,7 +4,7 @@ betautils_serve_preview.py - preview.look over the engine protocol.
     data:   { previews: [ { art: { style, item } } | { image, boxes }, plus
                           optional labels and seed per entry ],
               overrides?: { dotted path: value } }
-    result: { previews: [ { path, key, cached, width, height } ] }
+    result: { previews: [ { path, key, cached, width, height, boxes } ] }
 
 Each entry is drawn by the real censor code (betautils_preview). labels
 are the labels to censor (default: items_to_censor), so a tile can show a
@@ -98,7 +98,11 @@ def _render_all( entries ):
         height, width = image.shape[:2]
         raw = bu_preview.raw_detections( boxes, width, height )
         chosen = bu_preview.default_labels() if labels is None else labels
-        out.append( bu_preview.preview( image, raw, chosen, seed ) )
+        result = bu_preview.preview( image, raw, chosen, seed )
+        # The boxes as given, before any padding: where each label is on
+        # the image, for a client to point at.
+        result['boxes'] = [ dict( box ) for box in boxes ]
+        out.append( result )
     return out
 
 
