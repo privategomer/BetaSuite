@@ -4,16 +4,26 @@ import { StatusStrip } from './components/StatusStrip';
 import { t } from './i18n/format';
 import { describeError, log } from './log';
 import { AllSettings } from './settings/AllSettings';
+import { SettingsView } from './settings/SettingsView';
 import { uiReady, type StartupInfo } from './shell';
 
 interface AppProps {
   startup: StartupInfo | null;
 }
 
-type View = 'player' | 'all_settings';
+type View = 'player' | 'settings' | 'all_settings';
+
+function startView( view: StartupInfo[ 'view' ] | undefined ): View {
+  switch ( view ) {
+    case 'settings': return 'settings';
+    case 'all-settings': return 'all_settings';
+    default: return 'player';
+  }
+}
 
 export function App( { startup }: AppProps ) {
-  const [ view, setView ] = useState<View>( startup?.view === 'all-settings' ? 'all_settings' : 'player' );
+  const [ view, setView ] = useState<View>( startView( startup?.view ) );
+  const onHelp = ( anchor: string ) => { log.info( `help requested: ${anchor}` ); };
 
   useEffect( () => {
     // Show the window once the first render is in the DOM. WebKitGTK stalls
@@ -36,6 +46,7 @@ export function App( { startup }: AppProps ) {
         <h1>{t( 'app.name' )}</h1>
         <nav className="app-nav" aria-label={t( 'nav.label' )}>
           {tab( 'player', t( 'nav.player' ) )}
+          {tab( 'settings', t( 'nav.settings' ) )}
           {tab( 'all_settings', t( 'nav.all_settings' ) )}
         </nav>
       </header>
@@ -44,9 +55,8 @@ export function App( { startup }: AppProps ) {
         <div className="view" hidden={view !== 'player'}>
           <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} />
         </div>
-        {view === 'all_settings' && (
-          <AllSettings initialQuery={startup?.search ?? ''} onHelp={( anchor ) => { log.info( `help requested: ${anchor}` ); }} />
-        )}
+        {view === 'settings' && <SettingsView onHelp={onHelp} />}
+        {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}
       </main>
       <StatusStrip />
     </div>

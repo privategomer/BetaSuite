@@ -4,7 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from 'react';
 import { errorText } from '../i18n/errors';
 import { t } from '../i18n/format';
 import { byScreen, COST_ORDER, filterRows, NO_FILTERS, SCREENS, searchText, type Cost, type Filters, type Row, type Screen } from './model';
-import { SettingRow } from './SettingRow';
+import { SettingRows } from './SettingsFold';
 import { costTag, screenName, settingLabel, settingTip } from './text';
 import { useSettings } from './useSettings';
 
@@ -93,7 +93,7 @@ export function AllSettings( { initialQuery = '', onHelp }: AllSettingsProps ) {
       {[ ...groups.entries() ].filter( ( [ , rows ] ) => rows.length > 0 ).map( ( [ screen, rows ] ) => (
         <section key={screen} className="settings-group" aria-label={screenName( screen )}>
           <h2>{screenName( screen )}</h2>
-          {rows.map( ( row ) => <SettingRow key={row.entry.path} row={row} data={data} onHelp={onHelp} onChanged={reload} /> )}
+          <SettingRows rows={rows} data={data} onHelp={onHelp} onChanged={reload} />
         </section>
       ) )}
     </div>

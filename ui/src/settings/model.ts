@@ -290,3 +290,35 @@ export function byScreen( rows: readonly Row[] ): Map<Screen, Row[]> {
   }
   return groups;
 }
+
+// Rows with each one placed under the parent it requires, when that parent
+// is in the same list: [{ row, depth }], parents first, the list's own
+// order kept otherwise. The nearest parent is the last requirement listed
+// (person windows' settings sit under person windows, not reverse mode).
+export interface Placed {
+  readonly row: Row;
+  readonly depth: number;
+}
+
+export function nestByParent( rows: readonly Row[] ): Placed[] {
+  const present = new Set( rows.map( ( row ) => row.entry.path ) );
+  const children = new Map<string, Row[]>();
+  const roots: Row[] = [];
+  for ( const row of rows ) {
+    const parent = [ ...row.entry.requires ].reverse().find( ( requirement ) => present.has( requirement.path ) );
+    if ( parent === undefined ) {
+      roots.push( row );
+    } else {
+      children.set( parent.path, [ ...( children.get( parent.path ) ?? [] ), row ] );
+    }
+  }
+  const placed: Placed[] = [];
+  const visit = ( row: Row, depth: number ) => {
+    placed.push( { row, depth } );
+    for ( const child of children.get( row.entry.path ) ?? [] ) {
+      visit( child, depth + 1 );
+    }
+  };
+  roots.forEach( ( row ) => { visit( row, 0 ); } );
+  return placed;
+}

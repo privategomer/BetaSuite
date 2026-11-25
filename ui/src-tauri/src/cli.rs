@@ -9,7 +9,7 @@ use log::LevelFilter;
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
-                 [--measure-startup FILE] [--view player|all-settings]
+                 [--measure-startup FILE] [--view player|settings|all-settings]
                  [--search TEXT]
 
   --log-level LEVEL      log file level (default info)
@@ -21,7 +21,7 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
   --open VIDEO           play this video at once, muted
   --measure-startup FILE write the time of each startup step to FILE as JSON,
                          then close (with --open, after its first frame)
-  --view VIEW            open on this view: player (default) or all-settings
+  --view VIEW            open on this view: player (default), settings or all-settings
   --search TEXT          start All Settings with this search filled in
 
 LEVEL is trace, debug, info, warn or error.";
@@ -112,10 +112,12 @@ where
                 options.measure_startup = Some(PathBuf::from(value("--measure-startup")?))
             }
             "--view" => match value("--view")?.as_str() {
-                view @ ("player" | "all-settings") => options.view = Some(view.to_owned()),
+                view @ ("player" | "settings" | "all-settings") => {
+                    options.view = Some(view.to_owned())
+                }
                 other => {
                     return Err(format!(
-                        "unknown view {other:?}; use player or all-settings"
+                        "unknown view {other:?}; use player, settings or all-settings"
                     ))
                 }
             },
