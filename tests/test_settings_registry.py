@@ -151,6 +151,53 @@ class TestEntriesAreWellFormed( unittest.TestCase ):
         self.assertEqual( len( bu_settings.REGISTRY ), len( json.loads( text )['settings'] ) )
 
 
+class TestScreens( unittest.TestCase ):
+    """Every setting is shown somewhere: on a screen or its More options,
+    or else on All Settings alone."""
+
+    def test_every_entry_has_a_known_screen( self ):
+        for entry in bu_settings.REGISTRY:
+            self.assertIn( entry.screen, bu_settings.SCREENS, entry.dotted )
+
+    def test_a_simple_setting_is_on_a_screen_not_only_in_all_settings( self ):
+        for entry in bu_settings.REGISTRY:
+            if entry.level == bu_settings.SIMPLE:
+                self.assertNotEqual( bu_settings.SCREEN_NONE, entry.screen, entry.dotted )
+
+    def test_every_screen_but_none_holds_a_simple_setting( self ):
+        simple = { entry.screen for entry in bu_settings.REGISTRY if entry.level == bu_settings.SIMPLE }
+        self.assertEqual( set( bu_settings.SCREENS ) - { bu_settings.SCREEN_NONE }, simple )
+
+    def test_every_rule_but_the_catch_all_places_some_entry( self ):
+        used = set()
+        for entry in bu_settings.REGISTRY:
+            for index, ( pattern, _screen ) in enumerate( bu_settings.SCREEN_RULES ):
+                if bu_settings.fnmatch.fnmatchcase( entry.dotted, pattern ):
+                    used.add( index )
+                    break
+        self.assertEqual( set( range( len( bu_settings.SCREEN_RULES ) ) ), used )
+
+    def test_rules_place_these_settings_as_listed( self ):
+        expect = {
+            'encode_crf': 'run', 'video_censor_fps': 'run',
+            'items_to_censor': 'what_to_hide', 'item_overrides.<label>.censor_style': 'what_to_hide',
+            'default_time_safety': 'what_to_hide', 'detector_backend.selected': 'models',
+            'person_backend.<person_backend>.model_variant': 'models', 'gpu_enabled': 'resources',
+            'person_backend.<person_backend>.batch_size': 'resources',
+            'person_backend.<person_backend>.min_prob': 'reverse', 'reverse.enabled': 'reverse',
+            'move_completed_sources': 'library', 'default_min_prob': 'none',
+            'detector_backend.<backend>.item_overrides.<label>.time_safety': 'none',
+        }
+        got = { entry.dotted: entry.screen for entry in bu_settings.REGISTRY if entry.dotted in expect }
+        self.assertEqual( expect, got )
+
+    def test_the_schema_sends_each_screen( self ):
+        exported = bu_settings.schema()
+        self.assertEqual( list( bu_settings.SCREENS ), exported['screens'] )
+        self.assertEqual( [ entry.screen for entry in bu_settings.REGISTRY ],
+                          [ item['screen'] for item in exported['settings'] ] )
+
+
 class TestHelpAnchors( unittest.TestCase ):
 
     @classmethod
