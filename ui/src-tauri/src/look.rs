@@ -1,6 +1,6 @@
 //! Look previews for the page. The engine's `preview.look` writes each one
 //! as a PNG in its cache folder and answers with the path; the page asks
-//! the shell for the bytes and shows them from a `blob:` URL. The shell
+//! the shell for the bytes and shows them from a `data:` URL. The shell
 //! hands over only a file the engine could have written there: a canonical
 //! path whose folder is `look_previews` and whose name is 64 lowercase hex
 //! digits and `.png`, so the command cannot be used to read anything else.
