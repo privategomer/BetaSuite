@@ -890,6 +890,89 @@ def live_track_indices( tracks, reference_start, reference_t, max_age_seconds, c
     return found
 
 
+def nearest_unambiguous( candidates, x, y, w, h, settings ):
+    """
+    The key of the one candidate a box at (x, y, w, h) pairs its style
+    with, or None.
+
+    candidates are ( key, { 'x', 'y', 'w', 'h' } ) pairs: live tracks in a
+    video, boxes already resolved in a still. A candidate is near when its
+    centre is within paired_style_max_distance times the larger box side.
+    The nearest one wins only when the second nearest is at least
+    paired_style_tiebreak_margin (as a fraction) further away; two
+    candidates at much the same distance are genuinely ambiguous and the
+    box resolves on its own. See smooth_boxes's
+    nearest_unambiguous_live_track for which tracks count as live.
+    """
+    centre_x, centre_y = x + w/2, y + h/2
+    nearby = []
+    for key, other in candidates:
+        other_cx, other_cy = other['x'] + other['w']/2, other['y'] + other['h']/2
+        distance = ( ( centre_x-other_cx )**2 + ( centre_y-other_cy )**2 ) ** 0.5
+        scale = max( other['w'], other['h'], w, h )
+        if scale and distance < settings.paired_style_max_distance * scale:
+            nearby.append( ( distance, key ) )
+    if not nearby:
+        return None
+    nearby.sort()
+    if len( nearby ) == 1:
+        return nearby[0][1]
+    nearest_distance, nearest_key = nearby[0]
+    second_distance = nearby[1][0]
+    if nearest_distance == 0 or ( ( second_distance - nearest_distance )
+                                  / max( second_distance, 1e-9 )
+                                  >= settings.paired_style_tiebreak_margin ):
+        return nearest_key
+    return None  # too close to call
+
+
+def resolve_still_styles( boxes, backend_name=None, rng=None ):
+    """
+    Resolve the looks of one still image's boxes (a photo, a look
+    preview) the way smooth_boxes resolves a new track's look on a
+    video's first frame:
+
+      - label by label, in order, a box with paired_style pairs with the
+        one unambiguous nearest box of its label already resolved and
+        shares its style, shape and sticker pick; otherwise it rolls its
+        own
+      - then its geometry is padded by the resolved style's own area
+        safety, falling back to the label's
+      - its style strength scales from its own size
+
+    A still has no structure profile, so the label's base settings apply,
+    and no time, so the dwell rule never reuses a look. Nothing is
+    dropped: min_track_hits needs more than one frame.
+
+    Args:
+        boxes: censorable boxes from process_raw_box (mutated in place).
+        rng: A random.Random; default the shared generator.
+    """
+    by_label = {}
+    for box in boxes:
+        by_label.setdefault( box['label'], [] ).append( box )
+    for label, group in by_label.items():
+        settings = _LabelSettings( label, backend_name, 1.0 )
+        resolved = []
+        for box in group:
+            paired = ( nearest_unambiguous( list( enumerate( resolved ) ),
+                                            box['x'], box['y'], box['w'], box['h'], settings )
+                       if settings.paired_style else None )
+            if paired is not None:
+                for key in ( 'censor_style', 'censor_shape', 'censor_sticker_seed' ):
+                    box[key] = resolved[paired][key]
+            else:
+                box['censor_style'] = bu_censor.resolve_censor_style( box['censor_style'], rng )
+                box['censor_shape'] = bu_censor.resolve_censor_shape(
+                    box['censor_style'], box.get( 'censor_shape', 'box' ) )
+            _apply_style_area_safety( box, box['censor_style'],
+                                      settings.item_x_safety, settings.item_y_safety )
+            box['style_scale_w'] = box['w']
+            box['style_scale_h'] = box['h']
+            resolved.append( box )
+    return boxes
+
+
 class _LabelSettings:
     """Every tracking knob for one label, resolved once per label."""
 
@@ -1515,34 +1598,16 @@ def smooth_boxes( boxes, shot_cut_times=None, backend_name=None, profile_name=No
                 people at similar distance are genuinely ambiguous and
                 are left to resolve independently.
                 """
-                centre_x, centre_y = x + w/2, y + h/2
                 # Falls back to reference_start only when a caller has no
                 # true timestamp; the cut check below wants a timestamp.
                 if reference_t is None:
                     reference_t = reference_start
-                nearby = []
                 donor_max_age = min( settings.paired_style_max_age, settings.max_gap )
-                for track_index in live_track_indices( tracks, reference_start, reference_t,
-                                                       donor_max_age, cut_between,
-                                                       exclude_track_index ):
-                    track = tracks[track_index]
-                    track_cx, track_cy = track['x'] + track['w']/2, track['y'] + track['h']/2
-                    distance = ( ( centre_x-track_cx )**2 + ( centre_y-track_cy )**2 ) ** 0.5
-                    scale = max( track['w'], track['h'], w, h )
-                    if scale and distance < settings.paired_style_max_distance * scale:
-                        nearby.append( ( distance, track_index ) )
-                if not nearby:
-                    return None
-                nearby.sort()
-                if len( nearby ) == 1:
-                    return nearby[0][1]
-                nearest_distance, nearest_index = nearby[0]
-                second_distance = nearby[1][0]
-                if nearest_distance == 0 or ( ( second_distance - nearest_distance )
-                                              / max( second_distance, 1e-9 )
-                                              >= settings.paired_style_tiebreak_margin ):
-                    return nearest_index
-                return None  # too close to call
+                candidates = [ ( track_index, tracks[track_index] )
+                               for track_index in live_track_indices( tracks, reference_start, reference_t,
+                                                                      donor_max_age, cut_between,
+                                                                      exclude_track_index ) ]
+                return nearest_unambiguous( candidates, x, y, w, h, settings )
 
             # paired_style, e.g. exposed_breast: when a box of this label
             # is near exactly one other live track of the same label -

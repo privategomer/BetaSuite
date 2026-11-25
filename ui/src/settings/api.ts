@@ -24,6 +24,10 @@ export interface LabelView {
   readonly label: string;
   readonly rendered: boolean;
   readonly window: boolean;
+  // Whether the selected detector backend reports this label at all, and
+  // why not as a code with parameters.
+  readonly available?: boolean;
+  readonly unavailable?: { readonly code: string; readonly params: Readonly<Record<string, unknown>> };
   readonly fields: Readonly<Record<string, LabelField>>;
 }
 

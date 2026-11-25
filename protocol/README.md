@@ -39,7 +39,7 @@ Four commands read and change the settings. They use the same local config file 
 | command | does |
 |---|---|
 | `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the settings it requires, the cache keys it moves, and its message and help keys |
-| `config.get` | current values, with their defaults, where each came from (`default`, `local`, or `run` for an override sent with the request) and every layer that sets it; with `labels: true`, also every label as a run resolves it: each per-label value, the tier it comes from, every other tier that sets it and why it is not in effect, and a profile's value on top |
+| `config.get` | current values, with their defaults, where each came from (`default`, `local`, or `run` for an override sent with the request) and every layer that sets it; with `labels: true`, also every label as a run resolves it: each per-label value, the tier it comes from, every other tier that sets it and why it is not in effect, and a profile's value on top. A label the selected backend cannot report has `available: false` and `unavailable: {code: "label.not_in_model", params: {backend}}` |
 | `config.set` | checks a change as a run would and writes it to the local config only if it passes; `dry_run` checks without writing |
 | `config.reset` | removes settings from the local config, so the shipped values apply again |
 
@@ -79,6 +79,12 @@ A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probabi
 Order: `job.submit`'s result comes before the job's first event. A file's events come between its `started` and its ending; a job's last event is its final `job.state`. When the last job in the queue sends its final `job.state`, the run lock is already given back and `config.set` is accepted, so a client can start a command-line run or change settings as soon as it reads it. `job.progress` is coalesced to a few per second per job (the latest of each stage), and is the only event that can be dropped. A full disk stops the job and every job queued behind it with `disk.full`. When the engine shuts down (`shutdown`, end of input, a signal), a running job stops at its next safe point with `engine.stopping` and its checkpoints kept, so submitting it again continues where it was.
 
 The client must keep reading stdout while a job runs, as it does stderr: events are written as they happen, so a client that stops reading without closing the pipe stalls the job once the pipe is full. The engine also ends its jobs when the client closes stdin, so a job that keeps running after the window closes needs the client process to stay alive.
+
+## Look previews
+
+`preview.look` draws censor looks with the engine's own censor code and answers with PNG files in the cache folder. Each entry in `previews` is either a piece of the bundled figure art, `art: {style, item}` (items as `assets/art/<style>/style.json` names them: `figure.<sex>.<view>.<dress>`, `tile.<label>.<sex>`; their authored boxes stand in for detections), or any image file with `boxes`. A preview is exactly what a photo with those detections comes out as: the same steps (`betautils_still.py`) and the same censor. `labels` chooses which labels to censor (default `items_to_censor`), so a label switched off can still show its look; `seed` fixes every random pick; `overrides` are per-run settings, as in `config.get`, never written. Each result is `{path, key, cached, width, height, boxes}`, boxes being where each label is on the image (as given, before padding); `key` covers the pixels, the resolved looks, every render setting and the censor code, so an unchanged request answers `cached: true`. While a job holds the queue it answers `config.busy`. Errors: `preview.unknown_art {style, item}`, `preview.bad_image`.
+
+`config.schema` also lists the look presets (`presets`: `{id, version, name_key, style}`), each a `censor_style` value with a name.
 
 ## Catalog
 

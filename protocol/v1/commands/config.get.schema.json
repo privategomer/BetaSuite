@@ -70,6 +70,16 @@
               "label": { "type": "string" },
               "rendered": { "type": "boolean" },
               "window": { "type": "boolean" },
+              "available": { "type": "boolean", "description": "Whether the selected detector backend can report this label at all" },
+              "unavailable": {
+                "description": "Why not, when available is false",
+                "type": "object",
+                "required": [ "code", "params" ],
+                "properties": {
+                  "code": { "type": "string", "minLength": 1 },
+                  "params": { "type": "object" }
+                }
+              },
               "fields": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } }
             }
           }

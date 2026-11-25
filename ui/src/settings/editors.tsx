@@ -3,6 +3,7 @@
 // row runs the change past the engine first and shows what it costs.
 import { useState, type ComponentType } from 'react';
 import { t } from '../i18n/format';
+import { labelName } from '../i18n/labels';
 import type { EditorId, Schema, SettingSchema } from './model';
 import { GeometryActionEditor, ProfileMapEditor, PromotionEditor, RefusedPairsEditor, StyleSlot, SuppressionEditor } from './structured';
 import { noneMeaning } from './text';
@@ -19,6 +20,8 @@ export interface EditorProps {
   readonly schema: Schema;
   readonly context: EditorContext;
   readonly value: unknown;
+  // The concrete path being edited (a pattern's chosen instance), when known.
+  readonly path?: string;
   readonly onChange: ( value: unknown ) => void;
   readonly inputId: string;
   readonly disabled: boolean;
@@ -243,7 +246,7 @@ function LabelsEditor( props: EditorProps ) {
                   onChange( all.filter( ( item ) => next.has( item ) ) );
                 }}
               />
-              <code>{label}</code>
+              <span>{labelName( label )}</span>
             </label>
           ) )}
         </span>

@@ -95,8 +95,19 @@ SHORT_VALUE_CHARS = 40
 
 
 class _Missing( object ):
+    """
+    "Not set". One instance: every check is `value is MISSING`, so a copy
+    (a deepcopy of a value recorded before the file applied, a whole
+    config restored) must stay this same object, or a key the file added
+    would be put back as a stray sentinel instead of removed.
+    """
+
     def __repr__( self ):
         return '<not set>'
+
+    def __reduce__( self ):
+        # copy, deepcopy and pickle all rebuild it as the module's MISSING
+        return 'MISSING'
 
 MISSING = _Missing()
 

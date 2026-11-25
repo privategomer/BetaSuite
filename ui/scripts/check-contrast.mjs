@@ -20,6 +20,8 @@ const PAIRS = [
   [ 'status-ok', 'surface', 3, 'ready icon' ],
   [ 'status-busy', 'surface', 3, 'working icon' ],
   [ 'status-problem', 'surface', 3, 'problem icon' ],
+  [ 'status-problem', 'surface', 4.5, 'why a part cannot be hidden (tile note)' ],
+  [ 'accent', 'surface', 3, 'selected tile border' ],
   [ 'focus', 'bg', 3, 'focus ring' ],
   [ 'focus', 'surface', 3, 'focus ring on panels' ],
 ];

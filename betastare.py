@@ -17,8 +17,7 @@ Orchestration:
                 -> _censored_output_path()
                 -> _raw_boxes_for_all_sizes()      (only if output doesn't already exist)
                     -> _raw_boxes_for_size()        (cached per image+size+min_prob)
-                -> _censorable_boxes_from_raw()
-                -> _resolve_box_styles()
+                -> betautils_still.still_boxes()     (looks resolved as on a video's first frame)
                 -> betautils_censor.censor_img_for_boxes()
 """
 
@@ -41,6 +40,7 @@ import betautils_person as bu_person
 import betautils_reverse as bu_reverse
 import betautils_runlock as bu_runlock
 import betautils_signals as bu_signals
+import betautils_still  as bu_still
 import betautils_track  as bu_track
 
 
@@ -188,66 +188,6 @@ def _raw_boxes_for_all_sizes( image, session, image_hash ):
     return all_raw_boxes, used_neural_net
 
 
-def _censorable_boxes_from_raw( all_raw_boxes, img_w, img_h ):
-    """
-    Turn every raw detection (across every configured picture size) into
-    a censorable box, leaving each box's censor_style UNRESOLVED (still
-    whatever's configured - a single dict or a list to randomly choose
-    from).
-
-    Args:
-        all_raw_boxes: A list of per-size raw-box lists, as returned by
-            _raw_boxes_for_all_sizes.
-        img_w: Image width in pixels.
-        img_h: Image height in pixels.
-
-    Returns:
-        A flat list of censorable box dicts (see
-        betautils_censor.process_raw_box) across every size, with
-        unresolved censor_style.
-    """
-    parts_to_blur = bu_config.get_parts_to_blur()
-    boxes = []
-    for raw_boxes in all_raw_boxes:
-        for raw_box in raw_boxes:
-            censorable_box = bu_censor.process_raw_box( raw_box, img_w, img_h, parts_to_blur )
-            if censorable_box:
-                boxes.append( censorable_box )
-    return boxes
-
-
-def _resolve_box_styles( boxes ):
-    """
-    Resolve each box's still-unresolved censor_style/censor_shape to one
-    concrete choice, using the same resolution functions betatv.py's
-    smooth_boxes uses for tracked video detections.
-
-    betastare has no tracking concept (one photo detection IS the whole
-    instance, unlike a video track that persists across frames), so this
-    resolves once per box here rather than once per track. Skipping this
-    step is exactly what broke on any item configured with a LIST
-    censor_style (currently just exposed_breast) -
-    collapse_boxes_for_style/censor_img_for_boxes expect a resolved dict
-    and do resolved_style['type'], which raises "list indices must be
-    integers or slices, not str" the moment resolved_style is still the
-    unresolved list.
-
-    No pairing logic here (unlike betatv.py's paired_style, which makes
-    two simultaneous video instances share one rolled style) - two
-    exposed_breast detections in the same photo can each roll
-    independently; harmless today since exposed_breast's list currently
-    has only one entry anyway, and only a cosmetic mismatch (not a
-    crash) if that ever changes.
-
-    Args:
-        boxes: A list of censorable box dicts with unresolved
-            censor_style (mutated in place).
-    """
-    for box in boxes:
-        box['censor_style'] = bu_censor.resolve_censor_style( box['censor_style'] )
-        box['censor_shape'] = bu_censor.resolve_censor_shape( box['censor_style'], box.get('censor_shape', 'box') )
-
-
 def _process_one_file( root, fname, censored_folder, file_index, total_files, session, logger ):
     """
     Process exactly one file found under betaconst.picture_path_uncensored:
@@ -309,8 +249,7 @@ def _process_one_file( root, fname, censored_folder, file_index, total_files, se
         all_raw_boxes, used_neural_net = _raw_boxes_for_all_sizes( image, session, image_hash )
         after_detect_time = time.perf_counter()
 
-        boxes = _censorable_boxes_from_raw( all_raw_boxes, img_w, img_h )
-        _resolve_box_styles( boxes )
+        boxes = bu_still.still_boxes( all_raw_boxes, img_w, img_h )
         if bu_reverse.enabled():
             flat_raw = [ raw for raw_boxes in all_raw_boxes for raw in raw_boxes ]
             frame_alpha = bu_reverse.frame_alpha_for_still( flat_raw, boxes )
