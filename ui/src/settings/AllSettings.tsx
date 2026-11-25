@@ -9,12 +9,13 @@ import { costTag, screenName, settingLabel, settingTip } from './text';
 import { useSettings } from './useSettings';
 
 interface AllSettingsProps {
+  readonly initialQuery?: string;
   readonly onHelp: ( anchor: string ) => void;
 }
 
-export function AllSettings( { onHelp }: AllSettingsProps ) {
+export function AllSettings( { initialQuery = '', onHelp }: AllSettingsProps ) {
   const { settings, reload } = useSettings();
-  const [ filters, setFilters ] = useState<Filters>( NO_FILTERS );
+  const [ filters, setFilters ] = useState<Filters>( { ...NO_FILTERS, query: initialQuery } );
   const query = useDeferredValue( filters.query );
   const searchId = useId();
   const data = settings.state === 'ready' ? settings.data : settings.state === 'loading' ? settings.last : null;

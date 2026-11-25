@@ -60,6 +60,7 @@ export interface Schema {
   readonly placeholders: Readonly<Record<string, readonly string[]>>;
   readonly conditions: readonly string[];
   readonly screens: readonly Screen[];
+  readonly geometry_actions: readonly string[];
   readonly catalog: string;
   readonly help: string;
 }

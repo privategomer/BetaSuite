@@ -4,11 +4,20 @@
 import { useState, type ComponentType } from 'react';
 import { t } from '../i18n/format';
 import type { EditorId, Schema, SettingSchema } from './model';
+import { GeometryActionEditor, ProfileMapEditor, PromotionEditor, RefusedPairsEditor, StyleSlot, SuppressionEditor } from './structured';
 import { noneMeaning } from './text';
+
+// What an editor may need beyond its own value: the setting paths the
+// config holds (to list profiles) and any setting's current value.
+export interface EditorContext {
+  readonly paths: readonly string[];
+  readonly valueOf: ( path: string ) => unknown;
+}
 
 export interface EditorProps {
   readonly entry: SettingSchema;
   readonly schema: Schema;
+  readonly context: EditorContext;
   readonly value: unknown;
   readonly onChange: ( value: unknown ) => void;
   readonly inputId: string;
@@ -262,17 +271,6 @@ function ColorEditor( { value, onChange, inputId, disabled }: EditorProps ) {
   );
 }
 
-// The structured kinds until their own editors: the value as it is, and
-// reset, which the row offers.
-function ReadOnly( { value, inputId }: EditorProps ) {
-  return (
-    <span className="editor-read-only">
-      <pre id={inputId}>{JSON.stringify( value, null, 1 )}</pre>
-      <span className="editor-hint">{t( 'settings.editor.read_only' )}</span>
-    </span>
-  );
-}
-
 export const EDITORS: Readonly<Record<EditorId, ComponentType<EditorProps>>> = {
   toggle: Toggle,
   number: NumberEditor,
@@ -283,10 +281,10 @@ export const EDITORS: Readonly<Record<EditorId, ComponentType<EditorProps>>> = {
   labels: LabelsEditor,
   color: ColorEditor,
   sizes: SizesEditor,
-  style_slot: ReadOnly,
-  geometry_action: ReadOnly,
-  suppression_rules: ReadOnly,
-  promotion_rules: ReadOnly,
-  refused_pairs: ReadOnly,
-  profile_map: ReadOnly,
+  style_slot: StyleSlot,
+  geometry_action: GeometryActionEditor,
+  suppression_rules: SuppressionEditor,
+  promotion_rules: PromotionEditor,
+  refused_pairs: RefusedPairsEditor,
+  profile_map: ProfileMapEditor,
 };

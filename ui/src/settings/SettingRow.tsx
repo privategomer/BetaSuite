@@ -111,6 +111,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
   const shown = pending?.action === 'set' ? pending.value : held?.value ?? null;
   const Editor = row.editor === null ? null : EDITORS[ row.editor ];
   const valueOf = ( other: string ) => data.values.get( other )?.value;
+  const context = { paths: [ ...data.values.keys() ], valueOf };
   const missing = unmet( entry, valueOf );
   const facts = row.pattern ? labelFacts( entry.path, path, data.labels ) : null;
   const inactive = missing.length > 0 || facts?.offBy != null || facts?.unused === true;
@@ -155,6 +156,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
           <Editor
             entry={entry}
             schema={data.schema}
+            context={context}
             value={shown}
             inputId={inputId}
             disabled={applying}
