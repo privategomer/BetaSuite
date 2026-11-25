@@ -22,6 +22,7 @@ import numpy as np
 import betaconfig
 import betaconst
 import betautils_detector as bu_detector
+import betautils_models as bu_models
 
 
 def _rule( rule_id, text ):
@@ -86,13 +87,12 @@ def native_picture_sizes( config ):
 
 def detection_identity( config ):
     """
-    Settings that change this backend's raw detections: none.
-
-    Score filtering and NMS live inside the exported graph, so the only
-    inputs to a detection are the image, the size, and global_min_prob -
-    all of which betautils_cache_paths already keys on directly.
+    What changes this backend's raw detections beyond what
+    betautils_cache_paths keys on directly (the image, the size,
+    global_min_prob): only the model file itself. Score filtering and NMS
+    live inside the exported graph, so it has no settings of its own.
     """
-    return {}
+    return { 'model_sha256': bu_models.file_identity( MODEL_PATH ) }
 
 
 def validate_backend_config( config, errors ):

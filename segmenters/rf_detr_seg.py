@@ -52,6 +52,7 @@ import cv2
 import numpy as np
 
 import betautils_detector as bu_detector
+import betautils_models as bu_models
 
 
 def _rule( rule_id, text ):
@@ -139,6 +140,7 @@ def identity( config ):
     return {
         'model_variant': resolved['model_variant'],
         'model_path':    resolved['model_path'],
+        'model_sha256':  bu_models.file_identity( resolved['model_path'] ),
         'min_prob':      round( float( resolved['min_prob'] ), 6 ),
     }
 
