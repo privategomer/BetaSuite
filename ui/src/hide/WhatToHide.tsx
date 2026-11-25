@@ -16,6 +16,7 @@ import { setValues } from '../settings/api';
 import { CostNotice, refusal, type Check } from '../settings/SettingRow';
 import { SettingsFold } from '../settings/SettingsFold';
 import { useSettings, type Loaded } from '../settings/useSettings';
+import { setGuard } from '../unsaved';
 import type { PreviewRequest } from './api';
 import {
   ART_STYLE_PATH, boxPercent, byPart, DEFAULT_ART_STYLE, dressFor, figureItem, ITEMS_PATH, matchingPreset, neighbour,
@@ -252,7 +253,8 @@ function Screen( { data, onHelp, reload }: ScreenProps ) {
   const savedItems = new Set( stringList( data.values.get( ITEMS_PATH )?.value ) );
   const pendingCount = Object.keys( pending ).filter( ( path ) => path !== ITEMS_PATH ).length
     + ( ITEMS_PATH in pending ? [ ...new Set( [ ...savedItems, ...items ] ) ].filter( ( label ) => savedItems.has( label ) !== hidden.has( label ) ).length : 0 );
-  const check: Check = pendingCount === 0 ? { state: 'idle' } : answer?.to === pending ? answer.check : { state: 'checking' };
+  const check: Check = useMemo( () => ( pendingCount === 0 ? { state: 'idle' }
+    : answer?.to === pending ? answer.check : { state: 'checking' } ), [ pendingCount, answer, pending ] );
 
   const change = ( path: string, value: unknown ) => {
     setPending( ( previous ) => {
@@ -276,14 +278,23 @@ function Screen( { data, onHelp, reload }: ScreenProps ) {
     log.info( `what to hide: ${label} look ${preset.id} (pending)` );
     change( stylePath( label ), preset.style );
   };
-  const apply = () => {
+  // Resolves true once written; false when the engine refused it.
+  const apply = useCallback( (): Promise<boolean> => {
     setApplying( true );
     log.info( `what to hide: applying ${Object.keys( pending ).join( ', ' )}` );
-    setValues( pending, false ).then(
-      () => { setPending( {} ); reload(); },
-      ( error: unknown ) => { setAnswer( { to: pending, check: refusal( error ) } ); },
+    return setValues( pending, false ).then(
+      () => { setPending( {} ); reload(); return true; },
+      ( error: unknown ) => { setAnswer( { to: pending, check: refusal( error ) } ); return false; },
     ).finally( () => { setApplying( false ); } );
-  };
+  }, [ pending, reload ] );
+  const discard = useCallback( () => { setPending( {} ); }, [] );
+
+  // While changes are pending, leaving the screen or closing the window
+  // asks first (App, unsaved.ts).
+  useEffect( () => {
+    setGuard( pendingCount > 0 ? { count: pendingCount, check, apply, discard } : null );
+  }, [ pendingCount, check, apply, discard ] );
+  useEffect( () => () => { setGuard( null ); }, [] );
   const chooseStyle = ( choice: string ) => {
     setArtStyle( choice );
     log.info( `art style: ${choice}` );
@@ -414,8 +425,8 @@ function Screen( { data, onHelp, reload }: ScreenProps ) {
         <div className="hide-pending" role="region" aria-label={t( 'hide.pending.region' )}>
           <span>{t( 'hide.pending.count', { count: pendingCount } )}</span>
           <CostNotice check={check} />
-          <button type="button" className="primary" disabled={applying || check.state !== 'ok'} onClick={apply}>{t( 'hide.pending.apply' )}</button>
-          <button type="button" disabled={applying} onClick={() => { setPending( {} ); }}>{t( 'hide.pending.discard' )}</button>
+          <button type="button" className="primary" disabled={applying || check.state !== 'ok'} onClick={() => { void apply(); }}>{t( 'hide.pending.apply' )}</button>
+          <button type="button" disabled={applying} onClick={discard}>{t( 'hide.pending.discard' )}</button>
         </div>
       )}
 

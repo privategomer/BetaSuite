@@ -949,3 +949,34 @@ button.link {
 .style-field input[type="number"] {
   inline-size: 6rem;
 }
+
+/* Unapplied changes */
+
+.unsaved-dialog {
+  max-inline-size: 32rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.unsaved-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.unsaved-dialog h2 {
+  margin-block: 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.unsaved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+
+.unsaved-failed {
+  color: var(--color-status-problem);
+}
