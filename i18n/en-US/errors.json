@@ -40,6 +40,7 @@
  "error.ui.engine.request_timeout": "The engine did not answer {name} within {seconds, plural, one {# second} other {# seconds}}. It may be busy; if it stays stuck, restart it.",
  "error.ui.engine.spawn_failed": "The engine could not be started ({os_error}). The app log has details.",
  "error.ui.engine.write_failed": "The app could not send a request to the engine. Restart the engine.",
+ "error.ui.look.unreadable": "A preview picture could not be read. It is drawn again when the screen next asks for it.",
  "error.ui.video.dialog_failed": "The file dialog could not be opened. The app log has details.",
  "error.ui.video.not_found": "This file could not be opened. Check that it still exists and that you can read it.",
  "error.unknown": "Something went wrong (code {code}). The app log has details."
