@@ -179,6 +179,18 @@ def backend_names():
     return bu_detector.registered_backend_names()
 
 
+def backend_labels( name ):
+    """The labels one backend's adapter declares it can report."""
+    import betautils_detector as bu_detector
+    return bu_detector.supported_labels( name )
+
+
+def label_table():
+    """Each label's part, state (exposed, covered, none), sex (female, male, any) and figure view, in display order."""
+    import betautils_labels as bu_labels
+    return bu_labels.describe()
+
+
 def person_backend_names():
     import betautils_person as bu_person
     return bu_person.registered_backend_names()
@@ -1357,6 +1369,8 @@ def schema():
             '<model_variant>': model_variant_names(), '<person_backend>': person_backend_names(),
             '<style_type>': list( CENSOR_STYLE_TYPES ),
         },
+        'labels': label_table(),
+        'backends': { name: { 'labels': sorted( backend_labels( name ) ) } for name in backend_names() },
         'conditions': sorted( CONDITIONS ),
         'screens': list( SCREENS ),
         'geometry_actions': geometry_actions(),

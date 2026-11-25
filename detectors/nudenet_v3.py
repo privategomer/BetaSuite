@@ -115,6 +115,10 @@ _CLASS_MAP = {
 # Canonical label per native class index, precomputed once.
 _LABEL_BY_INDEX = [ _CLASS_MAP.get( native ) for native in _NATIVE_LABELS ]
 
+# The labels this backend can report, declared for the app: a label
+# outside this set is shown as unavailable while this backend is selected.
+SUPPORTED_LABELS = frozenset( label for label in _LABEL_BY_INDEX if label )
+
 # Shipped model variants. native_size is what the export was validated
 # at, and becomes the default picture size for that variant.
 VARIANTS = {

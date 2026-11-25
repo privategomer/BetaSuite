@@ -378,6 +378,50 @@
   "vision_cursor_color"
  ],
  "schema": {
+  "backends": {
+   "nudenet_v3": {
+    "labels": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ]
+   },
+   "retinanet_v2": {
+    "labels": [
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ]
+   }
+  },
   "catalog": "i18n/en-US/settings.json",
   "conditions": [
    "backend_selected",
@@ -397,6 +441,134 @@
    "flag"
   ],
   "help": "CONFIG_REFERENCE.md",
+  "labels": [
+   {
+    "id": "face_femme",
+    "part": "face",
+    "sex": "female",
+    "state": "none",
+    "view": "front"
+   },
+   {
+    "id": "face_masc",
+    "part": "face",
+    "sex": "male",
+    "state": "none",
+    "view": "front"
+   },
+   {
+    "id": "exposed_breast",
+    "part": "breast",
+    "sex": "female",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_breast",
+    "part": "breast",
+    "sex": "female",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_chest",
+    "part": "chest",
+    "sex": "male",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "exposed_armpits",
+    "part": "armpits",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_armpits",
+    "part": "armpits",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_belly",
+    "part": "belly",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_belly",
+    "part": "belly",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_vulva",
+    "part": "genitals",
+    "sex": "female",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "exposed_penis",
+    "part": "genitals",
+    "sex": "male",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_vulva",
+    "part": "genitals",
+    "sex": "female",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_buttocks",
+    "part": "buttocks",
+    "sex": "any",
+    "state": "exposed",
+    "view": "back"
+   },
+   {
+    "id": "covered_buttocks",
+    "part": "buttocks",
+    "sex": "any",
+    "state": "covered",
+    "view": "back"
+   },
+   {
+    "id": "exposed_anus",
+    "part": "anus",
+    "sex": "any",
+    "state": "exposed",
+    "view": "back"
+   },
+   {
+    "id": "covered_anus",
+    "part": "anus",
+    "sex": "any",
+    "state": "covered",
+    "view": "back"
+   },
+   {
+    "id": "exposed_feet",
+    "part": "feet",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_feet",
+    "part": "feet",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   }
+  ],
   "placeholders": {
    "<backend>": [
     "nudenet_v3",
