@@ -18,7 +18,8 @@ CUDA_PROVIDER = 'CUDAExecutionProvider'
 def _run_quiet( command, timeout=30 ):
     """( exit code, stdout + stderr ), or ( None, why ) when it could not run."""
     try:
-        done = subprocess.run( command, capture_output=True, text=True, timeout=timeout )
+        done = subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               timeout=timeout )
     except ( OSError, subprocess.SubprocessError ) as err:
         return None, str( err )
     return done.returncode, ( done.stdout or '' ) + ( done.stderr or '' )
