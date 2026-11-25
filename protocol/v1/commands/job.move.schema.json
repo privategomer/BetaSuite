@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.move.schema.json",
+  "title": "job.move",
+  "description": "Move a waiting job to another place in the queue. position counts as in job.submit and job.list: 0 is the active job, which no job can go ahead of; a position past either end is taken as that end. The result's position is where the job now is. job.bad_state for a job that is not waiting (running, paused or ended).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job",
+        "position"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "job",
+        "position"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

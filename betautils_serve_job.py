@@ -7,8 +7,10 @@ betautils_serve_job.py - the engine's job commands and job events.
     job.resume    run the paused job again from its checkpoints
     job.cancel    drop a queued job, or stop a running or paused one and
                   remove its partial outputs
+    job.list      the jobs the queue remembers, in the order they run
+    job.move      move a waiting job to another place in the queue
 
-Jobs run one at a time, in order, on one worker thread, through the same
+Jobs run one at a time, in queue order, on one worker thread, through the same
 betautils_job.Runner the command line uses. The main thread keeps reading
 commands, so pause and cancel are answered at once; they take effect at
 the pipeline's next safe point, and the job.state event says when.
@@ -363,6 +365,58 @@ class JobQueue:
         self.logger.info( "job %s: cancel requested"%( job.id, ) )
         return { 'job': job.id, 'state': job.state }
 
+    def _positions_locked( self ):
+        """{ job id: position } for the active job (0) and every waiting one, in order."""
+        order = ( [ self.active.id ] if self.active is not None else [] ) + list( self._waiting )
+        return { job_id: index for index, job_id in enumerate( order ) }
+
+    def list( self, _server, _data ):
+        """
+        Every job the queue remembers: the active one first, then the
+        waiting ones in the order they will run, then the ended ones,
+        newest first. position is None for an ended job.
+        """
+        with self._cond:
+            positions = self._positions_locked()
+            ended = [ job for job in self.jobs.values() if job.id not in positions ]
+            ordered = [ self.jobs[job_id] for job_id in sorted( positions, key=positions.get ) ]
+            rows = [ self._row( job, positions.get( job.id ) ) for job in ordered + ended[::-1] ]
+        return { 'jobs': rows }
+
+    @staticmethod
+    def _row( job, position ):
+        row = { 'job': job.id, 'state': job.state, 'position': position,
+                'files': [ entry.path for entry in job.files ], 'counts': job.counts_data(),
+                'overrides': { '.'.join( path ): value for path, value in job.overrides.items() } }
+        if job.code is not None:
+            row['code'] = job.code
+            row['params'] = job.params
+        return row
+
+    def move( self, _server, data ):
+        """
+        data: { job, position }. Only a waiting job moves; it cannot go
+        ahead of the active one. A position past either end is taken as
+        that end. The result's position is where it now is.
+        """
+        position = data.get( 'position' )
+        if isinstance( position, bool ) or not isinstance( position, int ):
+            raise _bad_params( 'position', bu_proto.REASON_MISSING if position is None else bu_proto.REASON_TYPE )
+        if position < 0:
+            raise _bad_params( 'position', bu_proto.REASON_VALUE )
+        with self._cond:
+            job = self._job( data )
+            if job.id not in self._waiting:
+                raise self._bad_state( job )
+            first = 1 if self.active is not None else 0
+            index = min( max( position - first, 0 ), len( self._waiting ) - 1 )
+            self._waiting.remove( job.id )
+            self._waiting.insert( index, job.id )
+            self._cond.notify_all()
+            now = index + first
+        self.logger.info( "job %s moved to position %d"%( job.id, now ) )
+        return { 'job': job.id, 'position': now }
+
     # --- the worker ---
 
     def _next_locked( self ):
@@ -529,6 +583,16 @@ def job_cancel( server, data ):
     return queue_for( server ).cancel( server, data )
 
 
+def job_list( server, data ):
+    """data: {}; result: { jobs }: the active job, the waiting ones in order, then the ended ones."""
+    return queue_for( server ).list( server, data )
+
+
+def job_move( server, data ):
+    """data: { job, position }; result: { job, position }. Reorders a waiting job."""
+    return queue_for( server ).move( server, data )
+
+
 def _busy( server ):
     jobs = getattr( server, 'jobs', None )
     return jobs.busy_job() if jobs is not None else None
@@ -568,6 +632,8 @@ HANDLERS = {
     'job.pause': job_pause,
     'job.resume': job_resume,
     'job.cancel': job_cancel,
+    'job.list': job_list,
+    'job.move': job_move,
     'config.get': config_get,
     'config.set': _refused_while_busy( bu_serve_config.config_set ),
     'config.reset': _refused_while_busy( bu_serve_config.config_reset ),

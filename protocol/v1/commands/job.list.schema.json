@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.list.schema.json",
+  "title": "job.list",
+  "description": "The jobs the queue remembers: the active job (running, or paused and holding the queue) at position 0, the waiting jobs in the order they will run, then the ended ones, newest first, with position null. A client reads it to rebuild its queue after it reloads or the engine restarts. overrides are the job's own, as dotted paths; code and params are there for a stopped job.",
+  "$defs": {
+    "data": {
+      "type": "object"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "jobs"
+      ],
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "job",
+              "state",
+              "position",
+              "files",
+              "counts",
+              "overrides"
+            ],
+            "properties": {
+              "job": {
+                "type": "string",
+                "minLength": 1
+              },
+              "state": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "paused",
+                  "completed",
+                  "cancelled",
+                  "stopped"
+                ]
+              },
+              "position": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "counts": {
+                "type": "object",
+                "required": [
+                  "total",
+                  "processed",
+                  "skipped",
+                  "failed"
+                ],
+                "properties": {
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "processed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "skipped": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "overrides": {
+                "type": "object"
+              },
+              "code": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
