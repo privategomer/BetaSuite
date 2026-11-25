@@ -12,9 +12,14 @@ output file.
 
 It was recorded before the CLI ran through the job runner
 (betautils_job), so it proves that routing changed no output name, key
-or byte. Hashes are compared only when ffmpeg is the version that
-recorded them, because another ffmpeg encodes other bytes; names, keys
-and rows are compared everywhere.
+or byte. The clips are built with ffmpeg, so their bytes, and the
+source hash in each output name, depend on the ffmpeg version; each
+source hash is recorded as a token naming its clip ({a.mp4}). Under the
+ffmpeg that recorded the golden everything is compared, output bytes
+included. Under another one the exit codes, the output tree and each
+stats row's identity (file, output name, the three keys, sizes, rates,
+video dimensions and frames) are compared, since detection counts and
+shot cuts follow the clip's pixels.
 
 A change that is meant to change outputs updates the golden file on
 purpose, and says so in CHANGELOG:
@@ -62,6 +67,12 @@ PINNED = (
     ( 'input_delete_probability', 0 ),
 )
 
+# Stats fields compared under any ffmpeg.
+IDENTITY_FIELDS = ( 'file', 'output', 'detection_key', 'censor_key', 'encode_key',
+                    'detector_backend', 'detector_variant', 'picture_sizes', 'video_censor_fps',
+                    'nn_batch_size', 'global_min_prob', 'preview_mode', 'preview_offset_seconds',
+                    'video_width', 'video_height', 'video_fps', 'video_frames', 'transcoded_source' )
+
 SCENARIOS = {
     'full': {},
     'preview': { 'preview_mode_enabled': True, 'preview_max_seconds': 1,
@@ -86,13 +97,39 @@ def _sha256( path ):
     return digest.hexdigest()
 
 
-def _rows( path ):
+def _tokens( value, names ):
+    """value with each source hash replaced by its clip's token."""
+    if isinstance( value, str ):
+        for file_hash, token in names.items():
+            value = value.replace( file_hash, token )
+        return value
+    if isinstance( value, list ):
+        return [ _tokens( item, names ) for item in value ]
+    if isinstance( value, dict ):
+        return { _tokens( key, names ): _tokens( item, names ) for key, item in value.items() }
+    return value
+
+
+def _rows( path, names ):
     if not os.path.exists( path ):
         return []
     with open( path, 'r', encoding='UTF-8' ) as handle:
         rows = [ json.loads( line ) for line in handle if line.strip() ]
-    return [ { key: value for key, value in sorted( row.items() ) if key not in VOLATILE_FIELDS }
-             for row in rows ]
+    return [ _tokens( { key: value for key, value in sorted( row.items() ) if key not in VOLATILE_FIELDS },
+                      names ) for row in rows ]
+
+
+def identity( produced ):
+    """What is compared under any ffmpeg."""
+    return {
+        'exit_codes': produced['exit_codes'],
+        'tree': produced['tree'],
+        'tree_after_second_run': produced['tree_after_second_run'],
+        'stats_rows_after_second_run': produced['stats_rows_after_second_run'],
+        'failures': [ row.get( 'file' ) for row in produced['failures'] ],
+        'stats': [ { key: row.get( key ) for key in IDENTITY_FIELDS } for row in produced['stats'] ],
+        'outputs': sorted( produced['sha256'] ),
+    }
 
 
 class GoldenRun( BetaTvHarness ):
@@ -110,6 +147,15 @@ class GoldenRun( BetaTvHarness ):
     def run_main( self ):
         with mock.patch.object( betatv, '_startup', return_value=self.logger ):
             return betatv.main()
+
+    def source_tokens( self ):
+        import betautils_hash as bu_hash
+        names = {}
+        for root, _dirs, files in os.walk( self.uncensored ):
+            for name in files:
+                if name.endswith( '.mp4' ):
+                    names[bu_hash.md5_for_file( os.path.join( root, name ), 16 )] = '{%s}'%( name, )
+        return names
 
     def tree( self ):
         entries = []
@@ -137,18 +183,19 @@ class GoldenRun( BetaTvHarness ):
                 setattr( betaconfig, name, value )
             harness.bu_config.invalidate_config_caches()
             self.build_tree()
+            names = self.source_tokens()
             first = self.run_main()
             produced = {
                 'exit_codes': [ first ],
-                'tree': self.tree(),
-                'stats': _rows( betaconfig.stats_path ),
-                'failures': _rows( os.path.splitext( betaconfig.stats_path )[0] + '.failures.jsonl' ),
-                'sha256': self.hashes(),
+                'tree': _tokens( self.tree(), names ),
+                'stats': _rows( betaconfig.stats_path, names ),
+                'failures': _rows( os.path.splitext( betaconfig.stats_path )[0] + '.failures.jsonl', names ),
+                'sha256': _tokens( self.hashes(), names ),
             }
             second = self.run_main()
             produced['exit_codes'].append( second )
-            produced['tree_after_second_run'] = self.tree()
-            produced['stats_rows_after_second_run'] = len( _rows( betaconfig.stats_path ) )
+            produced['tree_after_second_run'] = _tokens( self.tree(), names )
+            produced['stats_rows_after_second_run'] = len( _rows( betaconfig.stats_path, names ) )
         return produced
 
 
@@ -160,13 +207,9 @@ class TestCliOutputsMatchTheGolden( GoldenRun ):
             golden = json.load( handle )
         expected = golden['scenarios'][scenario]
         produced = self.record( scenario )
-        hashes = produced.pop( 'sha256' )
-        expected_hashes = expected.pop( 'sha256' )
-        self.assertEqual( produced, expected )
+        self.assertEqual( identity( produced ), identity( expected ) )
         if ffmpeg_version() == golden['ffmpeg']:
-            self.assertEqual( hashes, expected_hashes )
-        else:
-            self.assertEqual( sorted( hashes ), sorted( expected_hashes ) )
+            self.assertEqual( produced, expected )
 
     def test_full_run( self ):
         self._check( 'full' )

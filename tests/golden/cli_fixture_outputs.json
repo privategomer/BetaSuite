@@ -8,9 +8,9 @@
    ],
    "failures": [],
    "sha256": {
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe.mp4": "144a6ab45707505ed2096b3ad81db0d12715a1fe0ec07a1f963ec5d27b6220d2",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe.mp4": "dd3e3245775f5b94530dc5b434dc632ee6490a7fa8695b549b504472668ef783",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe.mp4": "4b86420e7c0da3e109646108dbcd98b8c2bbe552e4c1825be21930d2b462c0de"
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "144a6ab45707505ed2096b3ad81db0d12715a1fe0ec07a1f963ec5d27b6220d2",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "dd3e3245775f5b94530dc5b434dc632ee6490a7fa8695b549b504472668ef783",
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "4b86420e7c0da3e109646108dbcd98b8c2bbe552e4c1825be21930d2b462c0de"
    },
    "stats": [
     {
@@ -26,7 +26,7 @@
       "exposed_breast": 15
      },
      "nn_batch_size": 4,
-     "output": "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe.mp4",
+     "output": "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
      "picture_sizes": [
       320
      ],
@@ -82,7 +82,7 @@
       "exposed_breast": 10
      },
      "nn_batch_size": 4,
-     "output": "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe.mp4",
+     "output": "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
      "picture_sizes": [
       320
      ],
@@ -138,7 +138,7 @@
       "exposed_breast": 15
      },
      "nn_batch_size": 4,
-     "output": "c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe.mp4",
+     "output": "c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
      "picture_sizes": [
       320
      ],
@@ -184,18 +184,18 @@
    ],
    "stats_rows_after_second_run": 3,
    "tree": [
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe.mp4",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe.mp4",
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
     "empty",
     "sub",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe.mp4"
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4"
    ],
    "tree_after_second_run": [
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe.mp4",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe.mp4",
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4",
     "empty",
     "sub",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe.mp4"
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4"
    ]
   },
   "preview": {
@@ -205,9 +205,9 @@
    ],
    "failures": [],
    "sha256": {
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "43134fea3c6974156b6b0af92dac2e16cafb8b983a5119d7af720749dc64ab5e",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4": "5f4bd4c519003e884a5db0af93f730569e843148e3fd33a086497eb847389881",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "40d42f3507dd70a900ed4348d3796bf9003b4528705eb26a1abde48cdf1ee467"
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "43134fea3c6974156b6b0af92dac2e16cafb8b983a5119d7af720749dc64ab5e",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4": "5f4bd4c519003e884a5db0af93f730569e843148e3fd33a086497eb847389881",
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "40d42f3507dd70a900ed4348d3796bf9003b4528705eb26a1abde48cdf1ee467"
    },
    "stats": [
     {
@@ -223,7 +223,7 @@
       "exposed_breast": 5
      },
      "nn_batch_size": 4,
-     "output": "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
+     "output": "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
      "picture_sizes": [
       320
      ],
@@ -279,7 +279,7 @@
       "exposed_breast": 5
      },
      "nn_batch_size": 4,
-     "output": "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
+     "output": "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
      "picture_sizes": [
       320
      ],
@@ -335,7 +335,7 @@
       "exposed_breast": 5
      },
      "nn_batch_size": 4,
-     "output": "c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
+     "output": "c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
      "picture_sizes": [
       320
      ],
@@ -381,18 +381,18 @@
    ],
    "stats_rows_after_second_run": 3,
    "tree": [
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
     "empty",
     "sub",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4"
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4"
    ],
    "tree_after_second_run": [
-    "a-18730f4c0422a652-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
-    "b_silent-b90d60bed794a888-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4",
     "empty",
     "sub",
-    "sub/c-15484e45a8e7eedc-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4"
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4"
    ]
   }
  }
