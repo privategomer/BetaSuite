@@ -107,6 +107,8 @@ ERRORS = {
     'catalog.bad_folder':           ( 'reason', ),
     'catalog.bad_type':             ( 'type', ),
     'catalog.item_busy':            ( 'item', 'job' ),
+    'catalog.missing':              ( 'item', ),
+    'catalog.thumbnail_failed':     ( 'item', 'reason' ),
 }
 
 # Values of the 'reason' parameter.

@@ -83,7 +83,7 @@ class Catalog:
     """
 
     def __init__( self, path=None, clock=None, logger=None, on_change=None, busy=None,
-                  hasher=None, interval=None, settle=None, seed_folders=None ):
+                  hasher=None, interval=None, settle=None, seed_folders=None, thumbnails=True ):
         import time
         self.logger = logger
         self.store = bu_store.Store( path, clock=clock or time.time, logger=logger )
@@ -97,7 +97,9 @@ class Catalog:
             self.scanner = bu_scan.Scanner(
                 self.index, hasher=hasher, busy=busy, on_change=self._changed, logger=logger,
                 interval=bu_scan.DEFAULT_INTERVAL_SECONDS if interval is None else interval,
-                settle=bu_scan.DEFAULT_SETTLE_SECONDS if settle is None else settle )
+                settle=bu_scan.DEFAULT_SETTLE_SECONDS if settle is None else settle,
+                on_indexed=self._indexed if thumbnails else None )
+            self._busy = busy or ( lambda: False )
             if self.store.created:
                 seed( self.index, default_seed_folders() if seed_folders is None else seed_folders, logger )
             self._data_version = self.store.data_version()
@@ -182,7 +184,55 @@ class Catalog:
 
     def forget( self, digest ):
         touched = self.index.forget( digest )
+        import betautils_catalog_thumbs as bu_thumbs
+        bu_thumbs.forget( digest )
         self._changed( touched, 'scan' )
+
+    # --- thumbnails ---------------------------------------------------------
+
+    def _present_path( self, digest ):
+        for location in self.index.locations_of( digest ):
+            if location['state'] == bu_index.PRESENT and os.path.exists( location['path'] ):
+                return location['path']
+        return None
+
+    def thumbnail( self, digest, reveal=False, of='source' ):
+        """
+        An item's thumbnail as { mime, data (base64), width, height, cached }.
+
+        of 'source': the blurred one, the only kind written to disk, or with
+        reveal the clear frame, made in memory and written nowhere.
+        of 'output': the item's censored output, stored like any thumbnail.
+        """
+        import betautils_catalog_thumbs as bu_thumbs
+        self.index.item_row( digest )
+        try:
+            if of == 'output':
+                present = [ output['path'] for output in self.index.outputs_of( digest )
+                            if output['present'] and os.path.exists( output['path'] ) ]
+                if not present:
+                    raise bu_store.CatalogError( 'catalog.missing', item=digest )
+                return bu_thumbs.output_thumbnail( present[-1] )
+            path = self._present_path( digest )
+            if path is None:
+                raise bu_store.CatalogError( 'catalog.missing', item=digest )
+            return bu_thumbs.revealed( path ) if reveal else bu_thumbs.blurred( digest, path )
+        except bu_thumbs.ThumbnailError as err:
+            raise bu_store.CatalogError( 'catalog.thumbnail_failed', item=digest, reason=err.reason )
+
+    def _indexed( self, digests ):
+        """Blurred thumbnails for items just added, ahead of the library asking."""
+        import betautils_catalog_thumbs as bu_thumbs
+        for digest in sorted( digests ):
+            if self._busy():
+                return
+            path = self._present_path( digest )
+            if path is None or os.path.exists( bu_thumbs.blurred_path( digest ) ):
+                continue
+            try:
+                bu_thumbs.blurred( digest, path )
+            except bu_thumbs.ThumbnailError:
+                continue
 
     # --- reading ------------------------------------------------------------
 

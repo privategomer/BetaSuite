@@ -72,13 +72,17 @@ class Scanner:
     """
 
     def __init__( self, index, hasher=None, clock=None, busy=None, on_change=None, logger=None,
-                  interval=DEFAULT_INTERVAL_SECONDS, settle=DEFAULT_SETTLE_SECONDS, flush=None ):
+                  interval=DEFAULT_INTERVAL_SECONDS, settle=DEFAULT_SETTLE_SECONDS, flush=None,
+                  on_indexed=None ):
         self.index = index
         self.hasher = hasher or default_hasher
         self.flush = flush if flush is not None else ( flush_hashes if hasher is None else ( lambda: None ) )
         self.clock = clock or index.clock
         self.busy = busy or ( lambda: False )
         self.on_change = on_change or ( lambda items, reason: None )
+        # on_indexed( hashes ): items this scanner just added; the next
+        # task kind (blurred thumbnails) runs from it, on this thread.
+        self.on_indexed = on_indexed or ( lambda items: None )
         self.logger = logger
         self.interval = interval
         self.settle = settle
@@ -237,6 +241,7 @@ class Scanner:
         A file that changed since it was seen starts settling again.
         """
         touched = set()
+        added = set()
         hashed = 0
         for path, ( seen, _since, folder_id, chosen ) in self.ready():
             if self.busy() or self._stop.is_set():
@@ -266,8 +271,10 @@ class Scanner:
                 with self._mutex:
                     self._pending[ path ] = ( after, self.clock(), folder_id, chosen )
                 continue
-            _outcome, changed = self.index.record_hash( path, after, digest, folder_id )
+            outcome, changed = self.index.record_hash( path, after, digest, folder_id )
             touched |= changed
+            if outcome == 'added':
+                added.add( digest )
             hashed += 1
             with self._mutex:
                 if self._pending.get( path, ( None, ) )[0] == seen:
@@ -276,6 +283,8 @@ class Scanner:
             self.flush()
             touched |= self._pass_outputs()
         self._changed( touched, 'scan' )
+        if added:
+            self.on_indexed( added )
         return touched
 
     def _changed( self, touched, reason ):
