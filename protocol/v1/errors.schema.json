@@ -29,7 +29,17 @@
     { "$ref": "#/$defs/config.local_off" },
     { "$ref": "#/$defs/config.local_unparsable" },
     { "$ref": "#/$defs/config.local_unwritable" },
-    { "$ref": "#/$defs/run.locked" }
+    { "$ref": "#/$defs/run.locked" },
+    { "$ref": "#/$defs/config.busy" },
+    { "$ref": "#/$defs/job.unknown" },
+    { "$ref": "#/$defs/job.bad_state" },
+    { "$ref": "#/$defs/job.no_such_file" },
+    { "$ref": "#/$defs/job.unsafe_setting" },
+    { "$ref": "#/$defs/job.nothing_to_render" },
+    { "$ref": "#/$defs/engine.stopping" },
+    { "$ref": "#/$defs/file.failed" },
+    { "$ref": "#/$defs/disk.full" },
+    { "$ref": "#/$defs/model.load_failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -404,6 +414,126 @@
             "pid": { "type": [ "integer", "null" ] },
             "started_at": { "type": [ "number", "null" ], "description": "Epoch seconds." }
           },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.busy": {
+      "description": "A job is queued, running or paused, so the settings were not changed (config.set, config.reset) or not checked with overrides (config.get). job is the job holding the queue.",
+      "properties": {
+        "code": { "const": "config.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.unknown": {
+      "description": "No job has this id, or it ended long enough ago to be forgotten.",
+      "properties": {
+        "code": { "const": "job.unknown" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.bad_state": {
+      "description": "The job is not in a state this command applies to: pause needs a running job, resume a paused one, cancel one that has not ended. state is the job's state.",
+      "properties": {
+        "code": { "const": "job.bad_state" },
+        "params": {
+          "type": "object",
+          "required": [ "job", "state" ],
+          "properties": { "job": { "type": "string" }, "state": { "enum": [ "queued", "running", "paused", "completed", "cancelled", "stopped" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.no_such_file": {
+      "description": "A chosen file does not exist or is not a file. index is its place in files, from 0.",
+      "properties": {
+        "code": { "const": "job.no_such_file" },
+        "params": {
+          "type": "object",
+          "required": [ "index" ],
+          "properties": { "index": { "type": "integer", "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.unsafe_setting": {
+      "description": "The settings this job would run with include one the engine will not run unattended. path names it: input_delete_probability above 0 deletes sources, which the command line asks about first.",
+      "properties": {
+        "code": { "const": "job.unsafe_setting" },
+        "params": {
+          "type": "object",
+          "required": [ "path" ],
+          "properties": { "path": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.nothing_to_render": {
+      "description": "The settings this job would run with censor nothing, so it would change no frame.",
+      "properties": {
+        "code": { "const": "job.nothing_to_render" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "engine.stopping": {
+      "description": "The engine is shutting down: a job.submit refused, or the code of a job stopped by the shutdown, with its checkpoints kept.",
+      "properties": {
+        "code": { "const": "engine.stopping" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "file.failed": {
+      "description": "One file of a job failed; the job went on with the next. exception_type is the failure's Python type, never its message. stage is where it was: prepare, detect, persons or render.",
+      "properties": {
+        "code": { "const": "file.failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type", "stage" ],
+          "properties": { "exception_type": { "type": "string" }, "stage": { "enum": [ "prepare", "detect", "persons", "render" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "disk.full": {
+      "description": "A disk filled, so the job, and every job queued after it, stopped. Finished outputs are kept and skipped next time; the file that failed is rebuilt. free_bytes is the space left in the output folder, or null when it could not be read.",
+      "properties": {
+        "code": { "const": "disk.full" },
+        "params": {
+          "type": "object",
+          "required": [ "free_bytes" ],
+          "properties": { "free_bytes": { "type": [ "integer", "null" ], "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.load_failed": {
+      "description": "The detection model did not load, so the job stopped before its first file. exception_type is the failure's Python type.",
+      "properties": {
+        "code": { "const": "model.load_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type" ],
+          "properties": { "exception_type": { "type": "string" } },
           "additionalProperties": false
         }
       }

@@ -87,6 +87,18 @@ ERRORS = {
     'config.local_unparsable':      (),
     'config.local_unwritable':      ( 'reason', ),
     'run.locked':                   ( 'program', 'pid', 'started_at' ),
+    'config.busy':                  ( 'job', ),
+    # job.*: why a job command was refused
+    'job.unknown':                  ( 'job', ),
+    'job.bad_state':                ( 'job', 'state' ),
+    'job.no_such_file':             ( 'index', ),
+    'job.unsafe_setting':           ( 'path', ),
+    'job.nothing_to_render':        (),
+    'engine.stopping':              (),
+    # job.error events, and the code of a 'stopped' job.state
+    'file.failed':                  ( 'exception_type', 'stage' ),
+    'disk.full':                    ( 'free_bytes', ),
+    'model.load_failed':            ( 'exception_type', ),
 }
 
 # Values of the 'reason' parameter.

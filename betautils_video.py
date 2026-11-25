@@ -408,7 +408,7 @@ def probe_video_ok( filepath, timeout=120 ):
     command = [ "ffprobe", '-v', 'error', '-select_streams', 'v:0',
                 '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', filepath ]
     try:
-        result = subprocess.run( command, capture_output=True, timeout=timeout )
+        result = subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout )
     except Exception:
         return False
     if result.returncode != 0:
@@ -427,7 +427,7 @@ def video_file_has_audio( filepath, timeout=120 ):
     command = [ "ffprobe", '-loglevel', 'error',
                 '-show_entries', 'stream=index,codec_type', '-of', 'csv=p=0', filepath ]
     try:
-        result = subprocess.run( command, capture_output=True, timeout=timeout )
+        result = subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout )
     except Exception:
         return False
     if result.returncode != 0:
@@ -452,7 +452,7 @@ def probe_stream_info( filepath, timeout=120 ):
                 'stream=codec_name,width,height,avg_frame_rate,nb_frames,duration',
                 '-of', 'default=noprint_wrappers=1:nokey=0', filepath ]
     try:
-        result = subprocess.run( command, capture_output=True, timeout=timeout, text=True )
+        result = subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout, text=True )
     except Exception:
         return {}
     if result.returncode != 0:
@@ -561,7 +561,7 @@ def _transcode_to_h264( source_path, file_hash, logger, timeout=3600 ):
         result = subprocess.run(
             [ ffmpeg_bin, '-y', '-i', source_path, '-c:v', 'libx264',
               '-preset', 'veryfast', '-crf', '18', '-c:a', 'copy', transcoded_path ],
-            capture_output=True, timeout=timeout, text=True )
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout, text=True )
     except subprocess.TimeoutExpired:
         logger.warning( "system ffmpeg transcode timed out after %ds for %s"%(timeout, source_path) )
         _remove_quietly( transcoded_path )
@@ -1114,6 +1114,10 @@ class BackgroundShotCutScan( object ):
         if self._error is not None:
             raise self._error
         return self._cuts
+
+    def wait( self ):
+        """Wait for the scan to end, whatever its result, without raising."""
+        self._thread.join()
 
 
 def shot_cuts_for_source( source, file_hash, sample_fps, threshold,

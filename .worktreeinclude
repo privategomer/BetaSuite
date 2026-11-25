@@ -1,2 +1,2 @@
-# Ignored files copied into each new git worktree (gitignore syntax)
-/betaconfig_local.py
+# Ignored files copied into each new git worktree (gitignore syntax).
+# Empty: settings and data live in the OS folders, shared by every checkout.

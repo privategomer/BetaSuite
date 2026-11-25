@@ -22,6 +22,7 @@ and (in the per-frame case) produced 16KB of carriage-return spam per
 video in the earlier logs.
 """
 
+import errno
 import json
 import logging
 import os
@@ -307,6 +308,26 @@ def close_logger( logger ):
             pass
 
 
+class LogFileHandler( logging.FileHandler ):
+    """
+    The log file. A full disk gives up the space reserve (ensure_reserve)
+    and writes the line that did not fit, so a disk that fills during a
+    run does not leave a hole in the log. A full disk once did.
+    """
+
+    def handleError( self, record ):
+        err = sys.exc_info()[1]
+        if isinstance( err, OSError ) and err.errno == errno.ENOSPC and self.stream is not None \
+                and release_reserve():
+            try:
+                # The line is still in the stream's buffer: write it, once.
+                self.stream.flush()
+                return
+            except OSError:
+                pass
+        super().handleError( record )
+
+
 def tool_logger( name, log_path=None, file_level='info', console_level='info', file_mode='a',
                  file_format=FILE_FORMAT, console_format=CONSOLE_FORMAT, console_stream=None ):
     """
@@ -339,7 +360,7 @@ def tool_logger( name, log_path=None, file_level='info', console_level='info', f
         log_dir = os.path.dirname( log_path )
         if log_dir:
             os.makedirs( log_dir, exist_ok=True )
-        file_handler = logging.FileHandler( log_path, mode=file_mode, encoding='UTF-8' )
+        file_handler = LogFileHandler( log_path, mode=file_mode, encoding='UTF-8' )
         file_handler.setLevel( _as_level( file_level ) )
         file_handler.setFormatter( logging.Formatter( file_format ) )
         logger.addHandler( file_handler )
@@ -395,7 +416,7 @@ def _build_configured_logger():
         log_dir = os.path.dirname( log_path )
         if log_dir:
             os.makedirs( log_dir, exist_ok=True )
-        file_handler = logging.FileHandler( log_path, encoding='UTF-8' )
+        file_handler = LogFileHandler( log_path, encoding='UTF-8' )
         file_handler.setLevel( file_level )
         file_handler.setFormatter( logging.Formatter( FILE_FORMAT ) )
         logger.addHandler( file_handler )
@@ -438,6 +459,26 @@ def reset_logger_for_tests():
 
 
 # --- Progress reporting -----------------------------------------------------
+
+_progress_sink = None
+
+
+def set_progress_sink( sink ):
+    """
+    Send every ProgressReporter's counts to sink( label, done, total,
+    rate ) as well, at most once per min_interval each and once at
+    finish; None stops it. Returns the previous sink. The engine's job
+    runner sets one for the length of a file (job.progress events); with
+    none set, which is the command line's case, nothing extra runs.
+
+    sink is called with the reporter's lock held, from whichever thread
+    reported (render workers included), so it must be quick and must not
+    report progress itself.
+    """
+    global _progress_sink
+    previous, _progress_sink = _progress_sink, sink
+    return previous
+
 
 class ProgressReporter:
     """
@@ -483,6 +524,10 @@ class ProgressReporter:
         self._lock = threading.Lock()
         self._isatty = bool( getattr( sys.stdout, 'isatty', lambda: False )() )
         self._phase = phase_of( label ) if self._isatty and color_enabled( sys.stdout ) else None
+        # For the progress sink: the first count seen and when, so a stage
+        # resumed from a checkpoint reports the rate of this run's work.
+        self._last_notify = 0.0
+        self._first = None
 
     def _format( self, current ):
         elapsed = max( time.monotonic() - self._start, 1e-6 )
@@ -519,7 +564,13 @@ class ProgressReporter:
             self._report_locked( now, current )
 
     def _report_locked( self, now, current ):
-        """Paint and log if their intervals are up. The caller holds the lock."""
+        """Paint, log and notify the sink if their intervals are up. The caller holds the lock."""
+        if self._first is None:
+            self._first = ( current, now )
+        sink = _progress_sink
+        if sink is not None and ( now - self._last_notify ) >= self.min_interval:
+            self._last_notify = now
+            self._notify( sink, now, current )
         if self._isatty and ( now - self._last_paint ) >= self.min_interval:
             self._last_paint = now
             line = self._format( current )
@@ -532,9 +583,18 @@ class ProgressReporter:
             self._last_log = now
             self.logger.log( self.level, self._format( current ) )
 
+    def _notify( self, sink, now, current ):
+        first_count, first_time = self._first if self._first is not None else ( current, now )
+        elapsed = now - first_time
+        rate = ( current - first_count ) / elapsed if elapsed > 0 else 0.0
+        sink( self.label, current, self.total, rate )
+
     def finish( self, note=None ):
-        """Clear the in-place line and emit one summary record."""
+        """Clear the in-place line, tell the sink the last count, and emit one summary record."""
         with self._lock:
+            sink = _progress_sink
+            if sink is not None:
+                self._notify( sink, time.monotonic(), self._current )
             if self._painted:
                 sys.stdout.write( "\r\033[K" )
                 sys.stdout.flush()
@@ -616,19 +676,112 @@ def write_failure( record ):
 
 
 def _append_record( path, record, what ):
-    """Append record as one JSON line to path; log and swallow any failure."""
+    """
+    Append record as one JSON line to path; log and swallow any failure.
+
+    A line is never left torn. It goes in one append; when the disk is
+    full part way (ENOSPC, or a short write), the file is cut back to
+    where it was, the space reserve is given up (ensure_reserve) and the
+    line is written again. A full disk once cut the failures file off
+    mid-record and left holes in the log, exactly when the record of
+    what failed mattered most.
+    """
     payload = dict( record )
     payload.setdefault( 'timestamp', time.time() )
     try:
         directory = os.path.dirname( path )
         if directory:
             os.makedirs( directory, exist_ok=True )
-        line = json.dumps( payload, default=str ) + "\n"
+        line = ( json.dumps( payload, default=str ) + "\n" ).encode( 'UTF-8' )
         with _stats_lock:
-            with open( path, 'a', encoding='UTF-8' ) as fout:
-                fout.write( line )
+            try:
+                _append_whole( path, line )
+            except OSError as err:
+                if err.errno != errno.ENOSPC or not release_reserve():
+                    raise
+                get_logger().warning( "the disk is full: gave up the space reserve to record a %s"%( what, ) )
+                _append_whole( path, line )
     except Exception as err:
         get_logger().warning( "failed to write %s: %s"%( what, err ) )
+
+
+# The one write the record appends make; tests replace it to fill the disk.
+_write = os.write
+
+
+def _append_whole( path, line ):
+    """Append line in full, or leave the file as it was and raise OSError."""
+    fd = os.open( path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644 )
+    try:
+        start = os.fstat( fd ).st_size
+        written = 0
+        try:
+            while written < len( line ):
+                count = _write( fd, line[written:] )
+                if count <= 0:
+                    raise OSError( errno.ENOSPC, os.strerror( errno.ENOSPC ) )
+                written += count
+        except OSError:
+            if written:
+                try:
+                    os.ftruncate( fd, start )
+                except OSError:
+                    pass
+            raise
+    finally:
+        os.close( fd )
+
+
+# --- Space reserve ----------------------------------------------------------------
+
+RESERVE_NAME = '.space-reserve'
+RESERVE_BYTES = 4 * 1024 * 1024
+
+
+def reserve_path():
+    """The reserve file, in the folder the stats and failures files are in."""
+    return os.path.join( os.path.dirname( os.path.abspath( configured_stats_path() ) ), RESERVE_NAME )
+
+
+def ensure_reserve( size=RESERVE_BYTES ):
+    """
+    Keep a few MiB of disk set aside beside the stats file, so a disk
+    that fills during a run still has room for the failure record and
+    the log lines after it. Made at the start of each job; given up by
+    release_reserve when a write finds the disk full. Never fatal.
+    """
+    path = reserve_path()
+    try:
+        if os.path.exists( path ) and os.path.getsize( path ) >= size:
+            return True
+        os.makedirs( os.path.dirname( path ), exist_ok=True )
+        fd = os.open( path, os.O_WRONLY | os.O_CREAT, 0o644 )
+        try:
+            if hasattr( os, 'posix_fallocate' ):
+                os.posix_fallocate( fd, 0, size )
+            else:
+                os.ftruncate( fd, 0 )
+                block = b'\0' * ( 1 << 20 )
+                for _ in range( size // len( block ) ):
+                    os.write( fd, block )
+        finally:
+            os.close( fd )
+        return True
+    except OSError:
+        try:
+            os.remove( path )
+        except OSError:
+            pass
+        return False
+
+
+def release_reserve():
+    """Delete the space reserve. True if there was one to give up."""
+    try:
+        os.remove( reserve_path() )
+        return True
+    except OSError:
+        return False
 
 
 # --- Unfinished-run detection -------------------------------------------------
