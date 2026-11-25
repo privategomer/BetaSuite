@@ -79,6 +79,30 @@
           "type": "object",
           "additionalProperties": { "type": "array", "items": { "type": "string" } }
         },
+        "labels": {
+          "description": "Every label, in display order. Strings, not enums, so a newer model's labels need no protocol change.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "id", "part", "state", "sex", "view" ],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "part": { "type": "string", "minLength": 1 },
+              "state": { "type": "string", "minLength": 1 },
+              "sex": { "type": "string", "minLength": 1 },
+              "view": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "backends": {
+          "description": "Each detector backend and the labels its adapter declares it can report.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [ "labels" ],
+            "properties": { "labels": { "type": "array", "items": { "type": "string" } } }
+          }
+        },
         "conditions": { "type": "array", "items": { "type": "string" } },
         "geometry_actions": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "screens": { "type": "array", "items": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "other" ] }, "uniqueItems": true },
