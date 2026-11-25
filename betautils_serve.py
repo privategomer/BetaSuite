@@ -42,6 +42,7 @@ only; the engine modules are imported in run(), after isolate_stdio().
 
 import faulthandler
 import io
+import json
 import os
 import platform
 import signal
@@ -65,6 +66,12 @@ EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'jo
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
+
+# Results whose fields never reach the log, whatever its level: an
+# image of a source (a revealed thumbnail) must not be written anywhere,
+# and the trace of every message would otherwise put its first bytes in
+# the engine's log file.
+_NOT_LOGGED = { 'catalog.thumbnail': ( 'data', ) }
 
 _COMMANDS = {}
 
@@ -226,6 +233,18 @@ def _preview( line ):
     return text
 
 
+def _loggable( message, line ):
+    """The line as the log may see it: _NOT_LOGGED fields replaced by their length."""
+    hidden = _NOT_LOGGED.get( message.get( 'name' ) ) if isinstance( message, dict ) else None
+    data = message.get( 'data' ) if hidden else None
+    if not isinstance( data, dict ) or not any( field in data for field in hidden ):
+        return line
+    shown = dict( message, data={ key: ( '<%d characters not logged>'%( len( value ), )
+                                         if key in hidden and isinstance( value, str ) else value )
+                                  for key, value in data.items() } )
+    return json.dumps( shown ).encode( 'utf-8' )
+
+
 def _traces( logger ):
     import betautils_log as bu_log
     levels = [ handler.level for handler in logger.handlers ]
@@ -357,7 +376,7 @@ class Server:
             self.stopping = True
             return
         if self._log_messages:
-            self._logger.trace( "send %s", _preview( line[:-1] ) )
+            self._logger.trace( "send %s", _preview( _loggable( message, line[:-1] ) ) )
 
 
 # --- Built-in commands --------------------------------------------------------
