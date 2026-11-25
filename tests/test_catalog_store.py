@@ -169,13 +169,13 @@ class TestNewerFile( _Tmp ):
         db = sqlite3.connect( self.path, isolation_level=None )
         db.execute( 'PRAGMA user_version = %d'%( bu_store.LATEST_VERSION + 1 ) )
         db.close()
-        before = open( self.path, 'rb' ).read()
+        before = _read( self.path )
         with self.assertRaises( bu_store.CatalogError ) as caught:
             bu_store.Store( self.path, clock=self.clock )
         self.assertEqual( caught.exception.code, 'catalog.too_new' )
         self.assertEqual( caught.exception.params,
                           { 'version': bu_store.LATEST_VERSION + 1, 'supported': bu_store.LATEST_VERSION } )
-        self.assertEqual( open( self.path, 'rb' ).read(), before )
+        self.assertEqual( _read( self.path ), before )
 
     def test_a_refused_open_gives_the_lock_back( self ):
         db = sqlite3.connect( self.path, isolation_level=None )
@@ -265,6 +265,11 @@ class TestLock( _Tmp ):
         child.stdin.close()
         child.wait( 30 )
         bu_store.Store( self.path, exclusive=True ).close()
+
+
+def _read( path ):
+    with open( path, 'rb' ) as handle:
+        return handle.read()
 
 
 class _Logger:

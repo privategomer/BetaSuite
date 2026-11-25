@@ -92,7 +92,7 @@ class Stat:
 
     @classmethod
     def of( cls, result ):
-        return cls( result.st_size, result.st_mtime_ns, result.st_dev, result.st_ino )
+        return cls( result.st_size, result.st_mtime_ns, signed64( result.st_dev ), signed64( result.st_ino ) )
 
     def same_file( self, other ):
         return ( self.size, self.mtime_ns ) == ( other.size, other.mtime_ns )
@@ -108,6 +108,20 @@ class Stat:
 
     def __repr__( self ):
         return 'Stat(%d, %d, %d, %d)'%( self.size, self.mtime_ns, self.dev, self.ino )
+
+
+def signed64( value ):
+    """
+    value as a signed 64-bit integer, which is what SQLite stores. Windows
+    reports file ids as unsigned 64-bit (and ReFS as 128-bit), so a large
+    one would not fit. The same file always folds to the same number, and
+    the four facts are compared together, so a fold shared by two files
+    would also need their size and mtime to the nanosecond to match.
+    """
+    value = int( value )
+    while value >= 1 << 64:
+        value = ( value & ( ( 1 << 64 ) - 1 ) ) ^ ( value >> 64 )
+    return value - ( 1 << 64 ) if value >= 1 << 63 else value
 
 
 def _row_stat( row ):

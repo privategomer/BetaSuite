@@ -521,6 +521,43 @@ class TestSeeding( _CatalogTest ):
             bu_index.norm( os.path.join( old, 'source' ) ), bu_index.norm( os.path.join( old, 'uncensored_vids' ) ) ] )
 
 
+class TestStatOnWindows( unittest.TestCase ):
+    """Windows file ids are unsigned 64-bit, ReFS ones 128-bit; SQLite stores signed 64."""
+
+    def test_every_64_bit_id_fits_sqlite_one_to_one( self ):
+        # NTFS ids are unsigned 64-bit: all of them map one to one.
+        values = [ 0, 1, ( 1 << 63 ) - 1, 1 << 63, ( 1 << 63 ) + 1, ( 1 << 64 ) - 2, ( 1 << 64 ) - 1 ]
+        folded = [ bu_index.signed64( value ) for value in values ]
+        for value in folded:
+            self.assertTrue( -( 1 << 63 ) <= value < 1 << 63 )
+        self.assertEqual( len( set( folded ) ), len( values ) )
+        self.assertEqual( folded[:3], values[:3], 'ids that fit are stored as they are' )
+
+    def test_a_wider_id_still_fits( self ):
+        # ReFS ids are 128-bit: folded into range (the size and mtime are
+        # compared with it, so a shared fold alone never joins two files).
+        for value in ( 1 << 64, ( 1 << 127 ) + 12345, ( 1 << 128 ) - 1 ):
+            self.assertTrue( -( 1 << 63 ) <= bu_index.signed64( value ) < 1 << 63 )
+
+    def test_a_location_with_a_large_file_id_is_stored( self ):
+        root = tempfile.mkdtemp( prefix='catalog-ids-' )
+        self.addCleanup( shutil.rmtree, root, ignore_errors=True )
+        store = bu_store.Store( os.path.join( root, 'c.sqlite' ) )
+        self.addCleanup( store.close )
+        index = bu_index.Index( store )
+        path = os.path.join( root, 'x.mp4' )
+        open( path, 'wb' ).close()
+
+        class Result:
+            st_size, st_mtime_ns, st_dev, st_ino = 5, 7, ( 1 << 64 ) - 3, ( 1 << 64 ) - 1
+
+        file_stat = bu_index.Stat.of( Result )
+        index.record_hash( path, file_stat, 'a' * 16 )
+        os.remove( path )
+        moved = os.path.join( root, 'y.mp4' )
+        self.assertEqual( index.observe( moved, file_stat )[0], 'moved' )
+
+
 class TestSchedule( unittest.TestCase ):
     def scanner( self, interval ):
         class _Index:
