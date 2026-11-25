@@ -42,7 +42,7 @@ def read_version_file( path=VERSION_FILE ):
 
 def _git( repo_dir, *args ):
     result = subprocess.run( [ 'git', '-C', repo_dir ] + list( args ), capture_output=True,
-                             text=True, timeout=5 )
+                             text=True, timeout=5, stdin=subprocess.DEVNULL )
     if result.returncode != 0:
         raise RuntimeError( result.stderr.strip() )
     return result.stdout.strip()

@@ -1145,6 +1145,33 @@ def select_profile_name( cuts_per_min, backend_name=None, source_path=None,
                               short_shot_fraction )[0]
 
 
+class Reason( str ):
+    """
+    Which rule chose a structure profile: the short phrase the run log
+    prints, carrying a stable code and params for the engine's
+    job.decision event. A str, so every caller that formats or compares
+    the phrase is unaffected.
+
+    Codes: forced, forced_unknown {requested}, path_pattern,
+    source_folder {folder}, disabled, no_profiles, all_manual, default,
+    default_unusable, measured {signal}.
+    """
+
+    def __new__( cls, text, code, **params ):
+        reason = super().__new__( cls, text )
+        reason.code = code
+        reason.params = params
+        return reason
+
+    def __reduce__( self ):
+        # copy, deepcopy and pickle rebuild it from the phrase, code and params.
+        return ( _reason, ( str( self ), self.code, self.params ) )
+
+
+def _reason( text, code, params ):
+    return Reason( text, code, **params )
+
+
 def declared_profile_selection( source_path=None, backend_name=None ):
     """
     The profile someone DECLARED for this video, before anything is measured.
@@ -1171,20 +1198,21 @@ def declared_profile_selection( source_path=None, backend_name=None ):
     # describes.
     forced = getattr( betaconfig, 'force_structure_profile', None )
     if forced:
-        return ( ( forced, 'forced by --profile' ) if forced in variants
-                 else ( None, 'forced profile %r is not a variant'%(forced,) ) )
+        return ( ( forced, Reason( 'forced by --profile', 'forced' ) ) if forced in variants
+                 else ( None, Reason( 'forced profile %r is not a variant'%(forced,), 'forced_unknown',
+                                      requested=forced ) ) )
 
     # A path rule is a standing explicit choice, so it outranks the cut
     # rate and the off switch for the same reason --profile does. It loses
     # to --profile, which is the one-off override.
     by_path = profile_for_path( source_path, backend_name )
     if by_path:
-        return ( by_path, 'matched profile_by_path_pattern' )
+        return ( by_path, Reason( 'matched profile_by_path_pattern', 'path_pattern' ) )
 
     # The folder convention. Below path patterns, above measurement.
     by_dir, matched_key = source_dir_rule( source_path, backend_name )
     if by_dir:
-        return ( by_dir, 'source folder %s/'%( matched_key, ) )
+        return ( by_dir, Reason( 'source folder %s/'%( matched_key, ), 'source_folder', folder=matched_key ) )
 
     return None
 
@@ -1270,10 +1298,10 @@ def measured_profile_selection( cuts_per_min, backend_name=None, short_shot_frac
     # off changed the output filename and not the output - the most
     # confusing possible failure, because it looks like it worked.
     if not getattr( betaconfig, 'default_profile_enabled', True ):
-        return ( None, 'profiles disabled' )
+        return ( None, Reason( 'profiles disabled', 'disabled' ) )
 
     if not variants:
-        return ( None, 'backend has no profiles' )
+        return ( None, Reason( 'backend has no profiles', 'no_profiles' ) )
 
     # manual_only profiles are invisible to automatic selection. They
     # exist so a profile can be written for footage the cut rate cannot
@@ -1282,12 +1310,12 @@ def measured_profile_selection( cuts_per_min, backend_name=None, short_shot_frac
     auto = { name: variant for name, variant in variants.items()
              if not variant.get( 'manual_only' ) }
     if not auto:
-        return ( None, 'every profile is manual_only' )
+        return ( None, Reason( 'every profile is manual_only', 'all_manual' ) )
 
     default_name = profiles.get( 'default' )
-    fallback = ( ( default_name, 'the configured default' )
+    fallback = ( ( default_name, Reason( 'the configured default', 'default' ) )
                  if default_name in auto
-                 else ( None, 'the default names no auto-selectable variant' ) )
+                 else ( None, Reason( 'the default names no auto-selectable variant', 'default_unusable' ) ) )
 
     match_on = profiles.get( 'match_on', 'cuts_per_min' )
     threshold_key = PROFILE_THRESHOLD_KEYS.get( match_on )
@@ -1312,7 +1340,7 @@ def measured_profile_selection( cuts_per_min, backend_name=None, short_shot_frac
             best_name, best_threshold = name, threshold
 
     if best_name is not None:
-        return ( best_name, 'measured %s'%( match_on, ) )
+        return ( best_name, Reason( 'measured %s'%( match_on, ), 'measured', signal=match_on ) )
     return fallback
 
 

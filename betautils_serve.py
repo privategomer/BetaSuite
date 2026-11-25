@@ -59,8 +59,8 @@ EXIT_TERMINATED = 143
 # Allowed before hello.
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
-# Events the engine can send. The job events will join them.
-EVENTS = ( bu_proto.REJECTED_EVENT, )
+# Events the engine can send.
+EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -246,10 +246,25 @@ class Server:
         self.limit = limit
         self.protocol = None
         self.stopping = False
+        self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
+        self._after_reply = []
 
     @property
     def command_names( self ):
         return sorted( self._commands )
+
+    def after_reply( self, callback ):
+        """Run callback() once the result of the command being handled has been sent."""
+        self._after_reply.append( callback )
+
+    def send_event( self, name, data ):
+        """Send one event. Thread-safe."""
+        self._send( bu_proto.event( name, data ) )
+
+    def stop_jobs( self ):
+        """Stop the job queue, if one was made: on shutdown, end of input or a signal."""
+        if self.jobs is not None:
+            self.jobs.stop()
 
     def serve( self ):
         """Serve until shutdown, end of input, or a client that went away. Returns 0."""
@@ -289,6 +304,7 @@ class Server:
             self._reply_error( bu_proto.ProtocolError(
                 'command.unknown', { 'name': command.name }, command.id, command.name ) )
             return
+        self._after_reply = []
         try:
             data = handler( self, command.data )
         except bu_proto.ProtocolError as err:
@@ -300,6 +316,9 @@ class Server:
             self._reply_internal( command.id, command.name, err )
             return
         self._send_result( bu_proto.ok_result( command.id, command.name, {} if data is None else data ) )
+        callbacks, self._after_reply = self._after_reply, []
+        for callback in callbacks:
+            callback()
 
     def _reply_error( self, err ):
         # No readable id: nothing to answer, so say which line was refused.
@@ -386,6 +405,12 @@ from betautils_serve_config import HANDLERS as _CONFIG_HANDLERS   # noqa: E402  
 for _name, _handler in _CONFIG_HANDLERS.items():
     register( _name, _handler )
 
+# job.submit, job.pause, job.resume, job.cancel; and config.get, set and
+# reset again, wrapped so they respect a busy job queue.
+from betautils_serve_job import HANDLERS as _JOB_HANDLERS   # noqa: E402
+for _name, _handler in _JOB_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 
@@ -444,6 +469,12 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
         logger.warning( "terminated, stopping" )
         exit_code = EXIT_TERMINATED
     finally:
+        # A running job stops at its next safe point, keeping its
+        # checkpoints, before the streams close.
+        try:
+            server.stop_jobs()
+        except BaseException:
+            logger.error( "the job queue did not stop cleanly", exc_info=True )
         stray.flush()
         for stream in ( proto_out, proto_in ):
             try:

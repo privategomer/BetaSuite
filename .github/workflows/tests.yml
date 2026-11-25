@@ -24,6 +24,10 @@ jobs:
     name: tests (linux, full suite)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      # The golden output test compares output bytes here, and only here
+      # (tests/test_cli_outputs_golden.py says why).
+      BETASUITE_GOLDEN_BYTES: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -31,25 +35,38 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
-      # The Ubuntu mirror is sometimes slow enough to take most of the job,
-      # so the downloaded packages are cached and reused on later runs.
-      # Recommends (hardware video drivers and the like) are left out.
-      - name: Restore ffmpeg packages
-        uses: actions/cache@v6
-        with:
-          path: ~/apt-archives
-          key: apt-ffmpeg-${{ runner.os }}-ubuntu-24.04-v1
-      - name: Install ffmpeg
-        timeout-minutes: 25
-        run: |
-          mkdir -p ~/apt-archives/partial
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" ffmpeg
-          sudo chown -R "$USER" ~/apt-archives
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
+      # The one pinned ffmpeg build (tools/lib/ffmpeg_pin.json, which the
+      # app's bundle reads too), checked by SHA-256 and cached by the pin.
+      # apt went through the runners' Ubuntu mirror, which took up to 20
+      # minutes.
+      - name: Restore ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: ~/ffmpeg-pin
+          key: ffmpeg-pin-${{ runner.os }}-${{ hashFiles('tools/lib/ffmpeg_pin.json') }}
+      - name: Install the pinned ffmpeg
+        timeout-minutes: 5
+        run: |
+          bin_dir="$(python tools/lib/ffmpeg_pin.py ~/ffmpeg-pin --build linux64)"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+          "$bin_dir/ffmpeg" -hide_banner -version | head -1
       - name: Run tests
         run: bash tests/run_tests.sh
+      # A golden output file recorded in this environment, from every run:
+      # a change meant to change outputs checks this file in (never one
+      # recorded on a developer's machine).
+      - name: Record the golden outputs
+        if: always()
+        run: python -m tests.test_cli_outputs_golden write "$RUNNER_TEMP/cli_fixture_outputs.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cli-fixture-outputs
+          path: ${{ runner.temp }}/cli_fixture_outputs.json
+          retention-days: 30
+          if-no-files-found: warn
 
   # Serve mode isolates stdout at the file-descriptor level, which behaves
   # differently on Windows; this proves it there. The rest of the suite
@@ -69,8 +86,8 @@ jobs:
       # which import numpy and OpenCV; onnxruntime is not needed here.
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run protocol, serve, config, stub client, paths, run lock and migration tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_stub_client tests.test_paths tests.test_run_lock tests.test_migrate
+      - name: Run protocol, serve, config, job queue, stub client, paths, run lock and migration tests
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_serve_job tests.test_stub_client tests.test_paths tests.test_run_lock tests.test_migrate
 
   # The desktop UI under ui/. Lint, types and the Rust checks on Linux; a
   # release build on Windows, kept as an artifact for testing there.
@@ -106,8 +123,31 @@ jobs:
         run: npm run contrast:check
       - name: Build the page
         run: npm run build
+      # The package lists and downloaded packages are cached together, so
+      # a warm run installs without touching the Ubuntu mirror. If the
+      # cached set no longer installs, it falls back to a fresh update.
+      # Bump the key's last part to refresh the cache.
+      - name: Restore the Tauri prerequisites' packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-tauri
+          key: apt-tauri-${{ runner.os }}-ubuntu-24.04-v1
       - name: Install the Tauri build prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev
+        timeout-minutes: 25
+        env:
+          PACKAGES: libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev
+        run: |
+          mkdir -p ~/apt-tauri/archives/partial ~/apt-tauri/lists/partial
+          apt_dirs=( -o Dir::Cache::Archives="$HOME/apt-tauri/archives" -o Dir::State::Lists="$HOME/apt-tauri/lists" )
+          # shellcheck disable=SC2086
+          if [ -n "$(ls ~/apt-tauri/lists | grep -v partial)" ] \
+              && sudo apt-get install -y --no-install-recommends --no-download "${apt_dirs[@]}" $PACKAGES; then
+            echo "installed from the cache"
+          else
+            sudo apt-get update "${apt_dirs[@]}"
+            sudo apt-get install -y --no-install-recommends "${apt_dirs[@]}" $PACKAGES
+          fi
+          sudo chown -R "$USER" ~/apt-tauri
       - name: Install the Rust toolchain (src-tauri/rust-toolchain.toml)
         working-directory: ui/src-tauri
         run: rustup toolchain install
