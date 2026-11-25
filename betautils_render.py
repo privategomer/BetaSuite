@@ -897,7 +897,7 @@ def _run_ffmpeg( command ):
     Returns:
         ( returncode, FfmpegStderr ) with the stderr fully drained.
     """
-    process = subprocess.Popen( command, stderr=subprocess.PIPE )
+    process = subprocess.Popen( command, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE )
     captured_stderr = FfmpegStderr( process.stderr )
     process.wait()
     return process.returncode, captured_stderr.finish()

@@ -66,6 +66,16 @@ EXAMPLE_PARAMS = {
     'config.local_unparsable':      {},
     'config.local_unwritable':      { 'reason': 'EACCES' },
     'run.locked':                   { 'program': 'betatv', 'pid': 4242, 'started_at': 1000000000.5 },
+    'config.busy':                  { 'job': '3f2a' },
+    'job.unknown':                  { 'job': '3f2a' },
+    'job.bad_state':                { 'job': '3f2a', 'state': 'completed' },
+    'job.no_such_file':             { 'index': 2 },
+    'job.unsafe_setting':           { 'path': 'input_delete_probability' },
+    'job.nothing_to_render':        {},
+    'engine.stopping':              {},
+    'file.failed':                  { 'exception_type': 'RenderError', 'stage': 'render' },
+    'disk.full':                    { 'free_bytes': 0 },
+    'model.load_failed':            { 'exception_type': 'RuntimeError' },
 }
 
 

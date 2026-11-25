@@ -781,6 +781,24 @@ def chunk_path_for( intermediate_path, chunk_index ):
     return '%s.part%04d%s'%(base, chunk_index, ext)
 
 
+def partial_outputs( final_path ):
+    """
+    Every file an unfinished render of final_path can leave beside it:
+    render chunks and their metadata and temps, the intermediate, its
+    concat list and temp, and the final's temp: base.video.* and
+    base.tmp.<ext>, where base is the final's name, carrying the source
+    hash and the three cache keys. A complete final is not listed.
+    """
+    import glob
+    base, _ext = os.path.splitext( final_path )
+    # Only the shapes a render writes (video_output_paths, chunk_path_for,
+    # temp_sibling), not base + '.*': an output label may start with '.',
+    # which would make a labelled final of the same source match.
+    found = set( glob.glob( glob.escape( base ) + '.video.*' ) )
+    found.add( temp_sibling( final_path ) )
+    return sorted( path for path in found if os.path.exists( path ) )
+
+
 def temp_sibling( path ):
     """
     A '.tmp'-marked sibling of path that keeps path's extension.
