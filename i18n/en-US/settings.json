@@ -19,6 +19,8 @@
  "setting.blur_fast_approximation.tip": "Compute heavy blurs at reduced resolution. Faster, and looks the same.",
  "setting.candidate_floor.label": "Candidate floor",
  "setting.candidate_floor.tip": "Detections scoring below this are dropped before overlap removal.",
+ "setting.catalog_scan_interval_seconds.label": "Library scan interval",
+ "setting.catalog_scan_interval_seconds.tip": "Seconds between looks at the watched folders for new, moved or removed videos. 0 looks only when you ask.",
  "setting.censor_overlap_strategy.label": "Overlap handling",
  "setting.censor_overlap_strategy.tip": "How overlapping boxes of one style are drawn: separately, in one pass, or merged into one span.",
  "setting.censor_scale_strategy.label": "Style scaling",

@@ -5,9 +5,11 @@ BetaSuite keeps six kinds of data, split the way the operating system
 expects, per user and without admin rights:
 
   config    settings (betaconfig_local.py)
-  data      durable files: models, stickers, run-key manifests
+  data      durable files: models, stickers, run-key manifests, the
+            library catalog (catalog.sqlite)
   cache     files that can be rebuilt: detections, shot cuts, transcodes,
-            the file-hash memo. The large one, so it can be moved
+            the file-hash memo, blurred library thumbnails. The large
+            one, so it can be moved
   state     logs, stats, benchmarks, the run lock
   inputs    the folders runs read from (uncensored_vids, uncensored_pics,
   outputs   source) and write to (censored_vids, censored_pics)

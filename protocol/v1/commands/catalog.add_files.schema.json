@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.add_files.schema.json",
+  "title": "catalog.add_files",
+  "description": "Index chosen files (absolute paths), hashed ahead of everything else; they arrive through catalog.changed. A file whose content the catalog has (a moved or renamed one) is found again as the same item, so this is also how a client locates a missing item. refused lists, by position, paths that are not_found, not_a_file, or in an output_folder.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "paths"
+      ],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "accepted",
+        "refused"
+      ],
+      "properties": {
+        "accepted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refused": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "reason"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "enum": [
+                  "not_found",
+                  "not_a_file",
+                  "output_folder"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

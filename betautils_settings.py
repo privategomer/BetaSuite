@@ -746,6 +746,10 @@ _ENTRIES = [
     S( 'move_completed_sources', 'bool', 'move_completed_sources', 'move_completed_sources',
        level=SIMPLE, probe=True ),
 
+    # --- library catalog ---
+    S( 'catalog_scan_interval_seconds', 'int', 'catalog_scan_interval_seconds',
+       'catalog_scan_interval_seconds', minimum=0, probe=600 ),
+
     # --- preview mode ---
     S( 'preview_mode_enabled', 'bool', 'preview_mode_enabled', 'preview-mode', level=SIMPLE,
        moves=( ENCODE, ), cli='--preview', probe=True ),
@@ -883,6 +887,7 @@ SCREEN_RULES = (
     # The library: where videos come from and go, and their profile.
     ( 'move_completed_sources', SCREEN_LIBRARY ),
     ( 'input_delete_probability', SCREEN_LIBRARY ),
+    ( 'catalog_scan_interval_seconds', SCREEN_LIBRARY ),
     ( 'profile_by_path_pattern', SCREEN_LIBRARY ),
     ( 'profile_by_source_dir.*', SCREEN_LIBRARY ),
     # A run: sampling, preview, output.

@@ -1,4 +1,13 @@
 {
+ "error.catalog.bad_folder": "That folder cannot be added: {reason, select, not_found {it does not exist} not_a_folder {it is not a folder} other {censored videos are saved there}}.",
+ "error.catalog.bad_type": "{type} is not a video type this app knows, so the video was not changed.",
+ "error.catalog.item_busy": "This video is in a job right now. Change its type once the job has finished.",
+ "error.catalog.missing": "This video's file is not where the library last saw it. Add the folder it is in, or locate it.",
+ "error.catalog.no_such_folder": "That folder is no longer watched.",
+ "error.catalog.no_such_item": "That video is no longer in the library.",
+ "error.catalog.thumbnail_failed": "No preview could be made for this video ({reason, select, not_video {no picture could be read from it} other {an error}}).",
+ "error.catalog.too_new": "The library was saved by a newer version of BetaSuite, so this version will not open it. Update the app.",
+ "error.catalog.unavailable": "The library could not be opened ({reason, select, corrupt {its file is damaged} busy {another program kept it busy} not_writable {its file cannot be written} in_use {the rebuild tool is using it} other {an error}}). The engine log has details.",
  "error.command.bad_params": "The engine refused a request because its {field} value was not valid. Restart the engine; if this keeps happening, the app log has details.",
  "error.command.unknown": "This version of the engine does not support the request {name}. The app and the engine may be from different versions.",
  "error.config.bad_choice": "The value for {path} is not one of its choices.",

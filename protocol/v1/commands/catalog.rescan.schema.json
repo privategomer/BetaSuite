@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.rescan.schema.json",
+  "title": "catalog.rescan",
+  "description": "Start a pass over every watched folder now, instead of at the next scheduled one.",
+  "$defs": {
+    "data": {
+      "type": "object"
+    },
+    "result": {
+      "type": "object"
+    }
+  }
+}

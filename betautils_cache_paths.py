@@ -280,9 +280,17 @@ def _profiles_identity( backend_name ):
     return backend.get( 'profiles' ) or None
 
 
-def censor_identity( backend_name=None ):
+def censor_identity( backend_name=None, catalog_profile=None ):
     """
     Everything that changes rendered output for a FIXED set of detections.
+
+    catalog_profile is the structure profile the library catalog chose for
+    this one file (betautils_catalog_types), if it chose one: a type pin,
+    or the folder rule of a watched folder outside the 1.x roots. Neither
+    is in the config keyed below, so the choice is keyed itself, and only
+    while there is one: every other file keeps its key and its finished
+    output, and turning a pin or a folder rule on or off can never reuse
+    an output rendered under another profile.
 
     Resolved against a specific backend AND variant, because per-label
     tracking settings (track_max_gap, min_prob, interpolation,
@@ -398,6 +406,8 @@ def censor_identity( backend_name=None ):
     # without one keeps its key and its finished output.
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
+    if catalog_profile:
+        identity['catalog_profile'] = catalog_profile
     return identity
 
 
@@ -455,9 +465,9 @@ def censor_uses_feathered_shape( per_label ):
     return False
 
 
-def censor_key( backend_name=None ):
+def censor_key( backend_name=None, catalog_profile=None ):
     """Short key for censor_identity(). See this module's docstring."""
-    identity = censor_identity( backend_name )
+    identity = censor_identity( backend_name, catalog_profile )
     return _keyed( 'censor', identity, betaconst.censor_key_len )
 
 
@@ -724,6 +734,31 @@ def video_output_basename( stem, file_hash, sizes, fps, det_key, cen_key,
     base = '%s-%s-%s-%g-d%s-c%s-e%s%s%s'%(
         stem, file_hash, sizes_text, fps, det_key, cen_key, enc_key, preview_suffix, mode_marker )
     return base + sanitise_output_label( output_label )
+
+
+_VIDEO_OUTPUT_NAME = re.compile(
+    r'^(?P<stem>.*)-(?P<hash>[0-9a-f]{16})-(?P<sizes>[0-9]+(?:\+[0-9]+)*)-(?P<fps>[0-9.e+-]+?)'
+    r'-d(?P<detection_key>[0-9a-f]+)-c(?P<censor_key>[0-9a-f]+)-e(?P<encode_key>[0-9a-f]+)(?P<tail>.*)$' )
+
+
+def parse_video_output_basename( base ):
+    """
+    The fields video_output_basename put into a name, or None.
+
+    `base` is a final output's file name without its '.mp4'. Returns a
+    dict with stem, hash, sizes (list of ints), fps (text, as %g wrote
+    it), the three keys, preview (True for a preview slice) and tail
+    (preview, mode and label, as written). The rightmost hash-shaped
+    field is the source hash, so a stem that itself looks like a name
+    still parses. Used by the catalog to say which outputs a source has.
+    """
+    match = _VIDEO_OUTPUT_NAME.match( base )
+    if match is None:
+        return None
+    fields = match.groupdict()
+    fields['sizes'] = [ int( size ) for size in fields['sizes'].split( '+' ) ]
+    fields['preview'] = fields['tail'].startswith( '-preview' )
+    return fields
 
 
 def sanitise_output_label( label ):

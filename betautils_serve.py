@@ -42,6 +42,7 @@ only; the engine modules are imported in run(), after isolate_stdio().
 
 import faulthandler
 import io
+import json
 import os
 import platform
 import signal
@@ -60,10 +61,17 @@ EXIT_TERMINATED = 143
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
-EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error' )
+EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
+           'catalog.changed' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
+
+# Results whose fields never reach the log, whatever its level: an
+# image of a source (a revealed thumbnail) must not be written anywhere,
+# and the trace of every message would otherwise put its first bytes in
+# the engine's log file.
+_NOT_LOGGED = { 'catalog.thumbnail': ( 'data', ) }
 
 _COMMANDS = {}
 
@@ -225,6 +233,18 @@ def _preview( line ):
     return text
 
 
+def _loggable( message, line ):
+    """The line as the log may see it: _NOT_LOGGED fields replaced by their length."""
+    hidden = _NOT_LOGGED.get( message.get( 'name' ) ) if isinstance( message, dict ) else None
+    data = message.get( 'data' ) if hidden else None
+    if not isinstance( data, dict ) or not any( field in data for field in hidden ):
+        return line
+    shown = dict( message, data={ key: ( '<%d characters not logged>'%( len( value ), )
+                                         if key in hidden and isinstance( value, str ) else value )
+                                  for key, value in data.items() } )
+    return json.dumps( shown ).encode( 'utf-8' )
+
+
 def _traces( logger ):
     import betautils_log as bu_log
     levels = [ handler.level for handler in logger.handlers ]
@@ -247,6 +267,7 @@ class Server:
         self.protocol = None
         self.stopping = False
         self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
+        self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
         self._after_reply = []
 
     @property
@@ -265,6 +286,12 @@ class Server:
         """Stop the job queue, if one was made: on shutdown, end of input or a signal."""
         if self.jobs is not None:
             self.jobs.stop()
+
+    def stop_catalog( self ):
+        """Close the catalog, if one was opened, after the job queue has stopped."""
+        if self.catalog is not None:
+            catalog, self.catalog = self.catalog, None
+            catalog.close()
 
     def serve( self ):
         """Serve until shutdown, end of input, or a client that went away. Returns 0."""
@@ -349,7 +376,7 @@ class Server:
             self.stopping = True
             return
         if self._log_messages:
-            self._logger.trace( "send %s", _preview( line[:-1] ) )
+            self._logger.trace( "send %s", _preview( _loggable( message, line[:-1] ) ) )
 
 
 # --- Built-in commands --------------------------------------------------------
@@ -409,6 +436,11 @@ for _name, _handler in _CONFIG_HANDLERS.items():
 # reset again, wrapped so they respect a busy job queue.
 from betautils_serve_job import HANDLERS as _JOB_HANDLERS   # noqa: E402
 for _name, _handler in _JOB_HANDLERS.items():
+    register( _name, _handler )
+
+# catalog.list, get, folders, add_folder, remove_folder, add_files, rescan, forget
+from betautils_serve_catalog import HANDLERS as _CATALOG_HANDLERS   # noqa: E402
+for _name, _handler in _CATALOG_HANDLERS.items():
     register( _name, _handler )
 
 
@@ -475,6 +507,10 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_jobs()
         except BaseException:
             logger.error( "the job queue did not stop cleanly", exc_info=True )
+        try:
+            server.stop_catalog()
+        except BaseException:
+            logger.error( "the catalog did not close cleanly", exc_info=True )
         stray.flush()
         for stream in ( proto_out, proto_in ):
             try:

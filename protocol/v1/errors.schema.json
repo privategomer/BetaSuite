@@ -39,7 +39,16 @@
     { "$ref": "#/$defs/engine.stopping" },
     { "$ref": "#/$defs/file.failed" },
     { "$ref": "#/$defs/disk.full" },
-    { "$ref": "#/$defs/model.load_failed" }
+    { "$ref": "#/$defs/model.load_failed" },
+    { "$ref": "#/$defs/catalog.unavailable" },
+    { "$ref": "#/$defs/catalog.too_new" },
+    { "$ref": "#/$defs/catalog.no_such_item" },
+    { "$ref": "#/$defs/catalog.no_such_folder" },
+    { "$ref": "#/$defs/catalog.bad_folder" },
+    { "$ref": "#/$defs/catalog.bad_type" },
+    { "$ref": "#/$defs/catalog.item_busy" },
+    { "$ref": "#/$defs/catalog.missing" },
+    { "$ref": "#/$defs/catalog.thumbnail_failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -534,6 +543,114 @@
           "type": "object",
           "required": [ "exception_type" ],
           "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.unavailable": {
+      "description": "The catalog's database could not be opened. reason: corrupt (the file is not a readable database), busy (another process held it past the wait), not_writable, in_use (the rebuild tool holds it), or error. Nothing was changed.",
+      "properties": {
+        "code": { "const": "catalog.unavailable" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "enum": [ "corrupt", "busy", "not_writable", "in_use", "error" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.too_new": {
+      "description": "The catalog's file was made by a newer version of the app (schema version) than this one reads (supported). It is left untouched.",
+      "properties": {
+        "code": { "const": "catalog.too_new" },
+        "params": {
+          "type": "object",
+          "required": [ "version", "supported" ],
+          "properties": { "version": { "type": "integer", "minimum": 0 }, "supported": { "type": "integer", "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_item": {
+      "description": "No catalog item has this id (its content hash).",
+      "properties": {
+        "code": { "const": "catalog.no_such_item" },
+        "params": {
+          "type": "object",
+          "required": [ "item" ],
+          "properties": { "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_folder": {
+      "description": "No watched folder has this id.",
+      "properties": {
+        "code": { "const": "catalog.no_such_folder" },
+        "params": {
+          "type": "object",
+          "required": [ "folder" ],
+          "properties": { "folder": { "type": "integer" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.bad_folder": {
+      "description": "The folder cannot be watched. reason: not_found, not_a_folder, or output_folder (it is one of the folders the engine writes outputs to, or inside one).",
+      "properties": {
+        "code": { "const": "catalog.bad_folder" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "enum": [ "not_found", "not_a_folder", "output_folder" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.bad_type": {
+      "description": "The video type to pin is not one of the structure profiles the selected backend has (type is what was asked for).",
+      "properties": {
+        "code": { "const": "catalog.bad_type" },
+        "params": {
+          "type": "object",
+          "required": [ "type" ],
+          "properties": { "type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.item_busy": {
+      "description": "A job holds the item (queued, running or paused), so its video type cannot change until that job ends. job is the job's id.",
+      "properties": {
+        "code": { "const": "catalog.item_busy" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "job" ],
+          "properties": { "item": { "type": "string" }, "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.missing": {
+      "description": "The item has no file the engine can read right now (every path is missing or offline), or no censored output on disk when its output's thumbnail was asked for.",
+      "properties": {
+        "code": { "const": "catalog.missing" },
+        "params": {
+          "type": "object",
+          "required": [ "item" ],
+          "properties": { "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.thumbnail_failed": {
+      "description": "No thumbnail could be made. reason: not_video (no frame could be decoded) or error (ffmpeg failed or timed out; the engine log has details).",
+      "properties": {
+        "code": { "const": "catalog.thumbnail_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "reason" ],
+          "properties": { "item": { "type": "string" }, "reason": { "enum": [ "not_video", "error" ] } },
           "additionalProperties": false
         }
       }
