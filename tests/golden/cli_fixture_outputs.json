@@ -1,5 +1,12 @@
 {
- "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2+esm5",
+ "environment": {
+  "encoder_threads": 4,
+  "ffmpeg": "ffmpeg version n8.0.1-66-g27b8d1a017-20260228",
+  "machine": "x86_64",
+  "numpy": "2.5.5",
+  "opencv": "4.14.0",
+  "platform": "linux"
+ },
  "scenarios": {
   "full": {
    "exit_codes": [
@@ -8,9 +15,9 @@
    ],
    "failures": [],
    "sha256": {
-    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "144a6ab45707505ed2096b3ad81db0d12715a1fe0ec07a1f963ec5d27b6220d2",
-    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "dd3e3245775f5b94530dc5b434dc632ee6490a7fa8695b549b504472668ef783",
-    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "4b86420e7c0da3e109646108dbcd98b8c2bbe552e4c1825be21930d2b462c0de"
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "76e506b867ba28cdb9b2ae985a7f9341e07a3cbc69ba2459aeaab5c4d9d9b672",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "53ce3e70b1635568a0846652a43a5e38efa5f250df595975d3236b6f1027e9b7",
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe.mp4": "7b9b6ed59f55285d5f10e79d30d2265749fda58afd8a7f60c390811fd0ae46db"
    },
    "stats": [
     {
@@ -205,9 +212,9 @@
    ],
    "failures": [],
    "sha256": {
-    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "43134fea3c6974156b6b0af92dac2e16cafb8b983a5119d7af720749dc64ab5e",
-    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4": "5f4bd4c519003e884a5db0af93f730569e843148e3fd33a086497eb847389881",
-    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "40d42f3507dd70a900ed4348d3796bf9003b4528705eb26a1abde48cdf1ee467"
+    "a-{a.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "78e520f140cc92d3aad930ff67e62a83242efb8c2b3f8b5fcccd479e2aef0418",
+    "b_silent-{b_silent.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+all.mp4": "68abacca3fb57dc2753edd5a9a09a0d9ac4d1ba4f2f48f03acdc6bee1f6a09d4",
+    "sub/c-{c.mp4}-320-5-d62dd73-c6784e8-e5bbe-preview@1.0s+1.0s.mp4": "fcd3d6fc22861dfb4db067742192bf467526da32f9b8ef3f1a4da9d7e4faa1be"
    },
    "stats": [
     {
