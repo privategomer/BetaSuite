@@ -325,6 +325,25 @@ def acquire_library( program, paths=None, clock=time.time, logger=None ):
     return LibraryLock( taken )
 
 
+def library_held():
+    """
+    True while any run holds this library's lock: a command-line run, or
+    the engine's own job queue.
+
+    For a check made often (the catalog's scanner, before it reads a
+    file whole): it looks for the holder record first and probes the
+    lock only when one is there. A probe takes the lock for an instant,
+    so probing on every check could make a run that starts in that
+    instant see the library as locked; a holder writes its record just
+    after taking the lock and removes it on release, so with no record
+    there is nobody to find.
+    """
+    for path in library_paths():
+        if os.path.exists( holder_path( path ) ) and probe( path ) is not None:
+            return True
+    return False
+
+
 def probe( path=None ):
     """
     Who holds the lock right now, without taking it or creating anything.

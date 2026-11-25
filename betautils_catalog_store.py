@@ -337,7 +337,9 @@ class Store:
                 mode = self._db.execute( 'PRAGMA journal_mode = WAL' ).fetchone()[0]
                 if mode.lower() != 'wal' and logger is not None:
                     logger.warning( "catalog: journal mode is %s, not wal"%( mode ) )
-                migrate( self._db, self.path, clock=clock, logger=logger )
+                applied = migrate( self._db, self.path, clock=clock, logger=logger )
+                # True for a file this open made: the caller seeds it.
+                self.created = bool( applied ) and applied[0] == 1
             except BaseException:
                 self._db.close()
                 raise

@@ -76,6 +76,12 @@ EXAMPLE_PARAMS = {
     'file.failed':                  { 'exception_type': 'RenderError', 'stage': 'render' },
     'disk.full':                    { 'free_bytes': 0 },
     'model.load_failed':            { 'exception_type': 'RuntimeError' },
+    # catalog.*
+    'catalog.unavailable':          { 'reason': 'corrupt' },
+    'catalog.too_new':              { 'version': 3, 'supported': 2 },
+    'catalog.no_such_item':         { 'item': '0123456789abcdef' },
+    'catalog.no_such_folder':       { 'folder': 3 },
+    'catalog.bad_folder':           { 'reason': 'not_found' },
 }
 
 

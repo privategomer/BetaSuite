@@ -60,7 +60,8 @@ EXIT_TERMINATED = 143
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
-EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error' )
+EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
+           'catalog.changed' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -247,6 +248,7 @@ class Server:
         self.protocol = None
         self.stopping = False
         self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
+        self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
         self._after_reply = []
 
     @property
@@ -265,6 +267,12 @@ class Server:
         """Stop the job queue, if one was made: on shutdown, end of input or a signal."""
         if self.jobs is not None:
             self.jobs.stop()
+
+    def stop_catalog( self ):
+        """Close the catalog, if one was opened, after the job queue has stopped."""
+        if self.catalog is not None:
+            catalog, self.catalog = self.catalog, None
+            catalog.close()
 
     def serve( self ):
         """Serve until shutdown, end of input, or a client that went away. Returns 0."""
@@ -411,6 +419,11 @@ from betautils_serve_job import HANDLERS as _JOB_HANDLERS   # noqa: E402
 for _name, _handler in _JOB_HANDLERS.items():
     register( _name, _handler )
 
+# catalog.list, get, folders, add_folder, remove_folder, add_files, rescan, forget
+from betautils_serve_catalog import HANDLERS as _CATALOG_HANDLERS   # noqa: E402
+for _name, _handler in _CATALOG_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 
@@ -475,6 +488,10 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_jobs()
         except BaseException:
             logger.error( "the job queue did not stop cleanly", exc_info=True )
+        try:
+            server.stop_catalog()
+        except BaseException:
+            logger.error( "the catalog did not close cleanly", exc_info=True )
         stray.flush()
         for stream in ( proto_out, proto_in ):
             try:
