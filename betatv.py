@@ -352,6 +352,11 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
 
     capture = source.open_capture()
     sample_index = start_sample_index
+    # Samples before this index are in raw_boxes or the buffer. A stop
+    # raised at the top of an iteration leaves that iteration's frame
+    # undetected, so the checkpoint resumes here, not at sample_index + 1,
+    # which once skipped one sample's detections on every resumed run.
+    accounted = start_sample_index
     next_t = bu_video.sample_time( start_sample_index, preview_offset_seconds,
                                    sample_fps )
     # Decoded on a second thread while the model runs; closed before the
@@ -370,6 +375,7 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
 
                 frame_buffer.append( frame )
                 time_buffer.append( timestamp )
+                accounted = sample_index + 1
                 if len( frame_buffer ) >= batch_size:
                     raw_boxes.extend( flush() )
 
@@ -388,9 +394,11 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
             raw_boxes.extend( flush() )  # any partial batch at the end
     except bu_signals.Interrupted:
         raw_boxes.extend( flush() )
-        bu_hash.write_checkpoint( raw_boxes, sample_index + 1, next_t, cache_path )
+        bu_hash.write_checkpoint( raw_boxes, accounted,
+                                  bu_video.sample_time( accounted, preview_offset_seconds, sample_fps ),
+                                  cache_path )
         logger.info( "size %d: checkpointed %d detection(s) at sample %d before stopping"%(
-            size, len( raw_boxes ), sample_index + 1 ) )
+            size, len( raw_boxes ), accounted ) )
         raise
     finally:
         frames.close()

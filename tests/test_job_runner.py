@@ -218,9 +218,21 @@ class TestPauseResumeCancel( JobHarness ):
         self.assertEqual( bu_job.Runner( self.logger ).run( job ), bu_job.COMPLETED )
         name = self.outputs()[0]
         digest = _sha256( os.path.join( self.censored, name ) )
+        self.reference_detections = self.detections()
         self._clean()
         self.detector.frames_seen = 0
         return name, digest
+
+    def detections( self ):
+        """The finished detection caches, as sample times, per file name."""
+        import betautils_hash as bu_hash
+        found = {}
+        for name in sorted( os.listdir( betaconst.vid_hash_dir ) ):
+            if name.endswith( '.gz' ) and 'checkpoint' not in name:
+                boxes = bu_hash.read_json( os.path.join( betaconst.vid_hash_dir, name ) )
+                found[name] = [ round( box['t'], 4 ) for box in boxes ]
+        self.assertTrue( found, "no finished detection cache was found" )
+        return found
 
     def test_pause_in_detection_resumes_from_the_checkpoint( self ):
         _build_clip( os.path.join( self.uncensored, 'a.mp4' ), seconds=4 )
@@ -259,6 +271,8 @@ class TestPauseResumeCancel( JobHarness ):
         # The checkpoint covered the samples before the pause; only the
         # rest are detected again.
         self.assertLessEqual( stub.frames_seen, samples + 1 )
+        self.assertEqual( self.detections(), self.reference_detections,
+                          "every sample is detected exactly once across the pause" )
         self.assertEqual( ( self.outputs()[0], _sha256( os.path.join( self.censored, self.outputs()[0] ) ) ),
                           reference )
 
