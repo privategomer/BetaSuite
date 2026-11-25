@@ -25,6 +25,7 @@ where the reasoning lives.
 - [Person segmentation](#person-segmentation)
 - [Area safety and time safety](#area-safety-and-time-safety)
 - [Rendering and encoding](#rendering-and-encoding)
+- [Library catalog](#library-catalog)
 - [Preview mode](#preview-mode)
 - [Logging and stats](#logging-and-stats)
 - [Hardware](#hardware)
@@ -421,8 +422,8 @@ that kind for each user, with no admin rights needed:
 | Kind | Holds | Linux | Windows |
 |---|---|---|---|
 | settings | `betaconfig_local.py` | `~/.config/betasuite` | `%LOCALAPPDATA%\BetaSuite\config` |
-| data | models, stickers, run-key records | `~/.local/share/betasuite/data` | `%LOCALAPPDATA%\BetaSuite\data` |
-| cache | detections, shot cuts, transcodes, file hashes | `~/.cache/betasuite` | `%LOCALAPPDATA%\BetaSuite\cache` |
+| data | models, stickers, run-key records, the library catalog (`catalog.sqlite`) | `~/.local/share/betasuite/data` | `%LOCALAPPDATA%\BetaSuite\data` |
+| cache | detections, shot cuts, transcodes, file hashes, blurred library thumbnails | `~/.cache/betasuite` | `%LOCALAPPDATA%\BetaSuite\cache` |
 | state | logs, stats, benchmarks | `~/.local/state/betasuite` | `%LOCALAPPDATA%\BetaSuite\state` |
 | inputs, outputs | `uncensored_vids`, `uncensored_pics`, `source`; `censored_vids`, `censored_pics` | `~/.local/share/betasuite/library` | `%LOCALAPPDATA%\BetaSuite\library` |
 
@@ -4060,9 +4061,26 @@ and inode, never its contents, so it stays cheap on a local disk; on a
 network share each file is a round trip. A pass never starts sooner than
 ten times the last pass's own length after it ended, so a slow share is
 not read back to back. New files are hashed once they hold still for a
-few seconds, and never while a job runs. Files added through the app
-are indexed at once whatever this says. The catalog itself is described
-in `protocol/README.md` ("Catalog"). Moves no cache key.
+few seconds, and never while a run is on (an app job or a command-line
+run). Files added through the app are indexed at once whatever this
+says. The catalog itself is described in `protocol/README.md`
+("Catalog"). Moves no cache key.
+
+The catalog is `catalog.sqlite` in the data folder. It holds two kinds
+of thing. What it reads from the disk (the videos in the watched
+folders, where each is, which outputs exist) can be built again with
+`tools/setup/catalog_rebuild.sh` (`.ps1` on Windows). What exists only
+there (the watched folders, type pins and run history) is carried by a
+rebuild while the old file can be read; keep a copy of the file as the
+backup of those. Before a newer version changes the file's layout it
+copies it to `catalog.sqlite.v<N>.bak` (the last three are kept), and a
+file from a newer version is never opened.
+
+A video's type pin, set in the app, outranks every rule here:
+`force_structure_profile`, `profile_by_path_pattern`,
+`profile_by_source_dir` and measurement, for the app's jobs and for
+`betatv.py` alike. A pinned file has its own censor key, so pinning
+renders it again once.
 
 ---
 
