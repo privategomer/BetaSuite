@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { UnsavedDialog } from './components/UnsavedDialog';
 import { Player } from './components/Player';
 import { StatusStrip } from './components/StatusStrip';
 import { t } from './i18n/format';
@@ -9,6 +10,7 @@ import { AllSettings } from './settings/AllSettings';
 import { SettingsView } from './settings/SettingsView';
 import { registerStyleEditor } from './settings/structured';
 import { uiReady, type StartupInfo } from './shell';
+import { closeWindow, getGuard, onCloseRequested, useGuard } from './unsaved';
 
 interface AppProps {
   startup: StartupInfo | null;
@@ -36,6 +38,38 @@ export function App( { startup }: AppProps ) {
   const [ help, setHelp ] = useState<string | null>( startup?.help_topic ?? null );
   const onHelp = useCallback( ( anchor: string ) => { setHelp( anchor ); }, [] );
   const closeHelp = useCallback( () => { setHelp( null ); }, [] );
+  // Where to go once the user has answered about unapplied changes: a view,
+  // or 'close' for the window.
+  const [ asking, setAsking ] = useState<View | 'close' | null>( null );
+  const guard = useGuard();
+  const go = ( target: View ) => {
+    if ( target !== view && getGuard() !== null ) {
+      setAsking( target );
+    } else {
+      setView( target );
+    }
+  };
+  const answered = () => {
+    const target = asking;
+    setAsking( null );
+    if ( target === 'close' ) {
+      closeWindow().catch( ( error: unknown ) => { log.error( `close_window failed: ${describeError( error )}` ); } );
+    } else if ( target !== null ) {
+      setView( target );
+    }
+  };
+
+  useEffect( () => {
+    // The shell holds a window close while the page has unapplied changes.
+    const unlisten = onCloseRequested( () => {
+      if ( getGuard() === null ) {
+        closeWindow().catch( ( error: unknown ) => { log.error( `close_window failed: ${describeError( error )}` ); } );
+      } else {
+        setAsking( 'close' );
+      }
+    } );
+    return () => { unlisten.then( ( stop ) => { stop(); }, () => undefined ); };
+  }, [] );
 
   useEffect( () => {
     // Show the window once the first render is in the DOM. WebKitGTK stalls
@@ -47,7 +81,7 @@ export function App( { startup }: AppProps ) {
   }, [] );
 
   const tab = ( id: View, label: string ) => (
-    <button type="button" className="nav-tab" aria-current={view === id ? 'page' : undefined} onClick={() => { setView( id ); }}>
+    <button type="button" className="nav-tab" aria-current={view === id ? 'page' : undefined} onClick={() => { go( id ); }}>
       {label}
     </button>
   );
@@ -79,6 +113,9 @@ export function App( { startup }: AppProps ) {
         </Suspense>
       )}
       </div>
+      {asking !== null && guard !== null && (
+        <UnsavedDialog guard={guard} closing={asking === 'close'} onDone={answered} onStay={() => { setAsking( null ); }} />
+      )}
       <StatusStrip />
     </div>
   );
