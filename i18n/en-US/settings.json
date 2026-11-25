@@ -82,7 +82,7 @@
  "setting.interpolation_enabled.label": "Fill short gaps",
  "setting.interpolation_enabled.tip": "Keep a box in place through short gaps between detections.",
  "setting.interpolation_max_gap.label": "Longest gap filled",
- "setting.interpolation_max_gap.tip": "The longest gap, in seconds, that a box is carried across.",
+ "setting.interpolation_max_gap.tip": "The longest gap, in seconds, a box is carried across. Unless set, track memory is at least this long.",
  "setting.items_to_censor.label": "What to hide",
  "setting.items_to_censor.tip": "The body parts to censor.",
  "setting.log_level.label": "Log file detail",

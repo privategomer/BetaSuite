@@ -4,7 +4,9 @@ betaconfig.py has or the code reads.
 
 Each entry says what a value may be (kind, range, choices, whether None
 is allowed and what it means), where it may be set (scope, from the
-placeholders in its path), whether the UI shows it by default (level),
+placeholders in its path), whether the UI shows it by default (level)
+and on which screen (SCREEN_RULES), which settings must be set for it
+to have any effect (REQUIRES_RULES),
 what changing it costs (the cache keys it moves, and under which
 conditions; and the keys it can move for some files only, by changing
 which structure profile or preview slice a file gets), and where its
@@ -27,6 +29,7 @@ registry tests then require its cache-key tags to be true.
 """
 
 import difflib
+import fnmatch
 import functools
 import re
 
@@ -104,6 +107,14 @@ class Setting( object ):
     @property
     def dotted( self ):
         return '.'.join( self.path )
+
+    @property
+    def screen( self ):
+        return screen_of( self )
+
+    @property
+    def requires( self ):
+        return requires_of( self )
 
     @property
     def tip( self ):
@@ -817,6 +828,157 @@ REGISTRY = tuple( _ENTRIES + _default_entries() + _label_field_entries() )
 
 
 # ---------------------------------------------------------------------------
+# Screens: where the app shows each setting
+# ---------------------------------------------------------------------------
+# A simple setting sits on its screen; an advanced one in that screen's
+# "More options". SCREEN_OTHER is a tab of its own for tuning that no
+# screen's task needs; it holds no simple setting, so it shows its
+# settings directly, with no fold. Every setting is on All Settings too. First match wins; a path pattern is fnmatch-style
+# over the dotted path, so '*' crosses dots.
+
+SCREEN_RUN = 'run'
+SCREEN_WHAT_TO_HIDE = 'what_to_hide'
+SCREEN_MODELS = 'models'
+SCREEN_LIBRARY = 'library'
+SCREEN_REVERSE = 'reverse'
+SCREEN_RESOURCES = 'resources'
+SCREEN_OTHER = 'other'
+SCREENS = ( SCREEN_RUN, SCREEN_WHAT_TO_HIDE, SCREEN_MODELS, SCREEN_LIBRARY, SCREEN_REVERSE,
+            SCREEN_RESOURCES, SCREEN_OTHER )
+
+# The look of a censor: the global fallbacks among the default_* settings.
+_DEFAULT_LOOK = ( 'censor_style', 'censor_shape', 'area_safety', 'time_safety',
+                  'paired_style_max_age', 'paired_style_max_distance', 'paired_style_tiebreak_margin',
+                  'style_min_dwell_seconds' )
+
+SCREEN_RULES = (
+    # The models page: which detector and person model, and their files.
+    ( 'detector_backend.selected', SCREEN_MODELS ),
+    ( '*.model_variant', SCREEN_MODELS ),
+    ( '*.model_path', SCREEN_MODELS ),
+    ( 'detector_backend.nudenet_v3.native_size', SCREEN_MODELS ),
+    ( 'person_backend.selected', SCREEN_MODELS ),
+    # Resources: how hard the computer works, never what comes out.
+    ( 'gpu_enabled', SCREEN_RESOURCES ),
+    ( 'cuda_device_id', SCREEN_RESOURCES ),
+    ( '*nn_batch_size', SCREEN_RESOURCES ),
+    ( 'person_backend.*.batch_size', SCREEN_RESOURCES ),
+    ( 'render_workers', SCREEN_RESOURCES ),
+    ( 'render_decode_threads', SCREEN_RESOURCES ),
+    ( 'render_memory_reserve_mb', SCREEN_RESOURCES ),
+    ( 'render_worker_mb_per_megapixel', SCREEN_RESOURCES ),
+    ( 'structure_scan_workers', SCREEN_RESOURCES ),
+    ( 'detection_prefetch_frames', SCREEN_RESOURCES ),
+    # Reverse mode, with the person model it uses.
+    ( 'reverse.*', SCREEN_REVERSE ),
+    ( 'person_backend.*', SCREEN_REVERSE ),
+    # What to hide, and how it looks.
+    ( 'items_to_censor', SCREEN_WHAT_TO_HIDE ),
+    ( 'item_overrides.*', SCREEN_WHAT_TO_HIDE ),
+    ( 'type_default_shapes.*', SCREEN_WHAT_TO_HIDE ),
+    ( 'censor_overlap_strategy.*', SCREEN_WHAT_TO_HIDE ),
+    ( 'censor_scale_strategy', SCREEN_WHAT_TO_HIDE ),
+    ( 'blur_*', SCREEN_WHAT_TO_HIDE ),
+) + tuple( ( 'default_' + field, SCREEN_WHAT_TO_HIDE ) for field in _DEFAULT_LOOK ) + (
+    # The library: where videos come from and go, and their profile.
+    ( 'move_completed_sources', SCREEN_LIBRARY ),
+    ( 'input_delete_probability', SCREEN_LIBRARY ),
+    ( 'profile_by_path_pattern', SCREEN_LIBRARY ),
+    ( 'profile_by_source_dir.*', SCREEN_LIBRARY ),
+    # A run: sampling, preview, output.
+    ( 'video_censor_fps', SCREEN_RUN ),
+    ( 'preview_*', SCREEN_RUN ),
+    ( 'encode_*', SCREEN_RUN ),
+    ( 'enable_betasuite_watermark', SCREEN_RUN ),
+    ( 'force_structure_profile', SCREEN_RUN ),
+    ( 'render_chunk_*', SCREEN_RUN ),
+    ( 'render_verify_frame_counts', SCREEN_RUN ),
+    ( 'ffmpeg_*', SCREEN_RUN ),
+    ( 'detection_checkpoint_frames', SCREEN_RUN ),
+    # Everything else is detection and tracking tuning, logging, capture.
+    ( '*', SCREEN_OTHER ),
+)
+
+
+# ---------------------------------------------------------------------------
+# Parent settings: a setting that has an effect only while another is set
+# ---------------------------------------------------------------------------
+# The app nests such a setting under its parent and greys it out, still
+# visible and searchable, while the parent is not as required. Every
+# matching rule adds its parents; a parent never requires itself. Each
+# link is read from the code that reads the setting, cited per rule.
+# Per-label tiers have none: whether a label interpolates or pairs its
+# style resolves across tiers, so a sibling flag at one tier decides
+# nothing on its own.
+
+ON = 'on'
+OFF = 'off'
+ABOVE_ZERO = 'above_zero'
+REQUIRE_TESTS = ( ON, OFF, ABOVE_ZERO )
+
+REQUIRES_RULES = (
+    # betatv.py: read only inside `if preview_mode_enabled`; the full run uses encode_preset.
+    ( 'preview_max_seconds', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_start_seconds', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_random_slice', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'preview_encode_preset', ( ( 'preview_mode_enabled', ON ), ) ),
+    ( 'encode_preset', ( ( 'preview_mode_enabled', OFF ), ) ),
+    # betatv.py hands the threshold to shot-cut detection with its `enabled`
+    # flag; betautils_track.py collapses bursts only when the window is above 0.
+    ( 'shot_cut_threshold', ( ( 'shot_cut_detection_enabled', ON ), ) ),
+    ( 'shot_cut_burst_*', ( ( 'shot_cut_detection_enabled', ON ), ) ),
+    ( 'shot_cut_burst_keep', ( ( 'shot_cut_burst_window', ABOVE_ZERO ), ) ),
+    ( 'shot_cut_burst_max_span', ( ( 'shot_cut_burst_window', ABOVE_ZERO ), ) ),
+    # betautils_track.py: returns before reading iou_threshold when off.
+    ( 'cross_size_dedup.iou_threshold', ( ( 'cross_size_dedup.enabled', ON ), ) ),
+    # betautils_censor.py: the approximation, and so its threshold, is
+    # skipped when off and whenever a blur edge margin is in use.
+    ( 'blur_approximation_min_kernel', ( ( 'blur_fast_approximation', ON ), ( 'blur_edge_margin', OFF ) ) ),
+    # betautils_detector.py: the device id goes to the CUDA provider only.
+    ( 'cuda_device_id', ( ( 'gpu_enabled', ON ), ) ),
+    # betautils_render.py: no motion index is built when interpolation is off.
+    ( 'render_motion_max_span_seconds', ( ( 'render_motion_interpolation', ON ), ) ),
+    ( 'render_motion_collapse_max_growth', ( ( 'render_motion_interpolation', ON ), ) ),
+    ( 'render_motion_size_window_seconds', ( ( 'render_motion_interpolation', ON ), ) ),
+    # betautils_reverse.py and betatv.py: reverse mode, and person windows
+    # within it, which are the only users of the person model.
+    ( 'reverse.*', ( ( 'reverse.enabled', ON ), ) ),
+    ( 'reverse.person_windows.*', ( ( 'reverse.person_windows.enabled', ON ), ) ),
+    ( 'person_backend.*', ( ( 'reverse.enabled', ON ), ( 'reverse.person_windows.enabled', ON ) ) ),
+)
+
+
+# Per-label keys that change nothing while the label's own resolved flag
+# is off: betautils_track.py reads the three paired_style_* values only
+# inside `if settings.paired_style` (and in a tuning observer that writes
+# nothing). Not interpolation_max_gap: it also raises the label's default
+# track_max_gap, so it acts with interpolation off.
+LABEL_REQUIRES = {
+    'paired_style_max_distance': 'paired_style',
+    'paired_style_tiebreak_margin': 'paired_style',
+    'paired_style_max_age': 'paired_style',
+}
+
+
+def requires_of( entry ):
+    """( parent path, test ) pairs, in rule order, without itself."""
+    found = []
+    for pattern, parents in REQUIRES_RULES:
+        if fnmatch.fnmatchcase( entry.dotted, pattern ):
+            for parent in parents:
+                if parent[0] != entry.dotted:
+                    found.append( parent )
+    return tuple( found )
+
+
+def screen_of( entry ):
+    for pattern, screen in SCREEN_RULES:
+        if fnmatch.fnmatchcase( entry.dotted, pattern ):
+            return screen
+    raise AssertionError( 'no screen for ' + entry.dotted )
+
+
+# ---------------------------------------------------------------------------
 # Lookup
 # ---------------------------------------------------------------------------
 
@@ -1164,6 +1326,8 @@ def schema():
             'moves': sorted( entry.moves ), 'may_move': sorted( entry.may_move ),
             'when': list( entry.when ), 'per_run': entry.per_run,
             'tip': entry.tip, 'label': entry.label_key, 'help': entry.help,
+            'screen': entry.screen,
+            'requires': [ { 'path': path, 'test': test } for path, test in entry.requires ],
         }
         for key in ( 'minimum', 'maximum' ):
             if getattr( entry, key ) is not None:
@@ -1194,6 +1358,8 @@ def schema():
             '<style_type>': list( CENSOR_STYLE_TYPES ),
         },
         'conditions': sorted( CONDITIONS ),
+        'screens': list( SCREENS ),
+        'geometry_actions': geometry_actions(),
         'catalog': 'i18n/en-US/settings.json',
         'help': 'CONFIG_REFERENCE.md',
     }

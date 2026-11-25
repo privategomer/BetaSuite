@@ -11,15 +11,20 @@ on a slider: changing an entry's limit here must change what
 validation accepts.
 """
 
+import ast
 import copy
+import json
+import pathlib
 import re
 import unittest
 
 import betaconfig
 import betautils_config as bu_config
+import betautils_serve_config as bu_serve_config
 import betautils_settings as bu_settings
 
 from tests import config_harness as harness
+from tests import protocol_schemas
 from tests import test_settings_cache_tags as tags
 from tests import test_validation_corpus as corpus
 
@@ -225,6 +230,113 @@ class TestEveryProbeValidates( unittest.TestCase ):
                 if errors:
                     wrong.append( '%s: %s'%( dotted, errors[0] ) )
         self.assertEqual( [], wrong )
+
+
+# ---------------------------------------------------------------------------
+# Every rule id is listed in the protocol, and only those
+
+RULE_CALLS = ( 'rule', '_rule' )
+SKIP_DIRS = { 'tests', 'spikes', 'ui', 'node_modules', '.venv', '.claude', '.git' }
+ROOT = pathlib.Path( __file__ ).resolve().parent.parent
+
+
+def _is_forwarding( func, call ):
+    """Inside `def _rule( rule_id, ... )`, a call that hands rule_id on."""
+    return ( func is not None and func.name in RULE_CALLS and func.args.args
+             and isinstance( call.args[0], ast.Name ) and call.args[0].id == func.args.args[0].arg )
+
+
+def _calls( node, func=None ):
+    """(call, enclosing function) for every rule call under node."""
+    for child in ast.iter_child_nodes( node ):
+        inner = child if isinstance( child, ast.FunctionDef ) else func
+        if isinstance( child, ast.Call ) and child.args:
+            name = getattr( child.func, 'attr', getattr( child.func, 'id', None ) )
+            if name in RULE_CALLS:
+                yield child, func
+        yield from _calls( child, inner )
+
+
+def scan( source ):
+    """[(rule id or None, line)] for each rule call in source; None where
+    the id is not a literal and no forwarding wrapper explains it."""
+    found = []
+    for call, func in _calls( ast.parse( source ) ):
+        first = call.args[0]
+        if isinstance( first, ast.Constant ) and isinstance( first.value, str ):
+            found.append( ( first.value, call.lineno ) )
+        elif not _is_forwarding( func, call ):
+            found.append( ( None, call.lineno ) )
+    return found
+
+
+def rule_calls():
+    """({rule id: call sites}, call sites whose id is not a literal)."""
+    literal, other = {}, []
+    for path in sorted( ROOT.rglob( '*.py' ) ):
+        relative = path.relative_to( ROOT )
+        if SKIP_DIRS.intersection( relative.parts ):
+            continue
+        for rule_id, line in scan( path.read_text( encoding='utf-8' ) ):
+            where = '%s:%d'%( relative.as_posix(), line )
+            if rule_id is None:
+                other.append( where )
+            else:
+                literal.setdefault( rule_id, [] ).append( where )
+    return literal, other
+
+
+def protocol_rule_ids():
+    doc = protocol_schemas.schema_files()['errors.schema.json']
+    return set( doc['$defs']['config.rule']['properties']['params']['properties']['rule']['enum'] )
+
+
+class TestRuleIdsAreListed( unittest.TestCase ):
+    """
+    The app words each rule id from its catalog (rule.<id>), and the
+    catalog check reads the ids from errors.schema.json. So that list must
+    hold every id a check can return, and nothing else.
+    """
+
+    def test_every_rule_call_passes_a_literal_id( self ):
+        self.assertEqual( [], rule_calls()[1] )
+
+    def test_the_scan_flags_a_computed_id_and_passes_a_forwarding_wrapper( self ):
+        source = '\n'.join( [
+            'def _rule( rule_id, text ):',
+            '    return bu_settings.rule( rule_id, text )',
+            'def check( name ):',
+            "    yield _rule( 'area.what', 'x' )",
+            "    yield bu_settings.rule( 'area.' + name, 'x' )",
+            "    yield rule( name, 'x' )",
+            'def _rule_other( rule_id ):',
+            "    return rule( rule_id, 'x' )",
+            'def _rule( rule_id, text ):',
+            "    return rule( computed, text )",
+        ] )
+        self.assertEqual( [ ( 'area.what', 4 ), ( None, 5 ), ( None, 6 ), ( None, 8 ), ( None, 10 ) ],
+                          scan( source ) )
+
+    def test_the_scan_sees_the_backend_wrappers_calls( self ):
+        sites = [ site for sites in rule_calls()[0].values() for site in sites ]
+        for folder in ( 'detectors/', 'segmenters/' ):
+            self.assertTrue( any( site.startswith( folder ) for site in sites ), folder )
+
+    def test_the_protocol_lists_every_rule_id_and_no_other( self ):
+        ids = set( rule_calls()[0] ) | { bu_serve_config.UNCLASSIFIED_RULE }
+        listed = protocol_rule_ids()
+        self.assertEqual( [], sorted( ids - listed ), 'ids missing from errors.schema.json' )
+        self.assertEqual( [], sorted( listed - ids ), 'listed ids that no check returns' )
+
+    def test_every_listed_id_has_the_area_what_form( self ):
+        for rule_id in protocol_rule_ids():
+            self.assertRegex( rule_id, RULE_ID )
+
+    def test_a_check_that_returned_plain_text_is_still_a_listed_rule( self ):
+        problem = bu_serve_config._problem( 'a sentence the protocol must not carry' )
+        self.assertEqual( 'config.rule', problem['code'] )
+        self.assertIn( problem['params']['rule'], protocol_rule_ids() )
+        self.assertNotIn( 'sentence', json.dumps( problem ) )
 
 
 if __name__ == '__main__':
