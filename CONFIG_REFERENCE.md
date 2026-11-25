@@ -2513,7 +2513,10 @@ Raising the label tier would have changed nothing.
 
 > Four tiers resolve per-label settings, and a profile sits on top of all
 > of them. When a setting does not seem to do anything, check which tier
-> actually owns it before changing the one you found first.
+> actually owns it before changing the one you found first. The engine
+> answers that directly: `config.get` with `labels: true` lists, for each
+> label and per-label key, every tier that sets it, which one is in
+> effect, why each other one is not, and each profile's value on top.
 
 **Why a large value is safe here.** `cut_between()` blocks matching
 across any recorded shot cut regardless of every gap and distance
