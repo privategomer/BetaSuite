@@ -53,6 +53,8 @@ struct StartupInfo {
     view: Option<String>,
     /// The `--search` option: All Settings' starting search text.
     search: Option<String>,
+    /// The `--help-topic` option: a help section to open at start.
+    help_topic: Option<String>,
     /// The `--open` video, already allowed, so the page's first render can
     /// start it; or why it could not be opened.
     open: Option<video::PlayableVideo>,
@@ -299,6 +301,7 @@ pub fn run() -> i32 {
         theme: options.theme.clone(),
         view: options.view.clone(),
         search: options.search.clone(),
+        help_topic: options.help_topic.clone(),
         open: None,
         open_error: None,
     };

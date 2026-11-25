@@ -10,7 +10,7 @@ pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
                  [--measure-startup FILE] [--view player|settings|all-settings]
-                 [--search TEXT]
+                 [--search TEXT] [--help-topic ANCHOR]
 
   --log-level LEVEL      log file level (default info)
   --console-level LEVEL  terminal level (default info)
@@ -23,6 +23,7 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                          then close (with --open, after its first frame)
   --view VIEW            open on this view: player (default), settings or all-settings
   --search TEXT          start All Settings with this search filled in
+  --help-topic ANCHOR    open the help panel at this section of the reference
 
 LEVEL is trace, debug, info, warn or error.";
 
@@ -41,6 +42,8 @@ pub struct Options {
     pub view: Option<String>,
     /// Text All Settings starts with in its search box.
     pub search: Option<String>,
+    /// A help section to open at start.
+    pub help_topic: Option<String>,
     pub help: bool,
     /// Arguments this version does not know. Logged and ignored, so a
     /// launcher that adds its own arguments cannot stop the app starting.
@@ -59,6 +62,7 @@ impl Default for Options {
             measure_startup: None,
             view: None,
             search: None,
+            help_topic: None,
             help: false,
             unknown: Vec::new(),
         }
@@ -122,6 +126,7 @@ where
                 }
             },
             "--search" => options.search = Some(value("--search")?),
+            "--help-topic" => options.help_topic = Some(value("--help-topic")?),
             "-h" | "--help" => options.help = true,
             _ => options.unknown.push(arg),
         }

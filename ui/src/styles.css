@@ -49,6 +49,7 @@ button.primary {
 .app {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   block-size: 100%;
 }
 
@@ -68,7 +69,16 @@ button.primary {
   font-weight: 600;
 }
 
+.app-body {
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: flex;
+  overflow: hidden;
+}
+
 .app-main {
+  flex: 1;
+  min-inline-size: 0;
   min-block-size: 0;
   display: flex;
   flex-direction: column;
@@ -491,6 +501,83 @@ button.link {
 
 [dir="rtl"] .fold-toggle[aria-expanded="true"]::before {
   transform: rotate(-90deg);
+}
+
+/* Help panel */
+
+.help-panel {
+  flex: 0 0 min(42rem, 45%);
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  border-inline-start: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.help-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.help-body {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-block: 0.5rem 2rem;
+  padding-inline: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.help-body h1,
+.help-body h2,
+.help-body h3,
+.help-body h4 {
+  scroll-margin-block-start: 0.5rem;
+}
+
+.help-body a {
+  color: var(--color-accent);
+}
+
+.help-body pre {
+  overflow-x: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+}
+
+.help-body table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.help-body th,
+.help-body td {
+  padding-block: 0.25rem;
+  padding-inline: 0.5rem;
+  border: 1px solid var(--color-border);
+  text-align: start;
+}
+
+.help-body blockquote {
+  margin-inline: 0;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 4px solid var(--color-border);
+  color: var(--color-text-muted);
 }
 
 .setting-nest[data-depth="1"] {
