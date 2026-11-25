@@ -46,6 +46,15 @@ button.primary {
   color: var(--color-accent-text);
 }
 
+/* A disabled button, primary included, must not look pressable. */
+button:disabled,
+button.primary:disabled {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
 .app {
   display: grid;
   grid-template-rows: auto 1fr auto;
