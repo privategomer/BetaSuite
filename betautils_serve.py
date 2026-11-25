@@ -411,6 +411,11 @@ from betautils_serve_job import HANDLERS as _JOB_HANDLERS   # noqa: E402
 for _name, _handler in _JOB_HANDLERS.items():
     register( _name, _handler )
 
+# preview.look
+from betautils_serve_preview import HANDLERS as _PREVIEW_HANDLERS   # noqa: E402
+for _name, _handler in _PREVIEW_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 

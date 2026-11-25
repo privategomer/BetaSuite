@@ -22,6 +22,8 @@
  "error.job.unknown": "That job is no longer known to the engine.",
  "error.job.unsafe_setting": "The job was not started because of the setting {path}: the app will not run with it unattended.",
  "error.model.load_failed": "The detection model could not be loaded ({exception_type}), so the job did not start. The engine log has details.",
+ "error.preview.bad_image": "The picture for this preview could not be read.",
+ "error.preview.unknown_art": "That picture is missing from the art style {style}, so its preview could not be drawn.",
  "error.protocol.bad_encoding": "The engine received a message that was not valid text. Restart the engine; if this keeps happening, the app log has details.",
  "error.protocol.bad_envelope": "The engine received a malformed message (field {field}). Restart the engine; if this keeps happening, the app log has details.",
  "error.protocol.bad_json": "The engine received a message it could not read. Restart the engine; if this keeps happening, the app log has details.",

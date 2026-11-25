@@ -94,6 +94,9 @@ ERRORS = {
     'job.no_such_file':             ( 'index', ),
     'job.unsafe_setting':           ( 'path', ),
     'job.nothing_to_render':        (),
+    # preview.look
+    'preview.unknown_art':          ( 'style', 'item' ),
+    'preview.bad_image':            (),
     'engine.stopping':              (),
     # job.error events, and the code of a 'stopped' job.state
     'file.failed':                  ( 'exception_type', 'stage' ),

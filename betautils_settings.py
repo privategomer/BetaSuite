@@ -185,6 +185,16 @@ def backend_labels( name ):
     return bu_detector.supported_labels( name )
 
 
+def art_style_names():
+    import betautils_art as bu_art
+    return bu_art.art_styles()
+
+
+def look_presets():
+    import betautils_looks as bu_looks
+    return bu_looks.presets()
+
+
 def label_table():
     """Each label's part, state (exposed, covered, none), sex (female, male, any) and figure view, in display order."""
     import betautils_labels as bu_labels
@@ -804,6 +814,10 @@ _ENTRIES = [
        cli='--debug-mode', probe=1 ),
     S( 'enable_betasuite_watermark', 'bool', 'enable_betasuite_watermark', 'miscellaneous',
        moves=( CENSOR, ), probe=True ),
+
+    # --- the desktop app ---
+    S( 'art_style', 'choice', 'art_style', 'art_style', level=SIMPLE, choices=art_style_names,
+       probe='cel' ),
 ]
 
 # Keys an entry can move for some files only. A config-level key cannot
@@ -885,6 +899,7 @@ SCREEN_RULES = (
     ( 'reverse.*', SCREEN_REVERSE ),
     ( 'person_backend.*', SCREEN_REVERSE ),
     # What to hide, and how it looks.
+    ( 'art_style', SCREEN_WHAT_TO_HIDE ),
     ( 'items_to_censor', SCREEN_WHAT_TO_HIDE ),
     ( 'item_overrides.*', SCREEN_WHAT_TO_HIDE ),
     ( 'type_default_shapes.*', SCREEN_WHAT_TO_HIDE ),
@@ -1370,6 +1385,7 @@ def schema():
             '<style_type>': list( CENSOR_STYLE_TYPES ),
         },
         'labels': label_table(),
+        'presets': look_presets(),
         'backends': { name: { 'labels': sorted( backend_labels( name ) ) } for name in backend_names() },
         'conditions': sorted( CONDITIONS ),
         'screens': list( SCREENS ),
