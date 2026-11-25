@@ -192,6 +192,53 @@ class TestNewItemsGetTheirBlurredThumbnail( unittest.TestCase ):
         self.assertTrue( os.path.exists( bu_thumbs.blurred_path( digest ) ) )
 
 
+@unittest.skipUnless( _ffmpeg_available(), "ffmpeg is needed to build the test clips" )
+class TestTheLogNeverHoldsTheImage( unittest.TestCase ):
+    """The engine traces every message it sends; a thumbnail's image is left out."""
+
+    def test_a_revealed_frame_is_answered_whole_and_logged_without_its_data( self ):
+        import io
+        import json
+        import betautils_log as bu_log
+        import betautils_serve as bu_serve
+        from tests.test_serve_job import Wire
+        root = tempfile.mkdtemp( prefix='catalog-thumbs-log-' )
+        self.addCleanup( shutil.rmtree, root, ignore_errors=True )
+        clip = os.path.join( root, 'videos', 'clip.mp4' )
+        _build_clip( clip, width=640, height=360 )
+        digest = bu_hash.md5_for_file( clip, 16, use_memo=False )
+        self.addCleanup( bu_thumbs.forget, digest )
+        log_path = os.path.join( root, 'engine.log' )
+        logger = bu_log.tool_logger( 'test_thumbnail_trace', log_path=log_path, file_level='trace',
+                                     console_level='error', console_stream=io.StringIO() )
+        self.addCleanup( bu_log.close_logger, logger )
+        wire = Wire()
+        server = bu_serve.Server( io.BytesIO(), wire, logger )
+        server.protocol = 1
+        server.catalog_factory = lambda **kwargs: bu_catalog.Catalog(
+            path=os.path.join( root, 'c.sqlite' ), seed_folders=[], thumbnails=False, **dict( kwargs, interval=0 ) )
+        self.addCleanup( server.stop_catalog )
+        bu_serve_catalog = __import__( 'betautils_serve_catalog' )
+        bu_serve_catalog.catalog_for( server ).index.record_hash( clip, bu_index.Stat.of( os.stat( clip ) ), digest )
+        answers = []
+        for reveal in ( True, False ):
+            request = json.dumps( { 'v': 1, 'kind': 'cmd', 'id': 'r%d'%( reveal ), 'name': 'catalog.thumbnail',
+                                    'data': { 'item': digest, 'reveal': reveal } } ).encode()
+            server.handle_line( request )
+            answers.append( wire.wait_for( lambda m, i='r%d'%( reveal ): m.get( 'id' ) == i, 'thumbnail' ) )
+        for handler in logger.handlers:
+            handler.flush()
+        with open( log_path, encoding='utf-8' ) as handle:
+            text = handle.read()
+        self.assertIn( 'send ', text, 'the trace is on' )
+        for answer in answers:
+            self.assertTrue( answer['ok'], answer )
+            data = answer['data']['data']
+            self.assertGreater( len( data ), 100 )
+            self.assertNotIn( data[:64], text )
+            self.assertIn( '<%d characters not logged>'%( len( data ), ), text )
+
+
 class TestNoClearImageOfASourceIsWritten( BetaTvHarness ):
     """
     A real run, then every kind of thumbnail; then every file under the
