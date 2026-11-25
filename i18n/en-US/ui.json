@@ -64,7 +64,7 @@
  "settings.label.inactive.per_profile": "Applies on top, only to videos that get this profile.",
  "settings.label.inactive.reverse_off": "Not used while reverse mode is off.",
  "settings.label.inactive.variant_not_selected": "Not used: this is for a model variant that is not selected.",
- "settings.label.not_set": "Not set here. {source} is used.",
+ "settings.label.not_set": "Not set here, so {source} is used.",
  "settings.label.off": "Its effect is off: {parent} is off for this label.",
  "settings.label.overridden": "Not in effect: {source} is used instead.",
  "settings.label.unused": "{label} is not hidden, so its settings are not used.",

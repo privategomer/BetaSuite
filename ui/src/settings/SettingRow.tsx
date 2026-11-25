@@ -108,12 +108,14 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
     ).finally( () => { setApplying( false ); } );
   };
 
-  const shown = pending?.action === 'set' ? pending.value : held?.value ?? null;
+  const facts = row.pattern ? labelFacts( entry.path, path, data.labels ) : null;
+  // A per-label value not set at this tier starts from what it resolves to.
+  const current = held !== undefined ? held.value : facts?.value ?? null;
+  const shown = pending?.action === 'set' ? pending.value : current;
   const Editor = row.editor === null ? null : EDITORS[ row.editor ];
   const valueOf = ( other: string ) => data.values.get( other )?.value;
   const context = { paths: [ ...data.values.keys() ], valueOf };
   const missing = unmet( entry, valueOf );
-  const facts = row.pattern ? labelFacts( entry.path, path, data.labels ) : null;
   const inactive = missing.length > 0 || facts?.offBy != null || facts?.unused === true;
   const parentLabel = ( parentPath: string ) => {
     const parent = data.rows.find( ( other ) => other.entry.path === parentPath );
@@ -160,7 +162,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
             value={shown}
             inputId={inputId}
             disabled={applying}
-            onChange={( value ) => { setPending( same( value, held?.value ) ? null : { action: 'set', value } ); }}
+            onChange={( value ) => { setPending( held !== undefined && same( value, held.value ) ? null : { action: 'set', value } ); }}
           />
         )}
       </div>

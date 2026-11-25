@@ -14,6 +14,8 @@ export type LabelStatus =
 export interface LabelFacts {
   readonly label: string;
   readonly key: string;
+  // What the value resolves to now, wherever it comes from.
+  readonly value: unknown;
   readonly status: LabelStatus;
   readonly offBy: string | null;
   readonly unused: boolean;
@@ -44,7 +46,7 @@ export function labelFacts( pattern: string, path: string, labels: ReadonlyMap<s
   } else {
     status = { kind: 'not_set', uses: field.source };
   }
-  return { label, key, status, offBy: field.off ?? null, unused: !view.rendered && !view.window };
+  return { label, key, value: field.value, status, offBy: field.off ?? null, unused: !view.rendered && !view.window };
 }
 
 // A value no setting supplies, worded for the keys whose fallback is more

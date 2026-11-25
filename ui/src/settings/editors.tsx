@@ -29,7 +29,16 @@ function same( a: unknown, b: unknown ): boolean {
 }
 
 function display( value: unknown ): string {
+  if ( value === null || value === undefined ) {
+    return '';
+  }
   return typeof value === 'string' ? value : JSON.stringify( value );
+}
+
+// None is a value only where the setting allows it. Anywhere else a null
+// is a value not set yet: the editor shows empty, ready for one.
+function showsNone( props: EditorProps ): boolean {
+  return props.value === null && props.entry.nullable === true;
 }
 
 // Text being typed, which may not parse yet, kept until the value it
@@ -80,7 +89,7 @@ function Toggle( { value, onChange, inputId, disabled }: EditorProps ) {
 function NumberEditor( props: EditorProps ) {
   const { entry, value, onChange, inputId, disabled } = props;
   const [ text, setText ] = useDraftText( value, ( current ) => ( typeof current === 'number' ? String( current ) : '' ) );
-  const isNone = value === null;
+  const isNone = showsNone( props );
   return (
     <span className="editor-number">
       {!isNone && (
@@ -122,7 +131,7 @@ function ChoiceEditor( props: EditorProps ) {
   const index = choices.findIndex( ( choice ) => same( choice, value ) );
   return (
     <span className="editor-choice">
-      {value !== null && (
+      {!showsNone( props ) && (
         <select
           id={inputId}
           value={index}
@@ -144,12 +153,12 @@ function TextEditor( props: EditorProps ) {
   const { value, onChange, inputId, disabled } = props;
   return (
     <span className="editor-text">
-      {value !== null && (
+      {!showsNone( props ) && (
         <input
           id={inputId}
           type="text"
           spellCheck={false}
-          value={typeof value === 'string' ? value : display( value )}
+          value={display( value )}
           disabled={disabled}
           onChange={( event ) => { onChange( event.target.value ); }}
         />
@@ -164,7 +173,7 @@ function PathsEditor( props: EditorProps ) {
   const lines = Array.isArray( value ) ? value.map( display ) : [];
   return (
     <span className="editor-paths">
-      {value !== null && (
+      {!showsNone( props ) && (
         <textarea
           id={inputId}
           rows={Math.max( 2, lines.length + 1 )}
@@ -186,7 +195,7 @@ function SizesEditor( props: EditorProps ) {
   const [ text, setText ] = useDraftText( value, ( current ) => ( Array.isArray( current ) ? current.join( ', ' ) : '' ) );
   return (
     <span className="editor-sizes">
-      {value !== null && (
+      {!showsNone( props ) && (
         <input
           id={inputId}
           type="text"
@@ -216,7 +225,7 @@ function LabelsEditor( props: EditorProps ) {
   const chosen = new Set( Array.isArray( value ) ? value.map( display ) : [] );
   return (
     <span className="editor-labels">
-      {value !== null && (
+      {!showsNone( props ) && (
         <span role="group" aria-labelledby={`${props.inputId}-label`} className="label-chips">
           {all.map( ( label ) => (
             <label key={label} className="label-chip">
