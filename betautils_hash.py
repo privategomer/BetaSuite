@@ -88,13 +88,29 @@ def flush_file_hash_memo():
 
     Called once at the end of a run rather than on every insert, so a
     library scan does not rewrite the memo hundreds of times.
+
+    Merges with what is on disk first: the engine's catalog scanner and
+    a command-line run can each hold the memo, and a plain rewrite by
+    one would drop the entries the other flushed meanwhile, costing a
+    full re-read of those files. Each process writes through its own
+    temporary file, so two flushes never write into one.
     """
     global _file_hash_memo_dirty
     with _file_hash_lock:
         if not _file_hash_memo_dirty or _file_hash_memo is None:
             return
         try:
-            write_json_plain( _file_hash_memo, betaconst.file_hash_cache_path )
+            path = betaconst.file_hash_cache_path
+            try:
+                with open( path, 'r', encoding='UTF-8' ) as fin:
+                    on_disk = json.load( fin )
+            except Exception:
+                on_disk = {}
+            if isinstance( on_disk, dict ):
+                for key, value in on_disk.items():
+                    _file_hash_memo.setdefault( key, value )
+            _write_json_plain_via( _file_hash_memo, path,
+                                   '%s.%d.%d.tmp'%( path, os.getpid(), threading.get_ident() ) )
             _file_hash_memo_dirty = False
         except Exception:
             # Best-effort: losing the memo costs time on the next run and
@@ -102,7 +118,11 @@ def flush_file_hash_memo():
             pass
 
 
-def md5_for_file( filename, length, use_memo=True ):
+class HashStopped( Exception ):
+    """md5_for_file gave up because should_stop() said so; nothing was memoised."""
+
+
+def md5_for_file( filename, length, use_memo=True, should_stop=None ):
     """
     Short content hash of a file, streamed so the file is never held in
     memory, and memoised on (path, size, mtime) so repeat runs are free.
@@ -117,6 +137,10 @@ def md5_for_file( filename, length, use_memo=True ):
         length: Trailing hex characters to keep (<= 32).
         use_memo: False forces a real re-read, for the memo's own tests
             and for verifying a suspected stale memo entry.
+        should_stop: Optional callable checked before each chunk; when it
+            answers true the read stops with HashStopped. The catalog's
+            scanner passes one, so a file it is hashing in the background
+            lets go of the disk as soon as a run starts.
 
     Returns:
         A `length`-character hex string.
@@ -157,6 +181,8 @@ def md5_for_file( filename, length, use_memo=True ):
     file_hash = hashlib.md5()
     with open( filename, "rb" ) as fin:
         while True:
+            if should_stop is not None and should_stop():
+                raise HashStopped( filename )
             chunk = fin.read( _FILE_HASH_CHUNK_BYTES )
             if not chunk:
                 break
@@ -197,13 +223,23 @@ def write_json( variable, filename ):
 
 def write_json_plain( variable, filename ):
     """Uncompressed, atomic sibling of write_json, for small readable files."""
+    _write_json_plain_via( variable, filename, filename + '.tmp' )
+
+
+def _write_json_plain_via( variable, filename, tmp_filename ):
     dest_dir = os.path.dirname( filename )
     if dest_dir:
         os.makedirs( dest_dir, exist_ok=True )
-    tmp_filename = filename + '.tmp'
-    with open( tmp_filename, 'w', encoding='UTF-8' ) as fout:
-        json.dump( variable, fout, indent=2, sort_keys=True, default=str )
-    os.replace( tmp_filename, filename )
+    try:
+        with open( tmp_filename, 'w', encoding='UTF-8' ) as fout:
+            json.dump( variable, fout, indent=2, sort_keys=True, default=str )
+        os.replace( tmp_filename, filename )
+    except BaseException:
+        try:
+            os.remove( tmp_filename )
+        except OSError:
+            pass
+        raise
 
 
 def read_json( filename ):

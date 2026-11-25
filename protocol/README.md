@@ -86,6 +86,35 @@ The client must keep reading stdout while a job runs, as it does stderr: events 
 
 `config.schema` also lists the look presets (`presets`: `{id, version, name_key, style}`), each a `censor_style` value with a name.
 
+## Catalog
+
+The library: every video the engine knows, identified by its content (the 16-character hash in its cache keys and output names), with where it is, what happened to it and what video type it gets. The engine keeps it in `catalog.sqlite` in the data folder, opened on the first catalog command. Files are never moved or copied; the catalog points at them where they are.
+
+| command | does |
+|---|---|
+| `catalog.list` | a page of items (at most 500), filtered by status, availability, video type, output, duplicates, pinned or folder, sorted by name, added_at, size or status; with `total`, `pending` (files waiting to be hashed) and `reclaimable_bytes` (what removing every extra copy would free) |
+| `catalog.get` | one item with every path it was found at, its outputs and their keys, and its last 50 runs |
+| `catalog.folders` | the watched folders |
+| `catalog.add_folder` | watch a folder; with `type_from_folder` its subfolder names pick the video type, as a 1.x `uncensored_vids` tree did |
+| `catalog.remove_folder` | stop watching a folder; its items keep their history and pins and come back with it |
+| `catalog.add_files` | index chosen files, ahead of everything else; a moved file is found again as the same item, so this is also how a client locates a missing one |
+| `catalog.rescan` | a pass over every watched folder now |
+| `catalog.pin_type` | pin an item's video type, or unpin it (Auto) |
+| `catalog.thumbnail` | an item's blurred thumbnail, or with `reveal` its clear frame, made in memory and written nowhere; or its censored output's thumbnail |
+| `catalog.forget` | remove an item and its history; its files are not touched |
+
+**Watching.** A pass lists each watched folder and reads each file's size, modification time and inode, never its bytes. A rename or a move on one disk is followed by inode; anything else is hashed once it has held still for a few seconds, and found again as the same item when its content is known. Hashing waits while a run is on (a job of this engine, or any run holding the library's run lock, such as the command line). Passes run at start, every `catalog_scan_interval_seconds` (0: only when asked), never sooner than ten times the last pass's length, and on `catalog.rescan`. A new catalog watches the library's `source` and `uncensored_vids` folders and the 1.x video folders a migration recorded, each with its folder rule. A file named as a censored output is an output, wherever it sits.
+
+**Status and availability are separate.** `status` says what happened: `new`, `queued` and `processing` while a job holds it, `done` once a run finished (or found its output already there), `failed`. `availability` says whether its file is there: `present`, `missing` (its folder was read and the file was not in it) or `offline` (its folder could not be read: an unmounted share, an unplugged drive). A missing item stays in the library with its status, history and pin; nothing is removed because it went missing. `outputs` and `outputs_missing` count its censored outputs found and lost, so a done item whose output was deleted still says done, with its output missing.
+
+**Video type.** Precedence, highest first: the item's pin, `--profile`, a path pattern, a folder rule, measurement, the default. An item's `type` says which one decides and when: `declared` (a pin or a rule, known before the run), `last_run` (measured on its last run) or `at_run` (the scan will decide). What the catalog chooses (a pin, or the folder rule of a watched folder outside the 1.x tree) is keyed in the censor key, so the next run renders again and never reuses an output made under another type. The command line honors pins and folder rules too.
+
+**History** is kept from each run's own record, for the app's jobs and command-line runs alike: outcome and reason, output and keys, the video type and its rule, a failure's type and stage. It exists only in the catalog, like pins: back up the catalog file to keep them. `tools/setup/catalog_rebuild.sh` builds the catalog again from the disk and carries folders, pins and history from the old file while it can be read.
+
+**Thumbnails.** Only a source's blurred thumbnail (24 pixels on its long side, blurred) is ever written to disk. `reveal` decodes the frame again into memory and answers it; it is written nowhere. A censored output's thumbnail is stored like any other.
+
+`catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped.
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

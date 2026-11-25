@@ -62,6 +62,7 @@ import betautils_log as bu_log
 import betautils_person as bu_person
 import betautils_render as bu_render
 import betautils_reverse as bu_reverse
+import betautils_run_record as bu_run_record
 import betautils_runlock as bu_runlock
 import betautils_signals as bu_signals
 import betautils_track as bu_track
@@ -223,7 +224,7 @@ def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_sec
 
 def _build_paths( censored_folder, stem, file_hash, picture_sizes,
                   preview_mode_enabled, preview_offset_seconds, preview_seconds,
-                  duration_seconds, sample_fps=None, output_label='' ):
+                  duration_seconds, sample_fps=None, output_label='', catalog_profile=None ):
     """
     Every path this file needs, from the one module that owns naming.
 
@@ -243,7 +244,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     preview_suffix = bu_cache.preview_cache_suffix(
         preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
     detection_key = bu_cache.detection_key( fps=sample_fps )
-    censor_key = bu_cache.censor_key()
+    censor_key = bu_cache.censor_key( catalog_profile=catalog_profile )
     encode_key = bu_cache.encode_key( preview_mode_enabled )
     container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
 
@@ -528,13 +529,20 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
     uncensored_path = os.path.join( root, fname )
     stem, _suffix = os.path.splitext( fname )
     label = "%d/%d"%(file_index+1, total_files)
+    # What happened to this file, for the stats and failure logs and the
+    # catalog's history (betautils_run_record).
+    recorder = reporter.recorder or bu_run_record.log_recorder( logger=logger )
+    run = recorder.start( uncensored_path, job=reporter.job_id )
+    run.preview = bool( preview_mode_enabled )
 
     try:
         file_hash = bu_hash.md5_for_file( uncensored_path, 16 )
     except OSError as err:
         logger.debug( "skipping %s (%s): %s"%(label, fname, err) )
         reporter.decision( 'source.unreadable', exception_type=type( err ).__name__ )
+        recorder.record( run.end( 'skipped', 'source.unreadable' ) )
         return 'skipped'
+    run.hash = file_hash
 
     try:
         source = bu_video.open_video_source( uncensored_path, file_hash, logger )
@@ -542,6 +550,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         logger.info( "skipping %s (not a decodable video): %s"%(label, fname) )
         logger.debug( "  %s"%(err) )
         reporter.decision( 'source.not_video' )
+        recorder.record( run.end( 'skipped', 'source.not_video' ) )
         return 'skipped'
 
     started_at = time.perf_counter()
@@ -600,7 +609,15 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         # file. Otherwise the name depends on the measured profile, which
         # needs the scan first; it is cached, so a repeat run still skips
         # without detecting.
-        declared = bu_detector.declared_profile_selection( source_path )
+        # The library's pin for this file, and its watched folder's rule,
+        # come through the reporter (betautils_catalog_types); without a
+        # catalog the engine's own ladder decides, as it always has.
+        declared = ( reporter.types.declared( source_path, file_hash ) if reporter.types is not None
+                     else bu_detector.declared_profile_selection( source_path ) )
+        # What the catalog chose (a pin, a watched folder's rule) is keyed;
+        # what the config chose is keyed through the config.
+        catalog_profile = ( declared[0] if declared is not None and getattr( declared[1], 'from_catalog', False )
+                            else None )
         paths = None
         if declared is not None or len( bu_detector.profile_sample_rates() ) == 1:
             early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
@@ -608,14 +625,16 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, early_fps,
-                                  output_label=output_label )
+                                  output_label=output_label, catalog_profile=catalog_profile )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
                 reporter.decision( 'output.present', output=paths['final'] )
                 source.release()
-                if not preview_mode_enabled:
-                    move_completed_source( uncensored_path, logger )
+                run.set_paths( paths )
+                if declared is not None:
+                    run.set_profile( *declared )
+                _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger )
                 return 'skipped'
 
         logger.info( "processing %s: %s"%(label, fname) )
@@ -660,14 +679,15 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, sample_fps,
-                                  output_label=output_label )
+                                  output_label=output_label, catalog_profile=catalog_profile )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
                 reporter.decision( 'output.present', output=paths['final'] )
                 source.release()
-                if not preview_mode_enabled:
-                    move_completed_source( uncensored_path, logger )
+                run.set_paths( paths )
+                run.set_profile( profile_name, profile_reason )
+                _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger )
                 return 'skipped'
 
         # Reverse mode's person masks: same frames as detection, in a
@@ -745,15 +765,20 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             track_stats.get( 'raw_detections', 0 ), track_stats.get( 'rendered_boxes', 0 ),
             track_stats.get( 'interpolated', 0 ) ) )
 
-        bu_log.write_stats( _stats_record(
+        run.set_paths( paths )
+        run.set_profile( profile_name, profile_reason )
+        run.stats = _stats_record(
             fname, paths, preview_mode_enabled, preview_offset_seconds,
             detection_seconds, encode_seconds, finished_at - started_at,
-            picture_sizes, session, source, track_stats, render_stats ) )
+            picture_sizes, session, source, track_stats, render_stats )
+        recorder.record( run.end( 'processed' ) )
         if person_pass is not None:
             person_pass.stop()
         source.release()
         if not preview_mode_enabled:
-            move_completed_source( uncensored_path, logger )
+            moved_to = move_completed_source( uncensored_path, logger )
+            if moved_to is not None:
+                recorder.moved( run, moved_to )
         return 'processed'
 
     except bu_signals.Interrupted:
@@ -765,7 +790,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         raise
     except Exception as err:
         return _failed( label, fname, preview_mode_enabled, source, err, started_at, logger,
-                        reporter )
+                        reporter, recorder, run )
     finally:
         # On a failure or Ctrl-C, the person pass checkpoints before the
         # run moves on or exits; after a normal finish this returns at once.
@@ -775,21 +800,40 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
 
 
 def _failed( label, fname, preview_mode_enabled, source, err, started_at, logger,
-             reporter=bu_job.NULL_REPORTER ):
+             reporter=bu_job.NULL_REPORTER, recorder=None, run=None ):
     """Log and record one file's failure; its outcome."""
     logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
     logger.debug( "failure detail", exc_info=True )
+    if recorder is None:
+        recorder = bu_run_record.log_recorder( logger=logger )
+        run = recorder.start( fname )
+    out_of_space = is_out_of_space( err )
     # Recording the failure must never turn one bad file into a
     # stopped run, so a problem building the record is logged here.
     try:
-        bu_log.write_failure( _failure_record( fname, preview_mode_enabled, source, err,
-                                               time.perf_counter() - started_at ) )
+        # A stats row that could not be written (a full disk) is not tried again.
+        run.stats = None
+        run.failure = _failure_record( fname, preview_mode_enabled, source, err,
+                                       time.perf_counter() - started_at )
+        run.error_type = type( err ).__name__
+        run.stage = reporter.stage
+        recorder.record( run.end( 'out_of_space' if out_of_space else 'failed',
+                                  'disk.full' if out_of_space else 'file.failed' ) )
     except Exception as record_err:
         logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
-    if is_out_of_space( err ):
+    if out_of_space:
         return 'out_of_space'        # the job reports disk.full and stops
     reporter.error( 'file.failed', exception_type=type( err ).__name__, stage=reporter.stage )
     return 'failed'
+
+
+def _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger ):
+    """A file skipped because its output is there: recorded, then moved if asked."""
+    recorder.record( run.end( 'skipped', 'output.present' ) )
+    if not preview_mode_enabled:
+        moved_to = move_completed_source( uncensored_path, logger )
+        if moved_to is not None:
+            recorder.moved( run, moved_to )
 
 
 def completed_source_path( uncensored_path ):
@@ -1000,9 +1044,18 @@ def main():
     exit_code = 0
     run_started_at = time.perf_counter()
     job = None
+    # The library catalog keeps each file's run in its history, as the
+    # app's jobs do; a catalog that cannot be opened never stops the run.
+    import betautils_catalog_history as bu_history
+    catalog = bu_history.CliHistory.open( logger )
+    sinks = [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink() ]
+    if catalog is not None:
+        sinks.append( catalog.sink )
+    recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
     try:
         job = bu_job.Job( 'cli', job_files( logger ) )
-        state = bu_job.Runner( logger ).run( job )
+        state = bu_job.Runner( logger, recorder=recorder,
+                               types=catalog.run_types() if catalog is not None else None ).run( job )
         if state == bu_job.STOPPED and job.code == 'disk.full':
             exit_code = 1
     except bu_signals.Interrupted:
@@ -1013,6 +1066,8 @@ def main():
         # However the run ends, the lock goes back, so the next run does
         # not report it left behind.
         run_lock.release()
+        if catalog is not None:
+            catalog.close()
 
     counts = job.counts if job is not None else { 'processed': 0, 'skipped': 0, 'failed': 0 }
     logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(

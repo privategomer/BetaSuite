@@ -501,6 +501,10 @@ blur_edge_margin = True   # blur reads real pixels around the box, so it holds s
 input_delete_probability = 0
 move_completed_sources = False   # move each finished source to ../resources/source/completed/<its folder>/
 
+# --- Library catalog ----------------------------------------------------
+
+catalog_scan_interval_seconds = 300   # how often the app re-reads its watched folders; 0 only when asked
+
 # --- Preview mode -------------------------------------------------------
 
 preview_mode_enabled = False

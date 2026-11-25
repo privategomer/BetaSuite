@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.forget.schema.json",
+  "title": "catalog.forget",
+  "description": "Remove an item from the catalog, with its paths, outputs and history. The files on disk are not touched. catalog.no_such_item for an unknown id.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object"
+    }
+  }
+}

@@ -115,5 +115,46 @@ class TestAnalysisToolsPersistTheMemo( MemoHarness ):
         self.assertEqual( self.hash_without_reading( self.path ), target )
 
 
+class TestTwoProcessesShareTheMemo( MemoHarness ):
+    """
+    The engine's catalog scanner and a command-line run can each hold
+    the memo at once. Neither flush may drop what the other wrote.
+    """
+
+    def other_process_flushes( self, path ):
+        mine = ( bu_hash._file_hash_memo, bu_hash._file_hash_memo_dirty )
+        bu_hash._file_hash_memo, bu_hash._file_hash_memo_dirty = None, False
+        digest = bu_hash.md5_for_file( path, 16 )
+        bu_hash.flush_file_hash_memo()
+        bu_hash._file_hash_memo, bu_hash._file_hash_memo_dirty = mine
+        return digest
+
+    def test_a_flush_keeps_entries_another_process_flushed_meanwhile( self ):
+        other = os.path.join( self.tmp, 'b', 'other.mkv' )
+        os.makedirs( os.path.dirname( other ) )
+        with open( other, 'wb' ) as handle:
+            handle.write( b'other frames ' * 1000 )
+        bu_hash._load_file_hash_memo()                 # this process loads first
+        other_digest = self.other_process_flushes( other )
+        mine = bu_hash.md5_for_file( self.path, 16 )
+        bu_hash.flush_file_hash_memo()
+        bu_hash._file_hash_memo = None
+        self.assertEqual( self.hash_without_reading( other ), other_digest )
+        self.assertEqual( self.hash_without_reading( self.path ), mine )
+
+    def test_a_flush_leaves_no_temporary_file( self ):
+        bu_hash.md5_for_file( self.path, 16 )
+        bu_hash.flush_file_hash_memo()
+        self.assertEqual( sorted( os.listdir( self.tmp ) ), [ 'a', 'file_hashes.json' ] )
+
+    def test_a_corrupt_memo_on_disk_is_replaced_not_merged( self ):
+        with open( betaconst.file_hash_cache_path, 'w' ) as handle:
+            handle.write( '{ not json' )
+        digest = bu_hash.md5_for_file( self.path, 16 )
+        bu_hash.flush_file_hash_memo()
+        bu_hash._file_hash_memo = None
+        self.assertEqual( self.hash_without_reading( self.path ), digest )
+
+
 if __name__ == '__main__':
     unittest.main()
