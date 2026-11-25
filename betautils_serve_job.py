@@ -66,10 +66,13 @@ class Events:
     The job runner's emit(): coalesces progress, sends everything else at
     once. send( name, data ) writes one event; it is called with this
     object's lock held, so events from different threads never reorder.
+    An event that cannot be sent (one that does not encode) is logged and
+    dropped, never raised into the pipeline, where it would fail the file.
     """
 
-    def __init__( self, send, interval=PROGRESS_INTERVAL, clock=time.monotonic ):
-        self._send = send
+    def __init__( self, send, interval=PROGRESS_INTERVAL, clock=time.monotonic, logger=None ):
+        self._raw_send = send
+        self._logger = logger
         self._interval = interval
         self._clock = clock
         self._lock = threading.Lock()
@@ -93,6 +96,13 @@ class Events:
             self._flush_all_locked()
             self._check( name, data )
             self._send( name, data )
+
+    def _send( self, name, data ):
+        try:
+            self._raw_send( name, data )
+        except ( ValueError, TypeError ):
+            if self._logger is not None:
+                self._logger.error( "event %s could not be sent"%( name, ), exc_info=True )
 
     @staticmethod
     def _check( name, data ):
@@ -158,7 +168,7 @@ class JobQueue:
         import betautils_job as bu_job
         self._bu_job = bu_job
         self.logger = logger
-        self.events = Events( send )
+        self.events = Events( send, logger=logger )
         self._acquire_lock = acquire_lock or self._library_lock
         self._load_session_override = load_session
         self.runner = bu_job.Runner( logger, emit=self.events, pipeline=pipeline,
@@ -368,10 +378,12 @@ class JobQueue:
             self._run( job )
             with self._cond:
                 import betautils_signals as bu_signals
-                # A pause or cancel asked for as the job ended found no
-                # safe point; it must not reach the next job.
-                if bu_signals.stop_reason() in ( bu_signals.PAUSE, bu_signals.CANCEL ):
-                    bu_signals.clear()
+                # A stop asked for as the job ended found no safe point; it
+                # must not reach the next job. A cancel that came while the
+                # job was pausing still cancels it.
+                leftover = bu_signals.take()
+                if leftover == bu_signals.CANCEL and job.state == bu_job.PAUSED:
+                    self.runner.cancel_idle( job )
                 if job.state != bu_job.PAUSED:
                     self.active = None
                 if job.state == bu_job.STOPPED and job.code == 'disk.full':
@@ -389,7 +401,7 @@ class JobQueue:
                     self.runner.stop( job, refused.code, refused.error['params'] )
                     return
             self.runner.run( job )
-        except Exception as err:
+        except BaseException as err:   # noqa: BLE001  the worker must outlive any job
             self.logger.error( "job %s failed inside the engine"%( job.id, ), exc_info=True )
             if job.state not in bu_job.FINAL:
                 if job.state == bu_job.QUEUED:
@@ -413,8 +425,9 @@ class JobQueue:
             if self._stopping:
                 return
             self._stopping = True
-            running = self.active is not None and self.active.state == bu_job.RUNNING
-            if running:
+            # Queued too: the worker may have taken the job and be checking
+            # it, about to run it.
+            if self.active is not None and self.active.state in ( bu_job.QUEUED, bu_job.RUNNING ):
                 bu_signals.request_stop( bu_signals.SHUTDOWN )
             self._cond.notify_all()
         self._thread.join()

@@ -415,6 +415,71 @@ class TestPauseResumeCancel( _QueueTest ):
         self.wait_state( later, 'completed' )
 
 
+class TestRaces( _QueueTest ):
+    """Windows the independent review found, each held open by the test."""
+
+    def test_shutdown_while_the_worker_checks_a_job_stops_it_before_any_file( self ):
+        checking = threading.Event()
+        release = threading.Event()
+        real = bu_serve_job.start_checks
+
+        def slow_checks( overrides ):
+            if threading.current_thread().name == 'job-worker':
+                checking.set()
+                release.wait( WAIT )
+            return real( overrides )
+
+        with mock.patch.object( bu_serve_job, 'start_checks', slow_checks ):
+            job = self.submit( 'a.mp4' )
+            self.assertTrue( checking.wait( WAIT ) )
+            stopper = threading.Thread( target=self.server.stop_jobs )
+            stopper.start()
+            time.sleep( 0.1 )
+            release.set()
+            stopper.join( WAIT )
+        self.assertFalse( stopper.is_alive() )
+        self.assertEqual( self.wait_state( job, 'stopped' )['code'], 'engine.stopping' )
+        self.assertEqual( self.pipeline.started, [], "no file ran while shutdown waited" )
+
+    def test_a_cancel_that_lands_while_the_job_is_pausing_still_cancels_it( self ):
+        self.pipeline.auto = False
+        real_run = self.server.jobs.runner.run
+
+        def cancel_after_pausing( running_job ):
+            state = real_run( running_job )
+            if state == 'paused':
+                # The cancel arrives after the runner took the pause, before
+                # the worker looked again: the job is paused, the request
+                # is pending.
+                bu_signals.request_stop( bu_signals.CANCEL )
+            return state
+
+        with mock.patch.object( self.server.jobs.runner, 'run', cancel_after_pausing ):
+            job = self.submit( 'a.mp4' )
+            self.wait_state( job, 'running' )
+            self.ok( 'job.pause', { 'job': job } )
+            self.pipeline.release.release()
+            self.wait_state( job, 'cancelled' )
+        self.assertFalse( self.server.jobs.busy )
+        self.assertFalse( bu_signals.interrupted() )
+
+    def test_the_worker_outlives_a_job_that_raises_anything( self ):
+        real = self.pipeline.process_one_video
+
+        def interrupt_first( root, fname, *args, **kwargs ):
+            if fname == 'a.mp4':
+                raise KeyboardInterrupt()
+            return real( root, fname, *args, **kwargs )
+
+        self.pipeline.process_one_video = interrupt_first
+        first = self.submit( 'a.mp4' )
+        stopped = self.wait_state( first, 'stopped' )
+        self.assertEqual( ( stopped['code'], stopped['params'] ),
+                          ( 'engine.internal', { 'exception_type': 'KeyboardInterrupt' } ) )
+        second = self.submit( 'b.mp4' )
+        self.wait_state( second, 'completed' )
+
+
 class TestShutdown( _QueueTest ):
 
     def test_shutdown_stops_the_running_job_and_the_queued_ones( self ):
@@ -577,6 +642,17 @@ class TestEvents( unittest.TestCase ):
             events( 'job.error', { 'job': 'j', 'file': 0, 'code': 'file.failed',
                                    'params': { 'exception_type': 'X', 'stage': 'render' } } )
         self.assertEqual( len( sent ), 100 )
+
+    def test_an_event_that_cannot_be_sent_is_logged_not_raised( self ):
+        logger = mock.Mock()
+
+        def refuse( name, data ):
+            raise ValueError( "Out of range float values are not JSON compliant" )
+
+        events = bu_serve_job.Events( refuse, logger=logger )
+        self.addCleanup( events.close )
+        events( 'job.file', { 'job': 'j', 'file': 0, 'state': 'started' } )
+        logger.error.assert_called_once()
 
     def test_an_unregistered_error_code_is_a_bug( self ):
         events = bu_serve_job.Events( lambda name, data: None )

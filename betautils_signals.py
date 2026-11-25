@@ -144,6 +144,33 @@ def clear():
         _interrupt_event.clear()
 
 
+def take( reason=None ):
+    """
+    Clear the pending stop and return the stronger of it and `reason`
+    (one already raised as Interrupted), in one step under the lock, so a
+    stop asked for while another is being handled is never wiped unseen.
+    """
+    global _reason
+    with _reason_lock:
+        pending = _reason if _interrupt_event.is_set() else None
+        _reason = None
+        _interrupt_event.clear()
+    if pending is None:
+        return reason
+    if reason is None or _STRENGTH[pending] > _STRENGTH[reason]:
+        return pending
+    return reason
+
+
+def stronger( first, second ):
+    """The stronger of two stop reasons (either may be None)."""
+    if first is None:
+        return second
+    if second is None or _STRENGTH[first] >= _STRENGTH[second]:
+        return first
+    return second
+
+
 def interrupted():
     """Whether a stop has been requested."""
     return _interrupt_event.is_set()

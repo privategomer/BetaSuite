@@ -308,6 +308,26 @@ def close_logger( logger ):
             pass
 
 
+class LogFileHandler( logging.FileHandler ):
+    """
+    The log file. A full disk gives up the space reserve (ensure_reserve)
+    and writes the line that did not fit, so a disk that fills during a
+    run does not leave a hole in the log. A full disk once did.
+    """
+
+    def handleError( self, record ):
+        err = sys.exc_info()[1]
+        if isinstance( err, OSError ) and err.errno == errno.ENOSPC and self.stream is not None \
+                and release_reserve():
+            try:
+                # The line is still in the stream's buffer: write it, once.
+                self.stream.flush()
+                return
+            except OSError:
+                pass
+        super().handleError( record )
+
+
 def tool_logger( name, log_path=None, file_level='info', console_level='info', file_mode='a',
                  file_format=FILE_FORMAT, console_format=CONSOLE_FORMAT, console_stream=None ):
     """
@@ -340,7 +360,7 @@ def tool_logger( name, log_path=None, file_level='info', console_level='info', f
         log_dir = os.path.dirname( log_path )
         if log_dir:
             os.makedirs( log_dir, exist_ok=True )
-        file_handler = logging.FileHandler( log_path, mode=file_mode, encoding='UTF-8' )
+        file_handler = LogFileHandler( log_path, mode=file_mode, encoding='UTF-8' )
         file_handler.setLevel( _as_level( file_level ) )
         file_handler.setFormatter( logging.Formatter( file_format ) )
         logger.addHandler( file_handler )
@@ -396,7 +416,7 @@ def _build_configured_logger():
         log_dir = os.path.dirname( log_path )
         if log_dir:
             os.makedirs( log_dir, exist_ok=True )
-        file_handler = logging.FileHandler( log_path, encoding='UTF-8' )
+        file_handler = LogFileHandler( log_path, encoding='UTF-8' )
         file_handler.setLevel( file_level )
         file_handler.setFormatter( logging.Formatter( FILE_FORMAT ) )
         logger.addHandler( file_handler )

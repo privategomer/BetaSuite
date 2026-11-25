@@ -13,6 +13,7 @@ only; and the state table.
 import hashlib
 import os
 import shutil
+import tempfile
 import threading
 import unittest
 from unittest import mock
@@ -512,6 +513,94 @@ class TestOutputFolder( unittest.TestCase ):
         self.assertEqual( bu_job.output_folder_for( elsewhere ), outputs )
 
 
+class TestAStopDuringAPause( unittest.TestCase ):
+
+    def tearDown( self ):
+        bu_signals.clear()
+
+    def test_a_cancel_asked_for_while_a_pause_is_raised_wins( self ):
+        import types
+
+        class Pipeline:
+            bu_detector = types.SimpleNamespace(
+                get_detector=lambda *a: types.SimpleNamespace( get_session=lambda: None ) )
+
+            @staticmethod
+            def _log_run_banner( logger ):
+                pass
+
+            @staticmethod
+            def _resolve_active_encode_preset():
+                return 'ultrafast'
+
+            @staticmethod
+            def process_one_video( *args, **kwargs ):
+                bu_signals.request_stop( bu_signals.PAUSE )
+                try:
+                    bu_signals.check()
+                except bu_signals.Interrupted:
+                    bu_signals.request_stop( bu_signals.CANCEL )   # arrives as the pause unwinds
+                    raise
+
+        logger = mock.Mock()
+        runner = bu_job.Runner( logger, pipeline=Pipeline )
+        job = bu_job.Job( 'j', [ bu_job.JobFile( os.path.abspath( 'x.mp4' ), tempfile.gettempdir() ) ] )
+        with mock.patch.object( bu_job.bu_log, 'RunMarker' ):
+            self.assertEqual( runner.run( job ), bu_job.CANCELLED )
+        self.assertFalse( bu_signals.interrupted() )
+
+    def test_a_stop_asked_for_before_the_model_loads_does_not_load_it( self ):
+        load = mock.Mock()
+        runner = bu_job.Runner( mock.Mock(), pipeline=mock.Mock(), load_session=load )
+        job = bu_job.Job( 'j', [ bu_job.JobFile( os.path.abspath( 'x.mp4' ), tempfile.gettempdir() ) ] )
+        bu_signals.request_stop( bu_signals.SHUTDOWN )
+        with mock.patch.object( bu_job.bu_log, 'RunMarker' ):
+            self.assertEqual( runner.run( job ), bu_job.STOPPED )
+        load.assert_not_called()
+
+    def test_a_file_on_another_drive_writes_to_the_output_folder( self ):
+        with mock.patch.object( bu_job.os.path, 'relpath', side_effect=ValueError( 'path is on mount C:' ) ):
+            self.assertEqual( bu_job.output_folder_for( os.path.abspath( 'x.mp4' ) ),
+                              betaconst.video_path_censored )
+
+    def test_a_folder_whose_name_starts_with_dots_is_still_inside( self ):
+        inside = os.path.join( os.path.abspath( betaconst.video_path_uncensored ), '..hidden', 'x.mp4' )
+        self.assertEqual( os.path.normpath( bu_job.output_folder_for( inside ) ),
+                          os.path.normpath( os.path.join( betaconst.video_path_censored, '..hidden' ) ) )
+
+
+class TestProfileReason( unittest.TestCase ):
+
+    def test_every_rule_reaches_the_decision_and_survives_copy_and_pickle( self ):
+        import copy
+        import pickle
+        import betautils_detector as bu_detector
+        reasons = [ bu_detector.Reason( 'forced by --profile', 'forced' ),
+                    bu_detector.Reason( 'forced profile x', 'forced_unknown', requested='x' ),
+                    bu_detector.Reason( 'source folder comps/', 'source_folder', folder='comps' ),
+                    bu_detector.Reason( 'measured cuts_per_min', 'measured', signal='cuts_per_min' ) ]
+        reporter = bu_job.FileReporter( mock.Mock(), 'j', 0 )
+        for reason in reasons:
+            with self.subTest( code=reason.code ):
+                reporter.decision( 'structure.profile', profile=None, rule=reason.code, sample_fps=9,
+                                   **reason.params )
+                for again in ( copy.copy( reason ), copy.deepcopy( reason ),
+                               pickle.loads( pickle.dumps( reason ) ) ):
+                    self.assertEqual( ( again, again.code, again.params ),
+                                      ( reason, reason.code, reason.params ) )
+                    self.assertIsInstance( again, bu_detector.Reason )
+
+    def test_an_unknown_forced_profile_is_reported_not_raised( self ):
+        import betautils_detector as bu_detector
+        saved = getattr( betaconfig, 'force_structure_profile', None )
+        self.addCleanup( setattr, betaconfig, 'force_structure_profile', saved )
+        betaconfig.force_structure_profile = 'no_such_profile'
+        name, reason = bu_detector.declared_profile_selection( '/x/y.mp4' )
+        self.assertIsNone( name )
+        bu_job.NULL_REPORTER.decision( 'structure.profile', profile=name, rule=reason.code,
+                                       sample_fps=9, **reason.params )
+
+
 class TestPartialOutputs( unittest.TestCase ):
 
     def test_everything_named_after_the_final_but_the_final_itself( self ):
@@ -522,10 +611,12 @@ class TestPartialOutputs( unittest.TestCase ):
         base = os.path.join( folder, 'a-0123-320-5-d1-c2-e3' )
         names = [ base + '.mp4', base + '.tmp.mp4', base + '.video.mkv', base + '.video.part0000.mkv',
                   base + '.video.part0000.mkv.meta.json', base + '.video.mkv.concat.txt',
-                  base + '-preview@1.0s+1.0s.mp4', os.path.join( folder, 'other.mp4' ) ]
+                  base + '-preview@1.0s+1.0s.mp4', os.path.join( folder, 'other.mp4' ),
+                  base + '.v2.mp4' ]
         for name in names:
             open( name, 'w' ).close()
-        self.assertEqual( bu_cache.partial_outputs( base + '.mp4' ), sorted( names[1:6] ) )
+        self.assertEqual( bu_cache.partial_outputs( base + '.mp4' ), sorted( names[1:6] ),
+                          "a final with a label starting with a dot is never partial" )
 
 
 class TestProgressSink( unittest.TestCase ):

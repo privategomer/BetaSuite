@@ -108,6 +108,68 @@ class TestAppend( _Folder ):
         self.assertFalse( bu_log.release_reserve() )
 
 
+class FullThenFreed:
+    """A log stream whose first flush fails with ENOSPC; it keeps what was written, as a buffer does."""
+
+    def __init__( self, path ):
+        self.path = path
+        self.pending = ''
+        self.failed = False
+
+    def write( self, text ):
+        self.pending += text
+
+    def flush( self ):
+        if not self.failed:
+            self.failed = True
+            raise OSError( errno.ENOSPC, os.strerror( errno.ENOSPC ) )
+        with open( self.path, 'a', encoding='utf-8' ) as handle:
+            handle.write( self.pending )
+        self.pending = ''
+
+    def close( self ):
+        pass
+
+
+class TestTheLog( _Folder ):
+
+    def test_a_full_disk_gives_up_the_reserve_and_the_line_is_written( self ):
+        import logging
+        path = os.path.join( self.tmp, 'betasuite.log' )
+        handler = bu_log.LogFileHandler( path, encoding='UTF-8', delay=True )
+        handler.setFormatter( logging.Formatter( '%(message)s' ) )
+        handler.stream = FullThenFreed( path )
+        self.addCleanup( handler.close )
+        self.assertTrue( bu_log.ensure_reserve( size=4096 ) )
+        logger = logging.getLogger( 'test_failure_durability.log' )
+        logger.propagate = False
+        logger.addHandler( handler )
+        self.addCleanup( logger.removeHandler, handler )
+        with mock.patch( 'logging.Handler.handleError' ) as reported:
+            logger.error( "the disk filled here" )
+        reported.assert_not_called()
+        self.assertEqual( open( path, encoding='utf-8' ).read(), "the disk filled here\n" )
+        self.assertFalse( os.path.exists( bu_log.reserve_path() ) )
+
+    def test_without_a_reserve_the_error_is_reported_as_before( self ):
+        import logging
+        path = os.path.join( self.tmp, 'betasuite.log' )
+        handler = bu_log.LogFileHandler( path, encoding='UTF-8', delay=True )
+        handler.stream = FullThenFreed( path )
+        self.addCleanup( handler.close )
+        bu_log.release_reserve()
+        record = logging.LogRecord( 'x', logging.ERROR, __file__, 1, "line", None, None )
+        with mock.patch( 'logging.Handler.handleError' ) as reported:
+            handler.emit( record )
+        reported.assert_called_once()
+
+    def test_the_loggers_use_it( self ):
+        logger = bu_log.tool_logger( 'test_failure_durability.tool', log_path=os.path.join( self.tmp, 't.log' ),
+                                     console_level=None )
+        self.addCleanup( lambda: [ handler.close() for handler in logger.handlers ] )
+        self.assertTrue( any( isinstance( handler, bu_log.LogFileHandler ) for handler in logger.handlers ) )
+
+
 class TestTheJobStops( BetaTvHarness ):
 
     def test_a_full_disk_stops_the_queue_with_its_code_and_the_record_is_whole( self ):
