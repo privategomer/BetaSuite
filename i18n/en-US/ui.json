@@ -196,8 +196,8 @@
  "status.strip_label": "Status",
  "unsaved.apply": "Apply",
  "unsaved.apply_failed": "The changes could not be applied. Stay to see why, or discard them.",
- "unsaved.body_close": "You have {count, plural, one {# change} other {# changes}} to what is hidden that you have not applied. Apply them before the app closes, or discard them.",
- "unsaved.body_leave": "You have {count, plural, one {# change} other {# changes}} to what is hidden that you have not applied. Apply them before you leave this screen, or discard them.",
+ "unsaved.body_close": "{count, plural, one {You have # change to what is hidden that you have not applied. Apply it before the app closes, or discard it.} other {You have # changes to what is hidden that you have not applied. Apply them before the app closes, or discard them.}}",
+ "unsaved.body_leave": "{count, plural, one {You have # change to what is hidden that you have not applied. Apply it before you leave this screen, or discard it.} other {You have # changes to what is hidden that you have not applied. Apply them before you leave this screen, or discard them.}}",
  "unsaved.discard": "Discard",
  "unsaved.stay": "Stay",
  "unsaved.title": "Apply your changes?"
