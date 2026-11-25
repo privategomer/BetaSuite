@@ -129,6 +129,18 @@ def registered_backend_names():
     return sorted( _BACKENDS.keys() )
 
 
+def supported_labels( backend_name=None ):
+    """
+    The labels a backend can report, as its adapter declares them
+    (SUPPORTED_LABELS). Defaults to the selected backend. An unknown name
+    supports nothing. Importing the adapter loads no model.
+    """
+    name = backend_name or selected_backend_name()
+    if name not in _BACKENDS:
+        return frozenset()
+    return frozenset( importlib.import_module( _BACKENDS[name] ).SUPPORTED_LABELS )
+
+
 def variant_names( backend_name=None ):
     """
     Every model variant a backend declares, sorted.

@@ -4308,6 +4308,16 @@ BetaVision censors a region of the screen live instead of a file.
 `enable_betasuite_watermark` adds a small BetaSuite mark to rendered
 output. It is in the censor key, since it changes every frame.
 
+### `art_style`
+
+How the desktop app draws the figures and part tiles on its what-to-hide
+screen: `'flat'` (a flat 90s cartoon), `'angular'` (heavy, angular, hard
+shadow planes), `'ink'` (an ink and wash comic) or `'cel'` (hand-painted
+cel shading). The choices are the folders under `assets/art/`, so a style
+added there is a choice with no code change. It is in no cache key: it
+changes how previews look, never what a run writes. The command-line tools
+ignore it.
+
 ---
 
 ## The settings registry

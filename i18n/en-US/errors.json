@@ -31,6 +31,8 @@
  "error.job.unknown": "That job is no longer known to the engine.",
  "error.job.unsafe_setting": "The job was not started because of the setting {path}: the app will not run with it unattended.",
  "error.model.load_failed": "The detection model could not be loaded ({exception_type}), so the job did not start. The engine log has details.",
+ "error.preview.bad_image": "The picture for this preview could not be read.",
+ "error.preview.unknown_art": "That picture is missing from the art style {style}, so its preview could not be drawn.",
  "error.protocol.bad_encoding": "The engine received a message that was not valid text. Restart the engine; if this keeps happening, the app log has details.",
  "error.protocol.bad_envelope": "The engine received a malformed message (field {field}). Restart the engine; if this keeps happening, the app log has details.",
  "error.protocol.bad_json": "The engine received a message it could not read. Restart the engine; if this keeps happening, the app log has details.",
@@ -49,6 +51,7 @@
  "error.ui.engine.request_timeout": "The engine did not answer {name} within {seconds, plural, one {# second} other {# seconds}}. It may be busy; if it stays stuck, restart it.",
  "error.ui.engine.spawn_failed": "The engine could not be started ({os_error}). The app log has details.",
  "error.ui.engine.write_failed": "The app could not send a request to the engine. Restart the engine.",
+ "error.ui.look.unreadable": "A preview picture could not be read. It is drawn again when the screen next asks for it.",
  "error.ui.video.dialog_failed": "The file dialog could not be opened. The app log has details.",
  "error.ui.video.not_found": "This file could not be opened. Check that it still exists and that you can read it.",
  "error.unknown": "Something went wrong (code {code}). The app log has details."

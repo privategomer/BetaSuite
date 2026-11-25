@@ -36,6 +36,8 @@
     { "$ref": "#/$defs/job.no_such_file" },
     { "$ref": "#/$defs/job.unsafe_setting" },
     { "$ref": "#/$defs/job.nothing_to_render" },
+    { "$ref": "#/$defs/preview.unknown_art" },
+    { "$ref": "#/$defs/preview.bad_image" },
     { "$ref": "#/$defs/engine.stopping" },
     { "$ref": "#/$defs/file.failed" },
     { "$ref": "#/$defs/disk.full" },
@@ -428,7 +430,7 @@
       }
     },
     "config.busy": {
-      "description": "A job is queued, running or paused, so the settings were not changed (config.set, config.reset) or not checked with overrides (config.get). job is the job holding the queue.",
+      "description": "A job is queued, running or paused, so the settings were not changed (config.set, config.reset), not checked with overrides (config.get), or no look was drawn (preview.look). job is the job holding the queue.",
       "properties": {
         "code": { "const": "config.busy" },
         "params": {
@@ -437,6 +439,25 @@
           "properties": { "job": { "type": "string" } },
           "additionalProperties": false
         }
+      }
+    },
+    "preview.unknown_art": {
+      "description": "preview.look named an art style or item the engine does not have (assets/art/<style>/style.json lists them).",
+      "properties": {
+        "code": { "const": "preview.unknown_art" },
+        "params": {
+          "type": "object",
+          "required": [ "style", "item" ],
+          "properties": { "style": { "type": "string" }, "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "preview.bad_image": {
+      "description": "preview.look could not read the image: missing, unreadable or not an image.",
+      "properties": {
+        "code": { "const": "preview.bad_image" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
       }
     },
     "job.unknown": {
