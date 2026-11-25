@@ -61,7 +61,15 @@ export function useSettings(): { settings: SettingsState; reload: () => void } {
         }
       },
       ( error: unknown ) => {
-        log.error( `settings could not load: ${describeError( error )}` );
+        // A load the engine refused because it is stopping or restarting
+        // (an apply that closes the window reloads just as the engine
+        // shuts down), or one already superseded, is not a failure: the
+        // status bar shows the engine, and the next ready engine loads again.
+        if ( !live || ( isEngineError( error ) && error.code === 'ui.engine.not_ready' ) ) {
+          log.debug( `settings not loaded: ${describeError( error )}` );
+        } else {
+          log.error( `settings could not load: ${describeError( error )}` );
+        }
         if ( live ) {
           setResult( { key, error: isEngineError( error ) ? error : null } );
         }

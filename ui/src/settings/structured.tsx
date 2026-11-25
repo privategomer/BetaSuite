@@ -2,7 +2,7 @@
 // refused pairs, the path-pattern profile map, a geometry action, and the
 // slot where a censor style's visual editor goes. Rule fields come from
 // config.schema (rules), each with its own label and tip.
-import { useId, type ComponentType } from 'react';
+import { createElement, useId, type ComponentType } from 'react';
 import { t } from '../i18n/format';
 import type { EditorProps } from './editors';
 import type { FieldSchema } from './model';
@@ -297,14 +297,14 @@ export function GeometryActionEditor( { value, onChange, schema, disabled, input
 
 // --- the style slot -----------------------------------------------------------
 
-// The visual editor for censor, window and frame styles is built with the
-// what-to-hide screen, on the engine's preview of a look. Until one is
-// registered, the slot summarizes the style; the row still offers reset
-// and shows what a change costs.
-let registered: ComponentType<EditorProps> | null = null;
+// Visual editors for censor, window and frame styles register here by the
+// setting kind they edit (the what-to-hide screen registers censor_style).
+// A kind with none summarizes the style; the row still offers reset and
+// shows what a change costs.
+const registered = new Map<string, ComponentType<EditorProps>>();
 
-export function registerStyleEditor( editor: ComponentType<EditorProps> ): void {
-  registered = editor;
+export function registerStyleEditor( kind: string, editor: ComponentType<EditorProps> ): void {
+  registered.set( kind, editor );
 }
 
 function styleSummary( style: Rule ): string {
@@ -315,9 +315,9 @@ function styleSummary( style: Rule ): string {
 }
 
 export function StyleSlot( props: EditorProps ) {
-  if ( registered !== null ) {
-    const Editor = registered;
-    return <Editor {...props} />;
+  const editor = registered.get( props.entry.kind );
+  if ( editor !== undefined ) {
+    return createElement( editor, props );
   }
   const styles = Array.isArray( props.value ) ? rulesOf( props.value ) : isRecord( props.value ) ? [ props.value ] : [];
   return (

@@ -4,6 +4,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { isEngineError } from '../engine/client';
 import { t } from '../i18n/format';
+import { instanceName, unavailableText } from '../i18n/labels';
 import { describeError, log } from '../log';
 import { resetValues, setValues, type Change } from './api';
 import { EDITORS } from './editors';
@@ -14,7 +15,7 @@ import type { Loaded } from './useSettings';
 
 const DRY_RUN_DELAY_MS = 300;
 
-type Check =
+export type Check =
   | { readonly state: 'idle' }
   | { readonly state: 'checking' }
   | { readonly state: 'ok'; readonly change: Change }
@@ -33,7 +34,7 @@ function same( a: unknown, b: unknown ): boolean {
   return JSON.stringify( a ) === JSON.stringify( b );
 }
 
-function refusal( error: unknown ): Check {
+export function refusal( error: unknown ): Check {
   if ( isEngineError( error ) ) {
     return { state: 'refused', lines: failureLines( error ), busy: error.code === 'config.busy' };
   }
@@ -41,7 +42,7 @@ function refusal( error: unknown ): Check {
   return { state: 'refused', lines: [ t( 'settings.request_failed' ) ], busy: false };
 }
 
-function CostNotice( { check }: { check: Check } ) {
+export function CostNotice( { check }: { check: Check } ) {
   switch ( check.state ) {
     case 'idle':
       return null;
@@ -142,7 +143,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
         <label className="setting-instance">
           {t( 'settings.instance' )}
           <select value={path} onChange={( event ) => { setPending( null ); setChosen( event.target.value ); }}>
-            {choices.map( ( choice ) => <option key={choice} value={choice}>{choice}</option> )}
+            {choices.map( ( choice ) => <option key={choice} value={choice}>{instanceName( choice, data.schema.placeholders[ '<label>' ] ?? [] )}</option> )}
           </select>
         </label>
       )}
@@ -153,6 +154,9 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
           {facts.unused && <> {t( 'settings.label.unused', { label: facts.label } )}</>}
         </p>
       )}
+      {facts !== null && data.labels.get( facts.label )?.unavailable !== undefined && (
+        <p className="setting-note label-status unavailable">{unavailableText( data.labels.get( facts.label )?.unavailable ?? { code: 'other', params: {} } )}</p>
+      )}
       <div className="setting-value">
         {Editor !== null && (
           <Editor
@@ -160,6 +164,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
             schema={data.schema}
             context={context}
             value={shown}
+            path={path}
             inputId={inputId}
             disabled={applying}
             onChange={( value ) => { setPending( held !== undefined && same( value, held.value ) ? null : { action: 'set', value } ); }}

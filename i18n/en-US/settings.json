@@ -4,6 +4,8 @@
  "setting.area_fraction.tip": "Ignore or adjust boxes smaller or larger than this share of the frame.",
  "setting.area_safety.label": "Box padding",
  "setting.area_safety.tip": "Grow each box by this fraction of its size so edges stay covered.",
+ "setting.art_style.label": "Art style",
+ "setting.art_style.tip": "How the figures on the what-to-hide screen are drawn. It changes nothing in your videos or photos.",
  "setting.aspect_ratio.label": "Box shape limits",
  "setting.aspect_ratio.none": "No limit",
  "setting.aspect_ratio.tip": "Ignore or adjust boxes whose width-to-height ratio is outside this range.",

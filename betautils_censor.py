@@ -122,12 +122,15 @@ def censor_scale_for_image_box( image, feature_w, feature_h ):
 # then held for that instance's whole lifetime - otherwise a continuous
 # censor region flickers between styles frame to frame.
 
-def resolve_censor_style( style_config ):
+def resolve_censor_style( style_config, rng=None ):
     """
     Pick one concrete style dict from what is configured.
 
     Args:
         style_config: A style dict, or a list of them to choose from.
+        rng: A random.Random to draw from; default the shared generator.
+            A preview passes a seeded one so it draws the same pick every
+            time.
 
     Returns:
         One concrete style dict.
@@ -135,7 +138,7 @@ def resolve_censor_style( style_config ):
     if isinstance( style_config, dict ):
         return style_config
     weights = [ one_style.get( 'weight', 1 ) for one_style in style_config ]
-    return random.choices( style_config, weights=weights, k=1 )[0]
+    return ( rng or random ).choices( style_config, weights=weights, k=1 )[0]
 
 
 def resolve_censor_shape( resolved_style, item_default_shape ):
@@ -1175,7 +1178,7 @@ def compute_safe_geometry( raw_x, raw_y, raw_w, raw_h, vid_w, vid_h,
     return safe_x, safe_y, safe_w, safe_h
 
 
-def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None ):
+def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None, rng=None ):
     """
     Turn one raw detection into a censorable box, or reject it.
 
@@ -1189,6 +1192,8 @@ def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None ):
             get_parts_to_blur() itself, rebuilding and re-resolving the
             entire table for every one of tens of thousands of raw
             detections.
+        rng: A random.Random for the sticker pick; default the shared
+            generator.
 
     Returns:
         A censorable box dict, or None when the label is not censored or
@@ -1244,7 +1249,7 @@ def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None ):
         # sticker_image. Rolled once here rather than inside
         # sticker_image so a box rendered across many frames keeps one
         # choice. Harmless and unread for every other style type.
-        'censor_sticker_seed': random.random(),
+        'censor_sticker_seed': ( rng or random ).random(),
         'label': label,
         'score': raw['score'],
         'size': raw.get( 'size', 0 ),

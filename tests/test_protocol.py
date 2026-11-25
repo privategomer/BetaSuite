@@ -72,6 +72,8 @@ EXAMPLE_PARAMS = {
     'job.no_such_file':             { 'index': 2 },
     'job.unsafe_setting':           { 'path': 'input_delete_probability' },
     'job.nothing_to_render':        {},
+    'preview.unknown_art':          { 'style': 'flat', 'item': 'tile.exposed_vulva.female' },
+    'preview.bad_image':            {},
     'engine.stopping':              {},
     'file.failed':                  { 'exception_type': 'RenderError', 'stage': 'render' },
     'disk.full':                    { 'free_bytes': 0 },

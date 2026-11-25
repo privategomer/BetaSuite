@@ -1,0 +1,582 @@
+{
+ "format": 1,
+ "png": {
+  "angular/figures/female_back_clothed.png": {
+   "png_sha256": "d72fa16e2f402ba0a2d160869700307b94ed565abe20cab1c4816f4c22590cd1",
+   "svg_sha256": "8b278ddef5ba80fc67bd31288c93b3c8bf78d631a9394f27b70cfe102044dc7d"
+  },
+  "angular/figures/female_back_unclothed.png": {
+   "png_sha256": "79c202eb47635d8b92493c5c750c0c7c885e06a9429ab287d0ba963dddf3e108",
+   "svg_sha256": "71e462f25499d2f4fcc65272ab6f00a296c66e7ad3bf5685a884c0396bad59bb"
+  },
+  "angular/figures/female_front_clothed.png": {
+   "png_sha256": "84cdfac494a04c175aacf52ff1a6a66ad5d9a994d734a80ac3a2d968eff3aeba",
+   "svg_sha256": "dd394f7691b6aa315347f2ef89451694020ff8a0979076f35791b95b09bfd93c"
+  },
+  "angular/figures/female_front_unclothed.png": {
+   "png_sha256": "5f9da9d6ff17088768f34485f7ddb3b37e792ac61c9138eb7c442d6574a7b663",
+   "svg_sha256": "a6ca1b0c4396dd6c51be03f0961981220bbbb8f9c75e8b7e86cad43ecf279f85"
+  },
+  "angular/figures/male_back_clothed.png": {
+   "png_sha256": "71a7f8f9fd9e40d3eb0cfbeedc8dde9c2fff32f2f09ecc9a6d84a42563ab3344",
+   "svg_sha256": "33ea62a3efa7722954b414e0cc4e38c141b2e770b7a9fd2b7be785312a22a8bf"
+  },
+  "angular/figures/male_back_unclothed.png": {
+   "png_sha256": "692c0c7efeafdbcd856a52cc459cf6622da412c4bca5d46a251a0dd103ac0d8f",
+   "svg_sha256": "45be458ffa669dfeb0c4ccadcd2e3a319c7d2a968e45581ca2201b6c3d07781c"
+  },
+  "angular/figures/male_front_clothed.png": {
+   "png_sha256": "1364777ea7e2fc82949fd0ea0b491cd87562c093e4ea7f02d796081e5f97af52",
+   "svg_sha256": "aa8d902072073259e0eeef862cb50d336764ceb64e15162cf5557bdf1a200f45"
+  },
+  "angular/figures/male_front_unclothed.png": {
+   "png_sha256": "ccb250a67cf52f2a32a48253e210219e1c2b3bcc18baee4cb27474bc0ebc8310",
+   "svg_sha256": "34954cd7f32264d52ee4d479da48b23dc57487cf9554eda00e713f25db47b0c4"
+  },
+  "angular/tiles/covered_anus_female.png": {
+   "png_sha256": "1048d74f5994ec13a95463d7f632cdd2a924601d9fe6668eb83d9e3630ec6c2e",
+   "svg_sha256": "bfdbd49078353faf92216741fca7cfd0412c5e244011fffefd6eab2c44e7239f"
+  },
+  "angular/tiles/covered_anus_male.png": {
+   "png_sha256": "51b703420c3a98a48e4f2d9c80d6e5826ea94a5a8c3b4925e56d3f0ce86df857",
+   "svg_sha256": "d31e876339749b79cfcd1ea4bbc202e8284e8b64ef4d249fcd2b841e1110e3ca"
+  },
+  "angular/tiles/covered_armpits_female.png": {
+   "png_sha256": "4d734e64a39ffa1105e9be7d57f9526b1c3b2302a3238ea430f8a424149b7df1",
+   "svg_sha256": "77a24f531e5a72dcf09eff4ca7c80d66c44454ac940010a83217662426e0a9be"
+  },
+  "angular/tiles/covered_armpits_male.png": {
+   "png_sha256": "443a46feeb6dc16788debd6aa8dd633477f45bf8d2ca757063c8f98742c3fdab",
+   "svg_sha256": "cf491d970a1a1dd49b2f4a50b7a576a3fa26159d03ee24a39c77f0e3b08c8445"
+  },
+  "angular/tiles/covered_belly_female.png": {
+   "png_sha256": "3188a246b6cb6e1d376af04d5bd26943de7c2a0081f0c17ffa1a3974dfd465d2",
+   "svg_sha256": "93ac1b15a99daccd609be98f9ce62f51f814b92b80472bb1b11f6a33d6a02e01"
+  },
+  "angular/tiles/covered_belly_male.png": {
+   "png_sha256": "d665bc59b959121d37a466b6ee645b902fd6b9ce28c7e1e2bfd0bc3654a2d4e4",
+   "svg_sha256": "96d6b440374b9b16f895003e69eebe069811f9de95d653d4e3d29fa131010b43"
+  },
+  "angular/tiles/covered_breast_female.png": {
+   "png_sha256": "3ba90f01dac2f4ec312ba93737d494ae0643b83b5c7f53ce153ccd5a2da44b99",
+   "svg_sha256": "ecddca06a4d3b1b61e02982cbbfb574660ab8032a9acc8e209c6909735410021"
+  },
+  "angular/tiles/covered_buttocks_female.png": {
+   "png_sha256": "1f6d9f9804b093f00805c513b5d64cb07473336e50ffd43094aa6adf12a2da39",
+   "svg_sha256": "97969fdded66124ec0c5866fa4a6cd2281869eaca9c2de3a67f774f2c31e4945"
+  },
+  "angular/tiles/covered_buttocks_male.png": {
+   "png_sha256": "e4813957e96f4a4d70888ddee68b6720e04711ca01199de43bc0ac89a55da977",
+   "svg_sha256": "f78f337d9779abd48b7cb36db9457ba74e509fb55b0367e3e1dc160aa79fd90f"
+  },
+  "angular/tiles/covered_feet_female.png": {
+   "png_sha256": "f21b1d6a487b7961c0ac6f7276f5154504a471950d58c9cb841d179fb1231dd1",
+   "svg_sha256": "5b185065cc50293fb004ea1b7cfe170d1c5130d5bd8e395f339546fc967f7960"
+  },
+  "angular/tiles/covered_feet_male.png": {
+   "png_sha256": "d64226f3c5c02f70e8606df0e82e0461586df0fd4cd221eee1b75324c39ba8b2",
+   "svg_sha256": "b685f194dcbfb88c73fd66ef6a3514c6e533332a22dc573559904410d64d42ef"
+  },
+  "angular/tiles/covered_vulva_female.png": {
+   "png_sha256": "2ff3eaffa09f288840f9c011b6e032fbf6be4b7137ce632ff40a999bb136ef50",
+   "svg_sha256": "8d276087358e55465d4bac3bcbcd4151af90da622c998d16b78b9c0af4f2f401"
+  },
+  "angular/tiles/exposed_anus_female.png": {
+   "png_sha256": "b1b32372189efa21960ca3ea193188fdb3e5c9d98753fc5330a034de5ebbcac1",
+   "svg_sha256": "049ea62cebc1199e9f1e526cf384f5764c77a913c62ea39ecbf6526b80555a30"
+  },
+  "angular/tiles/exposed_anus_male.png": {
+   "png_sha256": "7ea98be95779126546bd12e5eed6285280df2bbe372eb2956a86d862435b0540",
+   "svg_sha256": "a594b0b9d7632794e20044c47ed8c88d1ad28bd7cb1fdbc02c8a4580ebd5a21c"
+  },
+  "angular/tiles/exposed_armpits_female.png": {
+   "png_sha256": "7e7af857621f4029527b7a6b50dbb84ce45fdb1b080e99397a42dcf6000e68e7",
+   "svg_sha256": "8fb0a2c0198ed9ee9e3b29a93dcf54d28faa2d0b1725013c785d44da91a4bf62"
+  },
+  "angular/tiles/exposed_armpits_male.png": {
+   "png_sha256": "f796e530da82f4756996100407888efdd8ed9b3416717e2961f3bf8b9eb8e504",
+   "svg_sha256": "31095378608bdb17e24dd862b8a1e6df47da330a659ba508b5920f39aefe5730"
+  },
+  "angular/tiles/exposed_belly_female.png": {
+   "png_sha256": "7d61d34ee061535c84513b1493ddbbb452b48c72824998246feeeb7ee0d64311",
+   "svg_sha256": "eb1fe51ed08f6c15f46007471cc9bde5d2c5082539b9eaa44019483ca3be27f4"
+  },
+  "angular/tiles/exposed_belly_male.png": {
+   "png_sha256": "b1bdab68c7201cf84e820dde54c5a0954b967d07e5ddcc1fd7f47111676073e4",
+   "svg_sha256": "886d7af201e9eb4b87fe46f5598ad86e02dee01f83970308740e783d84de547d"
+  },
+  "angular/tiles/exposed_breast_female.png": {
+   "png_sha256": "9f47ce887c3527b1f70207decece92229aaac9617007dc1512e32931cb8175b4",
+   "svg_sha256": "66fb524965b09fb35072e55c48d10b0ea69ca1eb3578a5cf19eddaf34d467225"
+  },
+  "angular/tiles/exposed_buttocks_female.png": {
+   "png_sha256": "6014aa6ef1d0b47e3791e6dcd06f85e6272fb2a05305256ab92fcd03acd87767",
+   "svg_sha256": "94d78c25954efd4e2339ca6b2aa8049adef03455e4c17e95d2814387660c1d43"
+  },
+  "angular/tiles/exposed_buttocks_male.png": {
+   "png_sha256": "ef33cca696c0200d8dcb06ccbb205809c5c93df8b3275306517d32fef0997b3e",
+   "svg_sha256": "7ce3aa401d92d74949550522822a8f975dcddd6373ce609e3edffd87e86f04ea"
+  },
+  "angular/tiles/exposed_chest_male.png": {
+   "png_sha256": "aa532b4a279cc3fd7ba992d9124c7c076725d42e47c4a28f38b6cbbd378d8d2e",
+   "svg_sha256": "af13f8362703815ca16765dc1c320d718b3e4849f7566454b3838856108b2925"
+  },
+  "angular/tiles/exposed_feet_female.png": {
+   "png_sha256": "59f88fc3faf6dbb5a4c64ea785c7e0c136e256865d20977d490006ab82157a2a",
+   "svg_sha256": "24c79b5439b2e5b78722366a6be68ae0944d6df30c0bfd9f4a31af8f0c554637"
+  },
+  "angular/tiles/exposed_feet_male.png": {
+   "png_sha256": "d9891855218f7c78c2bea06895728bfa0a5e27fd7b9f091c970cbc3984ee5d4c",
+   "svg_sha256": "b54705d9f3652a6ee038dcaf77b1f2734732987ccfbba16aab3c8f71e7a752a3"
+  },
+  "angular/tiles/exposed_penis_male.png": {
+   "png_sha256": "c40ecd6c66f470b77f26ecd7f23fe19ab4370a184add39e14306d69ccd03d52e",
+   "svg_sha256": "448995e471d212420310fd0cd2aed69212b8b5d7f18f3d499ee01e5ad39d249d"
+  },
+  "angular/tiles/exposed_vulva_female.png": {
+   "png_sha256": "23ca744b97b22388603a6652cb526ba1019410440945075409b79c4111400410",
+   "svg_sha256": "9830fdb79cb7389b9429002d935439477023274dac36abfac3723d57bb403194"
+  },
+  "angular/tiles/face_femme_female.png": {
+   "png_sha256": "aa62b43c5a7b6ca557fe2bb37c8f48fb4e51287a02c6c9d8c995315e389f6b8f",
+   "svg_sha256": "8de5622fe19f5cfeb4ccd2a2a8a898107b6d9f7c753c67ea41c5d48c49f2dbf8"
+  },
+  "angular/tiles/face_masc_male.png": {
+   "png_sha256": "b6ef534f0fff7a9ecba23fcc88115c1ce3297d2bf448aa8a3b3d83dcf3c21186",
+   "svg_sha256": "c293da8f5be68a37a69290b62fcfed5a23ba009a051dda8477ed0ad8a7982910"
+  },
+  "cel/figures/female_back_clothed.png": {
+   "png_sha256": "a96693b38b901518aac8ae21deb227015d5520f602d23fcc9928de954e7bb2f4",
+   "svg_sha256": "e9fb7cdaf49b34fd7cfef8b08536840770521caa852376acfe00e3bf99a42f1e"
+  },
+  "cel/figures/female_back_unclothed.png": {
+   "png_sha256": "742ccfb86c7c0a8eac41cb862d59ab28be75becbb08aeba9d9d2a350f54e3d82",
+   "svg_sha256": "22449eb128db438f84f9473558bf08268de082ec2f1fd1074b0ecbdb5b81dcfd"
+  },
+  "cel/figures/female_front_clothed.png": {
+   "png_sha256": "6b0e66a0099b4f3f2ebb3d79a1c91bec744e9a4cf8aa886487554d6d9c65546f",
+   "svg_sha256": "cbf7e138906c382915a67473b249dd55b4122ed2380d0720d15bbf46c27e057d"
+  },
+  "cel/figures/female_front_unclothed.png": {
+   "png_sha256": "c284fc646395670f273eda4d550a9f55cf9510e1ff22f22a099105f0a3f2174f",
+   "svg_sha256": "4086e999d2d14bad97fe49e1fd612e9f1dee470b5a13a23e9e8601a7ef8477d0"
+  },
+  "cel/figures/male_back_clothed.png": {
+   "png_sha256": "954857f69e112bacbcd27fb22b7fd85e9b8cce68b5d5bb07a47c823d4b18caa9",
+   "svg_sha256": "b20d3b283195523f63bc0b84e6012f8d99f1250acba59faf54d4372a19055b01"
+  },
+  "cel/figures/male_back_unclothed.png": {
+   "png_sha256": "aa8f9bb582bf2136f3d7b4faef5d8cb6d2951df0eb5e04e27e5a34cbdf243280",
+   "svg_sha256": "ea97bcdaab839cd178f61c76e0ef3d5cd2a1be7a5d0acc20b0059b1924905252"
+  },
+  "cel/figures/male_front_clothed.png": {
+   "png_sha256": "8f0054d05f9826fd9d9a90c0f79798408efd1ae680b071ce827fea5e5f17a7ab",
+   "svg_sha256": "3e6ba0bdc2e56630f2c63dedd20cd67ce67a794916087a168cfe20e2ea329507"
+  },
+  "cel/figures/male_front_unclothed.png": {
+   "png_sha256": "967b03f9b099c361290ab36d2e82313ee658ad63202aed208a034c521681e866",
+   "svg_sha256": "4cd623d58bd63cc8eac584c719d13bebe4668917ef49fa3a9f563d8b819aa9d1"
+  },
+  "cel/tiles/covered_anus_female.png": {
+   "png_sha256": "22830f8ef6a12799237e60c3174b57b6af23d2e37ea38cd429da8e0b3a18d510",
+   "svg_sha256": "0e2bf6c49292ccb64384189a350bd9a140bc6c47397aacea5ec0430a8a3fd47d"
+  },
+  "cel/tiles/covered_anus_male.png": {
+   "png_sha256": "f9e6eb1ec1e2cb70694b6f7afd4a74ee059ca93cc50e33ad0789ee81c499a9ba",
+   "svg_sha256": "b78d7de2b1b1d79d6cc1188030047c2b1485671696ad6a4d5459cc969f9990b9"
+  },
+  "cel/tiles/covered_armpits_female.png": {
+   "png_sha256": "3de01a3b53dd2ef2edbe7009466812585d87efbe377632a5e12696e6fe2b997f",
+   "svg_sha256": "ccf265486713fae36a05a3db2cbc4e8a51970bbcc4d75296224d54de460d64b5"
+  },
+  "cel/tiles/covered_armpits_male.png": {
+   "png_sha256": "daf46dee476b1a0c757a2e69ad0cf9d544c7ed871e11ef10722efcf8d1c0988c",
+   "svg_sha256": "367862874c797121093e3a100e812a3b2beb4c6176541f71ce4d42e6a8981529"
+  },
+  "cel/tiles/covered_belly_female.png": {
+   "png_sha256": "ad86202bb74591ebd706dc6da90f1bbb32b9963ff172b5023cbae153ca6f87c6",
+   "svg_sha256": "be8a6e4a683fc27e3f5117b5a08c4d1f8c76fb7732fe5a90e3a612ad9e0f95ee"
+  },
+  "cel/tiles/covered_belly_male.png": {
+   "png_sha256": "1d9d0edf594ac5d39841c6f125210e5edbf8d2d408779afa3e23c2975da4ba48",
+   "svg_sha256": "008f053fd711cb6431dda4c7c35fe75dff7a095b417d16ec07faae7620ebe1c3"
+  },
+  "cel/tiles/covered_breast_female.png": {
+   "png_sha256": "bc7e18fea9bfb8c56d4a9ca4fe28e096a34b1baa452f5fd814abed0f64710804",
+   "svg_sha256": "904a32bcff458a7b7474d214f500dcabdd922705765adb112f5e9b636cd8befb"
+  },
+  "cel/tiles/covered_buttocks_female.png": {
+   "png_sha256": "74c906c83b87b7b23800eafe494308a8e82d450675c28266aebc9320b69f979e",
+   "svg_sha256": "f9273d3ef33be17bb9d3e8dee2462212e09045698dfee3ab37a9c65be17fe5ea"
+  },
+  "cel/tiles/covered_buttocks_male.png": {
+   "png_sha256": "4b2f73d5a136503bc59b9f263d90acbb8014468fef2ae2f9f5cd2797e5107814",
+   "svg_sha256": "45b83531f32aa90169bb0ef73c46c03745f7e2c6e5499aa6e91c3114ee455030"
+  },
+  "cel/tiles/covered_feet_female.png": {
+   "png_sha256": "355b55c8eba7217d944de644146d8f3cd7b5c43c570eb193db8bc00c8f723da6",
+   "svg_sha256": "e5fba28276c406a8fd09ee2048db88b2b14c5dbf933222fa2e6907bfb7e424f6"
+  },
+  "cel/tiles/covered_feet_male.png": {
+   "png_sha256": "609efe8094a7f9ced9dd8b396bd00200d0e16d76762d531b5461353ff6d1ba8a",
+   "svg_sha256": "ab6956943bd69604399cb2c18032f002fb742fd60a0642b4d75a2263e37be984"
+  },
+  "cel/tiles/covered_vulva_female.png": {
+   "png_sha256": "4e57eb6e565d3a9367c0fa7776e0a0e838fc052a86b065b16d3ab1f644c13c4c",
+   "svg_sha256": "2524d7e591e64c85691a12cf0292743a6b88b5316cd023749792449e2c1f8d17"
+  },
+  "cel/tiles/exposed_anus_female.png": {
+   "png_sha256": "ad5f1f81102c2a92ef1188e9628e699533f88353ef7601e413354cb4523f8c99",
+   "svg_sha256": "018a0fc2d6e7680f274687aa9a5c81a735d97fadda1706ab2d0f8776d7965661"
+  },
+  "cel/tiles/exposed_anus_male.png": {
+   "png_sha256": "821b5271f506b24fc42134783530cd4337d451759a1086ad36391127d29dbf91",
+   "svg_sha256": "447833a30dca6a5ced0ec568c680cd9e0697050b77e8f56220db9fd216fc7f49"
+  },
+  "cel/tiles/exposed_armpits_female.png": {
+   "png_sha256": "54efd8c4326476788778348556852cf90901885138b31ff27b20ab1a1dee522b",
+   "svg_sha256": "13ea7842d388e4970ff01dc566abf32dfa66c42f511e5b5275c6fe4505b5bff4"
+  },
+  "cel/tiles/exposed_armpits_male.png": {
+   "png_sha256": "862fbdcfe570263cc1ae17aa04d10e7569aaf179b449cf5b94622d1b27cdf2ac",
+   "svg_sha256": "ef730099d4b33fc2bd0d8fd76dd4cd5b98f3f80968f59827e169a0f5f1c0c7ca"
+  },
+  "cel/tiles/exposed_belly_female.png": {
+   "png_sha256": "bbdb927f8f673e8d6cc3c759d89265b08aec802665ad9cdd2c65e8430a5d0d10",
+   "svg_sha256": "e64f187821a1be2c2ff3ede76f3d76df140ae0cdca91dd0ab7a2770745adbff5"
+  },
+  "cel/tiles/exposed_belly_male.png": {
+   "png_sha256": "b261713e4538b26ac8851d3e0636d16c76bafa2c52ca801e82f4def2e6a6d8b9",
+   "svg_sha256": "c20da3940b13c42d70f484c11bebc3bb845518c02b9eb8c7e238e35aacb6d901"
+  },
+  "cel/tiles/exposed_breast_female.png": {
+   "png_sha256": "c9558d43cd22024e5526a6e07f45c1c13243d4217ab29aa985a35a9877a670c0",
+   "svg_sha256": "9fab1895dfe549e683ca63449ec68d8e0dfdb979c445e0200f754bc78f711dd9"
+  },
+  "cel/tiles/exposed_buttocks_female.png": {
+   "png_sha256": "5481777ad77c2396440256d1b6eefe6c9d1cd9bc6b3a120f7525893f2e8cae07",
+   "svg_sha256": "529857d902729f65bac4c031c43cf27018fe9c397556ab3b6ef2e77ea8c853b8"
+  },
+  "cel/tiles/exposed_buttocks_male.png": {
+   "png_sha256": "1c0ace4edfeab1e9308c6cd2265b4ef4a41906ae65e004b4249fce95b25e310c",
+   "svg_sha256": "00e365089f7d6ac1d835a8bfb91887509cf54ca54b4d88670a0521da0abc21b4"
+  },
+  "cel/tiles/exposed_chest_male.png": {
+   "png_sha256": "a863e922370227e9ac03d53536e7aba138594c00b9325a1fb963e1ec95a4c5a0",
+   "svg_sha256": "4d7ec5a8426cd9332e1d3e9aa361852ec646a5401d2aa0d33a8c1750b1991edf"
+  },
+  "cel/tiles/exposed_feet_female.png": {
+   "png_sha256": "9b66824ac11cfa2ab552687eddcf760b6408e2682ba2da2971630c8071f5c17a",
+   "svg_sha256": "1484cf4fb31311bc412025c0097d315c29403e4d40af31503cbd0d33bc1a6c24"
+  },
+  "cel/tiles/exposed_feet_male.png": {
+   "png_sha256": "aca61e764b3c55109370433e4de5bf9e9af6503dadb0b0752bf09413692d2598",
+   "svg_sha256": "561b717155ded68e0b20a3e6e69fea4b345291a1b258695bd71a06b704922a42"
+  },
+  "cel/tiles/exposed_penis_male.png": {
+   "png_sha256": "d090258f43d0071759d3b858e9f804f6ad491677bd4673a2c1af6ff68ff12abc",
+   "svg_sha256": "427864d3b85dac95b507c173cb1f5d7c97b16011bb8dbcada20ff1a47a29f104"
+  },
+  "cel/tiles/exposed_vulva_female.png": {
+   "png_sha256": "430f28f8d54418647c5f06b373d532978cf83938736edcea9778edeb04edd711",
+   "svg_sha256": "d330d8f12b200f741a9e9eada78ca0243f0f38e6a505f799f946a26ca5697093"
+  },
+  "cel/tiles/face_femme_female.png": {
+   "png_sha256": "c153af41966398cf3922dac3489b7d8dfd5d9714c490f103e0949559971b96f8",
+   "svg_sha256": "14719291163f484599a966c7bac19960e882be186edffa8a80cc8e3c3d066c7f"
+  },
+  "cel/tiles/face_masc_male.png": {
+   "png_sha256": "28e3c99ade301e824aeb73b7867d99454ae13755830dc5f25f777658669efa07",
+   "svg_sha256": "52056ebbb3a1121113cadcf8e8cb904ebfb0d4204fd3bf43206b34d0a8830205"
+  },
+  "flat/figures/female_back_clothed.png": {
+   "png_sha256": "980e28ef019475c0ae1769a5a428652451b981fbcb9ca7050343c2cc93d29266",
+   "svg_sha256": "3e03873b334eb255f1ec1e83131481529c7fd65240c12f0a6013f9c4eb1e9b15"
+  },
+  "flat/figures/female_back_unclothed.png": {
+   "png_sha256": "730ffd0c88cfb01396d771e40dc74e5b9101a2746ea8a2c5962f985e2d0b1953",
+   "svg_sha256": "757cf196849ee5fc581408c40a9d4a54e7bf6865507ba9529cd42f6310409d9c"
+  },
+  "flat/figures/female_front_clothed.png": {
+   "png_sha256": "cbf7ef4b365327f764af6eab600081311d9baec51ef379049a4df1a835200514",
+   "svg_sha256": "d0f24e83eb87c3d3edf3d9a91da783eb2cf5726db98e0e9a0f516c57cfc64482"
+  },
+  "flat/figures/female_front_unclothed.png": {
+   "png_sha256": "fff60cecf0134617ac7e4db2ea698e3ef84d4b7c70ff7b265539b80f1f655101",
+   "svg_sha256": "c00653b490781ae48f92a2ea2ea8ee08879300d664abf46408deaecff97f091f"
+  },
+  "flat/figures/male_back_clothed.png": {
+   "png_sha256": "435440f8ab0466bd7e552fd7e30173703aa82fd58b37c7aee8ab691247ea8106",
+   "svg_sha256": "879d14b14181c9f486dbbf99c9a4f86d0045b95e3083e226a06cede94cf264e7"
+  },
+  "flat/figures/male_back_unclothed.png": {
+   "png_sha256": "9ee91a3ab2dcd6fa84a095f54ced0945639a2f4fe7a3e012ca0a1dc300ab7290",
+   "svg_sha256": "0e384a5e9dc7f91a2b975415933ce735ae41f9ee5f45db34dcf5fa013d21630c"
+  },
+  "flat/figures/male_front_clothed.png": {
+   "png_sha256": "1b6db93b5f6d9e1971c3a4f4b928a33d509e11c3ed6f2c64f8cd5c0e67ccf7d7",
+   "svg_sha256": "ad0eac94eb87c40f2fb8b1343a43ad9eec35c3965841d827ea9e94936f1feeee"
+  },
+  "flat/figures/male_front_unclothed.png": {
+   "png_sha256": "86ac6df2af2ff142ec68d19e07e81bfa141e62567bf79d2d082ec97db33a51a0",
+   "svg_sha256": "03f086f45f031e413f4247ba37d772c55d43d76cdb7c18ac35f3233e8f079bef"
+  },
+  "flat/tiles/covered_anus_female.png": {
+   "png_sha256": "42aaf9738d35565b18af6152ddaac47485ac936bf2408295e947dd06136fc1fa",
+   "svg_sha256": "ae6c31daee75fb8524fa0f4f62131f6ca874a4542dbfade877c5353347a9e416"
+  },
+  "flat/tiles/covered_anus_male.png": {
+   "png_sha256": "4f16c106d4e00ee384d1e4c9d93af9cfed32deac1e14169dd60e4d067aa874fb",
+   "svg_sha256": "9b076fbad5c01602b3a2f4a3ec1417b7491d32d590030ece5bcf13909f48dafd"
+  },
+  "flat/tiles/covered_armpits_female.png": {
+   "png_sha256": "0d684150994f8f60c6a95aee7bbf123c92efb6d7d8a2c161c84fe1d56ac39c8d",
+   "svg_sha256": "8e17990bbcce28fd63d4ce4b25fee7a79ad971a6d57a00842e8173004688bf8f"
+  },
+  "flat/tiles/covered_armpits_male.png": {
+   "png_sha256": "168c8c31775c930f909a29febbeea5a3d5245f85bec446d97c1ec2a789ff0d64",
+   "svg_sha256": "af3e98741e38540333450ac9efec3e8323e0ba0fe5dec8a6f2313caa0455392d"
+  },
+  "flat/tiles/covered_belly_female.png": {
+   "png_sha256": "495543530eb8c51aa4343d2333640337f7cb2a09166dc5b388ea9b87f5da424a",
+   "svg_sha256": "ea1cbfb7cda02142f16aa8e64c0cdc41dcf359f58d7de6ddedf587c79ff4663e"
+  },
+  "flat/tiles/covered_belly_male.png": {
+   "png_sha256": "8f299693507044f2509f27f7065995e24e329b36c58fbc68dc89ca9b28be9c67",
+   "svg_sha256": "c7c45cea5bb353aaa0e3d9dd005973cabb5882100719fef58bf874c709d99aec"
+  },
+  "flat/tiles/covered_breast_female.png": {
+   "png_sha256": "f177ac0b53d037255f60944c280e4ff26c8ea25c741d746acb8faa4568270961",
+   "svg_sha256": "f8812cc2d14eb63de69589e5024c85519fb477bd212b63408961b0da6fa83e70"
+  },
+  "flat/tiles/covered_buttocks_female.png": {
+   "png_sha256": "7a1197e31a8f8cffaa97745c19a91dcbeb24874a912960c0ddd7ccd9705b4d43",
+   "svg_sha256": "54c59806e9a4dbde989c693152715c651d966fbc2d1d87f13d639fcc17c6499a"
+  },
+  "flat/tiles/covered_buttocks_male.png": {
+   "png_sha256": "c663d28fff6f661199a77c9b252cda074d3d531fbd51f02f9943bdad9330c81f",
+   "svg_sha256": "e1407bf9cb738fb58ea4291313013576eaaa386b5d38e435b0b16a7de4d66fd6"
+  },
+  "flat/tiles/covered_feet_female.png": {
+   "png_sha256": "e0de43c9ed6f780d3c581d82c1ee8fb47f8799710309a70d9c43028234b16089",
+   "svg_sha256": "203a05ae73f92b5f53782cc093d1ae1c8ed4b7826ae3c4fc82b55478d92f79b6"
+  },
+  "flat/tiles/covered_feet_male.png": {
+   "png_sha256": "47784b1b980dffdbca218105760fb8c0202500a46a661ddd7fba584accd9e2bc",
+   "svg_sha256": "15532219cb39a41b90d77cfafe9c4e4a8f1e2232cdbc3387e266f49fefc93390"
+  },
+  "flat/tiles/covered_vulva_female.png": {
+   "png_sha256": "c35a9f6985068dd5385216f0684dbe3f25afc63169f12ed5a87c079b6af11737",
+   "svg_sha256": "dc6a9ca678f2a7ccb97a8ec6406d486a2899655cb4973d0cfc7eb2a6afb0b77c"
+  },
+  "flat/tiles/exposed_anus_female.png": {
+   "png_sha256": "1c74cb5be689de3a29f6789d7cc7d646dd49b25d752bf50f5e33e47b9ba54a3e",
+   "svg_sha256": "d1684c3a12213af674d691edeb539d244fafde58652f52b3d34774f336effdaf"
+  },
+  "flat/tiles/exposed_anus_male.png": {
+   "png_sha256": "5863a3d2344deaff54a2db30e5976bdd4725043792a6e014121c143a80e862bf",
+   "svg_sha256": "46409bff2153e1e6671218df64c2e07cdb9b0565f58a2a7b1bbfbd00cf24ba5c"
+  },
+  "flat/tiles/exposed_armpits_female.png": {
+   "png_sha256": "5c77f05a8f777433cb2afd3f46b8cd23dd10dd9836dab74a11cdc353228d68d0",
+   "svg_sha256": "f73598029ddac7e47f3cb8d456ae72a238aec62adda1999f423c1fb41f068fc0"
+  },
+  "flat/tiles/exposed_armpits_male.png": {
+   "png_sha256": "071100a63c8ae865501a8ca6c658b549347ac65ab1a0ece59cc2775742e624cf",
+   "svg_sha256": "bbd9dc466b090a4c580822a09a0051051e3c725c1476f78f7e6d4e8117d9a12e"
+  },
+  "flat/tiles/exposed_belly_female.png": {
+   "png_sha256": "e01c813ce42507762fee2643ef915cd9e3d19b6f409e484c919d28292748aacd",
+   "svg_sha256": "8c8a98943710b303c20c1ceafa2a97084855f8639c268a2162fac8b4327be126"
+  },
+  "flat/tiles/exposed_belly_male.png": {
+   "png_sha256": "b6615a1c658068e834055b802529036ca4c514c92608d28cfe246bdd309afffe",
+   "svg_sha256": "f2493b76305779d76075457e484c12bd28893ab06c92b9106f4584e1ff24968d"
+  },
+  "flat/tiles/exposed_breast_female.png": {
+   "png_sha256": "1798ebeeb1ec83f2fff67f44f8b72a37a9b294c6a8c7feecdaaa9ea281b13cf7",
+   "svg_sha256": "cdcbe10137ebb4941420706699f4c588bdf8fb8970e4cb5b82610b72aae79ba0"
+  },
+  "flat/tiles/exposed_buttocks_female.png": {
+   "png_sha256": "bda977e24f4c131a8f436198799cd5253a72a8e4782d66c5d0abd37f72576a69",
+   "svg_sha256": "5a2c9a6f0719937cec76c76bebc69357873750ffc7c93ea5fbb24357ff03704f"
+  },
+  "flat/tiles/exposed_buttocks_male.png": {
+   "png_sha256": "6a4d468b12a5588b5fe560d53dac792425d9011c72ff021a36bac0d53a22ebc3",
+   "svg_sha256": "850f1b444a448617f4cba485effd50fa8c97f64841875ed42cf81b4f0305f6a1"
+  },
+  "flat/tiles/exposed_chest_male.png": {
+   "png_sha256": "3668055730ed9913322d9bd8672c4078de5d92bd286ef07a938b93c0ddd8ad79",
+   "svg_sha256": "dbfaec51c5aeac7b82546fdd9a94cbe3dfe54a42d57026f293d1e93f2791f366"
+  },
+  "flat/tiles/exposed_feet_female.png": {
+   "png_sha256": "91920e9b5f12d932fdd43dc7f74d830144d2d201f1aa7528996dcb64df9ff5ef",
+   "svg_sha256": "73cae620de4c92e3120154b0a28c0b1989271e701903f3dcdcb3126df745905c"
+  },
+  "flat/tiles/exposed_feet_male.png": {
+   "png_sha256": "1d855ac246f0f05c2fdc1b82fbab95956f83669ea9961de83f92871a5ba61a73",
+   "svg_sha256": "c468c4becea595501e240df17b49672be2199a4af8ff95051bce508066ba4306"
+  },
+  "flat/tiles/exposed_penis_male.png": {
+   "png_sha256": "ed7de2521935f0370751e1d007dfc19adad395cbac834540a47e0a1158c78eb6",
+   "svg_sha256": "f015c0c5ff63816f7f87900aab75bb42a0f899e4193e979f09046f6ed18a2d15"
+  },
+  "flat/tiles/exposed_vulva_female.png": {
+   "png_sha256": "886d205f79c73b853760dd40b07f8e9fad2312315f9bf31b531c7eba4ca60e8c",
+   "svg_sha256": "24225b76234662a19e7bdf78e6fb419278ee61d35e5a599df63bcc48b092e81c"
+  },
+  "flat/tiles/face_femme_female.png": {
+   "png_sha256": "534608acbec377b5d7571fa95370c1d7b6168d52b268ee8a7b7688e1ea7f32a0",
+   "svg_sha256": "a6acaf99c730c63d09edbeb746b1df0b49b8a1ce13a6d305561ff041d7c097b5"
+  },
+  "flat/tiles/face_masc_male.png": {
+   "png_sha256": "9db6302a10017154db34ef2022de5252d2136c2686e5ffdca5b336a0fd459ef8",
+   "svg_sha256": "5642984663d35d6212b08ccb61eff124f201d70af8a8ef463cbc2011b3e567b3"
+  },
+  "ink/figures/female_back_clothed.png": {
+   "png_sha256": "fe572db5ec68ed52ff995454a72aa6a77df3ed26c1f6fb9870275175a282bd15",
+   "svg_sha256": "6e79f4503d7491f3cd763e1799cd943f273af0d99228340a79aa65e5fc0e94e8"
+  },
+  "ink/figures/female_back_unclothed.png": {
+   "png_sha256": "97d4706ebdfd29b987376d4ae2abf449bc3152e672e4ad2d017e4ad57898caae",
+   "svg_sha256": "3c7fd2139a2d381369c9961a727ad3fb5711c60e2a960aaaeba63e0158f17350"
+  },
+  "ink/figures/female_front_clothed.png": {
+   "png_sha256": "cfcc02eaa58f5fd75f94c101c0a274eae0c323417be265e57d0fceb02241adaf",
+   "svg_sha256": "d97f17210539bf8122080ceb2fd8d1e8c8fa7228c181e142293d24e51a07adc8"
+  },
+  "ink/figures/female_front_unclothed.png": {
+   "png_sha256": "a7eb9b97a9a1584cf84b2db83b8f6d7e14f3fb2f83164bd67bd80842f1a86c6f",
+   "svg_sha256": "d94dfa57f3e3505520ad1ded7a23c43a791ebf1cd96d201b4f45696f75d65010"
+  },
+  "ink/figures/male_back_clothed.png": {
+   "png_sha256": "338f706ac947f068f2e07bcc2b40507c470adaad23fc4f53bee417493fcbb204",
+   "svg_sha256": "7749c7db4a49e9500308a7815fa70ad14da9757b6cecf1c90fb50fa124c3ff1f"
+  },
+  "ink/figures/male_back_unclothed.png": {
+   "png_sha256": "fc699c1e8ab8cf6361510281bd1b2bcda75f44054be4e23de35f9dbbf2b85477",
+   "svg_sha256": "15d46c1de606fab92e4a08bdd21c34e1bd8b863c5769f5dc5dc881dbdc80d4e0"
+  },
+  "ink/figures/male_front_clothed.png": {
+   "png_sha256": "9e8584602ab0d98f5473b355291bbcb0aa263b707127dccc4d627093fe8aa1b2",
+   "svg_sha256": "519f1b6550e5b616824623da15d3fb6678dc98ebf479dffc06ea3124b457c6d4"
+  },
+  "ink/figures/male_front_unclothed.png": {
+   "png_sha256": "4ae167af0ce7e24b8a79b9702724296d429f17fd9ce5e67491419cc96bbbb674",
+   "svg_sha256": "1e2209c5426477a7c353799f8e1d7559f6472bb537be1430c80292df65abdace"
+  },
+  "ink/tiles/covered_anus_female.png": {
+   "png_sha256": "abb6ed0b096375e0b915902c6478c2ac3927c7f02059d440828af03851311e96",
+   "svg_sha256": "54ce35034c8e19a9dd22cb06632ccb87d99d6aa279a47c2164eba2115e73c564"
+  },
+  "ink/tiles/covered_anus_male.png": {
+   "png_sha256": "4dbb1fa3f09da9e16deeb9e5a320c42086a0638d63bcc84a621261a91c5e483d",
+   "svg_sha256": "2ce1d45b8c1dd5c373114fb5a971ac1f7d03bd75de856272ab7eb0f4054259c0"
+  },
+  "ink/tiles/covered_armpits_female.png": {
+   "png_sha256": "6bab8d99ad2e6526e242b0ef886953ac6e3f7475c9a757e7a5cc4f0ca0b1e4b0",
+   "svg_sha256": "e225d56887e9ef161bb67ef8a83305a6f679b71ae4aa7e25db4f5b7de60a9252"
+  },
+  "ink/tiles/covered_armpits_male.png": {
+   "png_sha256": "8bb788602e923aeaa5a2637992571842962475bb29b0e9e804dec08a31e377b5",
+   "svg_sha256": "f756d45b2c37fc619d7c94d4fa828ae8c33ec9723c3a954b47626c0060bf44f7"
+  },
+  "ink/tiles/covered_belly_female.png": {
+   "png_sha256": "eae0e228e8a8af047d49f777a38f0b529825c436ce0c35b305edab1a190dbfda",
+   "svg_sha256": "178f00193e5f2c7af2d745f096fad44ddb980468e1be432f04b4d13af0b4e54f"
+  },
+  "ink/tiles/covered_belly_male.png": {
+   "png_sha256": "314d19b138f18bcaafb74a26f3755160f3adfe94777281d27e09ac88a4691560",
+   "svg_sha256": "114791912fd23dcd07bf937036be1244d0bbc92c9a472b5759ec59661bf40b89"
+  },
+  "ink/tiles/covered_breast_female.png": {
+   "png_sha256": "9d8d62e9fc25f7b00e5200228fb06cb87117cb06e9e6a6d861990b3dc113deb6",
+   "svg_sha256": "3fbc70f66d3059f7ac4defa906716d4c8f4a821191fb3ca7b1a6fed9ee019c12"
+  },
+  "ink/tiles/covered_buttocks_female.png": {
+   "png_sha256": "f583e99443a944c6f700bd90e494806810e6b4fb19e9ca2794c93dec52895009",
+   "svg_sha256": "1be55e3d107e2edb63f145afa7bdc5e127478921175db805184801692aa7407d"
+  },
+  "ink/tiles/covered_buttocks_male.png": {
+   "png_sha256": "146fe26abfb71cda0c7d4c65b38612e026e69bd2cb64cb2b7fb9fbbf039a5343",
+   "svg_sha256": "4ca9c50d15fd32818da57df7e69648a159ee9fe558a4c1ec80faad3541c5199b"
+  },
+  "ink/tiles/covered_feet_female.png": {
+   "png_sha256": "9612b5e52aa1a39afea91d48dd883a1ad99e5468770f194325c6977026a3474c",
+   "svg_sha256": "293cef0c32401da1ea12f0efb1c4781a0c21350d4066d859fe451bb1611eb498"
+  },
+  "ink/tiles/covered_feet_male.png": {
+   "png_sha256": "1e617127157a997e240dd4c0bac4d942ee2a2861bb9f73a7907d1688c50fb8a5",
+   "svg_sha256": "a0b72787fa9f12555b80556b0e9469e967ce8f9698b56f5b25fada9cbb7778a4"
+  },
+  "ink/tiles/covered_vulva_female.png": {
+   "png_sha256": "42eae12771cf20b8baa03a408961d393a5b88a0262828ce19076dc73259d5ae9",
+   "svg_sha256": "1ecece9d0e296f4cab5e86910e7522c5daa46b7d0535eb75cb9841fe3d04ff11"
+  },
+  "ink/tiles/exposed_anus_female.png": {
+   "png_sha256": "d15ad124b615ff931ec8e213842502011526997ee35ac0997b42c122709c4279",
+   "svg_sha256": "dfa7560db576b3b5f72830ffa5807d807241de2e8fa86745e06d5b28817cda01"
+  },
+  "ink/tiles/exposed_anus_male.png": {
+   "png_sha256": "99fbb2991d4a05d630a07bafdadc3377cf5595c7624bb10995313a311f9581cd",
+   "svg_sha256": "64e12893c51951f05dc4c363ef9ac1e9cb4b8ad1bb9c677338ad96cd7e283d4c"
+  },
+  "ink/tiles/exposed_armpits_female.png": {
+   "png_sha256": "5f15778d4cf4a97e9b5e015682d9d44e15bd36d8bb4d75d874d5241dafc31122",
+   "svg_sha256": "b409723d562f7c85c215dade93fff9137a3e141e8a18d77c59a58f176d991a27"
+  },
+  "ink/tiles/exposed_armpits_male.png": {
+   "png_sha256": "6be0b5c49335b5d80bf67ea77ed7b087d6b1efcababdef9171956c17973ec4c1",
+   "svg_sha256": "837a5ad9cd11372169539021d0748017ca86c3c6ad96c732779af88b2ee2c8ba"
+  },
+  "ink/tiles/exposed_belly_female.png": {
+   "png_sha256": "5a13a0b0e6afdea92a058a27a794a28593c98d4bfef30ff50a085a4662e7e2c0",
+   "svg_sha256": "92b35a559ac59203ba2d06f13f18eb43bf3f00468303b5a42ee74f6844fd7202"
+  },
+  "ink/tiles/exposed_belly_male.png": {
+   "png_sha256": "5340e9c4df93fd1ef89744843bc2efdaa16a2c6280a551681b139b3952b4d114",
+   "svg_sha256": "ef98847e77290d8ab00f8cf9e85140a76de872984f3bcc31f33b1410449bfe40"
+  },
+  "ink/tiles/exposed_breast_female.png": {
+   "png_sha256": "09731dc6ab275e7cd8d2e9ba5166f7c2147308c7590fa02d58445461e5ae6197",
+   "svg_sha256": "898bdf327dc9cf5b39a600901de25bd52f10ebe1591cb378b9da3e2d561d596f"
+  },
+  "ink/tiles/exposed_buttocks_female.png": {
+   "png_sha256": "21c70ea8edebc0d6e9b29a5b45cc647456e4975f951f1f5bec4410633fd50ac9",
+   "svg_sha256": "825b23fe46f289ee10de8f94ed4060f1dfd8b66517b441bf575438e4db873127"
+  },
+  "ink/tiles/exposed_buttocks_male.png": {
+   "png_sha256": "cd98f015112ee9aa8e899506722f1c2f0c2099198cff204b9fcdb43a45db6795",
+   "svg_sha256": "e82cafad5ca14bc62d4edbec17778f88a12beee1deaa742b711ae8c9cd0cab9e"
+  },
+  "ink/tiles/exposed_chest_male.png": {
+   "png_sha256": "809d06809a7e3b478fca951639b72b03779d45b6111f7dcd19164bb20aebe026",
+   "svg_sha256": "d09447604b2f35b623de7bb3ed90e279eacd8252a395f379979bbe8784e49724"
+  },
+  "ink/tiles/exposed_feet_female.png": {
+   "png_sha256": "43dca760c9abc0369f79abb9f31b132fe293194e0eb9d54233c8d6db71536e7b",
+   "svg_sha256": "624336a1edb0d92f2b47525db2040f52a7006b21a5c907ccc3369d70b70cbaa4"
+  },
+  "ink/tiles/exposed_feet_male.png": {
+   "png_sha256": "cafffc52c63d9a26acea2bc58d02d2a26234fe733861c9a6a63487d4e6339e1c",
+   "svg_sha256": "3c93aa00b70b141b2985e52027cd707b16cba002ca1c770044387f118103cb92"
+  },
+  "ink/tiles/exposed_penis_male.png": {
+   "png_sha256": "16eab35e10f27cab61edba2236d3825e1cd89404a235a4921096e6f674fdd2bc",
+   "svg_sha256": "742144b2907ece345d74b1f9d07420f56b4e2177f50b936ef4c41be6d21ff6da"
+  },
+  "ink/tiles/exposed_vulva_female.png": {
+   "png_sha256": "d18713a12fa9c78fbc66c90712e578213b201dbcdddbaaba88683a54ec29407c",
+   "svg_sha256": "6851bafff17d3e0f153ff0784a9b800ab8d23f009b793fd545a5b4c01db817f8"
+  },
+  "ink/tiles/face_femme_female.png": {
+   "png_sha256": "6252e62b8ed2d5cc19cea342915fdc42436e57af4a5d6c499ccd44a6d6884989",
+   "svg_sha256": "a391de55ac341b8e17eed802f24388431d8e258c3ca37e59770c93d76be2da98"
+  },
+  "ink/tiles/face_masc_male.png": {
+   "png_sha256": "7b850f82c0ff59a1403bcb55701f3842b71435cce0da03e48823ddd3719c6802",
+   "svg_sha256": "5c91eec9ca531a0efb34fab8481b063d98260834a8f1e8522477a196d0d7e836"
+  }
+ },
+ "rasterizer": "cairosvg 2.9.1"
+}

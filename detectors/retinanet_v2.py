@@ -63,6 +63,10 @@ _MODEL_CLASS_ORDER = [
     'exposed_penis',
 ]
 
+# The labels this backend can report, declared for the app: a label
+# outside this set is shown as unavailable while this backend is selected.
+SUPPORTED_LABELS = frozenset( _MODEL_CLASS_ORDER )
+
 
 # ---------------------------------------------------------------------------
 # Adapter hooks
