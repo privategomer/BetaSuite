@@ -94,7 +94,9 @@ class TestWhatIsSetIsWhatTheCliReads( _ConfigEngineTest ):
         engine.request( 'config.set', { 'values': { 'render_workers': 3 } } )
         result = engine.request( 'config.get', { 'paths': [ 'render_workers' ] } )
         self.assertEqual( [ { 'path': 'render_workers', 'value': 3, 'default': 0,
-                              'source': 'local', 'changed': True } ], result['data']['settings'] )
+                              'source': 'local', 'changed': True,
+                              'layers': [ { 'layer': 'default', 'value': 0 }, { 'layer': 'local', 'value': 3 } ] } ],
+                          result['data']['settings'] )
 
     def test_the_cli_tool_and_the_engine_write_the_same_file_the_same_way( self ):
         tool = os.path.join( REPO, 'tools', 'setup', 'local_config.py' )
@@ -242,6 +244,41 @@ class TestSchemaAndGet( _ConfigEngineTest ):
                             'encode_preset': ( 'fast', 'default' ) }, rows )
         # Overrides are never written.
         self.assertEqual( "encode_crf = 20\nrender_workers = 3\n", self.text() )
+
+    def test_get_lists_each_layer_that_sets_a_value_lowest_first( self ):
+        with open( self.local, 'w', encoding='utf-8' ) as handle:
+            handle.write( "encode_crf = 20\nrender_workers = 3\n" )
+        engine = self.engine()
+        result = engine.request( 'config.get', { 'paths': [ 'encode_crf', 'render_workers', 'encode_preset' ],
+                                                 'overrides': { 'render_workers': 5 } } )
+        layers = { row['path']: row['layers'] for row in result['data']['settings'] }
+        self.assertEqual( {
+            'encode_crf': [ { 'layer': 'default', 'value': 17 }, { 'layer': 'local', 'value': 20 } ],
+            'render_workers': [ { 'layer': 'default', 'value': 0 }, { 'layer': 'local', 'value': 3 },
+                                { 'layer': 'run', 'value': 5 } ],
+            'encode_preset': [ { 'layer': 'default', 'value': 'fast' } ],
+        }, layers )
+
+    def test_labels_answers_every_label_resolved_and_fits_one_line( self ):
+        import betautils_settings as bu_settings
+        engine = self.engine()
+        plain = engine.request( 'config.get', { 'paths': [ 'encode_crf' ] } )
+        self.assertNotIn( 'labels', plain['data'] )
+        result = engine.request( 'config.get', { 'paths': [ 'encode_crf' ], 'labels': True,
+                                                 'overrides': { 'default_min_prob': 0.42 } } )
+        self.assertTrue( result['ok'] )
+        labels = { view['label']: view for view in result['data']['labels'] }
+        self.assertEqual( set( bu_settings.label_names() ), set( labels ) )
+        # A per-run override reaches the resolved labels too.
+        field = labels['exposed_anus']['fields']['min_prob']
+        if field['source'] == 'default_min_prob':
+            self.assertEqual( 0.42, field['value'] )
+        self.assertEqual( ( 'default_min_prob', 0.42 ), ( field['chain'][0]['source'], field['chain'][0]['value'] ) )
+        self.assertLess( len( bu_proto.encode( result ) ), bu_proto.MAX_LINE_BYTES // 2 )
+
+    def test_labels_must_be_a_bool( self ):
+        engine = self.engine()
+        self.assertError( engine.request( 'config.get', { 'labels': 'yes' } ), 'command.bad_params' )
 
     def test_a_bad_override_is_invalid_and_an_unknown_one_unknown( self ):
         engine = self.engine()

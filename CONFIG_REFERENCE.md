@@ -2513,7 +2513,10 @@ Raising the label tier would have changed nothing.
 
 > Four tiers resolve per-label settings, and a profile sits on top of all
 > of them. When a setting does not seem to do anything, check which tier
-> actually owns it before changing the one you found first.
+> actually owns it before changing the one you found first. The engine
+> answers that directly: `config.get` with `labels: true` lists, for each
+> label and per-label key, every tier that sets it, which one is in
+> effect, why each other one is not, and each profile's value on top.
 
 **Why a large value is safe here.** `cut_between()` blocks matching
 across any recorded shot cut regardless of every gap and distance
@@ -4282,6 +4285,17 @@ every backend's per-label `min_prob`. Each entry records:
   per model variant, per structure profile, per person backend)
 - **level**: `simple` settings are on the app's main screens, the rest
   behind "More options"
+- **screen**: which screen shows it: `run`, `what_to_hide`, `models`,
+  `library`, `reverse` or `resources`, or `other`, a tab of its own for
+  detection and tracking tuning, logging and capture.
+  `SCREEN_RULES` assigns screens by path pattern, first match winning,
+  and every setting is on All Settings whatever its screen
+- **requires**: the settings it needs before it has any effect, each with
+  a test (`on`, `off`, `above_zero`): `preview_max_seconds` needs
+  `preview_mode_enabled` on, and everything under `reverse` needs
+  `reverse.enabled`. The app nests such a setting under its parent and
+  greys it out while the parent is not as required. `REQUIRES_RULES`
+  lists them, each citing the code that reads the setting
 - **moves**: the cache keys it moves (detection, censor, encode), and
   the conditions under which it does, such as "only while reverse mode
   is on"

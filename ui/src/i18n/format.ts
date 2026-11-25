@@ -35,6 +35,11 @@ export function initCatalog( requested: readonly string[] ): ActiveLocale {
   return locale;
 }
 
+// The catalog locale in use, for files kept per locale (help pages).
+export function activeLocale(): string {
+  return locale.messages;
+}
+
 export function hasMessage( key: string ): boolean {
   return key in messages || key in base;
 }

@@ -16,6 +16,8 @@ const SCHEMA = JSON.stringify( {
   $defs: {
     'protocol.bad_json': { properties: { code: { const: 'protocol.bad_json' }, params: { properties: {} } } },
     'command.unknown': { properties: { code: { const: 'command.unknown' }, params: { properties: { name: {} } } } },
+    'config.rule': { properties: { code: { const: 'config.rule' },
+                                   params: { properties: { rule: { enum: [ 'area.what' ] }, path: {} } } } },
   },
 } );
 
@@ -29,8 +31,10 @@ const BASE = {
     'error.protocol.bad_json': 'Unreadable message.',
     'error.command.unknown': 'Unknown request {name}.',
     'error.ui.engine.exited': 'The engine stopped.',
+    'error.config.rule': 'A rule is broken.',
     'error.unknown': 'Something went wrong ({code}).',
   } ),
+  'i18n/en-US/rules.json': JSON.stringify( { 'rule.area.what': 'Change the area.' } ),
   'errors.schema.json': SCHEMA,
   'rust/engine.rs': 'const EXITED: &str = "ui.engine.exited";\n',
   'index.html': '<!doctype html>\n<html><head><title></title></head><body><div id="root"></div></body></html>\n',
@@ -105,16 +109,28 @@ const CASES = {
   },
   'shell code without a message': { files: { 'rust/more.rs': 'const X: &str = "ui.engine.hello_timeout";\n' }, expect: [ 'errors.missing' ] },
   'error message with a value its code lacks': {
-    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable line {line}.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.', 'error.unknown': 'Something went wrong ({code}).' } ) },
+    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable line {line}.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.', 'error.config.rule': 'A rule is broken.', 'error.unknown': 'Something went wrong ({code}).' } ) },
     expect: [ 'errors.args' ],
   },
   'error message without a code': {
-    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable message.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.', 'error.unknown': 'Something went wrong ({code}).', 'error.gone.away': 'Old.' } ) },
+    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable message.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.', 'error.config.rule': 'A rule is broken.', 'error.unknown': 'Something went wrong ({code}).', 'error.gone.away': 'Old.' } ) },
     expect: [ 'errors.orphan' ],
   },
   'no fallback error message': {
-    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable message.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.' } ) },
+    files: { 'i18n/en-US/errors.json': JSON.stringify( { 'error.protocol.bad_json': 'Unreadable message.', 'error.command.unknown': 'Unknown request {name}.', 'error.ui.engine.exited': 'The engine stopped.', 'error.config.rule': 'A rule is broken.' } ) },
     expect: [ 'errors.missing' ],
+  },
+  'rule id without a message': {
+    files: { 'errors.schema.json': SCHEMA.replace( "[\"area.what\"]", "[\"area.what\",\"area.other\"]" ) },
+    expect: [ 'rules.missing' ],
+  },
+  'rule message without a rule id': {
+    files: { 'i18n/en-US/rules.json': JSON.stringify( { 'rule.area.what': 'Change the area.', 'rule.area.gone': 'Old.' } ) },
+    expect: [ 'rules.orphan' ],
+  },
+  'rule message with a value': {
+    files: { 'i18n/en-US/rules.json': JSON.stringify( { 'rule.area.what': 'Change {path}.' } ) },
+    expect: [ 'rules.args' ],
   },
   'physical CSS property': { files: { 'src/more.css': '.a { margin-left: 4px; }\n' }, expect: [ 'css.physical' ] },
   'physical CSS value': { files: { 'src/more.css': '.a { text-align: right; }\n' }, expect: [ 'css.physical' ] },

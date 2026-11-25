@@ -38,8 +38,8 @@ Four commands read and change the settings. They use the same local config file 
 
 | command | does |
 |---|---|
-| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, the cache keys it moves, and its message and help keys |
-| `config.get` | current values, with their defaults and where each came from (`default`, `local`, or `run` for an override sent with the request) |
+| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the settings it requires, the cache keys it moves, and its message and help keys |
+| `config.get` | current values, with their defaults, where each came from (`default`, `local`, or `run` for an override sent with the request) and every layer that sets it; with `labels: true`, also every label as a run resolves it: each per-label value, the tier it comes from, every other tier that sets it and why it is not in effect, and a profile's value on top |
 | `config.set` | checks a change as a run would and writes it to the local config only if it passes; `dry_run` checks without writing |
 | `config.reset` | removes settings from the local config, so the shipped values apply again |
 
@@ -47,7 +47,7 @@ A path is the setting's name, then the keys inside it, joined by dots: `encode_c
 
 `config.set` and `config.reset` answer `moves`, the cache keys the change moves: `detection` (re-detect), `censor` (re-render) or `encode` (re-encode). The engine works it out by comparing the keys before and after, which is how a client says what a change will cost before making it.
 
-A change that would fail validation answers `config.invalid`, listing every problem as `config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id. Nothing is written then.
+A change that would fail validation answers `config.invalid`, listing every problem as `config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id. Nothing is written then. The rule ids are listed in `v1/errors.schema.json`; a test keeps that list equal to the ids the checks return.
 
 Settings must not change while a job runs.
 
