@@ -160,6 +160,63 @@ def _call( function, *args, **kwargs ):
         raise _protocol_error( err )
 
 
+# --- the job queue's side ---------------------------------------------------------
+
+def _open_quietly( server ):
+    """The server's catalog for a job, or None when it cannot be opened (logged once)."""
+    try:
+        return catalog_for( server )
+    except bu_proto.ProtocolError as err:
+        if not getattr( server, '_catalog_warned', False ):
+            server._catalog_warned = True
+            server._logger.warning( "the library catalog is not following jobs (%s)"%( err.code, ) )
+        return None
+
+
+def job_events_for( server ):
+    """The job queue's send(): every event to the client, then to the catalog."""
+    def send( name, data ):
+        server.send_event( name, data )
+        if name not in ( 'job.state', 'job.file' ):
+            return
+        try:
+            catalog = _open_quietly( server )
+            jobs = getattr( server, 'jobs', None )
+            job = jobs.jobs.get( data.get( 'job' ) ) if jobs is not None else None
+            if catalog is not None and job is not None:
+                catalog.job_event( name, data, [ entry.path for entry in job.files ] )
+        except Exception:   # the catalog never stops a job
+            server._logger.warning( "the library catalog missed a job event", exc_info=True )
+    return send
+
+
+class _ServerHistorySink:
+    """The catalog's history sink, found when a record arrives (best-effort)."""
+
+    required = False
+
+    def __init__( self, server ):
+        self._server = server
+
+    def record( self, run ):
+        catalog = _open_quietly( self._server )
+        if catalog is not None:
+            catalog.sink.record( run )
+
+    def moved( self, run ):
+        catalog = _open_quietly( self._server )
+        if catalog is not None:
+            catalog.sink.moved( run )
+
+
+def job_recorder_for( server ):
+    """Each job file's record: the stats and failure logs, then the catalog's history."""
+    import betautils_run_record as bu_run_record
+    return bu_run_record.RunRecorder(
+        [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink(), _ServerHistorySink( server ) ],
+        program='engine', logger=server._logger )
+
+
 # --- param checks ---------------------------------------------------------------
 
 def _item_id( data ):

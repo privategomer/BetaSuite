@@ -5,6 +5,8 @@ betautils_catalog.py - the library catalog, composed from its parts.
   betautils_catalog_index   folders, items, locations, outputs, re-finding
   betautils_catalog_scan    passes over the disk, settling, hashing
   betautils_catalog_types   which video type an item gets, and why
+  betautils_catalog_history every run of every item, from the run records
+  betautils_catalog_status  queued and processing, while a job runs
 
 Catalog wires them together and answers in the shapes the engine
 protocol sends (protocol/README.md, "Catalog"). Each part owns its own
@@ -21,8 +23,10 @@ on: a 1.x tree's folder names pick the video type, as they always did.
 import json
 import os
 
+import betautils_catalog_history as bu_history
 import betautils_catalog_index as bu_index
 import betautils_catalog_scan as bu_scan
+import betautils_catalog_status as bu_status
 import betautils_catalog_store as bu_store
 import betautils_catalog_types as bu_types
 
@@ -58,6 +62,17 @@ def default_seed_folders():
     return unique
 
 
+def seed( index, folders, logger=None ):
+    """Watch the folders a new catalog starts with, those that exist, folder rule on."""
+    for folder in folders:
+        if os.path.isdir( folder ):
+            try:
+                index.add_folder( folder, type_from_folder=True )
+            except bu_store.CatalogError as err:
+                if logger is not None:
+                    logger.info( "catalog: not watching %s (%s)"%( folder, err.params.get( 'reason' ) ) )
+
+
 class Catalog:
     """
     The open catalog.
@@ -75,29 +90,30 @@ class Catalog:
         try:
             self.index = bu_index.Index( self.store, logger=logger )
             self.on_change = on_change or ( lambda items, reason: None )
+            self.history = bu_history.History( self.store, self.index )
+            # The run recorder's sink: a run's record lands in the history.
+            self.sink = bu_history.HistorySink( self.history, on_change=self._changed )
+            self.status = bu_status.ItemStatus( self.index )
             self.scanner = bu_scan.Scanner(
                 self.index, hasher=hasher, busy=busy, on_change=self._changed, logger=logger,
                 interval=bu_scan.DEFAULT_INTERVAL_SECONDS if interval is None else interval,
                 settle=bu_scan.DEFAULT_SETTLE_SECONDS if settle is None else settle )
             if self.store.created:
-                self._seed( default_seed_folders() if seed_folders is None else seed_folders )
+                seed( self.index, default_seed_folders() if seed_folders is None else seed_folders, logger )
             self._data_version = self.store.data_version()
         except BaseException:
             self.store.close()
             raise
 
-    def _seed( self, folders ):
-        for folder in folders:
-            if os.path.isdir( folder ):
-                try:
-                    self.index.add_folder( folder, type_from_folder=True )
-                except bu_store.CatalogError as err:
-                    if self.logger is not None:
-                        self.logger.info( "catalog: not watching %s (%s)"%( folder, err.params.get( 'reason' ) ) )
-
     def _changed( self, items, reason ):
         self._data_version = self.store.data_version()
         self.on_change( items, reason )
+
+    def job_event( self, name, data, files ):
+        """A job event from the engine's queue: queued and processing items."""
+        touched = self.status.job_event( name, data, files )
+        if touched:
+            self.on_change( touched, 'job' )
 
     def check_external( self ):
         """Tell on_change when another process (the CLI) wrote the file."""
@@ -177,7 +193,7 @@ class Catalog:
             'name': os.path.basename( shown_at['path'] ) if shown_at['path'] else item['name'],
             'kind': item['kind'],
             'size': item['size'],
-            'status': item['status'],
+            'status': self._status( item ),
             'availability': bu_index.availability( { location['state'] for location in item['locations'] } ),
             'copies': len( present ),
             'pin': item['type_pin'],
@@ -186,6 +202,10 @@ class Catalog:
             'outputs_missing': item['outputs_missing'],
             'added_at': item['added_at'],
         }
+
+    def _status( self, item ):
+        active = self.status.status_of( item['hash'] )
+        return active[0] if active is not None else item['status']
 
     @staticmethod
     def _folder_roots( path, folders ):
@@ -220,6 +240,7 @@ class Catalog:
                                      'censor_key': output['censor_key'], 'encode_key': output['encode_key'],
                                      'present': bool( output['present'] ) }
                                    for output in self.index.outputs_of( digest ) ]
+        shaped['history'] = self.history.runs_of( digest )
         return shaped
 
 
