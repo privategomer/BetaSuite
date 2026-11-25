@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/job.decision.schema.json",
+  "title": "job.decision",
+  "description": "A choice the engine made about a file, as a code with params, never a sentence. structure.profile {profile, rule, sample_fps, and the rule's own params}: the structure profile and the rule that chose it (forced, forced_unknown {profile}, path_pattern, source_folder {folder}, disabled, no_profiles, all_manual, default, default_unusable, measured {signal}); profile is null when none applies. structure.declared_sparser {profile, sample_fps, measured_profile, measured_sample_fps}: a declared profile samples less densely than the footage measures for. output.present {output}: the output is already there, so the file is skipped. source.not_video, source.unreadable {exception_type}: skipped. source.transcoded: decoded through a transcoded copy.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job",
+        "file",
+        "code",
+        "params"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
