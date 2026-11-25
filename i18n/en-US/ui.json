@@ -1,6 +1,8 @@
 {
  "app.name": "BetaSuite",
  "app.window_title": "BetaSuite",
+ "help.close": "Close help",
+ "help.title": "Help",
  "nav.all_settings": "All settings",
  "nav.label": "Views",
  "nav.player": "Player",

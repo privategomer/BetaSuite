@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { check, loadModel } from './check-settings-reach.mjs';
+import { check, loadModel, pageAnchors } from './check-settings-reach.mjs';
 import { createLogger, parseLogArgs } from './lib/log.mjs';
 
 const UI = path.dirname( path.dirname( fileURLToPath( import.meta.url ) ) );
@@ -54,6 +54,18 @@ const CASES = {
       'encode_preset', ( e ) => { e.requires = [ { path: 'encode_crf', test: 'on' } ]; } ),
     expect: [ 'reach.nesting' ],
   },
+  'a help anchor that is no section': {
+    fixture: ( f ) => edited( f, 'encode_crf', ( e ) => { e.help = 'no-such-section'; } ),
+    expect: [ 'reach.help' ],
+  },
+  'page anchors that differ from the engine': {
+    anchors: ( a ) => a.map( ( anchor, index ) => ( index === 3 ? `${anchor}-x` : anchor ) ),
+    expect: [ 'reach.anchors' ],
+  },
+  'a heading the engine has and the page lacks': {
+    anchors: ( a ) => a.slice( 0, -1 ),
+    expect: [ 'reach.anchors' ],
+  },
   'search that finds nothing': { model: ( m ) => ( { ...m, searchText: () => '' } ), expect: [ 'reach.search' ] },
   'search that ignores the tip and path': {
     model: ( m ) => ( { ...m, searchText: ( row, label, _tip, schema ) => m.searchText( { ...row, entry: { ...row.entry, path: '' } }, label, '', schema ) } ),
@@ -71,10 +83,12 @@ async function main() {
   const model = await loadModel();
   const fixture = JSON.parse( fs.readFileSync( path.join( UI, 'scripts', 'fixtures', 'settings.json' ), 'utf8' ) );
   const catalog = JSON.parse( fs.readFileSync( path.join( REPO, 'i18n', 'en-US', 'settings.json' ), 'utf8' ) );
+  const anchors = await pageAnchors();
   let failed = 0;
   for ( const [ name, change ] of Object.entries( CASES ) ) {
     const { findings } = check( ( change.model ?? ( ( m ) => m ) )( model ),
-      ( change.fixture ?? ( ( f ) => f ) )( fixture ), ( change.catalog ?? ( ( c ) => c ) )( catalog ) );
+      ( change.fixture ?? ( ( f ) => f ) )( fixture ), ( change.catalog ?? ( ( c ) => c ) )( catalog ),
+      ( change.anchors ?? ( ( a ) => a ) )( anchors ) );
     const got = [ ...new Set( findings.map( ( finding ) => finding.rule ) ) ].sort();
     const want = [ ...( change.expect ?? [] ) ].sort();
     if ( JSON.stringify( got ) === JSON.stringify( want ) ) {

@@ -11,6 +11,8 @@ No input needed. Writes ui/scripts/fixtures/settings.json:
     schema  what config.schema answers
     paths   every setting path betaconfig.py holds, so a check can fill in
             the keys a user names (structure profiles, profile folders)
+    anchors every heading anchor of CONFIG_REFERENCE.md, as the engine
+            makes them, for the help panel's own anchors to match
 
 Only betaconfig.py counts: the local config layer is never read, so the
 file is the same on every machine. tests/test_settings_fixture.py fails
@@ -42,7 +44,9 @@ def fixture():
     paths = sorted( '.'.join( str( part ) for part in path )
                     for path, _value, entry in bu_settings.concrete_leaves( evaluation.values )
                     if entry is not None and len( entry.path ) == len( path ) )
-    return { 'schema': evaluation.extra, 'paths': paths }
+    with open( os.path.join( REPO, 'CONFIG_REFERENCE.md' ), encoding='utf-8' ) as handle:
+        anchors = bu_settings.heading_anchors( handle.read() )
+    return { 'schema': evaluation.extra, 'paths': paths, 'anchors': anchors }
 
 
 def render( content ):

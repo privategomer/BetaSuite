@@ -17,10 +17,13 @@
 //   reach.catalog     a setting's label or tip is not in the catalog
 //   reach.requires    a setting requires a parent All Settings has no row for
 //   reach.nesting     placing settings under their parents loses one (a cycle)
+//   reach.help        a setting's help anchor is not a section of the help panel
+//   reach.anchors     the help panel's section anchors differ from the engine's
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import markdownIt from 'markdown-it';
 import ts from 'typescript';
 import { createLogger, parseLogArgs } from './lib/log.mjs';
 
@@ -43,7 +46,15 @@ export async function loadModel( source = path.join( UI, 'src', 'settings', 'mod
   }
 }
 
-export function check( model, fixture, catalog ) {
+// The anchors the help panel gives the reference document's sections:
+// the page's own anchor rule (src/help/anchors.ts) over the same parser.
+export async function pageAnchors( markdown = fs.readFileSync( path.join( REPO, 'CONFIG_REFERENCE.md' ), 'utf8' ) ) {
+  const anchors = await loadModel( path.join( UI, 'src', 'help', 'anchors.ts' ) );
+  const parser = markdownIt( { html: false, linkify: false, typographer: false } );
+  return anchors.anchorHeadings( parser.parse( markdown, {} ) );
+}
+
+export function check( model, fixture, catalog, helpAnchors ) {
   const findings = [];
   const report = ( rule, setting, message ) => findings.push( { rule, setting, message } );
   const { schema, paths } = fixture;
@@ -94,6 +105,19 @@ export function check( model, fixture, catalog ) {
       }
     }
   }
+  const sections = new Set( helpAnchors );
+  for ( const entry of schema.settings ) {
+    if ( !sections.has( entry.help ) ) {
+      report( 'reach.help', entry.path, `help anchor ${entry.help} is not a section of the help panel` );
+    }
+  }
+  const expected = fixture.anchors ?? [];
+  const differ = expected.findIndex( ( anchor, index ) => helpAnchors[ index ] !== anchor );
+  if ( differ >= 0 || expected.length !== helpAnchors.length ) {
+    const at = differ >= 0 ? differ : Math.min( expected.length, helpAnchors.length );
+    report( 'reach.anchors', `heading ${String( at + 1 )}`,
+      `the engine makes ${String( expected[ at ] )}, the help panel ${String( helpAnchors[ at ] )}` );
+  }
   // Every tab and fold lists its rows nested under their parents; none may
   // drop out on the way.
   const groups = [ rows, ...model.byScreen( rows ).values(),
@@ -133,11 +157,12 @@ async function main() {
   const model = await loadModel();
   const fixture = JSON.parse( fs.readFileSync( fixturePath, 'utf8' ) );
   const catalog = JSON.parse( fs.readFileSync( catalogPath, 'utf8' ) );
-  const { findings, rows, instances } = check( model, fixture, catalog );
+  const { findings, rows, instances } = check( model, fixture, catalog, await pageAnchors() );
   for ( const { rule, setting, message } of findings ) {
     log.error( `${setting}: ${rule}: ${message}` );
   }
-  log.info( `${fixture.schema.settings.length} settings, ${rows} rows, ${instances} concrete settings; `
+  log.info( `${fixture.schema.settings.length} settings, ${rows} rows, ${instances} concrete settings, `
+    + `${fixture.anchors.length} help sections; `
     + `${findings.length} problem(s); log: ${log.file}` );
   log.close();
   process.exitCode = findings.length === 0 ? 0 : 1;
