@@ -1,0 +1,18 @@
+{
+  "version": "n8.0.1-66-g27b8d1a017",
+  "source": "BtbN FFmpeg-Builds, GPL build (x264 included), month-end release autobuild-2026-02-28-12-59",
+  "builds": {
+    "linux64": {
+      "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-02-28-12-59/ffmpeg-n8.0.1-66-g27b8d1a017-linux64-gpl-8.0.tar.xz",
+      "sha256": "26d2ecd0cefba99f9d1ea92252a3a4f743a58df4c1c3cf9f8bbaaa40b1fca5b0"
+    },
+    "linuxarm64": {
+      "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-02-28-12-59/ffmpeg-n8.0.1-66-g27b8d1a017-linuxarm64-gpl-8.0.tar.xz",
+      "sha256": "d72cc324cb65dd92a9ffe699cc95ccbacfef4def8d3ad9fe2b5164a6a71b9595"
+    },
+    "win64": {
+      "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-02-28-12-59/ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0.zip",
+      "sha256": "e1f9fc491ef1969e666cfe36ec1d6c02b53baf49df800d5256eda10c942b1251"
+    }
+  }
+}

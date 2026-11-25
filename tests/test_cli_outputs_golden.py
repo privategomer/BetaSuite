@@ -13,23 +13,35 @@ output file.
 It was recorded before the CLI ran through the job runner
 (betautils_job), so it proves that routing changed no output name, key
 or byte. The clips are built with ffmpeg, so their bytes, and the
-source hash in each output name, depend on the ffmpeg version; each
-source hash is recorded as a token naming its clip ({a.mp4}). Under the
-ffmpeg that recorded the golden everything is compared, output bytes
-included. Under another one the exit codes, the output tree and each
-stats row's identity (file, output name, the three keys, sizes, rates,
-video dimensions and frames) are compared, since detection counts and
-shot cuts follow the clip's pixels.
+source hash in each output name, depend on the ffmpeg build; each
+source hash is recorded as a token naming its clip ({a.mp4}).
 
-A change that is meant to change outputs updates the golden file on
-purpose, and says so in CHANGELOG:
+WHERE BYTES ARE COMPARED: IN CI ONLY
+    Output bytes follow the whole environment: the ffmpeg build (encode
+    and mux), the OpenCV wheel (decode), and the x264 thread count, which
+    the render takes from the core count (pinned to ENCODER_THREADS here).
+    So the golden file is recorded in CI, under the pinned ffmpeg
+    (tools/lib/ffmpeg_pin.json) and the pinned OpenCV, and records that
+    environment. CI sets BETASUITE_GOLDEN_BYTES=1: every field and byte
+    is compared, and an environment that differs from the recorded one
+    fails, rather than quietly comparing less. Anywhere else the exit
+    codes, the output tree and each stats row's identity (file, output
+    name, the three keys, sizes, rates, video dimensions and frames) are
+    compared, since detection counts and shot cuts follow the pixels.
 
-    python -m tests.test_cli_outputs_golden write
+    Every CI run also records a fresh golden file and uploads it as the
+    artifact cli-fixture-outputs. A change meant to change outputs takes
+    that file from its own CI run, puts it at
+    tests/golden/cli_fixture_outputs.json, and says so in CHANGELOG. The
+    golden is never recorded on a developer's machine.
+
+    python -m tests.test_cli_outputs_golden write <path>    (what CI runs)
 """
 
 import hashlib
 import json
 import os
+import platform
 import subprocess
 import sys
 import unittest
@@ -73,6 +85,12 @@ IDENTITY_FIELDS = ( 'file', 'output', 'detection_key', 'censor_key', 'encode_key
                     'nn_batch_size', 'global_min_prob', 'preview_mode', 'preview_offset_seconds',
                     'video_width', 'video_height', 'video_fps', 'video_frames', 'transcoded_source' )
 
+# x264's thread count, fixed so the core count of the machine does not
+# change the bytes (the render uses cores // workers).
+ENCODER_THREADS = 4
+
+BYTES_VARIABLE = 'BETASUITE_GOLDEN_BYTES'
+
 SCENARIOS = {
     'full': {},
     'preview': { 'preview_mode_enabled': True, 'preview_max_seconds': 1,
@@ -87,6 +105,14 @@ def ffmpeg_version():
     except ( OSError, IndexError ):
         return None
     return line.split( ' Copyright' )[0]
+
+
+def environment():
+    """What the output bytes depend on besides the code and the settings."""
+    import cv2
+    import numpy
+    return { 'ffmpeg': ffmpeg_version(), 'opencv': cv2.__version__, 'numpy': numpy.__version__,
+             'encoder_threads': ENCODER_THREADS, 'platform': sys.platform, 'machine': platform.machine() }
 
 
 def _sha256( path ):
@@ -175,7 +201,9 @@ class GoldenRun( BetaTvHarness ):
 
     def record( self, scenario ):
         """Run one scenario twice from a clean tree; what it produced."""
-        with harness.shipped():
+        import betautils_render as bu_render
+        with harness.shipped(), mock.patch.object( bu_render, '_encoder_threads',
+                                                     lambda workers: ENCODER_THREADS ):
             for name, value in PINNED:
                 setattr( betaconfig, name, value )
             betaconfig.stats_path = os.path.join( self.tmpdir, 'stats.jsonl' )
@@ -208,7 +236,10 @@ class TestCliOutputsMatchTheGolden( GoldenRun ):
         expected = golden['scenarios'][scenario]
         produced = self.record( scenario )
         self.assertEqual( identity( produced ), identity( expected ) )
-        if ffmpeg_version() == golden['ffmpeg']:
+        if os.environ.get( BYTES_VARIABLE ) == '1':
+            self.assertEqual( environment(), golden.get( 'environment' ),
+                              "the golden was recorded in another environment: take the "
+                              "cli-fixture-outputs artifact of this CI run and check it in" )
             self.assertEqual( produced, expected )
 
     def test_full_run( self ):
@@ -218,12 +249,12 @@ class TestCliOutputsMatchTheGolden( GoldenRun ):
         self._check( 'preview' )
 
 
-def write():
+def write( path=GOLDEN_PATH ):
     class Writer( GoldenRun ):
         def runTest( self ):
             pass
 
-    golden = { 'ffmpeg': ffmpeg_version(), 'scenarios': {} }
+    golden = { 'environment': environment(), 'scenarios': {} }
     for scenario in SCENARIOS:
         case = Writer()
         case.setUp()
@@ -231,14 +262,14 @@ def write():
             golden['scenarios'][scenario] = case.record( scenario )
         finally:
             case.tearDown()
-    with open( GOLDEN_PATH, 'w', encoding='UTF-8' ) as handle:
+    with open( path, 'w', encoding='UTF-8' ) as handle:
         json.dump( golden, handle, indent=1, sort_keys=True )
         handle.write( '\n' )
-    print( "wrote %s"%( GOLDEN_PATH, ) )
+    print( "wrote %s"%( path, ) )
 
 
 if __name__ == '__main__':
-    if sys.argv[1:] == [ 'write' ]:
-        write()
+    if sys.argv[1:2] == [ 'write' ] and len( sys.argv ) == 3:
+        write( sys.argv[2] )
     else:
         unittest.main()

@@ -1,4 +1,7 @@
 # BetaSuite core dependencies (shared by CPU and GPU installs).
-# Ranges, not exact pins; the CUDA runtime libraries are pinned in gpu-requirements.txt.
+# Ranges, not exact pins, except OpenCV: it decodes every frame, so its
+# version is part of what a render produces (pinned with ffmpeg, see
+# tools/lib/ffmpeg_pin.json). The CUDA runtime libraries are pinned in
+# gpu-requirements.txt.
 numpy>=1.26,<3
-opencv-python>=4.10,<5
+opencv-python==4.14.0.94

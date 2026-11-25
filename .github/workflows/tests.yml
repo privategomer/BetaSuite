@@ -25,11 +25,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      # ffmpeg 7.0.2, the johnvansickle.com static build (x264 included),
-      # as republished on GitHub under this release tag.
-      FFMPEG_RELEASE: b6.1.1
-      FFMPEG_SHA256: bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa
-      FFPROBE_SHA256: 25d9b6ccb05e3d9de9e04e31e2506d8dd7f9f0418981965ac6df12e8d3afd067
+      # The golden output test compares output bytes here, and only here
+      # (tests/test_cli_outputs_golden.py says why).
+      BETASUITE_GOLDEN_BYTES: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -37,35 +35,38 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
-      # A pinned static ffmpeg build, checked by SHA-256 and cached by
-      # version. apt went through the runners' Ubuntu mirror, which took up
-      # to 20 minutes. Change the version and both sums together.
-      - name: Restore ffmpeg
-        id: ffmpeg-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/ffmpeg-static
-          key: ffmpeg-static-${{ runner.os }}-${{ env.FFMPEG_RELEASE }}
-      - name: Download ffmpeg
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 5
-        run: |
-          mkdir -p ~/ffmpeg-static && cd ~/ffmpeg-static
-          base="https://github.com/eugeneware/ffmpeg-static/releases/download/$FFMPEG_RELEASE"
-          curl -sSfL --retry 3 -o ffmpeg.gz "$base/ffmpeg-linux-x64.gz"
-          curl -sSfL --retry 3 -o ffprobe.gz "$base/ffprobe-linux-x64.gz"
-          echo "$FFMPEG_SHA256  ffmpeg.gz" | sha256sum -c -
-          echo "$FFPROBE_SHA256  ffprobe.gz" | sha256sum -c -
-          gunzip ffmpeg.gz ffprobe.gz
-          chmod +x ffmpeg ffprobe
-      - name: Put ffmpeg on the path
-        run: |
-          echo "$HOME/ffmpeg-static" >> "$GITHUB_PATH"
-          "$HOME/ffmpeg-static/ffmpeg" -hide_banner -version | head -1
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
+      # The one pinned ffmpeg build (tools/lib/ffmpeg_pin.json, which the
+      # app's bundle reads too), checked by SHA-256 and cached by the pin.
+      # apt went through the runners' Ubuntu mirror, which took up to 20
+      # minutes.
+      - name: Restore ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: ~/ffmpeg-pin
+          key: ffmpeg-pin-${{ runner.os }}-${{ hashFiles('tools/lib/ffmpeg_pin.json') }}
+      - name: Install the pinned ffmpeg
+        timeout-minutes: 5
+        run: |
+          bin_dir="$(python tools/lib/ffmpeg_pin.py ~/ffmpeg-pin --build linux64)"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+          "$bin_dir/ffmpeg" -hide_banner -version | head -1
       - name: Run tests
         run: bash tests/run_tests.sh
+      # A golden output file recorded in this environment, from every run:
+      # a change meant to change outputs checks this file in (never one
+      # recorded on a developer's machine).
+      - name: Record the golden outputs
+        if: always()
+        run: python -m tests.test_cli_outputs_golden write "$RUNNER_TEMP/cli_fixture_outputs.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cli-fixture-outputs
+          path: ${{ runner.temp }}/cli_fixture_outputs.json
+          retention-days: 30
+          if-no-files-found: warn
 
   # Serve mode isolates stdout at the file-descriptor level, which behaves
   # differently on Windows; this proves it there. The rest of the suite
