@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.cancel.schema.json",
+  "title": "job.cancel",
+  "description": "Cancel a job that has not ended. A queued or paused job is cancelled at once (state cancelled in the result); a running one stops at its next safe point, and the job.state event 'cancelled' says when. The partial outputs of the file it was working on (render chunks, intermediate, temporary files) are removed; outputs it finished stay, and so do detection caches. job.bad_state for a job that has ended.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "job",
+        "state"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "paused",
+            "completed",
+            "cancelled",
+            "stopped"
+          ]
+        }
+      }
+    }
+  }
+}
