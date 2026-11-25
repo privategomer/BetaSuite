@@ -280,9 +280,14 @@ def _profiles_identity( backend_name ):
     return backend.get( 'profiles' ) or None
 
 
-def censor_identity( backend_name=None ):
+def censor_identity( backend_name=None, profile_pin=None ):
     """
     Everything that changes rendered output for a FIXED set of detections.
+
+    profile_pin is the video type pinned to this one file in the library
+    catalog (betautils_catalog_types), if any. It chooses the structure
+    profile above every rule keyed below, so it is keyed too, and only
+    while set: every unpinned file keeps its key and its finished output.
 
     Resolved against a specific backend AND variant, because per-label
     tracking settings (track_max_gap, min_prob, interpolation,
@@ -398,6 +403,8 @@ def censor_identity( backend_name=None ):
     # without one keeps its key and its finished output.
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
+    if profile_pin:
+        identity['profile_pin'] = profile_pin
     return identity
 
 
@@ -455,9 +462,9 @@ def censor_uses_feathered_shape( per_label ):
     return False
 
 
-def censor_key( backend_name=None ):
+def censor_key( backend_name=None, profile_pin=None ):
     """Short key for censor_identity(). See this module's docstring."""
-    identity = censor_identity( backend_name )
+    identity = censor_identity( backend_name, profile_pin )
     return _keyed( 'censor', identity, betaconst.censor_key_len )
 
 

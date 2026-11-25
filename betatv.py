@@ -224,7 +224,7 @@ def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_sec
 
 def _build_paths( censored_folder, stem, file_hash, picture_sizes,
                   preview_mode_enabled, preview_offset_seconds, preview_seconds,
-                  duration_seconds, sample_fps=None, output_label='' ):
+                  duration_seconds, sample_fps=None, output_label='', profile_pin=None ):
     """
     Every path this file needs, from the one module that owns naming.
 
@@ -244,7 +244,7 @@ def _build_paths( censored_folder, stem, file_hash, picture_sizes,
     preview_suffix = bu_cache.preview_cache_suffix(
         preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
     detection_key = bu_cache.detection_key( fps=sample_fps )
-    censor_key = bu_cache.censor_key()
+    censor_key = bu_cache.censor_key( profile_pin=profile_pin )
     encode_key = bu_cache.encode_key( preview_mode_enabled )
     container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
 
@@ -609,7 +609,13 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
         # file. Otherwise the name depends on the measured profile, which
         # needs the scan first; it is cached, so a repeat run still skips
         # without detecting.
-        declared = bu_detector.declared_profile_selection( source_path )
+        # The library's pin for this file, and its watched folder's rule,
+        # come through the reporter (betautils_catalog_types); without a
+        # catalog the engine's own ladder decides, as it always has.
+        declared = ( reporter.types.declared( source_path, file_hash ) if reporter.types is not None
+                     else bu_detector.declared_profile_selection( source_path ) )
+        profile_pin = ( declared[0] if declared is not None and getattr( declared[1], 'code', None ) == 'pinned'
+                        else None )
         paths = None
         if declared is not None or len( bu_detector.profile_sample_rates() ) == 1:
             early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
@@ -617,7 +623,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, early_fps,
-                                  output_label=output_label )
+                                  output_label=output_label, profile_pin=profile_pin )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -671,7 +677,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
                                   preview_mode_enabled, preview_offset_seconds,
                                   effective_preview_seconds, duration_seconds, sample_fps,
-                                  output_label=output_label )
+                                  output_label=output_label, profile_pin=profile_pin )
             reporter.output_paths( paths )
             if already_done( paths ):
                 logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
@@ -1046,7 +1052,8 @@ def main():
     recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
     try:
         job = bu_job.Job( 'cli', job_files( logger ) )
-        state = bu_job.Runner( logger, recorder=recorder ).run( job )
+        state = bu_job.Runner( logger, recorder=recorder,
+                               types=catalog.run_types() if catalog is not None else None ).run( job )
         if state == bu_job.STOPPED and job.code == 'disk.full':
             exit_code = 1
     except bu_signals.Interrupted:

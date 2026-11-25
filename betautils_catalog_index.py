@@ -354,6 +354,16 @@ class Index:
         with self.store.write() as db:
             db.execute( 'UPDATE items SET status = ? WHERE hash = ?', ( status, digest ) )
 
+    def pin_of( self, digest ):
+        """The type pinned to an item, or None (also for an unknown item)."""
+        rows = self.store.read( 'SELECT type_pin FROM items WHERE hash = ?', ( digest, ) )
+        return rows[0][0] if rows else None
+
+    def set_pin( self, digest, pin ):
+        self.item_row( digest )
+        with self.store.write() as db:
+            db.execute( 'UPDATE items SET type_pin = ? WHERE hash = ?', ( pin, digest ) )
+
     def set_last_profile( self, digest, profile, rule, params ):
         with self.store.write() as db:
             db.execute( 'UPDATE items SET last_profile = ?, last_rule = ?, last_rule_params = ? WHERE hash = ?',

@@ -1,5 +1,7 @@
 {
  "error.catalog.bad_folder": "That folder cannot be added: {reason, select, not_found {it does not exist} not_a_folder {it is not a folder} other {censored videos are saved there}}.",
+ "error.catalog.bad_type": "{type} is not a video type this app knows, so the video was not changed.",
+ "error.catalog.item_busy": "This video is in a job right now. Change its type once the job has finished.",
  "error.catalog.no_such_folder": "That folder is no longer watched.",
  "error.catalog.no_such_item": "That video is no longer in the library.",
  "error.catalog.too_new": "The library was saved by a newer version of BetaSuite, so this version will not open it. Update the app.",

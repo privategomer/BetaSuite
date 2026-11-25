@@ -44,7 +44,9 @@
     { "$ref": "#/$defs/catalog.too_new" },
     { "$ref": "#/$defs/catalog.no_such_item" },
     { "$ref": "#/$defs/catalog.no_such_folder" },
-    { "$ref": "#/$defs/catalog.bad_folder" }
+    { "$ref": "#/$defs/catalog.bad_folder" },
+    { "$ref": "#/$defs/catalog.bad_type" },
+    { "$ref": "#/$defs/catalog.item_busy" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -599,6 +601,30 @@
           "type": "object",
           "required": [ "reason" ],
           "properties": { "reason": { "enum": [ "not_found", "not_a_folder", "output_folder" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.bad_type": {
+      "description": "The video type to pin is not one of the structure profiles the selected backend has (type is what was asked for).",
+      "properties": {
+        "code": { "const": "catalog.bad_type" },
+        "params": {
+          "type": "object",
+          "required": [ "type" ],
+          "properties": { "type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.item_busy": {
+      "description": "A job holds the item (queued, running or paused), so its video type cannot change until that job ends. job is the job's id.",
+      "properties": {
+        "code": { "const": "catalog.item_busy" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "job" ],
+          "properties": { "item": { "type": "string" }, "job": { "type": "string" } },
           "additionalProperties": false
         }
       }

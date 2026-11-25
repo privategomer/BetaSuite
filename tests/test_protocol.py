@@ -82,6 +82,8 @@ EXAMPLE_PARAMS = {
     'catalog.no_such_item':         { 'item': '0123456789abcdef' },
     'catalog.no_such_folder':       { 'folder': 3 },
     'catalog.bad_folder':           { 'reason': 'not_found' },
+    'catalog.bad_type':             { 'type': 'slow_motion' },
+    'catalog.item_busy':            { 'item': '0123456789abcdef', 'job': '3f2a' },
 }
 
 

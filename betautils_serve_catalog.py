@@ -217,6 +217,24 @@ def job_recorder_for( server ):
         program='engine', logger=server._logger )
 
 
+class _ServerRunTypes:
+    """The catalog's pins and folder rules, found when a file starts."""
+
+    def __init__( self, server ):
+        self._server = server
+
+    def declared( self, source_path, digest, backend_name=None ):
+        catalog = _open_quietly( self._server )
+        if catalog is None:
+            import betautils_catalog_types as bu_types
+            return bu_types.declared_for( source_path, None, (), backend_name )
+        return catalog.run_types().declared( source_path, digest, backend_name )
+
+
+def job_types_for( server ):
+    return _ServerRunTypes( server )
+
+
 # --- param checks ---------------------------------------------------------------
 
 def _item_id( data ):
@@ -346,6 +364,19 @@ def catalog_rescan( server, data ):
     return {}
 
 
+def catalog_pin_type( server, data ):
+    """Pin an item's video type, or unpin it (type null) for Auto."""
+    item = _item_id( data )
+    if 'type' not in data:
+        raise _bad_params( 'type', bu_proto.REASON_MISSING )
+    pin = data['type']
+    if pin is not None and ( not isinstance( pin, str ) or not pin ):
+        raise _bad_params( 'type', bu_proto.REASON_TYPE )
+    catalog = catalog_for( server )
+    _call( catalog.pin_type, item, pin )
+    return _call( catalog.get, item )
+
+
 def catalog_forget( server, data ):
     item = _item_id( data )
     _call( catalog_for( server ).forget, item )
@@ -361,6 +392,7 @@ HANDLERS = {
     'catalog.add_files':     catalog_add_files,
     'catalog.rescan':        catalog_rescan,
     'catalog.forget':        catalog_forget,
+    'catalog.pin_type':      catalog_pin_type,
 }
 
 EVENTS = ( 'catalog.changed', )

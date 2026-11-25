@@ -165,9 +165,12 @@ class JobQueue:
         load_session: Override for loading the detector session (tests).
         recorder: The betautils_run_record.RunRecorder for each file's
             record; None for the stats and failure logs only.
+        types: The betautils_catalog_types.RunTypes for pins and folder
+            rules; None for the engine's ladder alone.
     """
 
-    def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None, recorder=None ):
+    def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None, recorder=None,
+                  types=None ):
         import betautils_job as bu_job
         self._bu_job = bu_job
         self.logger = logger
@@ -175,7 +178,7 @@ class JobQueue:
         self._acquire_lock = acquire_lock or self._library_lock
         self._load_session_override = load_session
         self.runner = bu_job.Runner( logger, emit=self._emit, pipeline=pipeline,
-                                     load_session=self._load_session, recorder=recorder )
+                                     load_session=self._load_session, recorder=recorder, types=types )
         self._cond = threading.Condition()
         self.jobs = collections.OrderedDict()     # id -> Job, every job not yet forgotten
         self._waiting = collections.deque()       # ids queued, in order
@@ -497,7 +500,8 @@ def queue_for( server ):
         # every file's record in its history.
         import betautils_serve_catalog as bu_serve_catalog
         jobs = JobQueue( bu_serve_catalog.job_events_for( server ), server._logger,
-                         recorder=bu_serve_catalog.job_recorder_for( server ) )
+                         recorder=bu_serve_catalog.job_recorder_for( server ),
+                         types=bu_serve_catalog.job_types_for( server ) )
         server.jobs = jobs
     return jobs
 
