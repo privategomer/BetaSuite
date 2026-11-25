@@ -1,0 +1,1069 @@
+{
+ "figures": {
+  "female.back.clothed": {
+   "boxes": [
+    {
+     "h": 108,
+     "label": "covered_buttocks",
+     "w": 176,
+     "x": 212,
+     "y": 704
+    },
+    {
+     "h": 34,
+     "label": "covered_anus",
+     "w": 28,
+     "x": 286,
+     "y": 770
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/female_back_clothed.png",
+   "source": "figures/female_back_clothed.svg"
+  },
+  "female.back.unclothed": {
+   "boxes": [
+    {
+     "h": 108,
+     "label": "exposed_buttocks",
+     "w": 176,
+     "x": 212,
+     "y": 704
+    },
+    {
+     "h": 34,
+     "label": "exposed_anus",
+     "w": 28,
+     "x": 286,
+     "y": 770
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/female_back_unclothed.png",
+   "source": "figures/female_back_unclothed.svg"
+  },
+  "female.front.clothed": {
+   "boxes": [
+    {
+     "h": 114,
+     "label": "face_femme",
+     "w": 84,
+     "x": 258,
+     "y": 96
+    },
+    {
+     "h": 94,
+     "label": "covered_breast",
+     "w": 67,
+     "x": 237,
+     "y": 334
+    },
+    {
+     "h": 94,
+     "label": "covered_breast",
+     "w": 67,
+     "x": 296,
+     "y": 334
+    },
+    {
+     "h": 190,
+     "label": "covered_belly",
+     "w": 88,
+     "x": 256,
+     "y": 446
+    },
+    {
+     "h": 60,
+     "label": "covered_armpits",
+     "w": 44,
+     "x": 208,
+     "y": 256
+    },
+    {
+     "h": 80,
+     "label": "covered_vulva",
+     "w": 72,
+     "x": 264,
+     "y": 702
+    },
+    {
+     "h": 62,
+     "label": "covered_feet",
+     "w": 76,
+     "x": 220,
+     "y": 1079
+    },
+    {
+     "h": 62,
+     "label": "covered_feet",
+     "w": 76,
+     "x": 304,
+     "y": 1079
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/female_front_clothed.png",
+   "source": "figures/female_front_clothed.svg"
+  },
+  "female.front.unclothed": {
+   "boxes": [
+    {
+     "h": 114,
+     "label": "face_femme",
+     "w": 84,
+     "x": 258,
+     "y": 96
+    },
+    {
+     "h": 94,
+     "label": "exposed_breast",
+     "w": 67,
+     "x": 237,
+     "y": 334
+    },
+    {
+     "h": 94,
+     "label": "exposed_breast",
+     "w": 67,
+     "x": 296,
+     "y": 334
+    },
+    {
+     "h": 190,
+     "label": "exposed_belly",
+     "w": 88,
+     "x": 256,
+     "y": 446
+    },
+    {
+     "h": 60,
+     "label": "exposed_armpits",
+     "w": 44,
+     "x": 208,
+     "y": 256
+    },
+    {
+     "h": 80,
+     "label": "exposed_vulva",
+     "w": 72,
+     "x": 264,
+     "y": 702
+    },
+    {
+     "h": 54,
+     "label": "exposed_feet",
+     "w": 66,
+     "x": 225,
+     "y": 1083
+    },
+    {
+     "h": 54,
+     "label": "exposed_feet",
+     "w": 66,
+     "x": 309,
+     "y": 1083
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/female_front_unclothed.png",
+   "source": "figures/female_front_unclothed.svg"
+  },
+  "male.back.clothed": {
+   "boxes": [
+    {
+     "h": 100,
+     "label": "covered_buttocks",
+     "w": 140,
+     "x": 230,
+     "y": 706
+    },
+    {
+     "h": 34,
+     "label": "covered_anus",
+     "w": 28,
+     "x": 286,
+     "y": 764
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/male_back_clothed.png",
+   "source": "figures/male_back_clothed.svg"
+  },
+  "male.back.unclothed": {
+   "boxes": [
+    {
+     "h": 100,
+     "label": "exposed_buttocks",
+     "w": 140,
+     "x": 230,
+     "y": 706
+    },
+    {
+     "h": 34,
+     "label": "exposed_anus",
+     "w": 28,
+     "x": 286,
+     "y": 764
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/male_back_unclothed.png",
+   "source": "figures/male_back_unclothed.svg"
+  },
+  "male.front.clothed": {
+   "boxes": [
+    {
+     "h": 118,
+     "label": "face_masc",
+     "w": 88,
+     "x": 256,
+     "y": 94
+    },
+    {
+     "h": 190,
+     "label": "covered_belly",
+     "w": 108,
+     "x": 246,
+     "y": 430
+    },
+    {
+     "h": 64,
+     "label": "covered_armpits",
+     "w": 47,
+     "x": 186,
+     "y": 252
+    },
+    {
+     "h": 64,
+     "label": "covered_feet",
+     "w": 83,
+     "x": 216,
+     "y": 1079
+    },
+    {
+     "h": 64,
+     "label": "covered_feet",
+     "w": 83,
+     "x": 302,
+     "y": 1079
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/male_front_clothed.png",
+   "source": "figures/male_front_clothed.svg"
+  },
+  "male.front.unclothed": {
+   "boxes": [
+    {
+     "h": 118,
+     "label": "face_masc",
+     "w": 88,
+     "x": 256,
+     "y": 94
+    },
+    {
+     "h": 82,
+     "label": "exposed_chest",
+     "w": 84,
+     "x": 218,
+     "y": 296
+    },
+    {
+     "h": 82,
+     "label": "exposed_chest",
+     "w": 84,
+     "x": 298,
+     "y": 296
+    },
+    {
+     "h": 190,
+     "label": "exposed_belly",
+     "w": 108,
+     "x": 246,
+     "y": 430
+    },
+    {
+     "h": 64,
+     "label": "exposed_armpits",
+     "w": 47,
+     "x": 186,
+     "y": 252
+    },
+    {
+     "h": 80,
+     "label": "exposed_penis",
+     "w": 42,
+     "x": 279,
+     "y": 715
+    },
+    {
+     "h": 56,
+     "label": "exposed_feet",
+     "w": 72,
+     "x": 221,
+     "y": 1083
+    },
+    {
+     "h": 56,
+     "label": "exposed_feet",
+     "w": 72,
+     "x": 307,
+     "y": 1083
+    }
+   ],
+   "canvas": [
+    600,
+    1200
+   ],
+   "file": "figures/male_front_unclothed.png",
+   "source": "figures/male_front_unclothed.svg"
+  }
+ },
+ "format": 1,
+ "id": "flat",
+ "name_key": "art_style.flat",
+ "tiles": {
+  "covered_anus.female": {
+   "boxes": [
+    {
+     "h": 60,
+     "label": "covered_anus",
+     "w": 48,
+     "x": 168,
+     "y": 162
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.back.clothed",
+   "file": "tiles/covered_anus_female.png",
+   "label": "covered_anus",
+   "sex": "female",
+   "window": [
+    190,
+    677,
+    220
+   ]
+  },
+  "covered_anus.male": {
+   "boxes": [
+    {
+     "h": 60,
+     "label": "covered_anus",
+     "w": 48,
+     "x": 168,
+     "y": 162
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.back.clothed",
+   "file": "tiles/covered_anus_male.png",
+   "label": "covered_anus",
+   "sex": "male",
+   "window": [
+    190,
+    671,
+    220
+   ]
+  },
+  "covered_armpits.female": {
+   "boxes": [
+    {
+     "h": 104,
+     "label": "covered_armpits",
+     "w": 76,
+     "x": 154,
+     "y": 140
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.clothed",
+   "file": "tiles/covered_armpits_female.png",
+   "label": "covered_armpits",
+   "sex": "female",
+   "window": [
+    120,
+    176,
+    220
+   ]
+  },
+  "covered_armpits.male": {
+   "boxes": [
+    {
+     "h": 112,
+     "label": "covered_armpits",
+     "w": 82,
+     "x": 150,
+     "y": 136
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.clothed",
+   "file": "tiles/covered_armpits_male.png",
+   "label": "covered_armpits",
+   "sex": "male",
+   "window": [
+    100,
+    174,
+    220
+   ]
+  },
+  "covered_belly.female": {
+   "boxes": [
+    {
+     "h": 214,
+     "label": "covered_belly",
+     "w": 98,
+     "x": 143,
+     "y": 85
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.clothed",
+   "file": "tiles/covered_belly_female.png",
+   "label": "covered_belly",
+   "sex": "female",
+   "window": [
+    129,
+    370,
+    342
+   ]
+  },
+  "covered_belly.male": {
+   "boxes": [
+    {
+     "h": 214,
+     "label": "covered_belly",
+     "w": 122,
+     "x": 131,
+     "y": 85
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.clothed",
+   "file": "tiles/covered_belly_male.png",
+   "label": "covered_belly",
+   "sex": "male",
+   "window": [
+    129,
+    354,
+    342
+   ]
+  },
+  "covered_breast.female": {
+   "boxes": [
+    {
+     "h": 159,
+     "label": "covered_breast",
+     "w": 114,
+     "x": 86,
+     "y": 112
+    },
+    {
+     "h": 159,
+     "label": "covered_breast",
+     "w": 113,
+     "x": 186,
+     "y": 112
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.clothed",
+   "file": "tiles/covered_breast_female.png",
+   "label": "covered_breast",
+   "sex": "female",
+   "window": [
+    186,
+    268,
+    227
+   ]
+  },
+  "covered_buttocks.female": {
+   "boxes": [
+    {
+     "h": 131,
+     "label": "covered_buttocks",
+     "w": 213,
+     "x": 85,
+     "y": 126
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.back.clothed",
+   "file": "tiles/covered_buttocks_female.png",
+   "label": "covered_buttocks",
+   "sex": "female",
+   "window": [
+    142,
+    600,
+    317
+   ]
+  },
+  "covered_buttocks.male": {
+   "boxes": [
+    {
+     "h": 152,
+     "label": "covered_buttocks",
+     "w": 214,
+     "x": 85,
+     "y": 116
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.back.clothed",
+   "file": "tiles/covered_buttocks_male.png",
+   "label": "covered_buttocks",
+   "sex": "male",
+   "window": [
+    174,
+    630,
+    252
+   ]
+  },
+  "covered_feet.female": {
+   "boxes": [
+    {
+     "h": 82,
+     "label": "covered_feet",
+     "w": 102,
+     "x": 85,
+     "y": 223
+    },
+    {
+     "h": 82,
+     "label": "covered_feet",
+     "w": 102,
+     "x": 197,
+     "y": 223
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.clothed",
+   "file": "tiles/covered_feet_female.png",
+   "label": "covered_feet",
+   "sex": "female",
+   "window": [
+    156,
+    912,
+    288
+   ]
+  },
+  "covered_feet.male": {
+   "boxes": [
+    {
+     "h": 81,
+     "label": "covered_feet",
+     "w": 105,
+     "x": 86,
+     "y": 231
+    },
+    {
+     "h": 81,
+     "label": "covered_feet",
+     "w": 104,
+     "x": 195,
+     "y": 231
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.clothed",
+   "file": "tiles/covered_feet_male.png",
+   "label": "covered_feet",
+   "sex": "male",
+   "window": [
+    148,
+    896,
+    304
+   ]
+  },
+  "covered_vulva.female": {
+   "boxes": [
+    {
+     "h": 140,
+     "label": "covered_vulva",
+     "w": 126,
+     "x": 129,
+     "y": 122
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.clothed",
+   "file": "tiles/covered_vulva_female.png",
+   "label": "covered_vulva",
+   "sex": "female",
+   "window": [
+    190,
+    632,
+    220
+   ]
+  },
+  "exposed_anus.female": {
+   "boxes": [
+    {
+     "h": 60,
+     "label": "exposed_anus",
+     "w": 48,
+     "x": 168,
+     "y": 162
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.back.unclothed",
+   "file": "tiles/exposed_anus_female.png",
+   "label": "exposed_anus",
+   "sex": "female",
+   "window": [
+    190,
+    677,
+    220
+   ]
+  },
+  "exposed_anus.male": {
+   "boxes": [
+    {
+     "h": 60,
+     "label": "exposed_anus",
+     "w": 48,
+     "x": 168,
+     "y": 162
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.back.unclothed",
+   "file": "tiles/exposed_anus_male.png",
+   "label": "exposed_anus",
+   "sex": "male",
+   "window": [
+    190,
+    671,
+    220
+   ]
+  },
+  "exposed_armpits.female": {
+   "boxes": [
+    {
+     "h": 104,
+     "label": "exposed_armpits",
+     "w": 76,
+     "x": 154,
+     "y": 140
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/exposed_armpits_female.png",
+   "label": "exposed_armpits",
+   "sex": "female",
+   "window": [
+    120,
+    176,
+    220
+   ]
+  },
+  "exposed_armpits.male": {
+   "boxes": [
+    {
+     "h": 112,
+     "label": "exposed_armpits",
+     "w": 82,
+     "x": 150,
+     "y": 136
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/exposed_armpits_male.png",
+   "label": "exposed_armpits",
+   "sex": "male",
+   "window": [
+    100,
+    174,
+    220
+   ]
+  },
+  "exposed_belly.female": {
+   "boxes": [
+    {
+     "h": 214,
+     "label": "exposed_belly",
+     "w": 98,
+     "x": 143,
+     "y": 85
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/exposed_belly_female.png",
+   "label": "exposed_belly",
+   "sex": "female",
+   "window": [
+    129,
+    370,
+    342
+   ]
+  },
+  "exposed_belly.male": {
+   "boxes": [
+    {
+     "h": 214,
+     "label": "exposed_belly",
+     "w": 122,
+     "x": 131,
+     "y": 85
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/exposed_belly_male.png",
+   "label": "exposed_belly",
+   "sex": "male",
+   "window": [
+    129,
+    354,
+    342
+   ]
+  },
+  "exposed_breast.female": {
+   "boxes": [
+    {
+     "h": 159,
+     "label": "exposed_breast",
+     "w": 114,
+     "x": 86,
+     "y": 112
+    },
+    {
+     "h": 159,
+     "label": "exposed_breast",
+     "w": 113,
+     "x": 186,
+     "y": 112
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/exposed_breast_female.png",
+   "label": "exposed_breast",
+   "sex": "female",
+   "window": [
+    186,
+    268,
+    227
+   ]
+  },
+  "exposed_buttocks.female": {
+   "boxes": [
+    {
+     "h": 131,
+     "label": "exposed_buttocks",
+     "w": 213,
+     "x": 85,
+     "y": 126
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.back.unclothed",
+   "file": "tiles/exposed_buttocks_female.png",
+   "label": "exposed_buttocks",
+   "sex": "female",
+   "window": [
+    142,
+    600,
+    317
+   ]
+  },
+  "exposed_buttocks.male": {
+   "boxes": [
+    {
+     "h": 152,
+     "label": "exposed_buttocks",
+     "w": 214,
+     "x": 85,
+     "y": 116
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.back.unclothed",
+   "file": "tiles/exposed_buttocks_male.png",
+   "label": "exposed_buttocks",
+   "sex": "male",
+   "window": [
+    174,
+    630,
+    252
+   ]
+  },
+  "exposed_chest.male": {
+   "boxes": [
+    {
+     "h": 107,
+     "label": "exposed_chest",
+     "w": 109,
+     "x": 86,
+     "y": 138
+    },
+    {
+     "h": 107,
+     "label": "exposed_chest",
+     "w": 109,
+     "x": 190,
+     "y": 138
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/exposed_chest_male.png",
+   "label": "exposed_chest",
+   "sex": "male",
+   "window": [
+    152,
+    190,
+    295
+   ]
+  },
+  "exposed_feet.female": {
+   "boxes": [
+    {
+     "h": 76,
+     "label": "exposed_feet",
+     "w": 94,
+     "x": 85,
+     "y": 218
+    },
+    {
+     "h": 76,
+     "label": "exposed_feet",
+     "w": 94,
+     "x": 205,
+     "y": 218
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/exposed_feet_female.png",
+   "label": "exposed_feet",
+   "sex": "female",
+   "window": [
+    165,
+    930,
+    270
+   ]
+  },
+  "exposed_feet.male": {
+   "boxes": [
+    {
+     "h": 76,
+     "label": "exposed_feet",
+     "w": 98,
+     "x": 85,
+     "y": 226
+    },
+    {
+     "h": 76,
+     "label": "exposed_feet",
+     "w": 98,
+     "x": 201,
+     "y": 226
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/exposed_feet_male.png",
+   "label": "exposed_feet",
+   "sex": "male",
+   "window": [
+    158,
+    916,
+    284
+   ]
+  },
+  "exposed_penis.male": {
+   "boxes": [
+    {
+     "h": 140,
+     "label": "exposed_penis",
+     "w": 74,
+     "x": 155,
+     "y": 122
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/exposed_penis_male.png",
+   "label": "exposed_penis",
+   "sex": "male",
+   "window": [
+    190,
+    645,
+    220
+   ]
+  },
+  "exposed_vulva.female": {
+   "boxes": [
+    {
+     "h": 140,
+     "label": "exposed_vulva",
+     "w": 126,
+     "x": 129,
+     "y": 122
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/exposed_vulva_female.png",
+   "label": "exposed_vulva",
+   "sex": "female",
+   "window": [
+    190,
+    632,
+    220
+   ]
+  },
+  "face_femme.female": {
+   "boxes": [
+    {
+     "h": 198,
+     "label": "face_femme",
+     "w": 146,
+     "x": 119,
+     "y": 93
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "female.front.unclothed",
+   "file": "tiles/face_femme_female.png",
+   "label": "face_femme",
+   "sex": "female",
+   "window": [
+    190,
+    43,
+    220
+   ]
+  },
+  "face_masc.male": {
+   "boxes": [
+    {
+     "h": 206,
+     "label": "face_masc",
+     "w": 154,
+     "x": 115,
+     "y": 89
+    }
+   ],
+   "canvas": [
+    384,
+    384
+   ],
+   "figure": "male.front.unclothed",
+   "file": "tiles/face_masc_male.png",
+   "label": "face_masc",
+   "sex": "male",
+   "window": [
+    190,
+    43,
+    220
+   ]
+  }
+ }
+}
