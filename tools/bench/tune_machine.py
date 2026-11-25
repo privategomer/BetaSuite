@@ -45,6 +45,7 @@ import time
 REPO_ROOT = os.path.abspath( os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), '..', '..' ) )
 sys.path.insert( 0, REPO_ROOT )
 sys.path.insert( 0, os.path.join( REPO_ROOT, 'tools', 'bench' ) )
+import betautils_hardware as bu_hardware  # noqa: E402
 
 SUMMARY_START = '=== tune_machine: summary ==='
 SUMMARY_END = '=== end of tune_machine summary ==='
@@ -269,7 +270,7 @@ def gpu_enabled_proposal( providers, gpu, configured ):
     the provider and a GPU that nvidia-smi can see are required for 1.
     """
     cuda = 'CUDAExecutionProvider' in ( providers or () )
-    if cuda and gpu and configured != 1:
+    if bu_hardware.cuda_usable( providers, gpu ) and configured != 1:
         return 1, "onnxruntime has CUDAExecutionProvider and nvidia-smi sees %s"%(
             gpu.get( 'name', 'a GPU' ), )
     if configured == 1 and not ( cuda and gpu ):
@@ -322,23 +323,8 @@ def prefetch_depths_to_try( batch, current ):
 # Stages
 # ---------------------------------------------------------------------------
 
-def _run_quiet( command, timeout=30 ):
-    import subprocess
-    try:
-        done = subprocess.run( command, capture_output=True, text=True, timeout=timeout )
-    except ( OSError, subprocess.SubprocessError ) as err:
-        return None, str( err )
-    return done.returncode, ( done.stdout or '' ) + ( done.stderr or '' )
-
-
-def nvidia_smi( fields ):
-    """{ field: value } for the first GPU, or {} without nvidia-smi."""
-    code, text = _run_quiet( [ 'nvidia-smi', '--query-gpu=%s'%( ','.join( fields ), ),
-                               '--format=csv,noheader,nounits' ] )
-    if code != 0 or not text:
-        return {}
-    values = [ part.strip() for part in text.strip().splitlines()[0].split( ',' ) ]
-    return dict( zip( fields, values ) )
+# Shared with the engine's hardware detection.
+from betautils_hardware import _run_quiet, nvidia_smi  # noqa: E402
 
 
 def stage_inventory( context, logger ):
