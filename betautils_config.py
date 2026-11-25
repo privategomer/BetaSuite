@@ -188,6 +188,151 @@ def get_label_settings( label, backend_name=None ):
     return settings
 
 
+def _default_setting_for( key ):
+    """The default_* setting get_label_settings falls back to for key, or None."""
+    name = 'default_area_safety' if key.endswith( '_area_safety' ) else 'default_' + key
+    return name if hasattr( betaconfig, name ) else None
+
+
+# Why a layer in a label's chain does not apply (label_view).
+INACTIVE_BACKEND = 'backend_not_selected'
+INACTIVE_VARIANT = 'variant_not_selected'
+INACTIVE_NOT_TUNABLE = 'not_backend_tunable'
+INACTIVE_WINDOW_LOOK = 'look_key_in_window'
+INACTIVE_REVERSE = 'reverse_off'
+INACTIVE_NOT_WINDOW = 'not_a_window'
+INACTIVE_IS_WINDOW = 'is_a_window'
+PER_PROFILE = 'per_profile'
+
+_ABSENT = object()
+
+
+def _held( block, *keys ):
+    """block[k1][k2]..., through dicts only, or _ABSENT."""
+    for key in keys:
+        if not isinstance( block, dict ) or key not in block:
+            return _ABSENT
+        block = block[key]
+    return block
+
+
+def _mapping( value ):
+    return value if isinstance( value, dict ) else {}
+
+
+def _label_chain( label, key, backend, variant, window, reverse_censor ):
+    """
+    Every place one label's key is set, lowest precedence first, each
+    saying why it does not apply when it does not. Profiles come last:
+    they apply on top, per file.
+    """
+    chain = []
+    default = _default_setting_for( key )
+    if default is not None:
+        chain.append( { 'source': default, 'value': getattr( betaconfig, default ) } )
+    else:
+        chain.append( { 'source': bu_detector.SOURCE_BUILTIN } )
+
+    value = _held( getattr( betaconfig, 'item_overrides', {} ), label, key )
+    if value is not _ABSENT:
+        layer = { 'source': 'item_overrides.%s.%s'%( label, key ), 'value': value }
+        if window and key in bu_reverse.LOOK_KEYS:
+            layer['inactive'] = INACTIVE_WINDOW_LOOK
+        chain.append( layer )
+
+    tunable = key in bu_detector.ITEM_OVERRIDE_BACKEND_TUNABLE_KEYS
+    blocks = _mapping( getattr( betaconfig, 'detector_backend', {} ) )
+    names = [ name for name in bu_detector.registered_backend_names() if isinstance( blocks.get( name ), dict ) ]
+    for name in names:
+        layers = [ ( 'detector_backend.%s.item_overrides.%s.%s'%( name, label, key ),
+                     _held( blocks[name], 'item_overrides', label, key ), None ) ]
+        for other in sorted( _mapping( blocks[name].get( 'variants' ) ) ):
+            layers.append( ( 'detector_backend.%s.variants.%s.item_overrides.%s.%s'%( name, other, label, key ),
+                             _held( blocks[name], 'variants', other, 'item_overrides', label, key ), other ) )
+        for source, value, its_variant in layers:
+            if value is _ABSENT:
+                continue
+            layer = { 'source': source, 'value': value }
+            if name != backend:
+                layer['inactive'] = INACTIVE_BACKEND
+            elif its_variant is not None and its_variant != variant:
+                layer['inactive'] = INACTIVE_VARIANT
+            elif not tunable:
+                layer['inactive'] = INACTIVE_NOT_TUNABLE
+            chain.append( layer )
+
+    reverse = getattr( betaconfig, 'reverse', {} )
+    for source, value, applies, reason in (
+            ( 'reverse.windows.%s.%s'%( label, key ), _held( reverse, 'windows', label, key ),
+              window, INACTIVE_NOT_WINDOW ),
+            ( 'reverse.censor.overrides.%s.%s'%( label, key ),
+              _held( reverse, 'censor', 'overrides', label, key ), reverse_censor, INACTIVE_IS_WINDOW ) ):
+        if value is _ABSENT:
+            continue
+        layer = { 'source': source, 'value': value }
+        if not applies:
+            layer['inactive'] = INACTIVE_REVERSE if not bu_reverse.enabled() else reason
+        chain.append( layer )
+    if window and key == 'censor_style' and _held( reverse, 'windows', label, key ) is _ABSENT:
+        chain.append( { 'source': bu_detector.SOURCE_BUILTIN, 'value': dict( bu_reverse.SHOW_STYLE ) } )
+
+    for name in names:
+        profiles = _mapping( _held( blocks[name], 'profiles', 'variants' ) )
+        for profile in sorted( profiles ):
+            value = _held( profiles, profile, 'item_overrides', label, key )
+            if value is not _ABSENT:
+                chain.append( {
+                    'source': 'detector_backend.%s.profiles.variants.%s.item_overrides.%s.%s'%(
+                        name, profile, label, key ),
+                    'value': value, 'profile': profile,
+                    'inactive': PER_PROFILE if name == backend else INACTIVE_BACKEND } )
+    return chain
+
+
+def label_view( label, backend_name=None ):
+    """
+    One label as a run resolves it, for the app's per-label rows.
+
+    Returns { key: { 'value', 'source', 'chain', 'off'? } } for every key
+    get_label_settings returns. source is the dotted settings path that
+    supplied the value, or 'builtin'. chain lists every place the key is
+    set, lowest precedence first, and marks the one in effect
+    ('wins': True); a layer that does not apply says why ('inactive'),
+    and a profile's layer ('per_profile') applies on top for files that
+    get that profile. off, when present, names the per-label key whose
+    resolved value turns this one's effect off
+    (betautils_settings.LABEL_REQUIRES).
+    """
+    backend = backend_name or bu_detector.selected_backend_name()
+    variant = bu_detector.selected_variant_name( backend )
+    window = bu_reverse.window_entry( label ) is not None
+    reverse_censor = not window and bu_reverse.censor_override( label ) is not None
+    _overrides, sources = bu_detector.get_item_override_sources( label, backend )
+    settings = get_label_settings( label, backend )
+    fields = {}
+    for key, value in settings.items():
+        source = sources.get( key ) or _default_setting_for( key ) or bu_detector.SOURCE_BUILTIN
+        chain = _label_chain( label, key, backend, variant, window, reverse_censor )
+        winners = [ layer for layer in chain if layer['source'] == source and 'inactive' not in layer ]
+        if winners:
+            winners[-1]['wins'] = True
+        fields[key] = { 'value': value, 'source': source, 'chain': chain }
+    for key, parent in bu_settings.LABEL_REQUIRES.items():
+        if key in fields and not settings.get( parent ):
+            fields[key]['off'] = parent
+    return fields
+
+
+def label_views( backend_name=None ):
+    """Every label: whether this run renders it, whether it is a reverse window, and label_view."""
+    name = backend_name or bu_detector.selected_backend_name()
+    rendered = set( rendered_labels() )
+    return [ { 'label': label, 'rendered': label in rendered,
+               'window': bu_reverse.window_entry( label ) is not None,
+               'fields': label_view( label, name ) }
+             for label in bu_settings.label_names() ]
+
+
 def _geometry_action_default():
     """DEFAULT_GEOMETRY_ACTION, imported late to avoid the import cycle."""
     import betautils_track as bu_track  # deferred: bu_track imports this module

@@ -948,6 +948,18 @@ REQUIRES_RULES = (
 )
 
 
+# Per-label keys that change nothing while the label's own resolved flag
+# is off: betautils_track.py reads the three paired_style_* values only
+# inside `if settings.paired_style` (and in a tuning observer that writes
+# nothing). Not interpolation_max_gap: it also raises the label's default
+# track_max_gap, so it acts with interpolation off.
+LABEL_REQUIRES = {
+    'paired_style_max_distance': 'paired_style',
+    'paired_style_tiebreak_margin': 'paired_style',
+    'paired_style_max_age': 'paired_style',
+}
+
+
 def requires_of( entry ):
     """( parent path, test ) pairs, in rule order, without itself."""
     found = []

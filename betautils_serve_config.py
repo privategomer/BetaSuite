@@ -113,24 +113,35 @@ def config_schema( _server, _data ):
 
 def config_get( _server, data ):
     """
-    data: { paths?: [dotted path prefix], overrides?: { dotted path: value } }
-    result: { settings: [ { path, value, default?, source, changed } ] }
+    data: { paths?: [dotted path prefix], overrides?: { dotted path: value },
+            labels?: bool }
+    result: { settings: [ { path, value, default?, source, changed, layers } ],
+              labels?: [ see betautils_config.label_views ] }
 
     overrides are per-run values, shown with source 'run' and never
     written. An override that would fail validation is config.invalid.
+    layers lists, lowest first, each layer that sets the value: default
+    (betaconfig.py), local (the local config), run (an override). labels
+    adds every label as a run resolves it, with where each value comes from.
     """
+    import betautils_config as bu_config
     import betautils_config_store as bu_store
     import betautils_settings as bu_settings
     prefixes = data.get( 'paths' )
     if prefixes is not None and ( not isinstance( prefixes, list )
                                   or not all( isinstance( prefix, str ) for prefix in prefixes ) ):
         raise _bad_params( 'paths', bu_proto.REASON_TYPE )
+    want_labels = data.get( 'labels', False )
+    if not isinstance( want_labels, bool ):
+        raise _bad_params( 'labels', bu_proto.REASON_TYPE )
     overrides = _overrides( data )
     current = store()
-    evaluation = current.evaluate( current.text(), overrides )
+    evaluation = current.evaluate( current.text(), overrides,
+                                   extra=( lambda _config: bu_config.label_views() ) if want_labels else None )
     if overrides and not evaluation.ok:
         raise _invalid( evaluation.errors )
-    sources = { tuple( path ): 'local' for path in evaluation.loaded.applied }
+    local_sources = { tuple( path ): 'local' for path in evaluation.loaded.applied }
+    sources = dict( local_sources )
     sources.update( { path: 'run' for path in overrides } )
     settings = []
     for path, value, entry in bu_settings.concrete_leaves( evaluation.values ):
@@ -143,11 +154,22 @@ def config_get( _server, data ):
         row = { 'path': dotted, 'value': _jsonable( value ),
                 'source': bu_store.source_of( path, sources ) }
         default = bu_store._get( current.base, path )
+        layers = []
         if default is not bu_store.MISSING:
             row['default'] = _jsonable( default )
+            layers.append( { 'layer': 'default', 'value': row['default'] } )
+        if bu_store.source_of( path, local_sources ) == 'local':
+            layers.append( { 'layer': 'local',
+                             'value': _jsonable( bu_store._get( evaluation.local_values, path ) ) } )
+        if row['source'] == 'run':
+            layers.append( { 'layer': 'run', 'value': row['value'] } )
         row['changed'] = default is bu_store.MISSING or default != value
+        row['layers'] = layers
         settings.append( row )
-    return { 'settings': settings }
+    result = { 'settings': settings }
+    if want_labels:
+        result['labels'] = _jsonable( evaluation.extra )
+    return result
 
 
 def _edit( data, updates, removals ):
