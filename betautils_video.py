@@ -1115,6 +1115,10 @@ class BackgroundShotCutScan( object ):
             raise self._error
         return self._cuts
 
+    def wait( self ):
+        """Wait for the scan to end, whatever its result, without raising."""
+        self._thread.join()
+
 
 def shot_cuts_for_source( source, file_hash, sample_fps, threshold,
                           preview_offset_seconds=0.0, preview_max_seconds=None,

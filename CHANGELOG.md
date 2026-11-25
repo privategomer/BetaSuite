@@ -17,6 +17,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 
 ### Changed
 
+- `betatv.py` runs its input folder as one job through `betautils_job.py`, the runner the desktop app's jobs use, so the two cannot drift apart. Outputs, cache keys, stats rows, exit codes and the run lock are unchanged (a test pins them for a set of clips). Two log differences: files are listed folder by folder before the first one starts, so a file added to a later folder during a run waits for the next run; and the "1/3" count is over the whole run rather than per folder. Upgrade cost: none
 - Validation reads the settings registry, so each limit is stated once. Each error is reported once, at the setting's own path, and carries a code for the engine (`config.bad_type`, `config.out_of_range`, `config.bad_choice`, or `config.rule` with a stable rule id); the CLI keeps printing English. Some messages are worded differently. Validation now rejects values it used to let through:
   - a per-label `min_prob` outside 0 to 1
   - a per-label `position_smoothing` or `size_smoothing` outside 0 (exclusive) to 1

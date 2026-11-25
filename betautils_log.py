@@ -439,6 +439,26 @@ def reset_logger_for_tests():
 
 # --- Progress reporting -----------------------------------------------------
 
+_progress_sink = None
+
+
+def set_progress_sink( sink ):
+    """
+    Send every ProgressReporter's counts to sink( label, done, total,
+    rate ) as well, at most once per min_interval each and once at
+    finish; None stops it. Returns the previous sink. The engine's job
+    runner sets one for the length of a file (job.progress events); with
+    none set, which is the command line's case, nothing extra runs.
+
+    sink is called with the reporter's lock held, from whichever thread
+    reported (render workers included), so it must be quick and must not
+    report progress itself.
+    """
+    global _progress_sink
+    previous, _progress_sink = _progress_sink, sink
+    return previous
+
+
 class ProgressReporter:
     """
     Rate-limited progress output for a tight per-frame loop.
@@ -483,6 +503,10 @@ class ProgressReporter:
         self._lock = threading.Lock()
         self._isatty = bool( getattr( sys.stdout, 'isatty', lambda: False )() )
         self._phase = phase_of( label ) if self._isatty and color_enabled( sys.stdout ) else None
+        # For the progress sink: the first count seen and when, so a stage
+        # resumed from a checkpoint reports the rate of this run's work.
+        self._last_notify = 0.0
+        self._first = None
 
     def _format( self, current ):
         elapsed = max( time.monotonic() - self._start, 1e-6 )
@@ -519,7 +543,13 @@ class ProgressReporter:
             self._report_locked( now, current )
 
     def _report_locked( self, now, current ):
-        """Paint and log if their intervals are up. The caller holds the lock."""
+        """Paint, log and notify the sink if their intervals are up. The caller holds the lock."""
+        if self._first is None:
+            self._first = ( current, now )
+        sink = _progress_sink
+        if sink is not None and ( now - self._last_notify ) >= self.min_interval:
+            self._last_notify = now
+            self._notify( sink, now, current )
         if self._isatty and ( now - self._last_paint ) >= self.min_interval:
             self._last_paint = now
             line = self._format( current )
@@ -532,9 +562,18 @@ class ProgressReporter:
             self._last_log = now
             self.logger.log( self.level, self._format( current ) )
 
+    def _notify( self, sink, now, current ):
+        first_count, first_time = self._first if self._first is not None else ( current, now )
+        elapsed = now - first_time
+        rate = ( current - first_count ) / elapsed if elapsed > 0 else 0.0
+        sink( self.label, current, self.total, rate )
+
     def finish( self, note=None ):
-        """Clear the in-place line and emit one summary record."""
+        """Clear the in-place line, tell the sink the last count, and emit one summary record."""
         with self._lock:
+            sink = _progress_sink
+            if sink is not None:
+                self._notify( sink, time.monotonic(), self._current )
             if self._painted:
                 sys.stdout.write( "\r\033[K" )
                 sys.stdout.flush()
