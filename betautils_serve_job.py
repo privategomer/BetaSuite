@@ -16,7 +16,8 @@ the pipeline's next safe point, and the job.state event says when.
 THE RUN LOCK
     The library's run lock (betautils_runlock) is taken as 'engine' when
     the queue goes from idle to busy, and given back when it is idle
-    again, so the command line and the engine refuse each other.
+    again, so the command line and the engine refuse each other. The
+    last job's final job.state goes out after the lock is given back.
 
 SETTINGS WHILE BUSY
     A job reads the live betaconfig module, and checking a settings
@@ -171,7 +172,7 @@ class JobQueue:
         self.events = Events( send, logger=logger )
         self._acquire_lock = acquire_lock or self._library_lock
         self._load_session_override = load_session
-        self.runner = bu_job.Runner( logger, emit=self.events, pipeline=pipeline,
+        self.runner = bu_job.Runner( logger, emit=self._emit, pipeline=pipeline,
                                      load_session=self._load_session )
         self._cond = threading.Condition()
         self.jobs = collections.OrderedDict()     # id -> Job, every job not yet forgotten
@@ -232,6 +233,19 @@ class JobQueue:
         finished = [ job_id for job_id, job in self.jobs.items() if job.state in self._bu_job.FINAL ]
         for job_id in finished[:max( 0, len( finished ) - REMEMBERED_FINISHED )]:
             del self.jobs[job_id]
+
+    def _emit( self, name, data ):
+        """
+        The runner's events. A job's final state leaves the queue first, so
+        a client that reads it finds the run lock free and settings writable
+        when nothing else is queued (the job's overrides are restored by then).
+        """
+        if name == 'job.state' and data['state'] in self._bu_job.FINAL:
+            with self._cond:
+                if self.active is not None and self.active.id == data['job']:
+                    self.active = None
+                self._idle_locked()
+        self.events( name, data )
 
     def _idle_locked( self ):
         """The queue has nothing left: give the lock back and forget the snapshot."""
