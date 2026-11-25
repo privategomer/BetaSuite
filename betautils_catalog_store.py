@@ -103,6 +103,31 @@ CREATE TABLE outputs (
 );
 CREATE INDEX outputs_hash ON outputs( hash );
 """ ),
+    ( 2, 'run_history', """
+CREATE TABLE runs (
+    id            INTEGER PRIMARY KEY,
+    hash          TEXT    NOT NULL REFERENCES items( hash ) ON DELETE CASCADE,
+    program       TEXT,
+    job           TEXT,
+    path          TEXT    NOT NULL,
+    started_at    REAL    NOT NULL,
+    ended_at      REAL    NOT NULL,
+    outcome       TEXT    NOT NULL,
+    reason        TEXT,
+    output        TEXT,
+    detection_key TEXT,
+    censor_key    TEXT,
+    encode_key    TEXT,
+    profile       TEXT,
+    rule          TEXT,
+    rule_params   TEXT,
+    sample_fps    REAL,
+    preview       INTEGER NOT NULL DEFAULT 0,
+    error_type    TEXT,
+    stage         TEXT
+);
+CREATE INDEX runs_hash ON runs( hash, ended_at );
+""" ),
 )
 
 LATEST_VERSION = MIGRATIONS[-1][0]

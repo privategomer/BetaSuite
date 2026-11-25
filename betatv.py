@@ -1036,9 +1036,17 @@ def main():
     exit_code = 0
     run_started_at = time.perf_counter()
     job = None
+    # The library catalog keeps each file's run in its history, as the
+    # app's jobs do; a catalog that cannot be opened never stops the run.
+    import betautils_catalog_history as bu_history
+    catalog = bu_history.CliHistory.open( logger )
+    sinks = [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink() ]
+    if catalog is not None:
+        sinks.append( catalog.sink )
+    recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
     try:
         job = bu_job.Job( 'cli', job_files( logger ) )
-        state = bu_job.Runner( logger ).run( job )
+        state = bu_job.Runner( logger, recorder=recorder ).run( job )
         if state == bu_job.STOPPED and job.code == 'disk.full':
             exit_code = 1
     except bu_signals.Interrupted:
@@ -1049,6 +1057,8 @@ def main():
         # However the run ends, the lock goes back, so the next run does
         # not report it left behind.
         run_lock.release()
+        if catalog is not None:
+            catalog.close()
 
     counts = job.counts if job is not None else { 'processed': 0, 'skipped': 0, 'failed': 0 }
     logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(

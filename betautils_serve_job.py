@@ -163,9 +163,11 @@ class JobQueue:
             raises bu_runlock.RunLocked. Default the library's run lock.
         pipeline: The per-file pipeline module for the runner (tests).
         load_session: Override for loading the detector session (tests).
+        recorder: The betautils_run_record.RunRecorder for each file's
+            record; None for the stats and failure logs only.
     """
 
-    def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None ):
+    def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None, recorder=None ):
         import betautils_job as bu_job
         self._bu_job = bu_job
         self.logger = logger
@@ -173,7 +175,7 @@ class JobQueue:
         self._acquire_lock = acquire_lock or self._library_lock
         self._load_session_override = load_session
         self.runner = bu_job.Runner( logger, emit=self._emit, pipeline=pipeline,
-                                     load_session=self._load_session )
+                                     load_session=self._load_session, recorder=recorder )
         self._cond = threading.Condition()
         self.jobs = collections.OrderedDict()     # id -> Job, every job not yet forgotten
         self._waiting = collections.deque()       # ids queued, in order
@@ -491,7 +493,11 @@ def queue_for( server ):
     """The server's job queue, made on first use."""
     jobs = getattr( server, 'jobs', None )
     if jobs is None:
-        jobs = JobQueue( server.send_event, server._logger )
+        # The catalog hears the job events (queued, processing) and keeps
+        # every file's record in its history.
+        import betautils_serve_catalog as bu_serve_catalog
+        jobs = JobQueue( bu_serve_catalog.job_events_for( server ), server._logger,
+                         recorder=bu_serve_catalog.job_recorder_for( server ) )
         server.jobs = jobs
     return jobs
 

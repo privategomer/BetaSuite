@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.get.schema.json",
   "title": "catalog.get",
-  "description": "One item, as catalog.list sends it, plus every path it was found at (with each one's availability and watched folder) and its outputs on disk with their keys. catalog.no_such_item for an id the catalog does not have.",
+  "description": "One item, as catalog.list sends it, plus every path it was found at (with each one's availability and watched folder), its outputs with their keys, and its history: its last 50 runs, newest first, from the app or the command line (program), each with its outcome and reason, output and keys, the video type and the rule that chose it, and a failure's type and stage. catalog.no_such_item for an id the catalog does not have.",
   "$defs": {
     "data": {
       "type": "object",
@@ -32,7 +32,8 @@
         "outputs_missing",
         "added_at",
         "locations",
-        "output_files"
+        "output_files",
+        "history"
       ],
       "properties": {
         "item": {
@@ -176,6 +177,128 @@
               },
               "present": {
                 "type": "boolean"
+              }
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "program",
+              "job",
+              "path",
+              "started_at",
+              "ended_at",
+              "outcome",
+              "reason",
+              "output",
+              "keys",
+              "profile",
+              "rule",
+              "rule_params",
+              "preview",
+              "error_type",
+              "stage"
+            ],
+            "properties": {
+              "program": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "job": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "number"
+              },
+              "ended_at": {
+                "type": "number"
+              },
+              "outcome": {
+                "enum": [
+                  "processed",
+                  "skipped",
+                  "failed"
+                ]
+              },
+              "reason": {
+                "enum": [
+                  null,
+                  "output.present",
+                  "source.not_video",
+                  "file.failed",
+                  "disk.full"
+                ]
+              },
+              "output": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "keys": {
+                "type": "object",
+                "properties": {
+                  "detection": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "censor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "encode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "profile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rule": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rule_params": {
+                "type": "object"
+              },
+              "preview": {
+                "type": "boolean"
+              },
+              "error_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           }

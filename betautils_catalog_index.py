@@ -304,6 +304,20 @@ class Index:
                     touched.add( row['hash'] )
         return touched
 
+    def drop_location( self, path ):
+        """Forget one path (its item stays). Returns the items touched."""
+        with self.store.write() as db:
+            row = db.execute( 'SELECT id, hash FROM locations WHERE path = ?', ( norm( path ), ) ).fetchone()
+            if row is None:
+                return set()
+            db.execute( 'DELETE FROM locations WHERE id = ?', ( row['id'], ) )
+        return { row['hash'] }
+
+    def location_hash( self, path ):
+        """The item at a known path, or None."""
+        rows = self.store.read( 'SELECT hash FROM locations WHERE path = ?', ( norm( path ), ) )
+        return rows[0][0] if rows else None
+
     def locations_in( self, folder_id ):
         return [ dict( row ) for row in self.store.read(
             'SELECT * FROM locations WHERE folder_id IS ?', ( folder_id, ) ) ]
