@@ -151,6 +151,13 @@ class NullReporter:
 
     stage = 'prepare'
     paths = None
+    # The betautils_run_record.RunRecorder this file's record goes to;
+    # None means the stats and failure logs only.
+    recorder = None
+    # The betautils_catalog_types.RunTypes that knows the library's pins
+    # and folder rules; None means the engine's own ladder alone.
+    types = None
+    job_id = None
 
     def decision( self, code, **params ):
         pass
@@ -168,10 +175,12 @@ NULL_REPORTER = NullReporter()
 class FileReporter( NullReporter ):
     """One file of a job: turns what the pipeline reports into events."""
 
-    def __init__( self, emit, job_id, index ):
+    def __init__( self, emit, job_id, index, recorder=None, types=None ):
         self._emit = emit
         self.job_id = job_id
         self.index = index
+        self.recorder = recorder
+        self.types = types
         self.stage = 'prepare'
         self.paths = None
 
@@ -242,15 +251,21 @@ class Runner:
             up at call time, so a patched function is the one that runs.
         load_session: Callable returning the detector session; default
             the selected backend's get_session(). It may raise JobStopped.
+        recorder: The betautils_run_record.RunRecorder each file's record
+            goes to; None for the stats and failure logs only.
+        types: The betautils_catalog_types.RunTypes with the library's
+            pins and folder rules; None for the engine's ladder alone.
     """
 
-    def __init__( self, logger, emit=None, pipeline=None, load_session=None ):
+    def __init__( self, logger, emit=None, pipeline=None, load_session=None, recorder=None, types=None ):
         if pipeline is None:
             import betatv as pipeline
         self.logger = logger
         self.pipeline = pipeline
         self._emit = emit
         self._load_session = load_session
+        self.recorder = recorder
+        self.types = types
 
     # --- state and events ---
 
@@ -371,7 +386,7 @@ class Runner:
                 folder, fname = os.path.split( entry.path )
                 os.makedirs( entry.censored_folder, exist_ok=True )
                 run_marker.now_processing( fname, preview_mode_enabled )
-                reporter = FileReporter( self._emit, job.id, index )
+                reporter = FileReporter( self._emit, job.id, index, self.recorder, self.types )
                 job.current = reporter
                 self.send( 'job.file', { 'job': job.id, 'file': index, 'state': 'started' } )
                 previous_sink = bu_log.set_progress_sink(

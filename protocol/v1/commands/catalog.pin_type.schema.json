@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.pin_type.schema.json",
+  "title": "catalog.pin_type",
+  "description": "Pin an item's video type to one of the backend's structure profiles (compilation and split_screen included, which no measurement picks), or type null to unpin it (Auto). A pin outranks every rule: --profile, path patterns, folder rules and measurement. It moves the item's censor key, so its next run renders again. Answers the item as catalog.get does. catalog.bad_type for a name that is not a profile, catalog.item_busy while a job holds the item, catalog.no_such_item.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "item",
+        "type"
+      ],
+      "properties": {
+        "item": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "item",
+        "name",
+        "kind",
+        "size",
+        "status",
+        "availability",
+        "copies",
+        "pin",
+        "type",
+        "outputs",
+        "outputs_missing",
+        "added_at",
+        "locations",
+        "output_files",
+        "history"
+      ],
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "video"
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "new",
+            "queued",
+            "processing",
+            "done",
+            "failed"
+          ]
+        },
+        "availability": {
+          "enum": [
+            "present",
+            "missing",
+            "offline"
+          ]
+        },
+        "copies": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": "object",
+          "required": [
+            "profile",
+            "rule",
+            "params",
+            "when"
+          ],
+          "properties": {
+            "profile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rule": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "params": {
+              "type": "object"
+            },
+            "when": {
+              "enum": [
+                "declared",
+                "last_run",
+                "at_run"
+              ]
+            }
+          }
+        },
+        "outputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputs_missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "added_at": {
+          "type": "number"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "folder",
+              "availability"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "folder": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "availability": {
+                "enum": [
+                  "present",
+                  "missing",
+                  "offline"
+                ]
+              }
+            }
+          }
+        },
+        "output_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "detection_key",
+              "censor_key",
+              "encode_key",
+              "present"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "detection_key": {
+                "type": "string"
+              },
+              "censor_key": {
+                "type": "string"
+              },
+              "encode_key": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "program",
+              "job",
+              "path",
+              "started_at",
+              "ended_at",
+              "outcome",
+              "reason",
+              "output",
+              "keys",
+              "profile",
+              "rule",
+              "rule_params",
+              "preview",
+              "error_type",
+              "stage"
+            ],
+            "properties": {
+              "program": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "job": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "number"
+              },
+              "ended_at": {
+                "type": "number"
+              },
+              "outcome": {
+                "enum": [
+                  "processed",
+                  "skipped",
+                  "failed"
+                ]
+              },
+              "reason": {
+                "enum": [
+                  null,
+                  "output.present",
+                  "source.not_video",
+                  "file.failed",
+                  "disk.full"
+                ]
+              },
+              "output": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "keys": {
+                "type": "object",
+                "properties": {
+                  "detection": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "censor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "encode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "profile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rule": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rule_params": {
+                "type": "object"
+              },
+              "preview": {
+                "type": "boolean"
+              },
+              "error_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
