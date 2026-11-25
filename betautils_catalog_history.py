@@ -191,6 +191,10 @@ class CliHistory:
                 logger.warning( "the library catalog is not recording this run (%s %s)"%(
                     err.code, err.params ) )
             return None
+        except Exception:   # whatever it is, the run goes on without the catalog
+            if logger is not None:
+                logger.warning( "the library catalog is not recording this run", exc_info=True )
+            return None
         try:
             if store.created:
                 import betautils_catalog as bu_catalog

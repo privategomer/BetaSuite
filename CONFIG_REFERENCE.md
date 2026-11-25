@@ -4079,8 +4079,10 @@ file from a newer version is never opened.
 A video's type pin, set in the app, outranks every rule here:
 `force_structure_profile`, `profile_by_path_pattern`,
 `profile_by_source_dir` and measurement, for the app's jobs and for
-`betatv.py` alike. A pinned file has its own censor key, so pinning
-renders it again once.
+`betatv.py` alike. A type the library chose (a pin, or the folder rule
+of a watched folder outside the 1.x tree) is in the file's censor key,
+so choosing one renders the file again once and never reuses an output
+made under another type.
 
 ---
 

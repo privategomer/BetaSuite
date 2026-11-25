@@ -43,9 +43,9 @@ BUSY_RECHECK_SECONDS = 2.0
 EXTERNAL_CHECK_SECONDS = 2.0
 
 
-def default_hasher( path ):
+def default_hasher( path, should_stop=None ):
     import betautils_hash as bu_hash
-    return bu_hash.md5_for_file( path, 16 )
+    return bu_hash.md5_for_file( path, 16, should_stop=should_stop )
 
 
 def output_fields( name ):
@@ -75,7 +75,11 @@ class Scanner:
                   interval=DEFAULT_INTERVAL_SECONDS, settle=DEFAULT_SETTLE_SECONDS, flush=None,
                   on_indexed=None ):
         self.index = index
-        self.hasher = hasher or default_hasher
+        # The default hasher lets go between chunks once a run starts (a
+        # 20 GB file is half a minute of reading); an injected one is used
+        # as given.
+        self.hasher = hasher or ( lambda path: default_hasher(
+            path, should_stop=lambda: self.busy() or self._stop.is_set() ) )
         self.flush = flush if flush is not None else ( flush_hashes if hasher is None else ( lambda: None ) )
         self.clock = clock or index.clock
         self.busy = busy or ( lambda: False )
@@ -261,7 +265,12 @@ class Scanner:
             try:
                 digest = self.hasher( path )
                 after = bu_index.Stat.of( os.stat( path ) )
-            except OSError as err:
+            except Exception as err:
+                import betautils_hash as bu_hash
+                if isinstance( err, bu_hash.HashStopped ):
+                    break   # a run started: the file stays pending, tried again when idle
+                if not isinstance( err, OSError ):
+                    raise
                 if self.logger is not None:
                     self.logger.warning( "catalog: could not hash %s (%s)"%( path, type( err ).__name__ ) )
                 with self._mutex:
@@ -329,6 +338,8 @@ class Scanner:
                     self.pass_now()
                 if self.pending_count() and not self.busy():
                     self.hash_ready()
+                if not self.busy():
+                    self.on_indexed( set() )   # whatever background work a run held back
                 if watch_external is not None and now - last_external >= EXTERNAL_CHECK_SECONDS:
                     last_external = now
                     watch_external()

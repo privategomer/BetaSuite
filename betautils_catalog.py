@@ -100,6 +100,7 @@ class Catalog:
                 settle=bu_scan.DEFAULT_SETTLE_SECONDS if settle is None else settle,
                 on_indexed=self._indexed if thumbnails else None )
             self._busy = busy or ( lambda: False )
+            self._thumb_backlog = set()
             if self.store.created:
                 seed( self.index, default_seed_folders() if seed_folders is None else seed_folders, logger )
             self._data_version = self.store.data_version()
@@ -221,11 +222,17 @@ class Catalog:
             raise bu_store.CatalogError( 'catalog.thumbnail_failed', item=digest, reason=err.reason )
 
     def _indexed( self, digests ):
-        """Blurred thumbnails for items just added, ahead of the library asking."""
+        """
+        Blurred thumbnails for items just added, ahead of the library
+        asking. Those a run interrupts wait in a backlog, which the scanner
+        drains (an empty call) whenever it is idle.
+        """
         import betautils_catalog_thumbs as bu_thumbs
-        for digest in sorted( digests ):
+        self._thumb_backlog |= set( digests )
+        for digest in sorted( self._thumb_backlog ):
             if self._busy():
                 return
+            self._thumb_backlog.discard( digest )
             path = self._present_path( digest )
             if path is None or os.path.exists( bu_thumbs.blurred_path( digest ) ):
                 continue

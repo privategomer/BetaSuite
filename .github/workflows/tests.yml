@@ -87,7 +87,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Run protocol, serve, config, job queue, stub client, paths, run lock, migration, catalog and hash memo tests
-        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_serve_job tests.test_stub_client tests.test_paths tests.test_run_lock tests.test_migrate tests.test_catalog_store tests.test_catalog_scan tests.test_serve_catalog tests.test_file_hash_memo tests.test_catalog_history tests.test_catalog_pin tests.test_catalog_thumbs tests.test_catalog_rebuild tests.test_catalog_edges
+        run: python -m unittest -v tests.test_protocol tests.test_serve tests.test_serve_config tests.test_serve_job tests.test_stub_client tests.test_paths tests.test_run_lock tests.test_migrate tests.test_catalog_store tests.test_catalog_scan tests.test_serve_catalog tests.test_file_hash_memo tests.test_catalog_history tests.test_catalog_pin tests.test_catalog_thumbs tests.test_catalog_rebuild tests.test_catalog_edges tests.test_catalog_robustness
 
   # The desktop UI under ui/. Lint, types and the Rust checks on Linux; a
   # release build on Windows, kept as an artifact for testing there.

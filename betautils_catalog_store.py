@@ -347,11 +347,16 @@ class Store:
         self.path = path or default_path()
         self.clock = clock
         self.logger = logger
-        os.makedirs( os.path.dirname( os.path.abspath( self.path ) ), exist_ok=True )
         # lock_path: another lock file, for a file being built beside the
-        # catalog (the rebuild, which holds catalog.lock itself).
-        self._lock = FileLock( lock_path or os.path.join( os.path.dirname( os.path.abspath( self.path ) ),
-                                                          LOCK_NAME ), exclusive )
+        # catalog (the rebuild, which holds catalog.lock itself). A folder
+        # that cannot be made or a lock file that cannot be opened is the
+        # catalog being unavailable, never an error of the caller's.
+        try:
+            os.makedirs( os.path.dirname( os.path.abspath( self.path ) ), exist_ok=True )
+            self._lock = FileLock( lock_path or os.path.join( os.path.dirname( os.path.abspath( self.path ) ),
+                                                              LOCK_NAME ), exclusive )
+        except OSError as err:
+            raise CatalogError( 'catalog.unavailable', reason='not_writable' ) from err
         self._mutex = threading.RLock()
         try:
             self._db = _connect( self.path )
@@ -373,6 +378,9 @@ class Store:
         except sqlite3.DatabaseError as err:
             self._lock.release()
             raise CatalogError( 'catalog.unavailable', reason=_reason( err ) ) from err
+        except OSError as err:   # a backup that cannot be written, say
+            self._lock.release()
+            raise CatalogError( 'catalog.unavailable', reason='not_writable' ) from err
         except BaseException:
             self._lock.release()
             raise
