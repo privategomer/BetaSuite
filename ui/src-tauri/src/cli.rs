@@ -9,7 +9,7 @@ use log::LevelFilter;
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
-                 [--measure-startup FILE]
+                 [--measure-startup FILE] [--view player|all-settings]
 
   --log-level LEVEL      log file level (default info)
   --console-level LEVEL  terminal level (default info)
@@ -20,6 +20,7 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
   --open VIDEO           play this video at once, muted
   --measure-startup FILE write the time of each startup step to FILE as JSON,
                          then close (with --open, after its first frame)
+  --view VIEW            open on this view: player (default) or all-settings
 
 LEVEL is trace, debug, info, warn or error.";
 
@@ -34,6 +35,8 @@ pub struct Options {
     pub theme: Option<String>,
     pub open: Option<PathBuf>,
     pub measure_startup: Option<PathBuf>,
+    /// The view the page opens on; None is the player.
+    pub view: Option<String>,
     pub help: bool,
     /// Arguments this version does not know. Logged and ignored, so a
     /// launcher that adds its own arguments cannot stop the app starting.
@@ -50,6 +53,7 @@ impl Default for Options {
             theme: None,
             open: None,
             measure_startup: None,
+            view: None,
             help: false,
             unknown: Vec::new(),
         }
@@ -102,6 +106,14 @@ where
             "--measure-startup" => {
                 options.measure_startup = Some(PathBuf::from(value("--measure-startup")?))
             }
+            "--view" => match value("--view")?.as_str() {
+                view @ ("player" | "all-settings") => options.view = Some(view.to_owned()),
+                other => {
+                    return Err(format!(
+                        "unknown view {other:?}; use player or all-settings"
+                    ))
+                }
+            },
             "-h" | "--help" => options.help = true,
             _ => options.unknown.push(arg),
         }

@@ -49,6 +49,8 @@ struct StartupInfo {
     locale: Option<String>,
     /// The `--theme` option: "light", "dark", or None to follow the system.
     theme: Option<String>,
+    /// The `--view` option: "player", "all-settings", or None for the player.
+    view: Option<String>,
     /// The `--open` video, already allowed, so the page's first render can
     /// start it; or why it could not be opened.
     open: Option<video::PlayableVideo>,
@@ -293,6 +295,7 @@ pub fn run() -> i32 {
         version: VERSION,
         locale: options.locale.clone(),
         theme: options.theme.clone(),
+        view: options.view.clone(),
         open: None,
         open_error: None,
     };
