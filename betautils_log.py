@@ -22,6 +22,7 @@ and (in the per-frame case) produced 16KB of carriage-return spam per
 video in the earlier logs.
 """
 
+import errno
 import json
 import logging
 import os
@@ -655,19 +656,112 @@ def write_failure( record ):
 
 
 def _append_record( path, record, what ):
-    """Append record as one JSON line to path; log and swallow any failure."""
+    """
+    Append record as one JSON line to path; log and swallow any failure.
+
+    A line is never left torn. It goes in one append; when the disk is
+    full part way (ENOSPC, or a short write), the file is cut back to
+    where it was, the space reserve is given up (ensure_reserve) and the
+    line is written again. A full disk once cut the failures file off
+    mid-record and left holes in the log, exactly when the record of
+    what failed mattered most.
+    """
     payload = dict( record )
     payload.setdefault( 'timestamp', time.time() )
     try:
         directory = os.path.dirname( path )
         if directory:
             os.makedirs( directory, exist_ok=True )
-        line = json.dumps( payload, default=str ) + "\n"
+        line = ( json.dumps( payload, default=str ) + "\n" ).encode( 'UTF-8' )
         with _stats_lock:
-            with open( path, 'a', encoding='UTF-8' ) as fout:
-                fout.write( line )
+            try:
+                _append_whole( path, line )
+            except OSError as err:
+                if err.errno != errno.ENOSPC or not release_reserve():
+                    raise
+                get_logger().warning( "the disk is full: gave up the space reserve to record a %s"%( what, ) )
+                _append_whole( path, line )
     except Exception as err:
         get_logger().warning( "failed to write %s: %s"%( what, err ) )
+
+
+# The one write the record appends make; tests replace it to fill the disk.
+_write = os.write
+
+
+def _append_whole( path, line ):
+    """Append line in full, or leave the file as it was and raise OSError."""
+    fd = os.open( path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644 )
+    try:
+        start = os.fstat( fd ).st_size
+        written = 0
+        try:
+            while written < len( line ):
+                count = _write( fd, line[written:] )
+                if count <= 0:
+                    raise OSError( errno.ENOSPC, os.strerror( errno.ENOSPC ) )
+                written += count
+        except OSError:
+            if written:
+                try:
+                    os.ftruncate( fd, start )
+                except OSError:
+                    pass
+            raise
+    finally:
+        os.close( fd )
+
+
+# --- Space reserve ----------------------------------------------------------------
+
+RESERVE_NAME = '.space-reserve'
+RESERVE_BYTES = 4 * 1024 * 1024
+
+
+def reserve_path():
+    """The reserve file, in the folder the stats and failures files are in."""
+    return os.path.join( os.path.dirname( os.path.abspath( configured_stats_path() ) ), RESERVE_NAME )
+
+
+def ensure_reserve( size=RESERVE_BYTES ):
+    """
+    Keep a few MiB of disk set aside beside the stats file, so a disk
+    that fills during a run still has room for the failure record and
+    the log lines after it. Made at the start of each job; given up by
+    release_reserve when a write finds the disk full. Never fatal.
+    """
+    path = reserve_path()
+    try:
+        if os.path.exists( path ) and os.path.getsize( path ) >= size:
+            return True
+        os.makedirs( os.path.dirname( path ), exist_ok=True )
+        fd = os.open( path, os.O_WRONLY | os.O_CREAT, 0o644 )
+        try:
+            if hasattr( os, 'posix_fallocate' ):
+                os.posix_fallocate( fd, 0, size )
+            else:
+                os.ftruncate( fd, 0 )
+                block = b'\0' * ( 1 << 20 )
+                for _ in range( size // len( block ) ):
+                    os.write( fd, block )
+        finally:
+            os.close( fd )
+        return True
+    except OSError:
+        try:
+            os.remove( path )
+        except OSError:
+            pass
+        return False
+
+
+def release_reserve():
+    """Delete the space reserve. True if there was one to give up."""
+    try:
+        os.remove( reserve_path() )
+        return True
+    except OSError:
+        return False
 
 
 # --- Unfinished-run detection -------------------------------------------------

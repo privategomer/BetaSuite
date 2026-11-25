@@ -349,6 +349,8 @@ class Runner:
             logger, boot_id=bu_log.current_boot_id() )
         run_marker.report_previous()
         run_marker.start()
+        # Room for the failure record and the log if the disk fills.
+        bu_log.ensure_reserve()
         try:
             # Inside the try, so a model that fails to load (or a stop
             # while it loads) still removes the run marker on the way out.
