@@ -105,6 +105,8 @@ ERRORS = {
     'catalog.no_such_item':         ( 'item', ),
     'catalog.no_such_folder':       ( 'folder', ),
     'catalog.bad_folder':           ( 'reason', ),
+    'catalog.bad_type':             ( 'type', ),
+    'catalog.item_busy':            ( 'item', 'job' ),
 }
 
 # Values of the 'reason' parameter.

@@ -119,6 +119,26 @@ class TestCommands( _ServeTest ):
                           { 'item': digest } )
 
 
+class TestPinType( _ServeTest ):
+    def test_pin_answers_the_item_and_refuses_what_it_cannot_honor( self ):
+        path = self.write( 'p.mp4' )
+        self.ok( 'catalog.add_files', { 'paths': [ path ] } )
+        digest = bu_hash.md5_for_file( path, 16, use_memo=False )
+        self.changed_with( digest )
+        item = self.ok( 'catalog.pin_type', { 'item': digest, 'type': 'split_screen' } )
+        self.assertEqual( ( item['pin'], item['type']['profile'], item['type']['rule'] ),
+                          ( 'split_screen', 'split_screen', 'pinned' ) )
+        self.wire.wait_for( lambda m: m.get( 'name' ) == 'catalog.changed' and 'pin' in m['data']['reasons'],
+                            'catalog.changed for the pin' )
+        self.assertIsNone( self.ok( 'catalog.pin_type', { 'item': digest, 'type': None } )['pin'] )
+        self.assertEqual( self.refused( 'catalog.pin_type', { 'item': digest, 'type': 'nope' }, 'catalog.bad_type' ),
+                          { 'type': 'nope' } )
+        self.assertEqual( self.refused( 'catalog.pin_type', { 'item': digest }, 'command.bad_params' ),
+                          { 'field': 'type', 'reason': 'missing' } )
+        self.assertEqual( self.refused( 'catalog.pin_type', { 'item': digest, 'type': 3 }, 'command.bad_params' ),
+                          { 'field': 'type', 'reason': 'type' } )
+
+
 class TestRefusals( _ServeTest ):
     def test_unknown_ids( self ):
         self.assertEqual( self.refused( 'catalog.get', { 'item': 'f' * 16 }, 'catalog.no_such_item' ),

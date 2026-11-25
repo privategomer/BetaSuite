@@ -115,6 +115,26 @@ class Catalog:
         if touched:
             self.on_change( touched, 'job' )
 
+    def pin_type( self, digest, pin ):
+        """
+        Pin an item's video type (a profile name), or None for Auto.
+        Refused while a job holds the item, and for a name that is not a
+        profile. A pin moves the item's censor key: its next run renders
+        again, even if the pin names the type the rules picked.
+        """
+        self.index.item_row( digest )
+        if bu_types.pin_problem( pin ) is not None:
+            raise bu_store.CatalogError( 'catalog.bad_type', type=pin )
+        active = self.status.status_of( digest )
+        if active is not None:
+            raise bu_store.CatalogError( 'catalog.item_busy', item=digest, job=active[1] )
+        self.index.set_pin( digest, pin )
+        self._changed( { digest }, 'pin' )
+
+    def run_types( self ):
+        """The RunTypes a job's runner asks for pins and folder rules."""
+        return bu_types.RunTypes( self.index.pin_of, self.folder_roots_for, self.logger )
+
     def check_external( self ):
         """Tell on_change when another process (the CLI) wrote the file."""
         version = self.store.data_version()

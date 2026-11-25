@@ -171,6 +171,16 @@ class CliHistory:
         self.history = History( store, self.index )
         self.sink = HistorySink( self.history )
 
+    def run_types( self ):
+        """The pins and folder rules a command-line run uses, as the app's jobs do."""
+        import betautils_catalog as bu_catalog
+        import betautils_catalog_types as bu_types
+
+        def roots_for( path ):
+            return bu_catalog.Catalog._folder_roots( path, self.index.folders() )
+
+        return bu_types.RunTypes( self.index.pin_of, roots_for )
+
     @classmethod
     def open( cls, logger=None, path=None ):
         try:

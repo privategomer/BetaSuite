@@ -42,7 +42,7 @@ def declared_for( source_path, pin=None, folder_roots=(), backend_name=None ):
     """
     if pin:
         if pin in profile_names( backend_name ):
-            return ( pin, bu_detector.Reason( 'pinned in the library', PINNED, profile=pin ) )
+            return ( pin, bu_detector.Reason( 'pinned in the library', PINNED ) )
         # A pin to a profile that is gone (config changed) is ignored, and
         # the library shows it: falling back silently would be wrong output.
     declared = bu_detector.declared_profile_selection( source_path, backend_name )
@@ -72,6 +72,31 @@ def shown_type( source_path, pin=None, folder_roots=(), last=None, backend_name=
         return { 'profile': last['profile'], 'rule': last.get( 'rule' ),
                  'params': dict( last.get( 'params' ) or {} ), 'when': 'last_run' }
     return { 'profile': None, 'rule': None, 'params': {}, 'when': AT_RUN }
+
+
+class RunTypes:
+    """
+    What a run asks the catalog before it picks a file's video type: the
+    pin for that content, and the watched folders whose folder rule holds
+    the file. pin_of( hash ) and roots_for( path ) are the catalog's; a
+    lookup that fails is logged and the run goes on with the rules alone.
+    """
+
+    def __init__( self, pin_of, roots_for, logger=None ):
+        self._pin_of = pin_of
+        self._roots_for = roots_for
+        self._logger = logger
+
+    def declared( self, source_path, digest, backend_name=None ):
+        try:
+            pin = self._pin_of( digest )
+            roots = self._roots_for( source_path )
+        except Exception:
+            if self._logger is not None:
+                self._logger.warning( "the library catalog could not say this file's type; using the rules",
+                                      exc_info=True )
+            pin, roots = None, ()
+        return declared_for( source_path, pin, roots, backend_name )
 
 
 def pin_problem( pin, backend_name=None ):

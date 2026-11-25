@@ -222,7 +222,7 @@ class TestHandshake( _EngineTest ):
         self.assertEqual( hello['protocol'], 1 )
         self.assertEqual( hello['pid'], engine.proc.pid )
         self.assertEqual( hello['commands'], [ 'catalog.add_files', 'catalog.add_folder', 'catalog.folders',
-                                               'catalog.forget', 'catalog.get', 'catalog.list',
+                                               'catalog.forget', 'catalog.get', 'catalog.list', 'catalog.pin_type',
                                                'catalog.remove_folder', 'catalog.rescan',
                                                'config.get', 'config.reset', 'config.schema', 'config.set',
                                                'hello', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
