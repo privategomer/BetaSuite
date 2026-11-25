@@ -152,21 +152,21 @@ class TestEntriesAreWellFormed( unittest.TestCase ):
 
 
 class TestScreens( unittest.TestCase ):
-    """Every setting is shown somewhere: on a screen or its More options,
-    or else on All Settings alone."""
+    """Every setting is shown on a screen: as a simple setting, in that
+    screen's More options, or on the Other tab; and on All Settings."""
 
     def test_every_entry_has_a_known_screen( self ):
         for entry in bu_settings.REGISTRY:
             self.assertIn( entry.screen, bu_settings.SCREENS, entry.dotted )
 
-    def test_a_simple_setting_is_on_a_screen_not_only_in_all_settings( self ):
+    def test_a_simple_setting_is_never_on_the_other_tab( self ):
         for entry in bu_settings.REGISTRY:
             if entry.level == bu_settings.SIMPLE:
-                self.assertNotEqual( bu_settings.SCREEN_NONE, entry.screen, entry.dotted )
+                self.assertNotEqual( bu_settings.SCREEN_OTHER, entry.screen, entry.dotted )
 
-    def test_every_screen_but_none_holds_a_simple_setting( self ):
+    def test_every_screen_but_other_holds_a_simple_setting( self ):
         simple = { entry.screen for entry in bu_settings.REGISTRY if entry.level == bu_settings.SIMPLE }
-        self.assertEqual( set( bu_settings.SCREENS ) - { bu_settings.SCREEN_NONE }, simple )
+        self.assertEqual( set( bu_settings.SCREENS ) - { bu_settings.SCREEN_OTHER }, simple )
 
     def test_every_rule_but_the_catch_all_places_some_entry( self ):
         used = set()
@@ -185,8 +185,8 @@ class TestScreens( unittest.TestCase ):
             'person_backend.<person_backend>.model_variant': 'models', 'gpu_enabled': 'resources',
             'person_backend.<person_backend>.batch_size': 'resources',
             'person_backend.<person_backend>.min_prob': 'reverse', 'reverse.enabled': 'reverse',
-            'move_completed_sources': 'library', 'default_min_prob': 'none',
-            'detector_backend.<backend>.item_overrides.<label>.time_safety': 'none',
+            'move_completed_sources': 'library', 'default_min_prob': 'other',
+            'detector_backend.<backend>.item_overrides.<label>.time_safety': 'other',
         }
         got = { entry.dotted: entry.screen for entry in bu_settings.REGISTRY if entry.dotted in expect }
         self.assertEqual( expect, got )

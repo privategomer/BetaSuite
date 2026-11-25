@@ -4283,8 +4283,8 @@ every backend's per-label `min_prob`. Each entry records:
 - **level**: `simple` settings are on the app's main screens, the rest
   behind "More options"
 - **screen**: which screen shows it: `run`, `what_to_hide`, `models`,
-  `library`, `reverse` or `resources`, or `none` for settings shown only
-  on All Settings (detection and tracking tuning, logging, capture).
+  `library`, `reverse` or `resources`, or `other`, a tab of its own for
+  detection and tracking tuning, logging and capture.
   `SCREEN_RULES` assigns screens by path pattern, first match winning,
   and every setting is on All Settings whatever its screen
 - **moves**: the cache keys it moves (detection, censor, encode), and

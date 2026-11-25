@@ -35,7 +35,7 @@
         "tip": { "type": "string" },
         "label": { "type": "string" },
         "help": { "type": "string" },
-        "screen": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "none" ] },
+        "screen": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "other" ] },
         "none": { "type": "string" },
         "minimum": { "type": "number" },
         "maximum": { "type": "number" },
@@ -72,7 +72,7 @@
           "additionalProperties": { "type": "array", "items": { "type": "string" } }
         },
         "conditions": { "type": "array", "items": { "type": "string" } },
-        "screens": { "type": "array", "items": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "none" ] }, "uniqueItems": true },
+        "screens": { "type": "array", "items": { "enum": [ "run", "what_to_hide", "models", "library", "reverse", "resources", "other" ] }, "uniqueItems": true },
         "catalog": { "type": "string" },
         "help": { "type": "string" }
       }

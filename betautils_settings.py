@@ -826,8 +826,9 @@ REGISTRY = tuple( _ENTRIES + _default_entries() + _label_field_entries() )
 # Screens: where the app shows each setting
 # ---------------------------------------------------------------------------
 # A simple setting sits on its screen; an advanced one in that screen's
-# "More options". SCREEN_NONE is All Settings only, for tuning that no
-# screen's task needs. First match wins; a path pattern is fnmatch-style
+# "More options". SCREEN_OTHER is a tab of its own for tuning that no
+# screen's task needs; it holds no simple setting, so it shows its
+# settings directly, with no fold. Every setting is on All Settings too. First match wins; a path pattern is fnmatch-style
 # over the dotted path, so '*' crosses dots.
 
 SCREEN_RUN = 'run'
@@ -836,9 +837,9 @@ SCREEN_MODELS = 'models'
 SCREEN_LIBRARY = 'library'
 SCREEN_REVERSE = 'reverse'
 SCREEN_RESOURCES = 'resources'
-SCREEN_NONE = 'none'
+SCREEN_OTHER = 'other'
 SCREENS = ( SCREEN_RUN, SCREEN_WHAT_TO_HIDE, SCREEN_MODELS, SCREEN_LIBRARY, SCREEN_REVERSE,
-            SCREEN_RESOURCES, SCREEN_NONE )
+            SCREEN_RESOURCES, SCREEN_OTHER )
 
 # The look of a censor: the global fallbacks among the default_* settings.
 _DEFAULT_LOOK = ( 'censor_style', 'censor_shape', 'area_safety', 'time_safety',
@@ -890,7 +891,7 @@ SCREEN_RULES = (
     ( 'ffmpeg_*', SCREEN_RUN ),
     ( 'detection_checkpoint_frames', SCREEN_RUN ),
     # Everything else is detection and tracking tuning, logging, capture.
-    ( '*', SCREEN_NONE ),
+    ( '*', SCREEN_OTHER ),
 )
 
 
