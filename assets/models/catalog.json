@@ -1,0 +1,222 @@
+{
+  "format": 1,
+  "release": "models-v1",
+  "mirrors": [
+    "https://github.com/privategomer/BetaSuite/releases/download/models-v1/"
+  ],
+  "licenses": {
+    "nudenet-v3.4": {
+      "spdx": "AGPL-3.0",
+      "file": "LICENSE-NudeNet-v3.4",
+      "url": "https://raw.githubusercontent.com/notAI-tech/NudeNet/v3.4-weights/LICENSE",
+      "project": "NudeNet",
+      "home": "https://github.com/notAI-tech/NudeNet"
+    },
+    "nudenet-v0": {
+      "spdx": "GPL-3.0",
+      "file": "LICENSE-NudeNet-v0",
+      "url": "https://raw.githubusercontent.com/notAI-tech/NudeNet/v0/LICENSE",
+      "project": "NudeNet",
+      "home": "https://github.com/notAI-tech/NudeNet"
+    },
+    "ultralytics": {
+      "spdx": "AGPL-3.0",
+      "file": "LICENSE-Ultralytics",
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.3.0/LICENSE",
+      "project": "Ultralytics YOLO11",
+      "home": "https://github.com/ultralytics/ultralytics"
+    },
+    "rf-detr": {
+      "spdx": "Apache-2.0",
+      "file": "LICENSE-RF-DETR",
+      "url": "https://raw.githubusercontent.com/roboflow/rf-detr/1.12.0/LICENSE",
+      "project": "RF-DETR",
+      "home": "https://github.com/roboflow/rf-detr"
+    }
+  },
+  "models": [
+    {
+      "id": "nudenet-320n",
+      "kind": "detector",
+      "backend": "nudenet_v3",
+      "variant": "320n",
+      "file": "v3.4-320n.onnx",
+      "size": 12150158,
+      "sha256": "c15d8273adad2d0a92f014cc69ab2d6c311a06777a55545f2c4eb46f51911f0f",
+      "license": "nudenet-v3.4",
+      "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/320n.onnx",
+      "sources": [
+        {
+          "file": "320n.pt",
+          "size": 6219609,
+          "sha256": "1d25e219d536dcd6994651020d3c7cba642d13990e6eef934ed7a8ba650fb582",
+          "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/320n.pt"
+        }
+      ]
+    },
+    {
+      "id": "nudenet-640m",
+      "kind": "detector",
+      "backend": "nudenet_v3",
+      "variant": "640m",
+      "file": "v3.4-640m.onnx",
+      "size": 103538690,
+      "sha256": "04fe3d77980780c1f8297dc6d7f942fd5b3abe6942a188f742a85241e4f634eb",
+      "license": "nudenet-v3.4",
+      "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.onnx",
+      "sources": [
+        {
+          "file": "640m.pt",
+          "size": 52023681,
+          "sha256": "e6d7cddecc4417ff62db5b92c1c9f5d0d7b0f92e6cfd562120aea59a6ec3af3f",
+          "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.pt"
+        }
+      ]
+    },
+    {
+      "id": "nudenet-retinanet",
+      "kind": "detector",
+      "backend": "retinanet_v2",
+      "variant": null,
+      "file": "detector_v2_default_checkpoint.onnx",
+      "size": 146675691,
+      "sha256": "d4be1c504be61851d9745e6da8fa09455eb39b8856626dd6b5ca413c9e8b1578",
+      "license": "nudenet-v0",
+      "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint.onnx",
+      "sources": [
+        {
+          "file": "detector_v2_default_checkpoint",
+          "size": 147355440,
+          "sha256": "3d7e29085dd010e7be4401bc1e7731a972d3d20521367c965cf0f055707fb83f",
+          "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint"
+        },
+        {
+          "file": "detector_v2_default_classes",
+          "size": 241,
+          "sha256": "0d08b261d3451aef384d23302fe7ea5c7abf4a6abfa15c725c072b25b1a62c37",
+          "upstream": "https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_classes"
+        }
+      ]
+    },
+    {
+      "id": "yolo11n-seg",
+      "kind": "person",
+      "backend": "yolo11_seg",
+      "variant": "n",
+      "file": "yolo11n-seg.onnx",
+      "size": 12112839,
+      "sha256": "a6ac6d474f02d92393a56dc5dc1f69800a6cb5efd4ae8286bc9bff3e03a64730",
+      "license": "ultralytics",
+      "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n-seg.pt",
+      "export": { "tool": "ultralytics", "arg": "640" },
+      "sources": [
+        {
+          "file": "yolo11n-seg.pt",
+          "size": 6182636,
+          "sha256": "55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152",
+          "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n-seg.pt"
+        }
+      ]
+    },
+    {
+      "id": "yolo11s-seg",
+      "kind": "person",
+      "backend": "yolo11_seg",
+      "variant": "s",
+      "file": "yolo11s-seg.onnx",
+      "size": 41353141,
+      "sha256": "411f1c000c3c74e3869e5d36a543a2a0281a312569aec472935cfbd7003ef469",
+      "license": "ultralytics",
+      "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s-seg.pt",
+      "export": { "tool": "ultralytics", "arg": "640" },
+      "sources": [
+        {
+          "file": "yolo11s-seg.pt",
+          "size": 20669228,
+          "sha256": "1caa81c0195412efa411b632bcfb8c184939dddb6ae41f6a80c41b211ff257c3",
+          "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s-seg.pt"
+        }
+      ]
+    },
+    {
+      "id": "yolo11m-seg",
+      "kind": "person",
+      "backend": "yolo11_seg",
+      "variant": "m",
+      "file": "yolo11m-seg.onnx",
+      "size": 90250886,
+      "sha256": "c7f48d32309b884346e426f44955577c750ffc114868fde55ae677267eea7d6a",
+      "license": "ultralytics",
+      "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m-seg.pt",
+      "export": { "tool": "ultralytics", "arg": "640" },
+      "sources": [
+        {
+          "file": "yolo11m-seg.pt",
+          "size": 45400152,
+          "sha256": "eb9a06f63e2206c35d68d839b08c362429ebecf933ad54c1ad68b2fd001c17cf",
+          "upstream": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m-seg.pt"
+        }
+      ]
+    },
+    {
+      "id": "rf-detr-seg-nano",
+      "kind": "person",
+      "backend": "rf_detr_seg",
+      "variant": "nano",
+      "file": "rf-detr-seg-nano.onnx",
+      "size": 123140134,
+      "sha256": "be55505baba2470c051d066898d811cdef138394a6e03849c2a126b0ce59aa9f",
+      "license": "rf-detr",
+      "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-n-ft.pth",
+      "export": { "tool": "rfdetr", "arg": "RFDETRSegNano" },
+      "sources": [
+        {
+          "file": "rf-detr-seg-n-ft.pth",
+          "size": 134545398,
+          "sha256": "a44613a4ecd6b5ba61a62002c600b0b6cb7a9da2936a45317ec4b62c635fb99b",
+          "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-n-ft.pth"
+        }
+      ]
+    },
+    {
+      "id": "rf-detr-seg-small",
+      "kind": "person",
+      "backend": "rf_detr_seg",
+      "variant": "small",
+      "file": "rf-detr-seg-small.onnx",
+      "size": 123724659,
+      "sha256": "724c9cd6cf56d55aa6960c8a478e4833f9133baae357f1777894248bfdb3c7ea",
+      "license": "rf-detr",
+      "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-s-ft.pth",
+      "export": { "tool": "rfdetr", "arg": "RFDETRSegSmall" },
+      "sources": [
+        {
+          "file": "rf-detr-seg-s-ft.pth",
+          "size": 135042342,
+          "sha256": "6de3da31b2572cac214a1c76cce4a92a13966d56390ac2b3a3de9a8dc2b2bca3",
+          "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-s-ft.pth"
+        }
+      ]
+    },
+    {
+      "id": "rf-detr-seg-medium",
+      "kind": "person",
+      "backend": "rf_detr_seg",
+      "variant": "medium",
+      "file": "rf-detr-seg-medium.onnx",
+      "size": 130464461,
+      "sha256": "4f89808f0954a75a543b34037233010afdfd270694db40351b6d837ee3650a94",
+      "license": "rf-detr",
+      "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-m-ft.pth",
+      "export": { "tool": "rfdetr", "arg": "RFDETRSegMedium" },
+      "sources": [
+        {
+          "file": "rf-detr-seg-m-ft.pth",
+          "size": 143024058,
+          "sha256": "3ad325094735f431aee9962a8d204d68eb5bfc393d53e7e836e70998fef5ea58",
+          "upstream": "https://repo.roboflow.com/rfdetr/rf-detr-seg-m-ft.pth"
+        }
+      ]
+    }
+  ]
+}
