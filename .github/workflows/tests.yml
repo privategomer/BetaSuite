@@ -24,6 +24,12 @@ jobs:
     name: tests (linux, full suite)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      # ffmpeg 7.0.2, the johnvansickle.com static build (x264 included),
+      # as republished on GitHub under this release tag.
+      FFMPEG_RELEASE: b6.1.1
+      FFMPEG_SHA256: bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa
+      FFPROBE_SHA256: 25d9b6ccb05e3d9de9e04e31e2506d8dd7f9f0418981965ac6df12e8d3afd067
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -31,21 +37,31 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements*.txt
-      # The Ubuntu mirror is sometimes slow enough to take most of the job,
-      # so the downloaded packages are cached and reused on later runs.
-      # Recommends (hardware video drivers and the like) are left out.
-      - name: Restore ffmpeg packages
+      # A pinned static ffmpeg build, checked by SHA-256 and cached by
+      # version. apt went through the runners' Ubuntu mirror, which took up
+      # to 20 minutes. Change the version and both sums together.
+      - name: Restore ffmpeg
+        id: ffmpeg-cache
         uses: actions/cache@v6
         with:
-          path: ~/apt-archives
-          key: apt-ffmpeg-${{ runner.os }}-ubuntu-24.04-v1
-      - name: Install ffmpeg
-        timeout-minutes: 25
+          path: ~/ffmpeg-static
+          key: ffmpeg-static-${{ runner.os }}-${{ env.FFMPEG_RELEASE }}
+      - name: Download ffmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 5
         run: |
-          mkdir -p ~/apt-archives/partial
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" ffmpeg
-          sudo chown -R "$USER" ~/apt-archives
+          mkdir -p ~/ffmpeg-static && cd ~/ffmpeg-static
+          base="https://github.com/eugeneware/ffmpeg-static/releases/download/$FFMPEG_RELEASE"
+          curl -sSfL --retry 3 -o ffmpeg.gz "$base/ffmpeg-linux-x64.gz"
+          curl -sSfL --retry 3 -o ffprobe.gz "$base/ffprobe-linux-x64.gz"
+          echo "$FFMPEG_SHA256  ffmpeg.gz" | sha256sum -c -
+          echo "$FFPROBE_SHA256  ffprobe.gz" | sha256sum -c -
+          gunzip ffmpeg.gz ffprobe.gz
+          chmod +x ffmpeg ffprobe
+      - name: Put ffmpeg on the path
+        run: |
+          echo "$HOME/ffmpeg-static" >> "$GITHUB_PATH"
+          "$HOME/ffmpeg-static/ffmpeg" -hide_banner -version | head -1
       - name: Install dependencies
         run: pip install -r requirements-cpu.txt -r requirements-dev.txt
       - name: Run tests
@@ -102,8 +118,13 @@ jobs:
         run: npm run contrast:check
       - name: Build the page
         run: npm run build
+      # Cached as installed files, so a warm run skips the Ubuntu mirror.
+      # Pinned by commit; the tag is v1.6.0. Bump version to refresh.
       - name: Install the Tauri build prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev
+        uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05
+        with:
+          packages: libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev
+          version: ubuntu-24.04-v1
       - name: Install the Rust toolchain (src-tauri/rust-toolchain.toml)
         working-directory: ui/src-tauri
         run: rustup toolchain install
