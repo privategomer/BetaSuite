@@ -307,6 +307,13 @@ def _filters( data ):
         if isinstance( raw['folder'], bool ) or not isinstance( raw['folder'], int ):
             raise _bad_params( 'filter.folder', bu_proto.REASON_TYPE )
         filters['folder'] = raw['folder']
+    if 'censored' in raw:
+        censored = raw['censored']
+        if not isinstance( censored, dict ):
+            raise _bad_params( 'filter.censored', bu_proto.REASON_TYPE )
+        filters['censored'] = {
+            field: _string_list( censored, field, required=False, label='filter.censored.' + field )
+            for field in ( 'labels', 'looks' ) if field in censored }
     return filters
 
 
