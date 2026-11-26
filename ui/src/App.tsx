@@ -120,7 +120,7 @@ export function App( { startup }: AppProps ) {
         <div className="view" hidden={view !== 'player'}>
           <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} request={playing} measureScrub={startup?.measure_scrub ?? false} />
         </div>
-        {view === 'library' && <LibraryView onPlay={play} />}
+        {view === 'library' && <LibraryView onPlay={play} onHelp={onHelp} />}
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
         {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}

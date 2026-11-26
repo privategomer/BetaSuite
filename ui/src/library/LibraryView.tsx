@@ -17,6 +17,7 @@ import {
   type Filters, type Folder, type Item, type OutputState, type Sort, type Status,
 } from './api';
 import { ItemDrawer } from './ItemDrawer';
+import { LibraryOptions } from './LibraryOptions';
 import { formatBytes, lookName, statusName, typeName, typeWhy, VIDEO_EXTENSIONS } from './names';
 import { QueuePanel } from './QueuePanel';
 import { RunBar } from './RunBar';
@@ -29,6 +30,7 @@ const SORTS: readonly Sort[] = [ 'name', 'added_at', 'size', 'status' ];
 
 interface LibraryViewProps {
   readonly onPlay: ( path: string ) => void;
+  readonly onHelp: ( anchor: string ) => void;
 }
 
 function dateText( seconds: number ): string {
@@ -90,7 +92,7 @@ function FoldersPanel( { onProblem }: { onProblem: ( error: EngineError ) => voi
   );
 }
 
-export function LibraryView( { onPlay }: LibraryViewProps ) {
+export function LibraryView( { onPlay, onHelp }: LibraryViewProps ) {
   const engine = useEngineStatus();
   const [ items, setItems ] = useState<readonly Item[]>( [] );
   const [ total, setTotal ] = useState( 0 );
@@ -369,6 +371,7 @@ export function LibraryView( { onPlay }: LibraryViewProps ) {
         <div className="library-side">
           {chosen.size > 0 && <RunBar items={[ ...chosen ]} onSubmitted={() => { setChosen( new Set() ); }} />}
           <QueuePanel />
+          <LibraryOptions onHelp={onHelp} />
         </div>
       </div>
       {open !== null && <ItemDrawer item={open} onPlay={onPlay} onClose={() => { setOpen( null ); }} />}
