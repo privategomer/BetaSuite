@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/governor.enable.schema.json",
+  "title": "governor.enable",
+  "description": "The governor's on/off switch (the setting governor.enabled). It takes effect at once, in a running job too. saved says when the setting is written: now, or after_jobs when a job holds the queue (settings stay as they were while a job runs; it is written as soon as the queue is idle). Answers like governor.get, plus saved.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "on"
+      ],
+      "properties": {
+        "on": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "allOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/data"
+            }
+          ],
+          "type": "object",
+          "required": [
+            "history"
+          ],
+          "properties": {
+            "history": {
+              "type": "array",
+              "items": {
+                "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/decision"
+              }
+            }
+          }
+        }
+      ],
+      "type": "object",
+      "required": [
+        "saved"
+      ],
+      "properties": {
+        "saved": {
+          "enum": [
+            "now",
+            "after_jobs"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -5,6 +5,11 @@ betautils_serve_resources.py - the resource commands of serve mode.
                     settings its facts settle without measuring
   resources.watch   start or stop resource.sample events (the Performance
                     page and the status strip); answers the latest sample
+  governor.get      the governor's decision, why, and its recent history
+  governor.override "run at full speed anyway", for this run or the session;
+                    memory_guard: false also turns off the memory guard
+  governor.override_clear
+  governor.enable   the on/off switch, live
 
 The sampler (betautils_resources.Sampler) runs only while someone uses
 it: the UI watching, or a running job's governor. Events are sent only
@@ -84,6 +89,90 @@ def resources_for( server ):
     return server.resources
 
 
+def runtime_for( server ):
+    """The engine's governor, shared by every job and the governor.* commands."""
+    if getattr( server, 'governor', None ) is None:
+        import betaconfig
+        import betautils_governor_run as bu_gov_run
+        server.governor = bu_gov_run.Runtime( send=server.send_event, resources=resources_for( server ),
+                                              logger=server._logger )
+        # Outside a run the governor still follows the setting.
+        import betautils_governor as bu_gov
+        server.governor.governor.set_thresholds( bu_gov.Thresholds.from_config( betaconfig ),
+                                                 server.governor.clock() )
+    return server.governor
+
+
+def _busy_job( server ):
+    jobs = getattr( server, 'jobs', None )
+    return jobs.busy_job() if jobs is not None else None
+
+
+def _governor_data( runtime ):
+    data = runtime.state_data()
+    # The history in wall-clock time, oldest first.
+    offset = runtime.wall() - runtime.clock()
+    data['history'] = [ dict( decision.as_dict(), time=round( when + offset, 3 ) )
+                        for when, decision in list( runtime.governor.history ) ]
+    return data
+
+
+def governor_get( server, _data ):
+    return _governor_data( runtime_for( server ) )
+
+
+def governor_override( server, data ):
+    import betautils_governor as bu_gov
+    scope = data.get( 'scope' )
+    if scope not in ( bu_gov.RUN, bu_gov.SESSION ):
+        raise _bad_params( 'scope', bu_proto.REASON_MISSING if scope is None else bu_proto.REASON_VALUE )
+    memory_guard = data.get( 'memory_guard', True )
+    if not isinstance( memory_guard, bool ):
+        raise _bad_params( 'memory_guard', bu_proto.REASON_TYPE )
+    runtime = runtime_for( server )
+    runtime.set_override( scope, memory_guard=memory_guard )
+    return _governor_data( runtime )
+
+
+def governor_override_clear( server, _data ):
+    runtime = runtime_for( server )
+    runtime.clear_override()
+    return _governor_data( runtime )
+
+
+def _write_enabled( server, on ):
+    import betautils_serve_config as bu_serve_config
+    return bu_serve_config._edit( {}, { ( 'governor', 'enabled' ): on }, [] )
+
+
+def governor_enable( server, data ):
+    """
+    The on/off switch. Takes effect at once, in a running job too. The
+    setting is written now when no job holds the queue, else as soon as
+    the queue is idle (settings stay as they were while a job runs).
+    """
+    on = data.get( 'on' )
+    if not isinstance( on, bool ):
+        raise _bad_params( 'on', bu_proto.REASON_TYPE if on is not None else bu_proto.REASON_MISSING )
+    runtime = runtime_for( server )
+    runtime.set_enabled( on )
+    busy = _busy_job( server )
+    if busy is None:
+        _write_enabled( server, on )
+        saved = 'now'
+    else:
+        def write_when_idle():
+            try:
+                _write_enabled( server, on )
+            except bu_proto.ProtocolError as err:
+                server._logger.warning( "governor.enabled could not be written: %s"%( err.error, ) )
+        server.jobs.when_idle( 'governor.enabled', write_when_idle )
+        saved = 'after_jobs'
+    data = _governor_data( runtime )
+    data['saved'] = saved
+    return data
+
+
 def hw_detect( _server, _data ):
     import betaconfig
     import betautils_hardware as bu_hardware
@@ -105,6 +194,10 @@ def resources_watch( server, data ):
 
 
 HANDLERS = {
-    'hw.detect':       hw_detect,
-    'resources.watch': resources_watch,
+    'hw.detect':               hw_detect,
+    'resources.watch':         resources_watch,
+    'governor.get':            governor_get,
+    'governor.override':       governor_override,
+    'governor.override_clear': governor_override_clear,
+    'governor.enable':         governor_enable,
 }

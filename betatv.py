@@ -55,6 +55,7 @@ import betautils_cache_paths as bu_cache
 import betautils_cli as bu_cli
 import betautils_config as bu_config
 import betautils_detector as bu_detector
+import betautils_governor_run as bu_gov_run
 import betautils_hash as bu_hash
 import betautils_job as bu_job
 import betautils_local as bu_local
@@ -378,7 +379,10 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
                 time_buffer.append( timestamp )
                 accounted = sample_index + 1
                 if len( frame_buffer ) >= batch_size:
+                    batch_started = time.perf_counter()
                     raw_boxes.extend( flush() )
+                    # The governor's yield, short and capped; counted in the stats row.
+                    bu_gov_run.active().pace( time.perf_counter() - batch_started )
 
                 progress.update( sample_index + 1 )
                 next_t = bu_video.sample_time( sample_index + 1, preview_offset_seconds,
@@ -988,6 +992,9 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
     }
     record.update( { 'track_%s'%(key): value for key, value in track_stats.items() } )
     record.update( { 'render_%s'%(key): value for key, value in render_stats.items() } )
+    # What the resource governor did to this file: time spent under a
+    # throttle, detection's yields, why, and the fewest render workers.
+    record.update( bu_gov_run.active().file_stats() )
 
     # Flat aliases for the field names the analysis tools have always
     # read (summarize_tune_sweep.py, batch_ab_test.py). Cheap to keep,
@@ -1052,10 +1059,16 @@ def main():
     if catalog is not None:
         sinks.append( catalog.sink )
     recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
+    # The resource governor paces the command line as it does the app's
+    # jobs; it logs each decision, and governor.enabled turns it off.
+    import betautils_serve_resources as bu_serve_resources
+    governor = bu_gov_run.Runtime( resources=bu_serve_resources.Resources( lambda _name, _data: None, logger ),
+                                   logger=logger )
     try:
         job = bu_job.Job( 'cli', job_files( logger ) )
         state = bu_job.Runner( logger, recorder=recorder,
-                               types=catalog.run_types() if catalog is not None else None ).run( job )
+                               types=catalog.run_types() if catalog is not None else None,
+                               governor=governor ).run( job )
         if state == bu_job.STOPPED and job.code == 'disk.full':
             exit_code = 1
     except bu_signals.Interrupted:

@@ -552,6 +552,10 @@ class Sampler:
     def add_listener( self, listener ):
         self.listeners.append( listener )
 
+    def remove_listener( self, listener ):
+        if listener in self.listeners:
+            self.listeners.remove( listener )
+
     def sample( self ):
         values = {}
         try:

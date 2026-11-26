@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/governor.override.schema.json",
+  "title": "governor.override",
+  "description": "Run at full speed anyway. scope run ends with the current run (or the next, when none is running); session lasts until the engine stops. memory_guard (default true) keeps the memory guard: under severe memory pressure one render worker still runs, since running out of memory gets a run stopped. memory_guard false releases that too. Answers like governor.get.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "scope"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "run",
+            "session"
+          ]
+        },
+        "memory_guard": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "allOf": [
+        {
+          "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/data"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "history"
+      ],
+      "properties": {
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/decision"
+          }
+        }
+      }
+    }
+  }
+}

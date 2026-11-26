@@ -62,7 +62,7 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
-           'catalog.changed', 'models.state', 'models.progress', 'resource.sample' )
+           'catalog.changed', 'models.state', 'models.progress', 'resource.sample', 'governor.change' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -270,6 +270,7 @@ class Server:
         self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
         self.models = None            # betautils_serve_models.Installer, made by the first models.install
         self.resources = None         # betautils_serve_resources.Resources, made by the first user of the sampler
+        self.governor = None          # betautils_governor_run.Runtime, made by the first job or governor command
         self._after_reply = []
 
     @property
@@ -465,7 +466,7 @@ from betautils_serve_models import HANDLERS as _MODELS_HANDLERS   # noqa: E402
 for _name, _handler in _MODELS_HANDLERS.items():
     register( _name, _handler )
 
-# hw.detect, resources.watch
+# hw.detect, resources.watch, governor.get, override, override_clear, enable
 from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E402
 for _name, _handler in _RESOURCE_HANDLERS.items():
     register( _name, _handler )
