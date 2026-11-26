@@ -424,7 +424,7 @@ function Screen( { data, onHelp, reload }: ScreenProps ) {
       {pendingCount > 0 && (
         <div className="hide-pending" role="region" aria-label={t( 'hide.pending.region' )}>
           <span>{t( 'hide.pending.count', { count: pendingCount } )}</span>
-          <CostNotice check={check} />
+          <CostNotice check={check} change={{ values: pending }} onBusyDone={() => { setPending( {} ); reload(); }} />
           <button type="button" className="primary" disabled={applying || check.state !== 'ok'} onClick={() => { void apply(); }}>{t( 'hide.pending.apply' )}</button>
           <button type="button" disabled={applying} onClick={discard}>{t( 'hide.pending.discard' )}</button>
         </div>

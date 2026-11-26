@@ -7,6 +7,8 @@ import { describeError, log } from './log';
 import { StyleEditor } from './hide/StyleEditor';
 import { WhatToHide } from './hide/WhatToHide';
 import { ModelsView } from './models/ModelsView';
+import { PerformanceView } from './resources/PerformanceView';
+import { StorageView } from './resources/StorageView';
 import { AllSettings } from './settings/AllSettings';
 import { SettingsView } from './settings/SettingsView';
 import { registerStyleEditor } from './settings/structured';
@@ -23,12 +25,14 @@ const HelpPanel = lazy( () => import( './help/HelpPanel' ).then( ( module ) => (
 
 registerStyleEditor( 'censor_style', StyleEditor );
 
-type View = 'player' | 'what_to_hide' | 'models' | 'settings' | 'all_settings';
+type View = 'player' | 'what_to_hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all_settings';
 
 function startView( view: StartupInfo[ 'view' ] | undefined ): View {
   switch ( view ) {
     case 'what-to-hide': return 'what_to_hide';
     case 'models': return 'models';
+    case 'performance': return 'performance';
+    case 'storage': return 'storage';
     case 'settings': return 'settings';
     case 'all-settings': return 'all_settings';
     default: return 'player';
@@ -96,6 +100,8 @@ export function App( { startup }: AppProps ) {
           {tab( 'player', t( 'nav.player' ) )}
           {tab( 'what_to_hide', t( 'nav.what_to_hide' ) )}
           {tab( 'models', t( 'nav.models' ) )}
+          {tab( 'performance', t( 'nav.performance' ) )}
+          {tab( 'storage', t( 'nav.storage' ) )}
           {tab( 'settings', t( 'nav.settings' ) )}
           {tab( 'all_settings', t( 'nav.all_settings' ) )}
         </nav>
@@ -108,6 +114,8 @@ export function App( { startup }: AppProps ) {
         </div>
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}
         {view === 'models' && <ModelsView />}
+        {view === 'performance' && <PerformanceView />}
+        {view === 'storage' && <StorageView />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
         {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}
       </main>

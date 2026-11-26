@@ -1131,3 +1131,187 @@ button.link {
   gap: 0.5rem;
   margin-block-start: auto;
 }
+
+/* --- Resources: busy choices, Performance page, Storage view --- */
+
+button.danger {
+  border-color: var(--color-status-problem);
+  color: var(--color-status-problem);
+}
+
+.busy-choices,
+.busy-choices-confirm {
+  margin-block: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.busy-choices-title {
+  margin-block: 0 0.4rem;
+  font-weight: 600;
+}
+
+.busy-choices-actions,
+.perf-actions,
+.storage-cache {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.busy-choices-note,
+.busy-choices-problem {
+  margin-block: 0.4rem 0;
+}
+
+.busy-choices-problem {
+  color: var(--color-status-problem);
+}
+
+.busy-choices-confirm p {
+  margin-block: 0 0.5rem;
+}
+
+.perf-view,
+.storage-view {
+  max-inline-size: 60rem;
+}
+
+.perf-section {
+  margin-block: 1rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--color-border);
+}
+
+.perf-section h3 {
+  margin-block: 0 0.5rem;
+}
+
+.perf-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.perf-state {
+  font-weight: 600;
+}
+
+.perf-state.slowed {
+  color: var(--color-status-busy);
+}
+
+.perf-guard {
+  padding-inline-start: 0.6rem;
+  border-inline-start: 3px solid var(--color-status-problem);
+}
+
+.perf-reasons,
+.perf-levers,
+.perf-history,
+.perf-stages,
+.perf-plan,
+.storage-disks {
+  margin-block: 0.25rem 0.75rem;
+  padding-inline-start: 1.25rem;
+}
+
+.perf-plan li.skip {
+  color: var(--color-text-muted);
+}
+
+.perf-live {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.perf-live li {
+  display: grid;
+  grid-template-columns: 14rem 10rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sparkline {
+  inline-size: 10rem;
+  block-size: 2rem;
+}
+
+.sparkline-frame {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.sparkline-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+}
+
+.perf-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.perf-facts dd {
+  margin: 0;
+}
+
+.perf-bands {
+  border-collapse: collapse;
+  margin-block: 0.5rem;
+}
+
+.perf-bands th,
+.perf-bands td {
+  padding: 0.25rem 0.75rem;
+  border-block-end: 1px solid var(--color-border);
+  text-align: start;
+}
+
+.storage-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.storage-row {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.storage-row p {
+  margin-block: 0.25rem 0.4rem;
+}
+
+.storage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.storage-name {
+  font-weight: 600;
+}
+
+.storage-cache label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-inline-size: 20rem;
+}
