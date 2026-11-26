@@ -2,7 +2,9 @@
 // or reset it. No change is written until the engine has said what it
 // costs (a dry run) and the user has applied it.
 import { useEffect, useId, useMemo, useState } from 'react';
+import { BusyChoices, type BusyOutcome } from '../components/BusyChoices';
 import { isEngineError } from '../engine/client';
+import type { SettingsChange } from '../resources/api';
 import { t } from '../i18n/format';
 import { instanceName, unavailableText } from '../i18n/labels';
 import { describeError, log } from '../log';
@@ -42,7 +44,15 @@ export function refusal( error: unknown ): Check {
   return { state: 'refused', lines: [ t( 'settings.request_failed' ) ], busy: false };
 }
 
-export function CostNotice( { check }: { check: Check } ) {
+interface CostNoticeProps {
+  readonly check: Check;
+  // The change being checked, so a refusal because jobs run can offer to
+  // keep it (BusyChoices) rather than lose it.
+  readonly change?: SettingsChange;
+  readonly onBusyDone?: ( outcome: BusyOutcome ) => void;
+}
+
+export function CostNotice( { check, change, onBusyDone }: CostNoticeProps ) {
   switch ( check.state ) {
     case 'idle':
       return null;
@@ -60,6 +70,9 @@ export function CostNotice( { check }: { check: Check } ) {
         <div className="cost-notice refused" role="alert">
           <span className="cost-notice-title">{check.busy ? t( 'settings.busy_title' ) : t( 'settings.refused_title' )}</span>
           <ul>{check.lines.map( ( line ) => <li key={line}>{line}</li> )}</ul>
+          {check.busy && change !== undefined && onBusyDone !== undefined && (
+            <BusyChoices change={change} onDone={onBusyDone} />
+          )}
         </div>
       );
   }
@@ -176,7 +189,9 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
           {t( 'settings.default_was', { value: JSON.stringify( held.default ) } )}
         </p>
       )}
-      <CostNotice check={check} />
+      <CostNotice check={check}
+        change={pending === null ? undefined : pending.action === 'set' ? { values: { [ path ]: pending.value } } : { resets: [ path ] }}
+        onBusyDone={() => { setPending( null ); onChanged(); }} />
       <div className="setting-actions">
         {pending !== null && (
           <>

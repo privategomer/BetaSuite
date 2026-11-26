@@ -1,7 +1,8 @@
 // The status strip along the bottom of the window: one item per subsystem,
 // each with an icon whose shape (not only its color) says how it is, a
 // plain-language line, and an action when there is something to do: the
-// engine, and model downloads while there are any.
+// engine, model downloads while there are any, the resource governor
+// while it slows a run, and settings changes waiting for the jobs.
 import { useState } from 'react';
 import { restartEngine, type EngineStatus } from '../engine/client';
 import { useEngineStatus } from '../engine/status';
@@ -10,6 +11,9 @@ import { t } from '../i18n/format';
 import { describeError, log } from '../log';
 import { modelName } from '../models/ModelsView';
 import { useModelEvents } from '../models/store';
+import { discardPending, fullSpeed } from '../resources/api';
+import { refreshGovernor, refreshPending, useResources } from '../resources/store';
+import { decisionText } from '../resources/text';
 
 type Tone = 'ok' | 'busy' | 'problem';
 
@@ -129,11 +133,63 @@ function ModelsItem() {
   );
 }
 
+const TONE_FOR: Readonly<Record<'slowed' | 'full', Tone>> = { slowed: 'busy', full: 'ok' };
+
+// While the governor slows a run: why, and "run at full speed anyway".
+// The memory guard says plainly that it still holds after an override.
+function ResourcesItem() {
+  const { governor } = useResources();
+  const [ working, setWorking ] = useState( false );
+  if ( governor === null || ( !governor.throttled && governor.override === null ) ) {
+    return null;
+  }
+  const full = () => {
+    setWorking( true );
+    log.info( 'full speed for this run, from the status strip' );
+    fullSpeed( 'run' )
+      .then( () => { refreshGovernor(); } )
+      .catch( ( error: unknown ) => { log.error( `governor.override failed: ${describeError( error )}` ); } )
+      .finally( () => { setWorking( false ); } );
+  };
+  return (
+    <div className="status-item" data-state={governor.throttled ? 'slowed' : 'full'}>
+      <StatusIcon tone={TONE_FOR[ governor.throttled ? 'slowed' : 'full' ]} />
+      <span>{decisionText( governor )}</span>
+      {governor.guard && <span className="status-detail">{t( 'status.resources.guard_detail' )}</span>}
+      {governor.throttled && governor.override === null && (
+        <button type="button" className="primary" onClick={full} disabled={working}>{t( 'status.resources.full_speed' )}</button>
+      )}
+    </div>
+  );
+}
+
+// Settings changes kept for when the jobs are done.
+function PendingItem() {
+  const { pending } = useResources();
+  if ( pending.length === 0 ) {
+    return null;
+  }
+  const discard = () => {
+    discardPending()
+      .then( () => { refreshPending(); } )
+      .catch( ( error: unknown ) => { log.error( `config.pending_discard failed: ${describeError( error )}` ); } );
+  };
+  return (
+    <div className="status-item" data-state="waiting">
+      <StatusIcon tone="busy" />
+      <span>{t( 'status.pending.waiting', { count: pending.length } )}</span>
+      <button type="button" onClick={discard}>{t( 'status.pending.discard' )}</button>
+    </div>
+  );
+}
+
 export function StatusStrip() {
   return (
     <footer className="status-strip" role="status" aria-live="polite" aria-label={t( 'status.strip_label' )}>
       <EngineItem />
       <ModelsItem />
+      <ResourcesItem />
+      <PendingItem />
     </footer>
   );
 }
