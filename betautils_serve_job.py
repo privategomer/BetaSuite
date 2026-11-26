@@ -169,10 +169,17 @@ class JobQueue:
             record; None for the stats and failure logs only.
         types: The betautils_catalog_types.RunTypes for pins and folder
             rules; None for the engine's ladder alone.
+        store_path: Where the queue is kept across restarts
+            (betautils_queue_store); None keeps it in memory only.
+
+    RESTORED JOBS. Jobs a previous engine left are read back held: paused,
+    marked restored, after the waiting ones. A held job runs nothing and
+    holds nothing (no run lock, settings stay writable) until job.resume
+    puts it back in the queue; job.cancel drops it.
     """
 
     def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None, recorder=None,
-                  types=None ):
+                  types=None, store_path=None ):
         import betautils_job as bu_job
         self._bu_job = bu_job
         self.logger = logger
@@ -189,9 +196,62 @@ class JobQueue:
         self.snapshot = None                      # config.get's answer while busy
         self.estimate_context = None              # job.estimate's settings while busy
         self._probing = False                     # an estimate probe has the model and the GPU
+        self._held = collections.deque()          # ids restored from a previous engine, not yet resumed
+        self._store_path = store_path
+        self._store_warned = False
         self._stopping = False
+        if store_path is not None:
+            self._restore()
         self._thread = threading.Thread( target=self._work, name='job-worker', daemon=True )
         self._thread.start()
+
+    # --- kept across restarts ---
+
+    def _restore( self ):
+        import betautils_queue_store as bu_queue_store
+        bu_job = self._bu_job
+        for row in bu_queue_store.load( self._store_path, self.logger ):
+            try:
+                overrides = bu_serve_config._overrides( { 'overrides': row.get( 'overrides', {} ) } )
+            except bu_proto.ProtocolError as refused:
+                self.logger.warning( "a saved job is dropped: its settings are no longer valid (%s)"%(
+                    refused.code, ) )
+                continue
+            job = bu_job.Job( row['job'], [ bu_job.JobFile( path, bu_job.output_folder_for( path ) )
+                                            for path in row['files'] ], overrides )
+            job.next_index = row.get( 'next_index', 0 )
+            for outcome in bu_job.OUTCOMES:
+                count = row.get( 'counts', {} ).get( outcome, 0 )
+                job.counts[outcome] = count if isinstance( count, int ) and count >= 0 else 0
+            job.state = bu_job.PAUSED
+            job.restored = True
+            job.announced = True
+            self.jobs[job.id] = job
+            self._held.append( job.id )
+        if self._held:
+            self.logger.info( "%d job(s) restored from the last session, paused"%( len( self._held ), ) )
+
+    def _kept_locked( self ):
+        """The jobs to keep, in queue order: not ended, or stopped only by a shutdown."""
+        bu_job = self._bu_job
+        order = ( ( [ self.active.id ] if self.active is not None else [] ) + list( self._waiting )
+                  + list( self._held ) )
+        seen = set( order )
+        order += [ job_id for job_id, job in self.jobs.items()
+                   if job_id not in seen and job.state == bu_job.STOPPED and job.code == 'engine.stopping' ]
+        return [ self.jobs[job_id] for job_id in order
+                 if self.jobs[job_id].state not in bu_job.FINAL or self.jobs[job_id].code == 'engine.stopping' ]
+
+    def _save_locked( self ):
+        if self._store_path is None:
+            return
+        import betautils_queue_store as bu_queue_store
+        try:
+            bu_queue_store.save( [ bu_queue_store.row_for( job ) for job in self._kept_locked() ], self._store_path )
+        except Exception as err:   # noqa: BLE001  keeping the queue never stops a job
+            if not self._store_warned:
+                self._store_warned = True
+                self.logger.warning( "the job queue could not be saved (%s); it will not survive a restart"%( err, ) )
 
     # --- helpers ---
 
@@ -257,6 +317,13 @@ class JobQueue:
                 if self.active is not None and self.active.id == data['job']:
                     self.active = None
                 self._idle_locked()
+        if name == 'job.state' or ( name == 'job.file' and data.get( 'state' ) != 'started' ):
+            with self._cond:
+                job = self.jobs.get( data.get( 'job' ) )
+                if name == 'job.file' and job is not None and isinstance( data.get( 'file' ), int ):
+                    # The runner moves next_index on just after this event.
+                    job.next_index = max( job.next_index, data['file'] + 1 )
+                self._save_locked()
         self.events( name, data )
 
     def _idle_locked( self ):
@@ -317,6 +384,29 @@ class JobQueue:
                 raise bu_proto.ProtocolError( 'config.busy', { 'job': self.busy_job_locked() } )
             return self.estimate_context
 
+    def _become_busy_locked( self, server, overrides ):
+        """
+        When the queue is idle, a job about to join it is checked against
+        the live config (nothing reads it now), the run lock is taken and
+        the settings are captured for config.get and job.estimate.
+        """
+        if self._busy_locked():
+            return
+        start_checks( overrides )
+        import betautils_runlock as bu_runlock
+        try:
+            self._lock = self._acquire_lock()
+        except bu_runlock.RunLocked as locked:
+            raise bu_proto.ProtocolError( locked.error()['code'], locked.error()['params'] )
+        try:
+            self.snapshot = bu_serve_config.config_get( server, {} )['settings']
+            import betautils_serve_estimate as bu_serve_estimate
+            self.estimate_context = bu_serve_estimate.context()
+        except BaseException:
+            self._lock.release()
+            self._lock = None
+            raise
+
     # --- commands ---
 
     def submit( self, server, data ):
@@ -339,28 +429,14 @@ class JobQueue:
         with self._cond:
             if self._stopping:
                 raise bu_proto.ProtocolError( 'engine.stopping', {} )
-            if not self._busy_locked():
-                # Idle: nothing reads the live config, so check it now.
-                start_checks( overrides )
-                import betautils_runlock as bu_runlock
-                try:
-                    self._lock = self._acquire_lock()
-                except bu_runlock.RunLocked as locked:
-                    raise bu_proto.ProtocolError( locked.error()['code'], locked.error()['params'] )
-                try:
-                    self.snapshot = bu_serve_config.config_get( server, {} )['settings']
-                    import betautils_serve_estimate as bu_serve_estimate
-                    self.estimate_context = bu_serve_estimate.context()
-                except BaseException:
-                    self._lock.release()
-                    self._lock = None
-                    raise
+            self._become_busy_locked( server, overrides )
             job = bu_job.Job( uuid.uuid4().hex, [ bu_job.JobFile( path, bu_job.output_folder_for( path ) )
                                                   for path in files ], overrides )
             self.jobs[job.id] = job
             position = len( self._waiting ) + ( 1 if self.active is not None else 0 )
             self._waiting.append( job.id )
             self._forget_finished_locked()
+            # Saved by its queued job.state, announced right after this reply.
         self.logger.info( "job %s submitted: %d file(s), %d override(s), position %d"%(
             job.id, len( job.files ), len( overrides ), position ) )
 
@@ -386,10 +462,22 @@ class JobQueue:
         self.logger.info( "job %s: pause requested"%( job.id, ) )
         return { 'job': job.id, 'state': job.state }
 
-    def resume( self, _server, data ):
+    def resume( self, server, data ):
         bu_job = self._bu_job
         with self._cond:
             job = self._job( data )
+            if job.id in self._held:
+                # A restored job joins the queue, checked and locked as a new one is.
+                if self._stopping:
+                    raise bu_proto.ProtocolError( 'engine.stopping', {} )
+                self._become_busy_locked( server, job.overrides )
+                self._held.remove( job.id )
+                job.restored = False
+                self._waiting.append( job.id )
+                self._save_locked()
+                self._cond.notify_all()
+                self.logger.info( "job %s: restored job resumed, from file %d"%( job.id, job.next_index + 1 ) )
+                return { 'job': job.id, 'state': job.state }
             if job is not self.active or job.state != bu_job.PAUSED:
                 raise self._bad_state( job )
             job.resume_requested = True
@@ -403,7 +491,11 @@ class JobQueue:
             job = self._job( data )
             if job.state in bu_job.FINAL:
                 raise self._bad_state( job )
-            if job.state == bu_job.QUEUED and job.id in self._waiting:
+            if job.id in self._held:
+                self._held.remove( job.id )
+                self.runner.cancel_idle( job )
+            elif job.id in self._waiting:
+                # Queued, or a restored job resumed and waiting its turn.
                 self._waiting.remove( job.id )
                 self.runner.cancel_idle( job )
                 self._idle_locked()
@@ -421,8 +513,8 @@ class JobQueue:
         return { 'job': job.id, 'state': job.state }
 
     def _positions_locked( self ):
-        """{ job id: position } for the active job (0) and every waiting one, in order."""
-        order = ( [ self.active.id ] if self.active is not None else [] ) + list( self._waiting )
+        """{ job id: position } for the active job (0), every waiting one, then the held ones, in order."""
+        order = ( [ self.active.id ] if self.active is not None else [] ) + list( self._waiting ) + list( self._held )
         return { job_id: index for index, job_id in enumerate( order ) }
 
     def list( self, _server, _data ):
@@ -443,6 +535,8 @@ class JobQueue:
         row = { 'job': job.id, 'state': job.state, 'position': position,
                 'files': [ entry.path for entry in job.files ], 'counts': job.counts_data(),
                 'overrides': { '.'.join( path ): value for path, value in job.overrides.items() } }
+        if getattr( job, 'restored', False ):
+            row['restored'] = True
         if job.code is not None:
             row['code'] = job.code
             row['params'] = job.params
@@ -467,6 +561,7 @@ class JobQueue:
             index = min( max( position - first, 0 ), len( self._waiting ) - 1 )
             self._waiting.remove( job.id )
             self._waiting.insert( index, job.id )
+            self._save_locked()
             self._cond.notify_all()
             now = index + first
         self.logger.info( "job %s moved to position %d"%( job.id, now ) )
@@ -568,6 +663,8 @@ class JobQueue:
             if bu_signals.stop_reason() == bu_signals.SHUTDOWN:
                 bu_signals.clear()
             self._idle_locked()
+            # What the next engine restores: the jobs this shutdown stopped, and the held ones.
+            self._save_locked()
         self.events.close()
 
 
@@ -607,10 +704,12 @@ def queue_for( server ):
     if jobs is None:
         # The catalog hears the job events (queued, processing) and keeps
         # every file's record in its history.
+        import betautils_queue_store as bu_queue_store
         import betautils_serve_catalog as bu_serve_catalog
         jobs = JobQueue( bu_serve_catalog.job_events_for( server ), server._logger,
                          recorder=bu_serve_catalog.job_recorder_for( server ),
-                         types=bu_serve_catalog.job_types_for( server ) )
+                         types=bu_serve_catalog.job_types_for( server ),
+                         store_path=getattr( server, 'queue_store_path', None ) or bu_queue_store.default_path() )
         server.jobs = jobs
     return jobs
 
