@@ -367,6 +367,13 @@ class TestAccount( unittest.TestCase ):
         _hold( runtime, IDLE, 60 )
         self.assertEqual( runtime.end_file()['governor_fewest_workers'], 3 )
 
+    def test_a_small_plan_is_not_a_throttle( self ):
+        runtime = _runtime()
+        runtime.start_file()
+        runtime.render_started( 1 )
+        _hold( runtime, IDLE, 10 )
+        self.assertIsNone( runtime.end_file()['governor_fewest_workers'] )
+
     def test_nothing_outside_a_file( self ):
         self.assertEqual( bu_gov_run.NEVER.file_stats(), { 'governor_throttled_seconds': 0.0,
                                                             'governor_paced_seconds': 0.0,

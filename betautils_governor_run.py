@@ -271,7 +271,9 @@ class Runtime:
             planned = self.governor.planned or self.gate.limit
             cap = decision.worker_cap if decision.worker_cap is not None else planned
             self.gate.set_limit( min( planned, cap ) )
-            if self.account is not None:
+            # Only a cap the governor set counts: a render that planned
+            # one worker was not slowed.
+            if self.account is not None and decision.worker_cap is not None:
                 limit = self.gate.limit
                 if self.account.fewest_workers is None or limit < self.account.fewest_workers:
                     self.account.fewest_workers = limit
