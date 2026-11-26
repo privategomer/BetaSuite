@@ -142,6 +142,13 @@ The catalog of models is data (`assets/models/catalog.json`): each file's pinned
 | Command | Does |
 |---|---|
 | `hw.detect` | this machine: OS, CPU, memory, the NVIDIA GPU and whether onnxruntime can use it, whether it has a battery, free space on the disk of each kind of folder; and `safe_settings`, the settings these facts settle without measuring |
+| `resources.watch` | `on: true` starts `resource.sample` events and answers the latest sample; `on: false` stops them |
+
+| Event | Says |
+|---|---|
+| `resource.sample` | about once a second while watched: memory pressure and free memory, on battery and how full, CPU busy split into this engine (with its ffmpeg children) and everything else, input idle time (Windows), GPU use and memory, the engine's memory, free space for cache and outputs. May be dropped; the next one replaces it |
+
+The sampler runs only while the UI watches or a job runs, and costs well under a millisecond a second on Linux (it reads only this engine's own processes, through the kernel's children lists). The GPU is read by one long-lived nvidia-smi printing a line a second, never by starting a process each time. On battery follows the mains supply where there is one: a laptop held at a charge limit reports its battery as discharging while plugged in.
 
 Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and runs nvidia-smi once; no model is loaded. Disks are numbered by file system (`volume`), so kinds of folder on one disk share a number, and no path is sent. A safe setting is only one that cannot change what is detected: today `gpu_enabled`, which moves the same model between providers (`hw.gpu_usable`, `hw.gpu_not_usable`). The batch size is left to Optimize, which checks the detections.
 

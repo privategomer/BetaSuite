@@ -62,7 +62,7 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
-           'catalog.changed', 'models.state', 'models.progress' )
+           'catalog.changed', 'models.state', 'models.progress', 'resource.sample' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -269,6 +269,7 @@ class Server:
         self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
         self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
         self.models = None            # betautils_serve_models.Installer, made by the first models.install
+        self.resources = None         # betautils_serve_resources.Resources, made by the first user of the sampler
         self._after_reply = []
 
     @property
@@ -292,6 +293,11 @@ class Server:
         """Stop the model installer, if one was made; a download in progress keeps its partial file."""
         if self.models is not None:
             self.models.stop()
+
+    def stop_resources( self ):
+        """Stop the resource sampler, if it runs."""
+        if self.resources is not None:
+            self.resources.stop()
 
     def stop_catalog( self ):
         """Close the catalog, if one was opened, after the job queue has stopped."""
@@ -459,7 +465,7 @@ from betautils_serve_models import HANDLERS as _MODELS_HANDLERS   # noqa: E402
 for _name, _handler in _MODELS_HANDLERS.items():
     register( _name, _handler )
 
-# hw.detect
+# hw.detect, resources.watch
 from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E402
 for _name, _handler in _RESOURCE_HANDLERS.items():
     register( _name, _handler )
@@ -532,6 +538,10 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_models()
         except BaseException:
             logger.error( "the model installer did not stop cleanly", exc_info=True )
+        try:
+            server.stop_resources()
+        except BaseException:
+            logger.error( "the resource sampler did not stop cleanly", exc_info=True )
         try:
             server.stop_catalog()
         except BaseException:
