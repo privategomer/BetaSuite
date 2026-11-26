@@ -63,7 +63,11 @@ GOLDEN_PATH = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ),
 VOLATILE_FIELDS = ( 'timestamp', 'detection_seconds', 'encode_seconds', 'total_seconds',
                     'elapsed_seconds', 'betasuite_version', 'local_overrides',
                     'render_memory_available_mb', 'render_memory_worker_cap',
-                    'render_render_workers', 'execution_providers' )
+                    'render_render_workers', 'execution_providers',
+                    # What the resource governor did follows how busy the
+                    # machine was during the run, never the output.
+                    'governor_throttled_seconds', 'governor_paced_seconds', 'governor_reasons',
+                    'governor_fewest_workers' )
 
 # The settings the end-to-end harness pins, on top of the shipped config.
 PINNED = (
