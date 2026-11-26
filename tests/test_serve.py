@@ -223,12 +223,13 @@ class TestHandshake( _EngineTest ):
         self.assertEqual( hello['pid'], engine.proc.pid )
         self.assertEqual( hello['commands'], [ 'catalog.add_files', 'catalog.add_folder', 'catalog.folders',
                                                'catalog.forget', 'catalog.get', 'catalog.list', 'catalog.pin_type',
-                                               'catalog.remove_folder', 'catalog.rescan', 'catalog.thumbnail',
+                                               'catalog.remove_folder', 'catalog.rescan', 'catalog.strip', 'catalog.thumbnail',
                                                'config.get', 'config.reset', 'config.schema', 'config.set',
                                                'hello', 'job.cancel', 'job.estimate', 'job.list', 'job.move', 'job.pause', 'job.resume', 'job.submit',
                                                'ping', 'preview.look', 'shutdown' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
-                                             'job.decision', 'job.error', 'job.probed', 'catalog.changed' ] )
+                                             'job.decision', 'job.error', 'job.probed', 'catalog.changed',
+                                             'catalog.strip_ready' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )
         self.assertTrue( engine.request( 'ping' )['ok'] )

@@ -112,6 +112,7 @@ ERRORS = {
     'catalog.item_busy':            ( 'item', 'job' ),
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
+    'catalog.no_such_file':         (),
 }
 
 # Values of the 'reason' parameter.

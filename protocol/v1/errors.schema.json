@@ -50,7 +50,8 @@
     { "$ref": "#/$defs/catalog.bad_type" },
     { "$ref": "#/$defs/catalog.item_busy" },
     { "$ref": "#/$defs/catalog.missing" },
-    { "$ref": "#/$defs/catalog.thumbnail_failed" }
+    { "$ref": "#/$defs/catalog.thumbnail_failed" },
+    { "$ref": "#/$defs/catalog.no_such_file" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -672,6 +673,18 @@
           "type": "object",
           "required": [ "item", "reason" ],
           "properties": { "item": { "type": "string" }, "reason": { "enum": [ "not_video", "error" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_file": {
+      "description": "catalog.strip was given a path that is not a file.",
+      "properties": {
+        "code": { "const": "catalog.no_such_file" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
           "additionalProperties": false
         }
       }

@@ -123,9 +123,12 @@ class ServedCatalog:
             self.events.stop()
             raise
         self.catalog.start()
+        import betautils_serve_strip as bu_serve_strip
+        self.strips = bu_serve_strip.StripService( server.send_event, busy, server._logger )
 
     def close( self ):
         try:
+            self.strips.stop()
             self.catalog.close()
         finally:
             self.events.stop()
@@ -161,6 +164,12 @@ def catalog_for( server ):
                 raise _protocol_error( err )
             server.catalog = served
     return served.catalog
+
+
+def served_strips( server ):
+    """The server's strip builder, made with its catalog."""
+    catalog_for( server )
+    return server.catalog.strips
 
 
 def _call( function, *args, **kwargs ):
