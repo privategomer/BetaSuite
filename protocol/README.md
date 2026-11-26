@@ -165,6 +165,29 @@ The sampler runs only while the UI watches or a job runs, and costs well under a
 
 Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and runs nvidia-smi once; no model is loaded. Disks are numbered by file system (`volume`), so kinds of folder on one disk share a number, and no path is sent. A safe setting is only one that cannot change what is detected: today `gpu_enabled`, which moves the same model between providers (`hw.gpu_usable`, `hw.gpu_not_usable`). The batch size is left to Optimize, which checks the detections.
 
+## Performance evidence
+
+| Command | Does |
+|---|---|
+| `perf.evidence` | what past runs on this machine measured at the settings in use (speed per resolution band), how often memory capped the render, and nudges, each with a one-click action |
+| `perf.rebuild` | empty the performance index and import the stats log again |
+
+**The index.** The stats log is the record of every processed file. The performance index (`perf.sqlite`, beside the stats log) is an index of it:
+- The first time the index is opened, it imports the whole log once, so past runs count from the first day.
+- After that, every run adds its own row as it finishes. Nothing is read back from the logs.
+
+**Which runs count.** A run counts for this machine when its hardware fingerprint matches. Older rows have no fingerprint; they count when their execution providers match what a run would use now, so CUDA and CPU runs are never pooled.
+
+**What the speeds leave out.** Speeds come from full runs at the same model and batch size. Left out are previews, runs the governor slowed for more than a twentieth of their time, and, for detection speed, runs that read cached detections.
+
+**Nudges:**
+- `perf.gpu_off`: a usable GPU is off.
+- `perf.memory_capped`: the memory cap set the render workers in at least 30% of recent renders.
+- `perf.not_optimized` and `perf.settings_changed`: no optimization yet, or the settings changed since the last one.
+- `perf.slower_than_usual`: the last three runs were well below this machine's usual speed.
+
+A run measures only the settings it used; Optimize measures the others.
+
 ## Storage
 
 | Command | Does |

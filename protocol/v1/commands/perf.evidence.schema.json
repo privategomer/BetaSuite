@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/perf.evidence.schema.json",
+  "title": "perf.evidence",
+  "description": "What past runs on this machine measured, at the settings in use. Runs come from the stats log (imported once into perf.sqlite beside it) and every run since. A run counts for this machine when its hardware fingerprint matches, or, for a run from before the index, when its execution providers match the ones a run would use now. bands are resolution bands (sd under 600 lines, hd under 900, fhd under 1300, qhd under 1800, uhd above) with medians of full runs at the same model variant and batch size, left out: previews and runs the governor slowed for more than a twentieth of their time. detect_speed and total_speed are seconds of video per second (2.0: a minute in 30 s), from runs that detected rather than read cached detections (detected_runs); render_fps is frames rendered per second. memory_capped counts the recent renders whose workers the memory cap set. nudges, each with an action (set: settings to change; optimize: the stages to measure, null for all): perf.gpu_off (a usable GPU is off), perf.memory_capped, perf.not_optimized, perf.settings_changed (since the last optimization), perf.slower_than_usual (params usual, recent). A normal run measures only the settings it used; what another value would do is Optimize's to find.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "runs",
+        "measured",
+        "bands",
+        "memory_capped",
+        "optimized",
+        "nudges"
+      ],
+      "properties": {
+        "runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "measured": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "band",
+              "runs",
+              "detected_runs",
+              "detect_speed",
+              "render_fps",
+              "total_speed"
+            ],
+            "properties": {
+              "band": {
+                "enum": [
+                  "sd",
+                  "hd",
+                  "fhd",
+                  "qhd",
+                  "uhd"
+                ]
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "detected_runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "detect_speed": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "render_fps": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "total_speed": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "memory_capped": {
+          "type": "object",
+          "required": [
+            "runs",
+            "of"
+          ],
+          "properties": {
+            "runs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "of": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "optimized": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "at",
+                "applied"
+              ],
+              "properties": {
+                "at": {
+                  "type": "number"
+                },
+                "applied": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ]
+        },
+        "nudges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "params",
+              "action"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "perf.gpu_off",
+                  "perf.memory_capped",
+                  "perf.not_optimized",
+                  "perf.settings_changed",
+                  "perf.slower_than_usual"
+                ]
+              },
+              "params": {
+                "type": "object"
+              },
+              "action": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "set",
+                      "optimize"
+                    ]
+                  },
+                  "values": {
+                    "type": "object"
+                  },
+                  "stages": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

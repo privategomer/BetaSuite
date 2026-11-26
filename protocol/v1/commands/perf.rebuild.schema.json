@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/perf.rebuild.schema.json",
+  "title": "perf.rebuild",
+  "description": "Empty the performance index and import the stats log again (optimization records are kept). read is the stats rows read, imported those added, runs the index's size after.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "imported",
+        "read",
+        "runs"
+      ],
+      "properties": {
+        "imported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "read": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
