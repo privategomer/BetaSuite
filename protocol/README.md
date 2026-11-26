@@ -53,6 +53,18 @@ Settings must not change while a job runs. While any job is queued, running or p
 
 ## Jobs
 
+### Settings changed while jobs run
+
+Settings stay as they were while a job holds the queue, because a run reads them as it goes (`config.busy`). The app offers three ways to keep the change instead of losing it:
+
+| Way | Command |
+|---|---|
+| after the jobs | `config.set` or `config.reset` with `when: "after_jobs"`. The change is checked now and kept in the state folder (`pending_config.json`), so a restart keeps it, then written when the queue is idle or at the next engine start. `config.pending` lists what waits; `config.pending_discard` drops one (`id`) or all |
+| pause, apply, go on | `job.restart_with_changes` with `mode: "resume"`: the running job pauses at its next safe point, the change is written, and it resumes. The file in progress keeps its checkpoints where its keys did not move |
+| start again with it | `mode: "requeue"`: every job is cancelled, the change is written, and each job's remaining files are queued again with its own overrides |
+
+`config.applied` says when a change made this way is written. `config.pending_failed` says it was not, with the error `config.set` would have given (the config changed under it).
+
 A job is a list of files run one after another through the same pipeline as `betatv.py`, with settings overrides for that job only. The command line runs everything in its input folder as one job, through the same code.
 
 | command | does |

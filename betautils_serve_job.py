@@ -46,6 +46,10 @@ import uuid
 import betautils_protocol as bu_proto
 import betautils_serve_config as bu_serve_config
 
+# How long a settings change waits for the running job to pause (or the
+# jobs to stop) before it gives up and writes nothing.
+WAIT_FOR_PAUSE_SECONDS = 600
+
 EVENTS = ( 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error' )
 
 PROGRESS_INTERVAL = 0.25
@@ -285,8 +289,12 @@ class JobQueue:
 
     # --- commands ---
 
-    def submit( self, server, data ):
-        """data: { files: [ absolute path ], overrides?: { dotted path: value } }"""
+    def submit( self, server, data, announce_now=False ):
+        """
+        data: { files: [ absolute path ], overrides?: { dotted path: value } }
+        announce_now: send the job's first event at once (a job queued by
+        the engine itself, with no command reply to send first).
+        """
         bu_job = self._bu_job
         files = data.get( 'files' )
         if not isinstance( files, list ):
@@ -336,7 +344,10 @@ class JobQueue:
                 job.announced = True
                 self._cond.notify_all()
         job.announced = False
-        server.after_reply( announce )
+        if announce_now:
+            announce()
+        else:
+            server.after_reply( announce )
         return { 'job': job.id, 'position': position }
 
     def pause( self, _server, data ):
@@ -383,6 +394,95 @@ class JobQueue:
                 raise self._bad_state( job )
         self.logger.info( "job %s: cancel requested"%( job.id, ) )
         return { 'job': job.id, 'state': job.state }
+
+    # --- settings changed while jobs run (betautils_serve_changes) ---
+
+    def _refresh_snapshot_locked( self, server ):
+        if self._busy_locked():
+            self.snapshot = bu_serve_config.config_get( server, {} )['settings']
+
+    def restart_paused( self, server, write, wait=None ):
+        """
+        Pause the running job at its next safe point, call write() while
+        nothing runs, and resume it. With no job running (only queued
+        ones), write() at once. Returns the ids of the jobs it touched.
+        In the background: answers before the job has paused.
+        """
+        bu_job = self._bu_job
+        import betautils_signals as bu_signals
+        with self._cond:
+            active = self.active
+            touched = [ active.id ] if active is not None else []
+
+        def run():
+            deadline = time.monotonic() + ( wait or WAIT_FOR_PAUSE_SECONDS )
+            paused_here = set()
+            with self._cond:
+                while True:
+                    job = self.active
+                    if job is None or job.state in ( bu_job.PAUSED, bu_job.QUEUED ):
+                        # Nothing runs, and the worker waits on this lock.
+                        written = write()
+                        if written:
+                            self._refresh_snapshot_locked( server )
+                        if job is not None and job.state == bu_job.PAUSED and job.id in paused_here:
+                            job.resume_requested = True
+                            self._cond.notify_all()
+                        return
+                    if job.state == bu_job.RUNNING and job.id not in paused_here:
+                        bu_signals.request_stop( bu_signals.PAUSE )
+                        paused_here.add( job.id )
+                    if time.monotonic() > deadline:
+                        self.logger.error( "settings change: the job did not pause in time; nothing written" )
+                        return
+                    self._cond.wait( 0.5 )
+
+        threading.Thread( target=run, name='betarestart', daemon=True ).start()
+        return touched
+
+    def requeue_with( self, server, write, wait=None ):
+        """
+        Cancel every job, call write() once nothing runs, and queue each
+        job's remaining files again with its own overrides. Returns the
+        ids of the jobs cancelled. In the background.
+        """
+        bu_job = self._bu_job
+        plans = []
+        with self._cond:
+            for job in list( self.jobs.values() ):
+                if job.state in bu_job.FINAL:
+                    continue
+                start = job.next_index if job is self.active else 0
+                files = [ entry.path for entry in job.files[start:] ]
+                overrides = { '.'.join( path ): value for path, value in job.overrides.items() }
+                plans.append( ( job.id, files, overrides ) )
+            for job_id, _files, _overrides in plans:
+                try:
+                    self.cancel( server, { 'job': job_id } )
+                except bu_proto.ProtocolError:
+                    pass    # it ended on its own meanwhile
+
+        def run():
+            deadline = time.monotonic() + ( wait or WAIT_FOR_PAUSE_SECONDS )
+            with self._cond:
+                while self._busy_locked():
+                    if time.monotonic() > deadline:
+                        self.logger.error( "settings change: the jobs did not stop in time; nothing written" )
+                        return
+                    self._cond.wait( 0.5 )
+                written = write()
+            if not written:
+                return
+            for _job_id, files, overrides in plans:
+                if not files:
+                    continue
+                try:
+                    self.submit( server, { 'files': files, 'overrides': overrides }, announce_now=True )
+                except bu_proto.ProtocolError as refused:
+                    self.logger.warning( "settings change: a job could not be queued again: %s"%( refused.error, ) )
+
+        threading.Thread( target=run, name='betarequeue', daemon=True ).start()
+        return [ job_id for job_id, _files, _overrides in plans ]
 
     # --- the worker ---
 
@@ -579,8 +679,31 @@ def config_get( server, data ):
     return { 'settings': rows }
 
 
+def _set_after_jobs( server, data, handler ):
+    """config.set / config.reset with when: after_jobs (betautils_serve_changes)."""
+    import betautils_serve_changes as bu_changes
+    if handler is bu_serve_config.config_set:
+        updates, removals = bu_changes.parse_change( { 'values': data.get( 'values' ) or {} } )
+    else:
+        paths = data.get( 'paths' )
+        if not isinstance( paths, list ) or not paths:
+            raise _bad_params( 'paths', bu_proto.REASON_MISSING if paths is None else bu_proto.REASON_TYPE )
+        updates, removals = bu_changes.parse_change( { 'resets': paths } )
+    return bu_changes.queue_after_jobs( server, data, updates, removals )
+
+
 def _refused_while_busy( handler ):
+    """
+    The handler, refused with config.busy while a job holds the queue,
+    unless the request says when: after_jobs: then it is checked now and
+    written when the queue is idle (betautils_serve_changes).
+    """
     def refuse( server, data ):
+        when = data.get( 'when', 'now' )
+        if when not in ( 'now', 'after_jobs' ):
+            raise _bad_params( 'when', bu_proto.REASON_VALUE )
+        if when == 'after_jobs' and not data.get( 'dry_run', False ):
+            return _set_after_jobs( server, data, handler )
         busy = _busy( server )
         if busy is not None:
             raise bu_proto.ProtocolError( 'config.busy', { 'job': busy } )

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.pending_discard.schema.json",
+  "title": "config.pending_discard",
+  "description": "Drop a waiting change (id), or every one (no id). discarded counts them.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "discarded"
+      ],
+      "properties": {
+        "discarded": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
