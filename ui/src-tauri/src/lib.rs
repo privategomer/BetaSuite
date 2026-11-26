@@ -6,6 +6,7 @@
 
 mod cli;
 mod engine;
+mod files;
 #[cfg(target_os = "linux")]
 mod linux;
 mod logging;
@@ -374,6 +375,11 @@ pub fn run() -> i32 {
             ui_mark,
             video::pick_video,
             look::look_image,
+            files::strip_image,
+            files::pick_files,
+            files::pick_folder,
+            files::save_as,
+            files::open_video,
             set_unsaved,
             close_window
         ])
