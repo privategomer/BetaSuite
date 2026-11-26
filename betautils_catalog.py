@@ -23,6 +23,7 @@ on: a 1.x tree's folder names pick the video type, as they always did.
 import json
 import os
 
+import betautils_catalog_censors as bu_censors
 import betautils_catalog_history as bu_history
 import betautils_catalog_index as bu_index
 import betautils_catalog_scan as bu_scan
@@ -256,6 +257,11 @@ class Catalog:
         for row in self.store.read( 'SELECT hash, present, COUNT(*) FROM outputs GROUP BY hash, present' ):
             if row[0] in items:
                 items[row[0]]['outputs' if row[1] else 'outputs_missing'] = row[2]
+        for item in items.values():
+            item['censor_sets'] = []
+        for row in self.store.read( 'SELECT hash, censor_key FROM outputs WHERE present = 1 ORDER BY id' ):
+            if row[0] in items:
+                items[row[0]]['censor_sets'].append( bu_censors.censors_of( row[1] ) )
         return items
 
     def _shape( self, item, folders ):
@@ -277,6 +283,7 @@ class Catalog:
             'type': bu_types.shown_type( shown_at['path'], item['type_pin'], roots, last ),
             'outputs': item['outputs'],
             'outputs_missing': item['outputs_missing'],
+            'censors': bu_censors.summary( item['censor_sets'] ),
             'added_at': item['added_at'],
         }
 
@@ -298,10 +305,12 @@ class Catalog:
     def list( self, filters=None, sort='name', descending=False, offset=0, limit=LIST_LIMIT_DEFAULT ):
         filters = filters or {}
         folders = self.index.folders()
-        pairs = [ ( self._shape( item, folders ), { location['folder_id'] for location in item['locations'] } )
-                  for item in self._items().values() if item['locations'] ]
-        reclaimable = sum( item['size'] * ( item['copies'] - 1 ) for item, _ in pairs if item['copies'] > 1 )
-        chosen = [ item for item, item_folders in pairs if _matches( item, filters, item_folders ) ]
+        triples = [ ( self._shape( item, folders ), { location['folder_id'] for location in item['locations'] },
+                      item['censor_sets'] )
+                    for item in self._items().values() if item['locations'] ]
+        reclaimable = sum( item['size'] * ( item['copies'] - 1 ) for item, _, _ in triples if item['copies'] > 1 )
+        chosen = [ item for item, item_folders, censor_sets in triples
+                   if _matches( item, filters, item_folders, censor_sets ) ]
         chosen.sort( key=lambda item: ( _sort_value( item, sort ), item['item'] ), reverse=descending )
         return { 'items': chosen[offset:offset + limit], 'total': len( chosen ),
                  'pending': self.scanner.pending_count(), 'reclaimable_bytes': reclaimable }
@@ -321,7 +330,11 @@ class Catalog:
         return shaped
 
 
-def _matches( item, filters, item_folders ):
+def _matches( item, filters, item_folders, censor_sets=() ):
+    censored = filters.get( 'censored' )
+    if censored is not None and not bu_censors.matches( censor_sets, censored.get( 'labels', () ),
+                                                        censored.get( 'looks', () ) ):
+        return False
     if filters.get( 'status' ) and item['status'] not in filters['status']:
         return False
     if filters.get( 'availability' ) and item['availability'] not in filters['availability']:

@@ -96,7 +96,7 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 | command | does |
 |---|---|
-| `catalog.list` | a page of items (at most 500), filtered by status, availability, video type, output, duplicates, pinned or folder, sorted by name, added_at, size or status; with `total`, `pending` (files waiting to be hashed) and `reclaimable_bytes` (what removing every extra copy would free) |
+| `catalog.list` | a page of items (at most 500), filtered by status, availability, video type, output, duplicates, pinned, folder or censors applied (`censored`: labels hidden and kinds of look used, by one present output), sorted by name, added_at, size or status; with `total`, `pending` (files waiting to be hashed) and `reclaimable_bytes` (what removing every extra copy would free) |
 | `catalog.get` | one item with every path it was found at, its outputs and their keys, and its last 50 runs |
 | `catalog.folders` | the watched folders |
 | `catalog.add_folder` | watch a folder; with `type_from_folder` its subfolder names pick the video type, as a 1.x `uncensored_vids` tree did |

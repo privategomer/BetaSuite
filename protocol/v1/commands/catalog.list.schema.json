@@ -57,6 +57,26 @@
             },
             "folder": {
               "type": "integer"
+            },
+            "censored": {
+              "type": "object",
+              "description": "Items with a present output that hid every label in labels and used every kind of look in looks (on those labels, or on any label when labels is not given). An output whose censor key record cannot be read matches no censor filter.",
+              "properties": {
+                "labels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "looks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
             }
           }
         },
@@ -107,7 +127,8 @@
               "type",
               "outputs",
               "outputs_missing",
-              "added_at"
+              "added_at",
+              "censors"
             ],
             "properties": {
               "item": {
@@ -195,6 +216,30 @@
               },
               "added_at": {
                 "type": "number"
+              },
+              "censors": {
+                "type": "array",
+                "description": "The labels the item's present outputs hid, each with the kinds of look used on it (blur, pixel, bar, sticker, ...), read from each output's censor key record. Empty when no present output has a readable record.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "looks"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "looks": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
               }
             }
           },
