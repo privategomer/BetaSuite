@@ -15,6 +15,13 @@ import tempfile
 import unittest
 from unittest import mock
 
+# Loaded here, before any test patches sys.modules: stage_inventory
+# imports cv2 (and so numpy) inside mock.patch.dict( sys.modules ), which
+# removes on exit whatever was first imported inside it, and numpy's
+# extension cannot be loaded a second time in one process. Run alone,
+# this module then failed the stand-in model tests that need cv2.
+import cv2  # noqa: F401
+
 import betaconfig
 
 REPO = os.path.dirname( os.path.dirname( os.path.abspath( __file__ ) ) )
