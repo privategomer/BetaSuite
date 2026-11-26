@@ -30,11 +30,11 @@ BetaSuiteHome/                      any name, any location
 │   │   ├── v3.4-320n.onnx          nudenet_v3 320n (default backend)
 │   │   ├── v3.4-640m.onnx          nudenet_v3 640m (optional)
 │   │   ├── detector_v2_default_checkpoint.onnx   retinanet_v2 (optional)
-│   │   ├── yolo11s-seg.onnx        person masks, default size (reverse mode; exported by setup)
-│   │   ├── yolo11n-seg.onnx        person masks, smaller (optional; exported by setup)
-│   │   ├── yolo11m-seg.onnx        person masks, larger (optional; exported by setup)
+│   │   ├── yolo11s-seg.onnx        person masks, default size (reverse mode; installed by setup)
+│   │   ├── yolo11n-seg.onnx        person masks, smaller (optional; installed by setup)
+│   │   ├── yolo11m-seg.onnx        person masks, larger (optional; installed by setup)
 │   │   └── rf-detr-seg-*.onnx      person masks, RF-DETR-Seg nano/small/medium
-│   │                               (optional; exported by setup if you choose rf_detr_seg)
+│   │                               (optional; installed by setup if you choose rf_detr_seg)
 │   ├── uncensored_vids/            videos to censor (betatv.py input)
 │   │   └── scene/, compilation/, quick-cut/, split-screen/
 │   │                               optional: the folder a video sits in picks its tuned profile
@@ -64,12 +64,10 @@ normal run does not need them. With the shipped config only
 `yolo11s-seg.onnx` is used. The other YOLO11 sizes (`n`, `m`) and the
 RF-DETR-Seg backend (`person_backend['selected'] = 'rf_detr_seg'`, sizes
 `nano`, `small`, `medium`) are alternatives you pick in
-`person_backend`. Setup asks which person backends to export, one or
-more, and exports every size of each one chosen: `yolo11_seg` (the
+`person_backend`. Setup asks which person backends to install, one or
+more, and downloads every size of each one chosen: `yolo11_seg` (the
 default) is about 12, 41 and 90 MB, `rf_detr_seg` about 125 MB per
-size, so about 143 MB, 375 MB, or about 520 MB for both. Choosing only
-`yolo11_seg` also leaves `rfdetr` out of the throwaway export
-environment.
+size, so about 144 MB, 377 MB, or about 521 MB for both.
 
 The subfolders under `uncensored_vids/` are optional. If you sort videos
 into them, `profile_by_source_dir` gives each folder its own tuned
@@ -153,12 +151,11 @@ To go back to development, `git switch main`.
    rights needed, and it doesn't touch your system Python)
 5. Installs `requirements-gpu.txt` or `requirements-cpu.txt` into `.venv`
 6. Creates the `resources/` and `output/` folders beside the repository
-7. Downloads the 320n model, asks which person backends to export
+7. Downloads the 320n model, asks which person backends to install
    (`yolo11_seg` by default, `rf_detr_seg`, both or neither; for reverse
-   mode's person windows) and exports every size of each, checks any
-   models already present,
-   and lists the two optional ones you download yourself (see
-   [Models](#6-models))
+   mode's person windows) and downloads every size of each, checking
+   every file against its pinned hash and any models already present
+   (see [Models](#6-models))
 8. Creates your local config, `betaconfig_local.py`, if it is missing
    (a header and nothing else), and sets `gpu_enabled` in it when the
    build does not match `betaconfig.py`'s value (asking first only if
@@ -363,81 +360,61 @@ New-Item -ItemType Directory -Force ..\output | Out-Null
 
 ### 6. Models
 
-Models go in `../resources/model/` under the exact names below. The
-detector adapters look for these names, so rename the downloads.
+The project hosts every model as a file of its `models-v1` GitHub
+release, with each model's license and the upstream source it was
+converted from beside it (see NOTICE). Setup downloads what you choose
+into the model folder (`python3 tools/lib/where.py resources/model`
+prints it) and checks each file against the SHA-256 pinned in
+`assets/models/catalog.json` before anything uses it. No sign-in, no
+export, no PyTorch: the models run through onnxruntime. The desktop
+app's Models page installs, switches and removes the same files.
 
-| Model | Backend | Download | Save as |
+| Model | Backend | Installed by setup | File |
 |---|---|---|---|
-| 320n (default, required) | `nudenet_v3` | automatic: `python3 tools/setup/fetch_models.py` | `v3.4-320n.onnx` |
-| 640m (optional) | `nudenet_v3`, `--variant 640m` | [640m.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/640m.onnx) | `v3.4-640m.onnx` |
-| RetinaNet (optional) | `retinanet_v2` | [detector_v2_default_checkpoint.onnx](https://github.com/notAI-tech/NudeNet/releases/download/v0/detector_v2_default_checkpoint.onnx) | `detector_v2_default_checkpoint.onnx` |
-| YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | automatic, the default choice: exported by `fetch_models.py` | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
-| RF-DETR-Seg nano/small/medium (person windows) | `person_backend` `rf_detr_seg` | when chosen at setup: exported by `fetch_models.py --person-backends rf_detr_seg` | `rf-detr-seg-nano.onnx`, `rf-detr-seg-small.onnx`, `rf-detr-seg-medium.onnx` |
+| 320n (default, required) | `nudenet_v3` | always | `v3.4-320n.onnx` |
+| 640m | `nudenet_v3`, `--variant 640m` | with `--extra-models nudenet-640m` | `v3.4-640m.onnx` |
+| RetinaNet | `retinanet_v2` | with `--extra-models nudenet-retinanet` | `detector_v2_default_checkpoint.onnx` |
+| YOLO11n/s/m-seg (person windows) | `person_backend` `yolo11_seg` | the default choice | `yolo11n-seg.onnx`, `yolo11s-seg.onnx`, `yolo11m-seg.onnx` |
+| RF-DETR-Seg nano/small/medium (person windows) | `person_backend` `rf_detr_seg` | when chosen | `rf-detr-seg-nano.onnx`, `rf-detr-seg-small.onnx`, `rf-detr-seg-medium.onnx` |
 
-**320n** is bundled in the [`nudenet` package on PyPI](https://pypi.org/project/nudenet/3.4.2/#files),
-so setup downloads it for you and checks it against a pinned hash. By
-hand: download the 3.4.2 `.whl`, open it as a zip, and copy out
-`nudenet/320n.onnx`.
+`python3 tools/setup/fetch_models.py` does the same as setup's model
+step on its own: `--extra-models nudenet-640m,nudenet-retinanet` (or
+`all`) adds the extra detectors, `--person-backends` picks the person
+backends, `--no-person` skips them, `--no-download` only checks what is
+there. A download that stops partway (a lost connection, a closed
+terminal) is kept and continued the next time.
 
-**640m and RetinaNet you download yourself.** GitHub shows NudeNet's
-repository behind a content warning ("This project may contain offensive
-or objectionable content"), and only signed-in users can accept it:
+**Already have a model file?** Put it in the model folder under the name
+above and run `fetch_models.py` to check it, or use "I already have the
+file" on the app's Models page, which copies any file whose hash matches
+a model and leaves your copy where it is. A file at a model's place that
+is not the pinned one (a different export, a web page saved under the
+model's name) is moved aside to `<name>.bad` and replaced, never used.
 
-1. Sign in to GitHub in your browser
-2. Click the download link above. If the warning page appears, accept it
-   and click the link again
-3. Save the file into `../resources/model/` under the "Save as" name
-4. Run `python3 tools/setup/fetch_models.py` (or re-run setup) to check it
+The person models are for reverse mode's person windows and not needed
+otherwise. An RF-DETR-Seg model has a fixed picture size, its own for
+each size (312, 384 and 432 pixels square for nano, small and medium);
+only the batch size is left free. Each frame is stretched to that
+square, the way Roboflow trains and runs the model.
 
-With the [GitHub CLI](https://cli.github.com/) signed in (`gh auth login`)
-you can skip the browser:
-
-```bash
-gh release download v3.4-weights -R notAI-tech/NudeNet -p 640m.onnx -O ../resources/model/v3.4-640m.onnx
-gh release download v0 -R notAI-tech/NudeNet -p detector_v2_default_checkpoint.onnx -D ../resources/model/
-```
-
-**The person models are exported, not downloaded as ONNX.** They are for
-reverse mode's person windows and not needed otherwise. Ultralytics
-publishes YOLO11-seg (AGPL-3.0) as PyTorch `.pt` files and Roboflow
-publishes RF-DETR-Seg (Apache-2.0, every size) as PyTorch `.pth` files;
-BetaSuite redistributes neither. Setup downloads each file, checks it
-against a pinned hash, and exports it to ONNX in one throwaway
-environment (ultralytics, rfdetr and CPU-only PyTorch, a few hundred MB,
-fetched once into uv's cache) that is deleted afterwards. The export
-itself runs offline, from the checked file only. BetaSuite's own `.venv`
-never gets PyTorch: the models run through onnxruntime like the
-detectors. The exports take a few minutes once the packages are
-downloaded, and need network access to github.com, repo.roboflow.com,
-PyPI and download.pytorch.org (set `BETASUITE_EXPORT_TORCH_INDEX` to use
-a mirror of the last).
-
-An RF-DETR-Seg export has a fixed picture size, its own for each size
-(312, 384 and 432 pixels square for nano, small and medium); only the
-batch size is left free. Each frame is stretched to
-that square, the way Roboflow trains and runs the model.
-
-Setup exports only the person backends you choose. At the question,
+Setup installs only the person backends you choose. At the question,
 type numbers or names (`1`, `2`, `1,2`, `rf_detr_seg`), `all` or
 `none`; Enter takes the default, `yolo11_seg` plus any backend that
-already has some of its files (a half-finished export is finished). With
-`--yes` (`-Yes`), or without a terminal, setup takes that default
-without asking. The question only appears when a model is missing, so
-re-running setup after a complete install does not ask. To add a
-backend later, run `python3 tools/setup/fetch_models.py --person-backends
-rf_detr_seg` (or re-run setup and choose it); models already present are
-only checked, whatever you choose, and nothing is deleted.
-`python3 tools/setup/fetch_models.py --no-export` checks the models
-without exporting. A failed export is
-logged as an error and setup carries on, so the rest of the install
-still completes; re-run setup or `fetch_models.py` to retry. If reverse
-mode has `person_windows` on and the selected size is missing, the
-config check refuses to start and names the missing file. To run reverse
-mode without person windows, set `reverse['person_windows']['enabled'] = False`.
+already has some of its files (a half-finished install is finished).
+With `--yes` (`-Yes`), or without a terminal, setup takes that default
+without asking. The question only appears when a person model is
+missing, so re-running setup after a complete install does not ask.
+Models already present are only checked, whatever you choose, and
+nothing is deleted. A failed download is logged as an error and setup
+carries on, so the rest of the install still completes; re-run setup or
+`fetch_models.py` to continue it. If reverse mode has `person_windows`
+on and the selected size is missing, the config check refuses to start
+and names the missing file. To run reverse mode without person windows,
+set `reverse['person_windows']['enabled'] = False`.
 
-A logged-out download saves GitHub's sign-in page under the `.onnx` name,
-which then fails to load with `INVALID_PROTOBUF`. `fetch_models.py`
-spots that and moves the file to `<name>.bad`.
+Maintainers make new person-model exports with
+`tools/release/export_models.py` and publish the release files with
+`tools/release/prepare_model_assets.py` and `upload_model_assets.py`.
 
 Only the model for the backend selected in `betaconfig.py`
 (`detector_backend['selected']`) is required, plus the selected person
@@ -562,15 +539,15 @@ copy. Run `bash setup.sh`, or `chmod +x setup.sh`.
 
 **`INVALID_PROTOBUF` / "Protobuf parsing failed" loading a model.** The
 file is almost always a saved web page from a redirected download.
-`python3 tools/setup/fetch_models.py` moves it aside and fetches it
-again; for 640m or RetinaNet, download it in a browser if that fails too.
+`python3 tools/setup/fetch_models.py` moves it aside to `<name>.bad`
+and downloads the right file.
 
 **`reverse['person_windows'] is on but the person model ... is missing`.**
-The person-model export didn't finish or was skipped. Re-run setup (or
-`python3 tools/setup/fetch_models.py`) and read `setup.log`, or
-`fetch_models.log` when run by hand, for the step that failed. The
-export needs network access to github.com, repo.roboflow.com, PyPI and
-download.pytorch.org; behind a mirror, set `BETASUITE_EXPORT_TORCH_INDEX`. Reverse mode also
+The person-model download didn't finish or that backend was not chosen.
+Re-run setup (or `python3 tools/setup/fetch_models.py --person-backends
+<backend>`), or install it from the app's Models page, and read
+`setup.log`, or `fetch_models.log` when run by hand, for the step that
+failed. The download needs access to github.com. Reverse mode also
 runs without person windows if you set `reverse['person_windows']['enabled'] = False`.
 
 **Anything else.** `setup.log` has the full output of every command the

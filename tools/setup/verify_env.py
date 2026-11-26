@@ -15,6 +15,7 @@ level goes to the log file; --log-level filters stdout only.
 import argparse
 import importlib
 import importlib.metadata
+import json
 import logging
 import os
 import platform
@@ -45,19 +46,14 @@ logging.addLevelName( TRACE, 'TRACE' )
 LEVELS = { 'trace': TRACE, 'debug': logging.DEBUG, 'info': logging.INFO,
            'warn': logging.WARNING, 'error': logging.ERROR }
 
-# Model files the detector adapters look for. Only the selected backend's
-# model is required to run; the rest are optional.
-MODELS = {
-    'nudenet_v3 / 320n': '../resources/model/v3.4-320n.onnx',
-    'nudenet_v3 / 640m': '../resources/model/v3.4-640m.onnx',
-    'retinanet_v2':      '../resources/model/detector_v2_default_checkpoint.onnx',
-    'person yolo11_seg / n': '../resources/model/yolo11n-seg.onnx',
-    'person yolo11_seg / s': '../resources/model/yolo11s-seg.onnx',
-    'person yolo11_seg / m': '../resources/model/yolo11m-seg.onnx',
-    'person rf_detr_seg / nano':   '../resources/model/rf-detr-seg-nano.onnx',
-    'person rf_detr_seg / small':  '../resources/model/rf-detr-seg-small.onnx',
-    'person rf_detr_seg / medium': '../resources/model/rf-detr-seg-medium.onnx',
-}
+# Model files the detector and person adapters look for, from the model
+# catalog. Only the selected backend's model is required to run; the rest
+# are optional.
+# Read as data: this tool imports no pipeline module (test_logging_contract).
+with open( os.path.join( REPO_ROOT, 'assets', 'models', 'catalog.json' ), encoding='utf-8' ) as _handle:
+    _CATALOG = json.load( _handle )
+MODELS = { '%s%s / %s'%( 'person ' if row['kind'] == 'person' else '', row['backend'], row['variant'] or '-' ):
+           '../resources/model/' + row['file'] for row in _CATALOG['models'] }
 
 DIRS = [
     '../resources/model',
