@@ -282,6 +282,25 @@ class TestCommandLineRecords( BetaTvHarness ):
         self.assertEqual( self.cli.index.item_row( digest )['status'], 'done' )
         self.assertEqual( len( self.cli.index.outputs_of( digest ) ), 1 )
 
+    def test_a_processed_run_keeps_its_timing_and_a_rerun_knows_detection_was_cached( self ):
+        import json
+        clip = os.path.join( self.uncensored, 'clip.mp4' )
+        _build_clip( clip )
+        self.assertEqual( self.run_file( self.uncensored ), 'processed' )
+        for name in os.listdir( self.censored ):
+            os.remove( os.path.join( self.censored, name ) )
+        self.assertEqual( self.run_file( self.uncensored ), 'processed' )
+        rows = self.cli.store.read( 'SELECT timing FROM runs ORDER BY id' )
+        first, second = [ json.loads( row['timing'] ) for row in rows ]
+        self.assertEqual( ( first['detect_cache'], second['detect_cache'] ), ( 'fresh', 'cached' ) )
+        self.assertEqual( ( first['width'], first['height'] ), ( 128, 96 ) )
+        self.assertGreater( first['rendered_frames'], 0 )
+        self.assertGreater( first['sampled_frames'], 0 )
+        self.assertGreater( first['render_seconds'], 0 )
+        self.assertGreaterEqual( first['total_seconds'], first['detect_seconds'] + first['render_seconds'] - 0.01 )
+        import betautils_estimate as bu_estimate
+        self.assertEqual( first['identity'], bu_estimate.identity() )
+
     def test_a_source_moved_by_the_engine_is_one_item_done_with_its_type( self ):
         # Carried from the completed-source move: uncensored_vids/scene/ to
         # source/completed/scene/ keeps the item, its status and its type.

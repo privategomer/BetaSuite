@@ -63,6 +63,7 @@ A job is a list of files run one after another through the same pipeline as `bet
 | `job.cancel` | a queued or paused job is cancelled at once, a running one at its next safe point; the partial outputs of the file it was on are removed, finished outputs and detection caches stay |
 | `job.list` | the jobs the queue remembers: the active one at position 0, the waiting ones in run order, then the ended ones (position null), with their files, counts and overrides |
 | `job.move` | moves a waiting job to another position; it cannot go ahead of the active job, and a position past either end is taken as that end |
+| `job.estimate` | how long the same `files` and `overrides` would take, before submitting, from the timings of earlier comparable runs in the catalog's history; per file and in total, `null` where no comparable run gives a rate (`basis: none`), plus whether an earlier run used the same look (`look_seen`) |
 
 Jobs run one at a time, in queue order: the order submitted unless `job.move` changed it. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
 

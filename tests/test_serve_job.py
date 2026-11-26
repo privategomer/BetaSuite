@@ -565,6 +565,91 @@ class TestListAndMove( _QueueTest ):
                           { 'job': 'nope' } )
 
 
+class TestEstimate( _QueueTest ):
+    """job.estimate through the server: which settings it reads, idle and busy. The arithmetic is in test_estimate."""
+
+    def setUp( self ):
+        super().setUp()
+        import betautils_serve_catalog as bu_serve_catalog
+        import betautils_serve_estimate as bu_serve_estimate
+        self.bu_serve_estimate = bu_serve_estimate
+        patcher = mock.patch.object( bu_serve_catalog, '_open_quietly', return_value=None )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+        self.seen = []
+        real = bu_serve_estimate.answer
+
+        def spy( files, ctx, *rest, **kwargs ):
+            self.seen.append( ctx )
+            return real( files, ctx, *rest, **kwargs )
+
+        patcher = mock.patch.object( bu_serve_estimate, 'answer', side_effect=spy )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+
+    def estimate( self, *names, overrides=None ):
+        data = { 'files': [ self.files[name] for name in names ] }
+        if overrides is not None:
+            data['overrides'] = overrides
+        return self.ok( 'job.estimate', data )
+
+    def test_an_unreadable_file_and_no_history_give_no_estimate( self ):
+        out = self.estimate( 'a.mp4', 'b.mp4' )
+        self.assertEqual( out, { 'files': [ { 'seconds': None, 'detect_cache': None } ] * 2, 'seconds': None,
+                                 'basis': 'none', 'runs': { 'detect': 0, 'render': 0 }, 'look_seen': False } )
+
+    def test_idle_it_reads_the_settings_with_the_overrides_and_changes_nothing( self ):
+        before = ( getattr( betaconfig, 'preview_mode_enabled', False ), betaconfig.encode_preset )
+        self.estimate( 'a.mp4', overrides={ 'preview_mode_enabled': True, 'preview_max_seconds': 7,
+                                            'encode_preset': 'slow' } )
+        [ ctx ] = self.seen
+        self.assertEqual( ( ctx['preview'], ctx['preview_max'] ), ( True, 7 ) )
+        self.assertEqual( ctx['identity']['preset'], getattr( betaconfig, 'preview_encode_preset', 'ultrafast' ) )
+        self.estimate( 'a.mp4', overrides={ 'encode_preset': 'slow' } )
+        self.assertEqual( self.seen[1]['identity']['preset'], 'slow' )
+        self.assertEqual( ( getattr( betaconfig, 'preview_mode_enabled', False ), betaconfig.encode_preset ), before )
+
+    def test_busy_it_uses_the_settings_taken_when_the_queue_became_busy( self ):
+        self.pipeline.auto = False
+        job = self.submit( 'a.mp4', overrides={ 'encode_preset': 'veryslow' } )
+        self.wait_state( job, 'running' )
+        taken = self.server.jobs.estimate_context
+        self.assertIsNotNone( taken )
+        self.estimate( 'b.mp4', overrides={ 'encode_preset': 'slow', 'preview_mode_enabled': True } )
+        [ ctx ] = self.seen
+        self.assertTrue( ctx['preview'] )
+        self.assertEqual( { key: value for key, value in ctx.items() if key not in ( 'preview', 'identity' ) },
+                          { key: value for key, value in taken.items() if key not in ( 'preview', 'identity' ) } )
+        self.assertNotEqual( ctx['identity']['preset'], 'slow', "only the preview overrides apply while busy" )
+        self.pipeline.auto = True
+        for _ in range( 3 ):
+            self.pipeline.release.release()
+        self.wait_state( job, 'completed' )
+        self.assertIsNone( self.server.jobs.estimate_context, "forgotten once the queue is idle" )
+
+    def test_busy_with_no_settings_taken_is_refused_not_evaluated( self ):
+        self.pipeline.auto = False
+        job = self.submit( 'a.mp4' )
+        self.wait_state( job, 'running' )
+        self.server.jobs.estimate_context = None
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ self.files['b.mp4'] ] }, 'config.busy' ),
+                          { 'job': job } )
+        self.assertEqual( self.seen, [] )
+
+    def test_bad_requests( self ):
+        self.assertEqual( self.refused( 'job.estimate', {}, 'command.bad_params' ),
+                          { 'field': 'files', 'reason': 'missing' } )
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ 'a.mp4' ] }, 'command.bad_params' ),
+                          { 'field': 'files', 'reason': 'value' } )
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ self.tmp + '/nope.mp4' ] }, 'job.no_such_file' ),
+                          { 'index': 0 } )
+        self.refused( 'job.estimate', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'encode_crff': 1 } },
+                      'config.unknown_key' )
+        self.refused( 'job.estimate', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'encode_crf': 'x' } },
+                      'config.invalid' )
+        self.assertFalse( self.server.jobs.busy )
+
+
 class TestRaces( _QueueTest ):
     """Windows the independent review found, each held open by the test."""
 

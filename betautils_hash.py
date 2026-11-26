@@ -306,6 +306,11 @@ def read_checkpoint( cache_filename ):
         return None
 
 
+def has_checkpoint( cache_filename ):
+    """Whether cache_filename has a checkpoint on disk, without reading it."""
+    return os.path.exists( _checkpoint_path( cache_filename ) )
+
+
 def clear_checkpoint( cache_filename ):
     """Delete cache_filename's checkpoint once the real cache is written."""
     path = _checkpoint_path( cache_filename )
