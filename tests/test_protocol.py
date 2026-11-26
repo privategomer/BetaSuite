@@ -95,6 +95,11 @@ EXAMPLE_PARAMS = {
     'catalog.item_busy':            { 'item': '0123456789abcdef', 'job': '3f2a' },
     'catalog.missing':              { 'item': '0123456789abcdef' },
     'catalog.thumbnail_failed':     { 'item': '0123456789abcdef', 'reason': 'not_video' },
+    # storage.*
+    'storage.unknown_category':     { 'category': 'everything' },
+    'storage.not_cleanable':        { 'category': 'outputs', 'policy': 'kept' },
+    'storage.needs_confirm':        { 'category': 'detections', 'policy': 'costly' },
+    'storage.busy':                 { 'category': 'detections' },
 }
 
 

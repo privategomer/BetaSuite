@@ -57,7 +57,11 @@
     { "$ref": "#/$defs/catalog.bad_type" },
     { "$ref": "#/$defs/catalog.item_busy" },
     { "$ref": "#/$defs/catalog.missing" },
-    { "$ref": "#/$defs/catalog.thumbnail_failed" }
+    { "$ref": "#/$defs/catalog.thumbnail_failed" },
+    { "$ref": "#/$defs/storage.unknown_category" },
+    { "$ref": "#/$defs/storage.not_cleanable" },
+    { "$ref": "#/$defs/storage.needs_confirm" },
+    { "$ref": "#/$defs/storage.busy" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -763,6 +767,54 @@
           "type": "object",
           "required": [ "item", "reason" ],
           "properties": { "item": { "type": "string" }, "reason": { "enum": [ "not_video", "error" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.unknown_category": {
+      "description": "No such kind of file in the Storage view.",
+      "properties": {
+        "code": { "const": "storage.unknown_category" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.not_cleanable": {
+      "description": "This kind is listed only: outputs, models in use, the catalog, settings, logs and stats are never removed here, and a download cache other tools share is never touched.",
+      "properties": {
+        "code": { "const": "storage.not_cleanable" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.needs_confirm": {
+      "description": "Removing this costs work to redo (detections, shot cuts, unfinished renders), so the request must say confirm: true.",
+      "properties": {
+        "code": { "const": "storage.needs_confirm" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.busy": {
+      "description": "A running job writes this kind of file; try again when the queue is idle.",
+      "properties": {
+        "code": { "const": "storage.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
           "additionalProperties": false
         }
       }

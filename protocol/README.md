@@ -165,6 +165,23 @@ The sampler runs only while the UI watches or a job runs, and costs well under a
 
 Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and runs nvidia-smi once; no model is loaded. Disks are numbered by file system (`volume`), so kinds of folder on one disk share a number, and no path is sent. A safe setting is only one that cannot change what is detected: today `gpu_enabled`, which moves the same model between providers (`hw.gpu_usable`, `hw.gpu_not_usable`). The batch size is left to Optimize, which checks the detections.
 
+## Storage
+
+| Command | Does |
+|---|---|
+| `storage.usage` | what the app's files use, by category, with what removing each costs; free space per kind of folder; where the cache folder comes from |
+| `storage.clean` | remove named categories |
+
+Each category has a policy:
+- `safe`: made again when needed, quickly. Look previews, thumbnails, transcodes, partial or set-aside model files, the setup's own download cache, benchmarks, and a previous cache folder.
+- `costly`: made again when needed, but slowly. Detections and shot cuts.
+- `resume`: unfinished renders, whose parts are rendered again.
+- `shared` and `kept`: listed only. Outputs, models, the catalog, logs, stats, run keys, and a download cache in uv's shared default place, which other tools may use.
+
+`storage.clean` refuses `shared` and `kept` categories (`storage.not_cleanable`). It needs `confirm: true` for `costly` and `resume` ones (`storage.needs_confirm`), and while a job holds the queue it refuses anything the pipeline writes (`storage.busy`). It removes nothing unless every named category may be removed. No paths are sent.
+
+The cache folder comes from `BETASUITE_CACHE_DIR`, else the `cache_dir` setting, else the operating system's cache folder (`cache_source`: `variable`, `setting`, `default`). The folder is found when the engine starts. When it has moved, the old folder is listed as `previous_cache` until it is deleted. Setup keeps its downloads in `setup-downloads` inside the cache folder.
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

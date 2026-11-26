@@ -120,6 +120,11 @@ ERRORS = {
     'catalog.item_busy':            ( 'item', 'job' ),
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
+    # storage.*
+    'storage.unknown_category':     ( 'category', ),
+    'storage.not_cleanable':        ( 'category', 'policy' ),
+    'storage.needs_confirm':        ( 'category', 'policy' ),
+    'storage.busy':                 ( 'category', ),
 }
 
 # Values of the 'reason' parameter.

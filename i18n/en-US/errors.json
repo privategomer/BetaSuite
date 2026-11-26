@@ -62,5 +62,9 @@
  "error.ui.model.dialog_failed": "The file dialog could not open. Try again.",
  "error.ui.video.dialog_failed": "The file dialog could not be opened. The app log has details.",
  "error.ui.video.not_found": "This file could not be opened. Check that it still exists and that you can read it.",
- "error.unknown": "Something went wrong (code {code}). The app log has details."
+ "error.unknown": "Something went wrong (code {code}). The app log has details.",
+ "error.storage.unknown_category": "That kind of file is not one the app knows.",
+ "error.storage.not_cleanable": "These files are kept. They cannot be removed here.",
+ "error.storage.needs_confirm": "Removing these means redoing work. Confirm to go ahead.",
+ "error.storage.busy": "A job is using these files. Try again when your jobs are done."
 }

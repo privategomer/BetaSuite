@@ -513,6 +513,10 @@ blur_edge_margin = True   # blur reads real pixels around the box, so it holds s
 input_delete_probability = 0
 move_completed_sources = False   # move each finished source to ../resources/source/completed/<its folder>/
 
+# --- Where the cache lives ----------------------------------------------
+
+cache_dir = None   # an absolute folder for the cache; None = the OS cache folder. Read at start
+
 # --- Library catalog ----------------------------------------------------
 
 catalog_scan_interval_seconds = 300   # how often the app re-reads its watched folders; 0 only when asked

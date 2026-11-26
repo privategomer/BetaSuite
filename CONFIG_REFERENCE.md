@@ -470,6 +470,19 @@ every layout computes the same keys and reuses the same caches.
 This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
 `images`, betaconst's folders, and the tools' own output folders.
 
+### `cache_dir`
+
+Moves the cache, the large kind, to another folder (an absolute path).
+`None` keeps the operating system's cache folder. Set from the app's
+Storage view or with `tools/setup/local_config.py`. `BETASUITE_CACHE_DIR`
+wins over it, and under `BETASUITE_DATA_ROOT` the 1.x tree's cache is
+used whatever it says. The folders are found when a program starts, so
+a change takes effect at the next start; the folder the app used before
+is then listed in the Storage view as the previous cache folder, to
+delete or keep, and is never moved for you. The setup scripts' own
+download cache (`setup-downloads`) lives in the cache folder too. Moves
+no cache key: detections found in either folder are the same.
+
 ---
 
 ## Detector backend

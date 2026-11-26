@@ -812,6 +812,8 @@ _ENTRIES = [
     S( 'console_palette', 'choice', 'console_palette', 'logging-and-stats', choices=palette_names,
        probe='monochrome' ),
     S( 'stats_enabled', 'bool', 'stats_enabled', 'stats', cli='--stats', probe=False ),
+    S( 'cache_dir', 'path', 'cache_dir', 'cache_dir', nullable=True,
+       none_means="the operating system's cache folder", probe='/elsewhere/betasuite-cache' ),
     S( 'stats_path', 'path', 'stats_path', 'stats', nullable=True,
        none_means='no stats file', probe='../output/stats/other.jsonl' ),
 
@@ -905,6 +907,7 @@ SCREEN_RULES = (
     ( 'person_backend.selected', SCREEN_MODELS ),
     # Resources: how hard the computer works, never what comes out.
     ( 'gpu_enabled', SCREEN_RESOURCES ),
+    ( 'cache_dir', SCREEN_RESOURCES ),
     ( 'cuda_device_id', SCREEN_RESOURCES ),
     ( '*nn_batch_size', SCREEN_RESOURCES ),
     ( 'person_backend.*.batch_size', SCREEN_RESOURCES ),

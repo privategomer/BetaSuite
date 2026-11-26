@@ -243,6 +243,18 @@ if (-not $Uv) {
 }
 Write-Log info "uv: $Uv"
 
+# uv keeps its downloads in the app's own cache folder, not uv's shared
+# default, so the Storage view can list them and delete them safely. A
+# UV_CACHE_DIR set by hand is kept. Python may not exist yet, so the
+# folder is worked out here as betautils_paths does it.
+if (-not $env:UV_CACHE_DIR) {
+    if ($env:BETASUITE_DATA_ROOT) { $AppCache = Join-Path $env:BETASUITE_DATA_ROOT 'output\cache' }
+    elseif ($env:BETASUITE_CACHE_DIR) { $AppCache = $env:BETASUITE_CACHE_DIR }
+    else { $AppCache = Join-Path $env:LOCALAPPDATA 'BetaSuite\cache' }
+    $env:UV_CACHE_DIR = Join-Path $AppCache 'setup-downloads'
+    Write-Log info "uv downloads go to $env:UV_CACHE_DIR (the Storage view can delete them)"
+}
+
 # ---------------------------------------------------------------- python + venv
 $existing = $null
 if (Test-Path $VenvPy) {

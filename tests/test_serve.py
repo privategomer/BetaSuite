@@ -230,7 +230,8 @@ class TestHandshake( _EngineTest ):
                                                'hello', 'hw.detect', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
                                                'models.cancel', 'models.import', 'models.install', 'models.list',
                                                'models.remove', 'models.use',
-                                               'ping', 'preview.look', 'resources.watch', 'shutdown' ] )
+                                               'ping', 'preview.look', 'resources.watch', 'shutdown', 'storage.clean',
+                                               'storage.usage' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
                                              'job.decision', 'job.error', 'catalog.changed', 'models.state',
                                              'models.progress', 'resource.sample', 'governor.change' ] )
