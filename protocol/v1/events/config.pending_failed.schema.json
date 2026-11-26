@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/config.pending_failed.schema.json",
+  "title": "config.pending_failed",
+  "description": "A settings change made while jobs ran was not written: it no longer passes the checks (the config changed under it). error is what config.set would have answered.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id",
+        "error"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "$ref": "https://betasuite.invalid/protocol/v1/errors.schema.json"
+        }
+      }
+    }
+  }
+}

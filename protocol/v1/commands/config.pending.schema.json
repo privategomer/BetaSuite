@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.pending.schema.json",
+  "title": "config.pending",
+  "description": "The settings changes waiting for the jobs to finish (config.set or config.reset with when: after_jobs), oldest first. They are kept in the state folder, so a restart keeps them; an engine that starts with some waiting writes them at once.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "pending"
+      ],
+      "properties": {
+        "pending": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "values",
+              "resets",
+              "at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "values": {
+                "type": "object"
+              },
+              "resets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "at": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
