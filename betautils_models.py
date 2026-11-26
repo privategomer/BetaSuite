@@ -154,6 +154,31 @@ def license_for( row, catalog=None ):
     return ( catalog or load() )['licenses'][ row['license'] ]
 
 
+MISSING_FILE = 'missing'
+
+
+def file_identity( config_path ):
+    """
+    The SHA-256 a model's detections and masks are keyed on.
+
+    The file's own hash when it is there (memoised, so only the first
+    look reads it), so a different file at the same path never reuses
+    old detections. When it is not there yet, the catalog's pinned hash
+    for that path, which the installed file will have; so keys can be
+    worked out, and stay the same, before a model is installed. A path
+    outside the catalog with no file keys as 'missing'.
+    """
+    path = bu_paths.resolve( config_path ) if config_path else None
+    if path and os.path.isfile( path ):
+        try:
+            import betautils_hash as bu_hash
+            return bu_hash.sha256_for_file( path )
+        except OSError:
+            pass
+    row = entry_for_path( config_path )
+    return row['sha256'] if row is not None else MISSING_FILE
+
+
 # ---------------------------------------------------------------------------
 # Hardware default
 # ---------------------------------------------------------------------------
