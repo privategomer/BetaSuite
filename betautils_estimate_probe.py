@@ -8,14 +8,18 @@ of the chosen file, through the code a run uses:
 
   detect   the selected detector on the frames a run would sample, at
            every detection size, in its batch size; decode included,
-           model loading not
-  render   betautils_render.render_video on the same slice with no
-           boxes, into a scratch folder that is removed afterwards
+           model loading not. The first batch is not timed: it pays the
+           runtime's one-off warm-up, which a whole run spreads thin
+  render   betautils_render.render_video with no boxes on a short and a
+           long slice, into a scratch folder that is removed afterwards.
+           The rate is the long slice's extra frames over its extra time,
+           so the encoder's start-up, which a short slice is mostly made
+           of, drops out
 
 Nothing is written to the caches, the history, the stats or the output
-folder. The rates are rougher than a run's (a short slice pays the
-encoder's start-up cost, and censoring nothing skips drawing), so they
-stand in only until the first real run gives the history its own.
+folder. The rates are rougher than a run's (censoring nothing skips drawing, and
+a few seconds are one sample), so they stand in only until the first
+real run gives the history its own.
 """
 
 import os
@@ -35,10 +39,19 @@ def slice_for( duration, seconds=PROBE_SECONDS ):
 
 
 def detect_rate( source, session, sizes, sample_fps, batch_size, offset, length, detector, clock=time.perf_counter ):
-    """Sampled frames per second over every size, or None when nothing was sampled."""
+    """Sampled frames per second over every size after the first batch, or None when nothing was timed."""
     import betautils_video as bu_video
     frames = 0
-    started = clock()
+    started = None
+
+    def run( batch, times, size ):
+        nonlocal frames, started
+        detector.raw_boxes_for_imgs( batch, size, session, times )
+        if started is None:
+            started = clock()       # the warm-up batch ends here; the timing starts
+        else:
+            frames += len( batch )
+
     for size in sizes:
         batch, times = [], []
         for _index, timestamp, frame in bu_video.iter_sampled_frames(
@@ -47,31 +60,45 @@ def detect_rate( source, session, sizes, sample_fps, batch_size, offset, length,
             batch.append( frame )
             times.append( timestamp )
             if len( batch ) >= batch_size:
-                detector.raw_boxes_for_imgs( batch, size, session, times )
-                frames += len( batch )
+                run( batch, times, size )
                 batch, times = [], []
         if batch:
-            detector.raw_boxes_for_imgs( batch, size, session, times )
-            frames += len( batch )
+            run( batch, times, size )
+    if not frames:
+        return None
     elapsed = clock() - started
-    return frames / elapsed if frames and elapsed > 0 else None
+    return frames / elapsed if elapsed > 0 else None
+
+
+# The short slice's share of the long one.
+SHORT_SLICE = 1.0 / 3.0
 
 
 def render_rate( source, preset, offset, length, logger, clock=time.perf_counter, render=None ):
-    """Pixel-frames per second for a render of the slice with nothing to censor, or None."""
+    """Pixel-frames per second for a render with nothing to censor, start-up taken out, or None."""
     import betautils_render as bu_render
     render = render or bu_render.render_video
     folder = tempfile.mkdtemp( prefix='betasuite-probe-' )
-    try:
+    fps = float( source.vid_fps or 0 )
+    pixels = int( source.width or 0 ) * int( source.height or 0 )
+
+    def timed( name, seconds ):
         started = clock()
-        render( source, [], os.path.join( folder, 'probe.mkv' ), os.path.join( folder, 'probe.mp4' ), preset,
-                True, False, offset, length, logger )
-        elapsed = clock() - started
+        render( source, [], os.path.join( folder, name + '.mkv' ), os.path.join( folder, name + '.mp4' ), preset,
+                True, False, offset, seconds, logger )
+        return clock() - started, int( round( seconds * fps ) )
+
+    try:
+        short_time, short_frames = timed( 'short', length * SHORT_SLICE )
+        long_time, long_frames = timed( 'long', length )
     finally:
         shutil.rmtree( folder, ignore_errors=True )
-    frames = int( round( length * float( source.vid_fps or 0 ) ) )
-    pixels = int( source.width or 0 ) * int( source.height or 0 )
-    return frames * pixels / elapsed if frames and pixels and elapsed > 0 else None
+    if not pixels or not long_frames:
+        return None
+    if long_time > short_time:
+        return ( long_frames - short_frames ) * pixels / ( long_time - short_time )
+    # The two did not differ the right way (a noisy machine): the long one alone.
+    return long_frames * pixels / long_time if long_time > 0 else None
 
 
 def probe( path, file_hash, session, ctx, logger ):

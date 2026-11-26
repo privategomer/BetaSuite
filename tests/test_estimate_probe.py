@@ -61,33 +61,56 @@ class TestRates( unittest.TestCase ):
         import types
         return types.SimpleNamespace( cap='cap', vid_fps=fps, num_frames=frames, width=width, height=height )
 
-    def test_detect_rate_counts_every_size_in_batches( self ):
+    def test_detect_rate_counts_every_size_in_batches_after_the_warm_up( self ):
         detector = _Detector()
         frames = [ ( index, index / 5.0, 'frame' ) for index in range( 7 ) ]
         with mock.patch( 'betautils_video.iter_sampled_frames', side_effect=lambda *a, **k: iter( frames ) ):
+            # The clock starts after the first batch, so its 3 frames are not counted.
             rate = bu_probe.detect_rate( self.source(), 's', [ 320, 640 ], 5, 3, 0.0, 3.0, detector,
-                                         clock=_Clock( 10.0, 17.0 ) )
+                                         clock=_Clock( 10.0, 15.5 ) )
         self.assertEqual( detector.batches, [ ( 320, 3 ), ( 320, 3 ), ( 320, 1 ), ( 640, 3 ), ( 640, 3 ), ( 640, 1 ) ] )
-        self.assertEqual( rate, 14 / 7.0 )
+        self.assertEqual( rate, 11 / 5.5 )
 
-    def test_detect_rate_of_nothing_is_none( self ):
-        with mock.patch( 'betautils_video.iter_sampled_frames', side_effect=lambda *a, **k: iter( [] ) ):
+    def test_detect_rate_with_no_time_passed_is_none( self ):
+        frames = [ ( index, index / 5.0, 'frame' ) for index in range( 7 ) ]
+        with mock.patch( 'betautils_video.iter_sampled_frames', side_effect=lambda *a, **k: iter( frames ) ):
             self.assertIsNone( bu_probe.detect_rate( self.source(), 's', [ 320 ], 5, 3, 0.0, 3.0, _Detector(),
-                                                     clock=_Clock( 1.0, 2.0 ) ) )
+                                                     clock=_Clock( 4.0, 4.0 ) ) )
 
-    def test_render_rate_is_pixel_frames_per_second_and_its_folder_is_removed( self ):
-        seen = []
+    def test_detect_rate_of_only_a_warm_up_or_nothing_is_none( self ):
+        for frames in ( [], [ ( 0, 0.0, 'frame' ) ] ):
+            with mock.patch( 'betautils_video.iter_sampled_frames', side_effect=lambda *a, **k: iter( frames ) ):
+                self.assertIsNone( bu_probe.detect_rate( self.source(), 's', [ 320 ], 5, 3, 0.0, 3.0, _Detector(),
+                                                         clock=_Clock( 1.0, 2.0 ) ) )
 
+    def renderer( self, seen ):
         def render( source, boxes, intermediate, final, preset, preview, unlimited, offset, length, logger ):
             seen.append( ( os.path.dirname( final ), boxes, preset, preview, offset, length ) )
             with open( final, 'w' ) as handle:
                 handle.write( 'x' )
+        return render
 
-        rate = bu_probe.render_rate( self.source(), 'fast', 1.0, 2.0, None, clock=_Clock( 5.0, 9.0 ), render=render )
-        self.assertEqual( rate, 20 * 100 * 50 / 4.0 )
-        [ ( folder, boxes, preset, preview, offset, length ) ] = seen
-        self.assertEqual( ( boxes, preset, preview, offset, length ), ( [], 'fast', True, 1.0, 2.0 ) )
-        self.assertFalse( os.path.exists( folder ) )
+    def test_render_rate_takes_the_start_up_out_and_its_folder_is_removed( self ):
+        seen = []
+        # 3 s at 10 fps: a 1 s slice in 2.0 s (mostly start-up), the 3 s one in 3.0 s.
+        rate = bu_probe.render_rate( self.source(), 'fast', 1.0, 3.0, None, clock=_Clock( 5.0, 7.0, 10.0, 13.0 ),
+                                     render=self.renderer( seen ) )
+        self.assertEqual( rate, ( 30 - 10 ) * 100 * 50 / ( 3.0 - 2.0 ) )
+        self.assertEqual( [ ( boxes, preset, preview, offset, length ) for _f, boxes, preset, preview, offset, length in seen ],
+                          [ ( [], 'fast', True, 1.0, 1.0 ), ( [], 'fast', True, 1.0, 3.0 ) ] )
+        self.assertFalse( os.path.exists( seen[0][0] ) )
+
+    def test_render_rate_falls_back_to_the_long_slice_when_the_two_do_not_differ( self ):
+        rate = bu_probe.render_rate( self.source(), 'fast', 1.0, 3.0, None, clock=_Clock( 5.0, 8.0, 10.0, 12.0 ),
+                                     render=self.renderer( [] ) )
+        self.assertEqual( rate, 30 * 100 * 50 / 2.0 )
+        rate = bu_probe.render_rate( self.source(), 'fast', 1.0, 3.0, None, clock=_Clock( 5.0, 7.0, 10.0, 12.0 ),
+                                     render=self.renderer( [] ) )
+        self.assertEqual( rate, 30 * 100 * 50 / 2.0 )
+
+    def test_render_rate_of_a_picture_with_no_size_is_none( self ):
+        self.assertIsNone( bu_probe.render_rate( self.source( width=0 ), 'fast', 1.0, 3.0, None,
+                                                 clock=_Clock( 5.0, 6.0, 7.0, 9.0 ), render=self.renderer( [] ) ) )
 
     def test_a_video_with_no_length_measures_nothing( self ):
         import types
