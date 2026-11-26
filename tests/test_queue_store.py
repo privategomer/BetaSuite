@@ -51,9 +51,30 @@ class _Kept( _QueueTest ):
         self.server.jobs = self.new_queue()
 
     def _stop( self ):
+        self.stop_releasing()
+
+    def stop_releasing( self ):
+        """
+        stop_jobs, letting a step that waits for its release see the stop.
+        Permits go out only while the stop is pending, and any left over are
+        taken back, so none lets a later job's step through early.
+        """
         import threading
-        threading.Timer( 0.05, lambda: [ self.pipeline.release.release() for _ in range( 5 ) ] ).start()
-        self.server.stop_jobs()
+        done = threading.Event()
+
+        def free():
+            while not done.wait( 0.02 ):
+                self.pipeline.release.release()
+
+        helper = threading.Thread( target=free, daemon=True )
+        helper.start()
+        try:
+            self.server.stop_jobs()
+        finally:
+            done.set()
+            helper.join()
+        while self.pipeline.release.acquire( blocking=False ):
+            pass
 
     def new_queue( self ):
         return bu_serve_job.JobQueue( self.server.send_event, self.logger, pipeline=self.pipeline,
@@ -76,10 +97,7 @@ class _Kept( _QueueTest ):
 
     def restart( self, rows=None ):
         """The engine stops and a new one makes its queue from the file (rows, when given, written in between)."""
-        # A step waiting for its release sees the stop as soon as it is let go.
-        import threading
-        threading.Timer( 0.05, lambda: [ self.pipeline.release.release() for _ in range( 5 ) ] ).start()
-        self.server.stop_jobs()
+        self.stop_releasing()
         if rows is not None:
             bu_queue_store.save( rows, self.path )
         self.pipeline.started.clear()
@@ -93,6 +111,7 @@ class TestWhatIsWritten( _Kept ):
         self.pipeline.auto = False
         first = self.submit( 'a.mp4', 'b.mp4', overrides={ 'encode_crf': 30 } )
         second = self.submit( 'c.mp4' )
+        self.wait_saved( lambda rows: len( rows ) == 2, "both jobs" )
         saved = self.saved()
         self.assertEqual( [ row['job'] for row in saved ], [ first, second ] )
         self.assertEqual( saved[0]['files'], [ self.files['a.mp4'], self.files['b.mp4'] ] )
