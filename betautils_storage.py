@@ -8,9 +8,12 @@ much it uses, and what removing it costs:
   safe       made again by itself when needed, quickly: look previews,
              thumbnails, transcodes, partial or set-aside model files,
              the setup download cache, a previous cache folder
-  costly     made again by itself when needed, but slowly: detections
-             (every video is detected again, hours of GPU time for a
-             library) and shot cuts
+  costly     slow to get back: detections and shot cuts (made again by
+             themselves when needed: every video is detected again,
+             hours of GPU time for a library), and benchmark results
+             (Optimize's and the bench tools' measurements, the evidence
+             behind the settings in use; nothing makes them again, only
+             running Optimize measures again)
   resume     unfinished renders: removing them means those parts are
              rendered again
   shared     not the app's alone (a download cache other tools use too):
@@ -102,7 +105,7 @@ def categories( previous_cache=None, shared_download_cache=None ):
         Category( 'catalog', 'data', KEPT, [ bu_catalog_store.default_path() ] ),
         Category( 'logs', 'state', KEPT, [ os.path.join( bu_paths.kind_dir( 'state' ), 'logs' ) ] ),
         Category( 'stats', 'state', KEPT, [ os.path.join( bu_paths.kind_dir( 'state' ), 'stats' ) ] ),
-        Category( 'benchmarks', 'state', SAFE, [ betaconst.benchmark_dir ] ),
+        Category( 'benchmarks', 'state', COSTLY, [ betaconst.benchmark_dir ] ),
         Category( 'run_keys', 'cache', KEPT, [ betaconst.run_key_dir, betaconst.file_hash_cache_path ] ),
     ]
     if previous_cache:
