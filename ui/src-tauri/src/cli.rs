@@ -9,7 +9,7 @@ use log::LevelFilter;
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
-                 [--measure-startup FILE] [--view player|what-to-hide|settings|all-settings]
+                 [--measure-startup FILE] [--view player|what-to-hide|models|settings|all-settings]
                  [--search TEXT] [--help-topic ANCHOR]
 
   --log-level LEVEL      log file level (default info)
@@ -21,7 +21,7 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
   --open VIDEO           play this video at once, muted
   --measure-startup FILE write the time of each startup step to FILE as JSON,
                          then close (with --open, after its first frame)
-  --view VIEW            open on this view: player (default), what-to-hide, settings or all-settings
+  --view VIEW            open on this view: player (default), what-to-hide, models, settings or all-settings
   --search TEXT          start All Settings with this search filled in
   --help-topic ANCHOR    open the help panel at this section of the reference
 
@@ -116,12 +116,12 @@ where
                 options.measure_startup = Some(PathBuf::from(value("--measure-startup")?))
             }
             "--view" => match value("--view")?.as_str() {
-                view @ ("player" | "what-to-hide" | "settings" | "all-settings") => {
+                view @ ("player" | "what-to-hide" | "models" | "settings" | "all-settings") => {
                     options.view = Some(view.to_owned())
                 }
                 other => {
                     return Err(format!(
-                        "unknown view {other:?}; use player, what-to-hide, settings or all-settings"
+                        "unknown view {other:?}; use player, what-to-hide, models, settings or all-settings"
                     ))
                 }
             },

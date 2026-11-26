@@ -10,6 +10,7 @@ mod engine;
 mod linux;
 mod logging;
 mod look;
+mod models;
 mod paths;
 mod startup;
 mod unsaved;
@@ -373,6 +374,7 @@ pub fn run() -> i32 {
             engine_restart,
             ui_mark,
             video::pick_video,
+            models::pick_model,
             look::look_image,
             set_unsaved,
             close_window

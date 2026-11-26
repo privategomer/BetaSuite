@@ -10,6 +10,7 @@ What each test prevents:
     when a usable GPU is there; a GPU counted as usable from only one of
     the two signals (CUDA provider, nvidia-smi)
   - the page showing the wrong model as in use
+  - a model the Models page lists with no name or description
 """
 
 import copy
@@ -110,6 +111,19 @@ class TestCatalogMatchesAdapters( unittest.TestCase ):
         for row in bu_models.entries():
             expected = 'person' if row['backend'] in ( 'yolo11_seg', 'rf_detr_seg' ) else 'detector'
             self.assertEqual( row['kind'], expected, row['id'] )
+
+
+class TestCatalogIsWorded( unittest.TestCase ):
+
+    def test_every_model_has_a_name_and_description_in_the_app( self ):
+        import json
+        with open( os.path.join( os.path.dirname( bu_models.CATALOG_PATH ), '..', '..', 'i18n', 'en-US', 'ui.json' ),
+                   encoding='utf-8' ) as handle:
+            messages = json.load( handle )
+        for row in bu_models.entries():
+            part = row['id'].replace( '-', '_' )
+            for kind in ( 'name', 'desc' ):
+                self.assertIn( 'models.%s.%s'%( kind, part ), messages, row['id'] )
 
 
 class TestHardwareDefault( unittest.TestCase ):

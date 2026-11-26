@@ -6,6 +6,7 @@ import { t } from './i18n/format';
 import { describeError, log } from './log';
 import { StyleEditor } from './hide/StyleEditor';
 import { WhatToHide } from './hide/WhatToHide';
+import { ModelsView } from './models/ModelsView';
 import { AllSettings } from './settings/AllSettings';
 import { SettingsView } from './settings/SettingsView';
 import { registerStyleEditor } from './settings/structured';
@@ -22,11 +23,12 @@ const HelpPanel = lazy( () => import( './help/HelpPanel' ).then( ( module ) => (
 
 registerStyleEditor( 'censor_style', StyleEditor );
 
-type View = 'player' | 'what_to_hide' | 'settings' | 'all_settings';
+type View = 'player' | 'what_to_hide' | 'models' | 'settings' | 'all_settings';
 
 function startView( view: StartupInfo[ 'view' ] | undefined ): View {
   switch ( view ) {
     case 'what-to-hide': return 'what_to_hide';
+    case 'models': return 'models';
     case 'settings': return 'settings';
     case 'all-settings': return 'all_settings';
     default: return 'player';
@@ -93,6 +95,7 @@ export function App( { startup }: AppProps ) {
         <nav className="app-nav" aria-label={t( 'nav.label' )}>
           {tab( 'player', t( 'nav.player' ) )}
           {tab( 'what_to_hide', t( 'nav.what_to_hide' ) )}
+          {tab( 'models', t( 'nav.models' ) )}
           {tab( 'settings', t( 'nav.settings' ) )}
           {tab( 'all_settings', t( 'nav.all_settings' ) )}
         </nav>
@@ -104,6 +107,7 @@ export function App( { startup }: AppProps ) {
           <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} />
         </div>
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}
+        {view === 'models' && <ModelsView />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
         {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}
       </main>
