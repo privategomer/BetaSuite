@@ -55,6 +55,7 @@
  "error.ui.files.save_failed": "The result could not be saved there ({os_error}). Choose another place, or check that there is room.",
  "error.ui.look.unreadable": "A preview picture could not be read. It is drawn again when the screen next asks for it.",
  "error.ui.strip.unreadable": "The scrub pictures for this video could not be read. Dragging still works, just without pictures.",
+ "error.ui.tray.unavailable": "This desktop has no tray to keep the app in, so the window stays open while the job runs.",
  "error.ui.video.dialog_failed": "The file dialog could not be opened. The app log has details.",
  "error.ui.video.not_found": "This file could not be opened. Check that it still exists and that you can read it.",
  "error.unknown": "Something went wrong (code {code}). The app log has details."

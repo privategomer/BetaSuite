@@ -6,7 +6,7 @@ The desktop UI: a Tauri 2 shell (Rust, `src-tauri/`) around a React and TypeScri
 
 - Node 22.13 or later with npm. The Tauri CLI comes with the npm packages.
 - Rust 1.90 or later. `src-tauri/rust-toolchain.toml` pins the version CI uses; rustup installs it on its own, and a distro toolchain of the same version works too. `clippy` and `rustfmt` for the checks.
-- Linux: the WebKitGTK 4.1 and GTK 3 development packages (`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev` on Ubuntu), plus GStreamer with an H.264 decoder (`gstreamer1.0-plugins-bad` for hardware decoding, `gstreamer1.0-libav` for software) to play video.
+- Linux: the WebKitGTK 4.1 and GTK 3 development packages (`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev` on Ubuntu), plus GStreamer with an H.264 decoder (`gstreamer1.0-plugins-bad` for hardware decoding, `gstreamer1.0-libav` for software) to play video, and `libayatana-appindicator3-1` for the tray icon while a job runs in the background (without it the app keeps its window open during a job).
 - Windows: the WebView2 runtime (part of Windows 11) and, to build, the MSVC toolchain.
 
 ## Build and run
