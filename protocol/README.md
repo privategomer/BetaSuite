@@ -63,7 +63,7 @@ A job is a list of files run one after another through the same pipeline as `bet
 | `job.cancel` | a queued or paused job is cancelled at once, a running one at its next safe point; the partial outputs of the file it was on are removed, finished outputs and detection caches stay |
 | `job.list` | the jobs the queue remembers: the active one at position 0, the waiting ones in run order, then the ended ones (position null), with their files, counts and overrides |
 | `job.move` | moves a waiting job to another position; it cannot go ahead of the active job, and a position past either end is taken as that end |
-| `job.estimate` | how long the same `files` and `overrides` would take, before submitting, from the timings of earlier comparable runs in the catalog's history; per file and in total, `null` where no comparable run gives a rate (`basis: none`), plus whether an earlier run used the same look (`look_seen`) |
+| `job.estimate` | how long the same `files` and `overrides` would take, before submitting, from the timings of earlier comparable runs in the catalog's history; per file and in total, `null` where no comparable run gives a rate (`basis: none`), plus whether an earlier run used the same look (`look_seen`). With no comparable run and the queue idle, it starts a short probe of this machine (`probing`, then the `job.probed` event); jobs wait for it, and its rates fill in where the history has none (`basis: probe`) |
 
 Jobs run one at a time, in queue order: the order submitted unless `job.move` changed it. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
 
@@ -78,6 +78,7 @@ A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probabi
 | `job.progress` | a file's stage (`detect` per size, `persons`, `render`): done, total, rate |
 | `job.decision` | a choice the engine made about a file, as a code: the structure profile and the rule that chose it, an output already present, a source that is not a video |
 | `job.error` | a file that failed (`file.failed`, the job goes on), or the code that stopped the job, just before its `stopped` state |
+| `job.probed` | the estimate probe a `job.estimate` started has ended (`ok` when it measured a rate); asking `job.estimate` again gives the measured estimate |
 
 Order: `job.submit`'s result comes before the job's first event. A file's events come between its `started` and its ending; a job's last event is its final `job.state`. When the last job in the queue sends its final `job.state`, the run lock is already given back and `config.set` is accepted, so a client can start a command-line run or change settings as soon as it reads it. `job.progress` is coalesced to a few per second per job (the latest of each stage), and is the only event that can be dropped. A full disk stops the job and every job queued behind it with `disk.full`. When the engine shuts down (`shutdown`, end of input, a signal), a running job stops at its next safe point with `engine.stopping` and its checkpoints kept, so submitting it again continues where it was.
 

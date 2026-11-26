@@ -61,7 +61,7 @@ EXIT_TERMINATED = 143
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
-EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
+EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error', 'job.probed',
            'catalog.changed' )
 
 # The longest piece of a message the trace log shows.

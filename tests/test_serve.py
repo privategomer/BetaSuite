@@ -228,7 +228,7 @@ class TestHandshake( _EngineTest ):
                                                'hello', 'job.cancel', 'job.estimate', 'job.list', 'job.move', 'job.pause', 'job.resume', 'job.submit',
                                                'ping', 'preview.look', 'shutdown' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
-                                             'job.decision', 'job.error', 'catalog.changed' ] )
+                                             'job.decision', 'job.error', 'job.probed', 'catalog.changed' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )
         self.assertTrue( engine.request( 'ping' )['ok'] )

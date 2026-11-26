@@ -586,6 +586,10 @@ class TestEstimate( _QueueTest ):
         patcher = mock.patch.object( bu_serve_estimate, 'answer', side_effect=spy )
         patcher.start()
         self.addCleanup( patcher.stop )
+        # The probe has its own tests (test_estimate_probe); here it never starts.
+        patcher = mock.patch.object( bu_serve_estimate, 'maybe_probe' )
+        patcher.start()
+        self.addCleanup( patcher.stop )
 
     def estimate( self, *names, overrides=None ):
         data = { 'files': [ self.files[name] for name in names ] }
@@ -596,7 +600,8 @@ class TestEstimate( _QueueTest ):
     def test_an_unreadable_file_and_no_history_give_no_estimate( self ):
         out = self.estimate( 'a.mp4', 'b.mp4' )
         self.assertEqual( out, { 'files': [ { 'seconds': None, 'detect_cache': None } ] * 2, 'seconds': None,
-                                 'basis': 'none', 'runs': { 'detect': 0, 'render': 0 }, 'look_seen': False } )
+                                 'basis': 'none', 'runs': { 'detect': 0, 'render': 0 }, 'look_seen': False,
+                                 'probing': False, 'missing': [ 'detect', 'render' ] } )
 
     def test_idle_it_reads_the_settings_with_the_overrides_and_changes_nothing( self ):
         before = ( getattr( betaconfig, 'preview_mode_enabled', False ), betaconfig.encode_preset )
