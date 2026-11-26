@@ -61,8 +61,10 @@ A job is a list of files run one after another through the same pipeline as `bet
 | `job.pause` | the running job stops at its next safe point and the queue waits behind it; detection checkpoints and finished render chunks are kept |
 | `job.resume` | the paused job runs again: the file it paused in continues from its checkpoints, finished files are not run again |
 | `job.cancel` | a queued or paused job is cancelled at once, a running one at its next safe point; the partial outputs of the file it was on are removed, finished outputs and detection caches stay |
+| `job.list` | the jobs the queue remembers: the active one at position 0, the waiting ones in run order, then the ended ones (position null), with their files, counts and overrides |
+| `job.move` | moves a waiting job to another position; it cannot go ahead of the active job, and a position past either end is taken as that end |
 
-Jobs run one at a time, in the order submitted. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
+Jobs run one at a time, in queue order: the order submitted unless `job.move` changed it. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
 
 A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probability` above 0, `job.nothing_to_render`) refuse `job.submit` when the queue is idle. A job submitted behind another is checked when it starts, and stops with that code if it fails.
 
