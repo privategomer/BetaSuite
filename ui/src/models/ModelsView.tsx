@@ -87,6 +87,14 @@ function ModelItem( props: RowProps ) {
         {' · '}
         {t( 'models.license', { license: row.license.spdx, project: row.license.project } )}
       </p>
+      {/* The names the settings, SETUP.md and the tools use, since the page's
+          small, medium and large do not always match them (RF-DETR's are
+          nano, small and medium). */}
+      <p className="model-facts">
+        {row.variant === null
+          ? t( 'models.setting_backend', { backend: row.backend } )
+          : t( 'models.setting_variant', { backend: row.backend, variant: row.variant } )}
+      </p>
       <div className="model-status">
         <span className={`model-state state-${downloading ? 'downloading' : row.state}`}>{stateText( row, progress )}</span>
         {progress !== undefined && progress !== null && (
@@ -248,8 +256,17 @@ export function ModelsView() {
     if ( path === null ) {
       return null;
     }
-    const id = await importModel( path );
-    return { tone: 'ok', text: t( 'models.notice.imported', { name: modelName( id ) } ) };
+    try {
+      const id = await importModel( path );
+      return { tone: 'ok', text: t( 'models.notice.imported', { name: modelName( id ) } ) };
+    } catch ( error: unknown ) {
+      // The engine answers a path with no file behind it as a bad
+      // parameter; for the person who picked it, the file is not there.
+      if ( isEngineError( error ) && error.code === 'command.bad_params' && error.params[ 'field' ] === 'path' ) {
+        return { tone: 'problem', text: t( 'models.import.not_found' ) };
+      }
+      throw error;
+    }
   } );
   const recommended = ( current: ModelsList ) => {
     const id = current.recommended.detector;
