@@ -62,7 +62,7 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error', 'job.probed',
-           'catalog.changed' )
+           'catalog.changed', 'catalog.strip_ready' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -451,6 +451,11 @@ for _name, _handler in _CATALOG_HANDLERS.items():
 # job.estimate
 from betautils_serve_estimate import HANDLERS as _ESTIMATE_HANDLERS   # noqa: E402
 for _name, _handler in _ESTIMATE_HANDLERS.items():
+    register( _name, _handler )
+
+# catalog.strip
+from betautils_serve_strip import HANDLERS as _STRIP_HANDLERS   # noqa: E402
+for _name, _handler in _STRIP_HANDLERS.items():
     register( _name, _handler )
 
 

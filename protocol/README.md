@@ -106,6 +106,7 @@ The library: every video the engine knows, identified by its content (the 16-cha
 | `catalog.pin_type` | pin an item's video type, or unpin it (Auto) |
 | `catalog.thumbnail` | an item's blurred thumbnail, or with `reveal` its clear frame, made in memory and written nowhere; or its censored output's thumbnail |
 | `catalog.forget` | remove an item and its history; its files are not touched |
+| `catalog.strip` | a video's scrub strip for the player (by `path`): small frames at known times, in a JPEG in the cache folder; answered at once with what is on disk, while the missing pass is built in the background |
 
 **Watching.** A pass lists each watched folder and reads each file's size, modification time and inode, never its bytes. A rename or a move on one disk is followed by inode; anything else is hashed once it has held still for a few seconds, and found again as the same item when its content is known. Hashing waits while a run is on (a job of this engine, or any run holding the library's run lock, such as the command line). Passes run at start, every `catalog_scan_interval_seconds` (0: only when asked), never sooner than ten times the last pass's length, and on `catalog.rescan`. A new catalog watches the library's `source` and `uncensored_vids` folders and the 1.x video folders a migration recorded, each with its folder rule. A file named as a censored output is an output, wherever it sits.
 
@@ -117,7 +118,9 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 **Thumbnails.** Only a source's blurred thumbnail (24 pixels on its long side, blurred) is ever written to disk. `reveal` decodes the frame again into memory and answers it; it is written nowhere. A censored output's thumbnail is stored like any other.
 
-`catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped.
+**Scrub strips** are built in two passes. The keyframes pass decodes only keyframes, which is quick even on long-GOP 4K, so the player has pictures within seconds. When keyframes are sparser than one every 2 seconds, an even pass follows: the whole stream is decoded and a frame kept at an even interval, at most 600. The even pass waits while a run is on. Each pass's end is announced by `catalog.strip_ready`. A file the catalog lists as a present censored output gets a clear strip. Any other file's frames are shrunk and blurred as a source thumbnail is before anything is written.
+
+`catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped. `catalog.strip_ready` says a strip pass for a `path` was written (`ok`) or could not be made.
 
 ## Files
 
