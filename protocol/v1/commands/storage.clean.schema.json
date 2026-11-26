@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/storage.clean.schema.json",
+  "title": "storage.clean",
+  "description": "Remove the named categories. Only safe, costly and resume ones can be removed (storage.not_cleanable); costly and resume need confirm: true (storage.needs_confirm); a category a running job writes is refused while the queue is busy (storage.busy). Nothing is removed unless every named category may be. freed says what each removal freed.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "categories"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "freed"
+      ],
+      "properties": {
+        "freed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "bytes",
+              "files"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

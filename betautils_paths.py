@@ -231,12 +231,81 @@ def _xdg_base( environ, name, default ):
     return posixpath.normpath( value ) if value and posixpath.isabs( value ) else default
 
 
-def _os_kind_dir( kind, platform, environ ):
+# The cache folder setting (cache_dir in betaconfig_local.py), read here
+# because the paths are needed before betaconfig is loaded (setup, the
+# launchers, where.py). The file is read as Python literals, never run,
+# as betautils_local reads it; the same file BETASUITE_LOCAL_CONFIG names.
+LOCAL_CONFIG_ENV_VAR = 'BETASUITE_LOCAL_CONFIG'
+LOCAL_CONFIG_FILE = 'betaconfig_local.py'
+CACHE_SETTING = 'cache_dir'
+_cache_setting_memo = {}
+
+
+def _local_config_file( platform, environ ):
+    value = environ.get( LOCAL_CONFIG_ENV_VAR )
+    if value is not None:
+        if value.strip().lower() in ( '', 'none', 'off' ):
+            return None
+        return os.path.abspath( os.path.expanduser( value ) )
+    return _pathmod( _family( platform ) ).join( _os_kind_dir( 'config', platform, environ, setting=False ),
+                                                 LOCAL_CONFIG_FILE )
+
+
+def read_cache_setting( config_file ):
+    """
+    cache_dir from a local config file: an absolute folder, or None when
+    the file, the line or a usable value is missing. Remembered per file
+    and modification time, since kind_dir is asked often.
+    """
+    if config_file is None:
+        return None
+    try:
+        stamp = os.stat( config_file ).st_mtime_ns
+    except OSError:
+        return None
+    memo = _cache_setting_memo.get( config_file )
+    if memo is not None and memo[0] == stamp:
+        return memo[1]
+    import ast
+    value = None
+    try:
+        with open( config_file, 'r', encoding='utf-8' ) as handle:
+            tree = ast.parse( handle.read() )
+        for node in tree.body:
+            if ( isinstance( node, ast.Assign ) and len( node.targets ) == 1
+                    and isinstance( node.targets[0], ast.Name ) and node.targets[0].id == CACHE_SETTING ):
+                value = ast.literal_eval( node.value )
+    except ( OSError, SyntaxError, ValueError, UnicodeDecodeError ):
+        value = None
+    if not isinstance( value, str ) or not os.path.isabs( value ):
+        value = None
+    else:
+        value = os.path.normpath( value )
+    _cache_setting_memo[config_file] = ( stamp, value )
+    return value
+
+
+def cache_source( platform=None, environ=None ):
+    """Where the cache folder comes from: 'variable' (BETASUITE_CACHE_DIR), 'setting' (cache_dir) or 'default'."""
+    platform = sys.platform if platform is None else platform
+    environ = os.environ if environ is None else environ
+    if _override( 'cache', environ, _family( platform ) ) is not None:
+        return 'variable'
+    if read_cache_setting( _local_config_file( platform, environ ) ) is not None:
+        return 'setting'
+    return 'default'
+
+
+def _os_kind_dir( kind, platform, environ, setting=True ):
     family = _family( platform )
     path = _pathmod( family )
     override = _override( kind, environ, family )
     if override is not None:
         return override
+    if kind == 'cache' and setting:
+        configured = read_cache_setting( _local_config_file( platform, environ ) )
+        if configured is not None:
+            return configured
     home = _home( environ, family, platform )
     media = kind in ( 'inputs', 'outputs' )
     if family == 'windows':

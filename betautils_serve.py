@@ -471,6 +471,11 @@ from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E
 for _name, _handler in _RESOURCE_HANDLERS.items():
     register( _name, _handler )
 
+# storage.usage, storage.clean
+from betautils_serve_storage import HANDLERS as _STORAGE_HANDLERS   # noqa: E402
+for _name, _handler in _STORAGE_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 

@@ -367,6 +367,15 @@ class TestAccount( unittest.TestCase ):
         _hold( runtime, IDLE, 60 )
         self.assertEqual( runtime.end_file()['governor_fewest_workers'], 3 )
 
+    def test_fewest_is_the_lowest_cap_seen( self ):
+        runtime = _runtime()
+        runtime.start_file()
+        runtime.render_started( 6 )
+        _hold( runtime, BATTERY, 2 )      # cap 3
+        _hold( runtime, SEVERE, 2 )       # cap 1
+        _hold( runtime, IDLE, 120 )
+        self.assertEqual( runtime.end_file()['governor_fewest_workers'], 1 )
+
     def test_a_small_plan_is_not_a_throttle( self ):
         runtime = _runtime()
         runtime.start_file()
