@@ -76,7 +76,7 @@ A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probabi
 | event | when |
 |---|---|
 | `job.state` | the job is `queued`, `running` or `paused`, or ends `completed`, `cancelled` or `stopped`; a stopped job carries the `code` (`disk.full`, `model.load_failed`, `config.invalid`, `engine.stopping`, ...) |
-| `job.file` | one file `started`, or ended `processed` (with its `output`), `skipped` or `failed` |
+| `job.file` | one file `started`, or ended `processed` (with its `output`), `skipped` (with its `output` when that was already there) or `failed` |
 | `job.progress` | a file's stage (`detect` per size, `persons`, `render`): done, total, rate |
 | `job.decision` | a choice the engine made about a file, as a code: the structure profile and the rule that chose it, an output already present, a source that is not a video |
 | `job.error` | a file that failed (`file.failed`, the job goes on), or the code that stopped the job, just before its `stopped` state |

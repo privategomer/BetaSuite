@@ -18,6 +18,10 @@ export interface Progress {
 export interface Queue {
   readonly rows: readonly JobRow[];
   readonly progress: Readonly<Record<string, Progress>>;
+  // Videos each job wrote or found already there, from its job.file events.
+  // A preview's output is not an item's result in the catalog, so this is
+  // where it can be played.
+  readonly outputs: Readonly<Record<string, readonly string[]>>;
   // A job is queued, running or paused and holding the queue.
   readonly busy: boolean;
   readonly loaded: boolean;
@@ -25,7 +29,7 @@ export interface Queue {
 
 const ACTIVE: readonly JobState[] = [ 'queued', 'running', 'paused' ];
 
-let current: Queue = { rows: [], progress: {}, busy: false, loaded: false };
+let current: Queue = { rows: [], progress: {}, outputs: {}, busy: false, loaded: false };
 const listeners = new Set<() => void>();
 const drainedHandlers = new Set<( rows: readonly JobRow[] ) => void>();
 let started = false;
@@ -55,7 +59,9 @@ export function refreshJobs(): Promise<void> {
   pending = listJobs().then( ( rows ) => {
     const live = new Set( rows.filter( ( row ) => ACTIVE.includes( row.state ) ).map( ( row ) => row.job ) );
     const progress = Object.fromEntries( Object.entries( current.progress ).filter( ( [ job ] ) => live.has( job ) ) );
-    publish( { rows, progress, busy: rows.some( holdsQueue ), loaded: true } );
+    const known = new Set( rows.map( ( row ) => row.job ) );
+    const outputs = Object.fromEntries( Object.entries( current.outputs ).filter( ( [ job ] ) => known.has( job ) ) );
+    publish( { rows, progress, outputs, busy: rows.some( holdsQueue ), loaded: true } );
   }, ( error: unknown ) => {
     log.warn( `job.list failed: ${describeError( error )}` );
   } ).finally( () => {
@@ -75,7 +81,14 @@ function start(): void {
   started = true;
   onEngineReady( () => { void refreshJobs(); } );
   onEvent( 'job.state', () => { void refreshJobs(); } );
-  onEvent( 'job.file', () => { void refreshJobs(); } );
+  onEvent( 'job.file', ( data ) => {
+    const job = data[ 'job' ];
+    const output = data[ 'output' ];
+    if ( typeof job === 'string' && typeof output === 'string' ) {
+      current = { ...current, outputs: { ...current.outputs, [ job ]: [ ...( current.outputs[ job ] ?? [] ), output ] } };
+    }
+    void refreshJobs();
+  } );
   onEvent( 'job.progress', ( data ) => {
     const job = data[ 'job' ];
     if ( typeof job !== 'string' ) {
