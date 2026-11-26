@@ -681,7 +681,12 @@
       "description": "catalog.strip was given a path that is not a file.",
       "properties": {
         "code": { "const": "catalog.no_such_file" },
-        "params": { "type": "object", "additionalProperties": false }
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
       }
     }
   }
