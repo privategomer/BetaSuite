@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://betasuite.invalid/protocol/v1/commands/job.list.schema.json",
   "title": "job.list",
-  "description": "The jobs the queue remembers: the active job (running, or paused and holding the queue) at position 0, the waiting jobs in the order they will run, then the ended ones, newest first, with position null. A client reads it to rebuild its queue after it reloads or the engine restarts. overrides are the job's own, as dotted paths; code and params are there for a stopped job.",
+  "description": "The jobs the queue remembers: the active job (running, or paused and holding the queue) at position 0, the waiting jobs in the order they will run, then the ended ones, newest first, with position null. A client reads it to rebuild its queue after it reloads or the engine restarts. overrides are the job's own, as dotted paths; code and params are there for a stopped job. Jobs a previous engine left (the queue is kept across restarts) come after the waiting ones, paused and with restored true: they run nothing and hold no lock until job.resume.",
   "$defs": {
     "data": {
       "type": "object"
@@ -89,6 +89,9 @@
               },
               "params": {
                 "type": "object"
+              },
+              "restored": {
+                "type": "boolean"
               }
             }
           }
