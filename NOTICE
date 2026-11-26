@@ -25,9 +25,23 @@ until the author grants permission or the upstream code still present is
 rewritten.
 
 Third-party components
-BetaSuite does not redistribute the detection or segmentation models.
-Setup downloads them from their publishers, and each keeps its own license.
-The Ultralytics YOLO11-seg person models are AGPL-3.0, and the weights
-exported from them on your machine stay under those terms. They are used
-through onnxruntime. BetaSuite's own environment does not include the
-Ultralytics package.
+The project hosts the detection and segmentation models the app downloads,
+as files of a GitHub release (listed with their hashes in
+assets/models/catalog.json). Each keeps its own license, published beside
+it with a NOTICE, and the upstream source each was converted from (the .pt,
+.pth or training checkpoint) is hosted beside it unchanged. They are used
+through onnxruntime; BetaSuite's own environment includes neither PyTorch
+nor the packages the models were trained or exported with.
+
+- NudeNet (https://github.com/notAI-tech/NudeNet). The 320n and 640m
+  detectors, from its v3.4-weights release, are AGPL-3.0 (its license at
+  that tag); its README describes them as based on Ultralytics YOLOv8n and
+  YOLOv8m. The RetinaNet detector, from its v0 release, is GPL-3.0 (its
+  license at that tag), which AGPL-3.0 section 13 allows to be combined
+  with this project.
+- Ultralytics YOLO11-seg (https://github.com/ultralytics/ultralytics):
+  the n, s and m person models, exported to ONNX from the v8.3.0 release
+  weights, are AGPL-3.0.
+- RF-DETR-Seg by Roboflow (https://github.com/roboflow/rf-detr): the nano,
+  small and medium person models, exported to ONNX from the published
+  weights, are Apache-2.0.
