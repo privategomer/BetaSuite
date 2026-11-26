@@ -118,6 +118,8 @@ class TestUsage( _Tree ):
         for kept in ( 'outputs', 'models', 'catalog', 'logs', 'stats', 'run_keys' ):
             self.assertEqual( policies[kept], bu_storage.KEPT, kept )
         self.assertEqual( policies['detections'], bu_storage.COSTLY )
+        # Benchmark results are tuning evidence nothing rebuilds: never cleared without a confirm.
+        self.assertEqual( policies['benchmarks'], bu_storage.COSTLY )
         self.assertEqual( policies['shared_download_cache'], bu_storage.SHARED )
 
 

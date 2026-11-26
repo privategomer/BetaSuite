@@ -173,8 +173,8 @@ Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and ru
 | `storage.clean` | remove named categories |
 
 Each category has a policy:
-- `safe`: made again when needed, quickly. Look previews, thumbnails, transcodes, partial or set-aside model files, the setup's own download cache, benchmarks, and a previous cache folder.
-- `costly`: made again when needed, but slowly. Detections and shot cuts.
+- `safe`: made again when needed, quickly. Look previews, thumbnails, transcodes, partial or set-aside model files, the setup's own download cache, and a previous cache folder.
+- `costly`: slow to get back. Detections and shot cuts are made again when needed, but slowly. Benchmark results (Optimize's and the bench tools' measurements) are never made again; only running Optimize measures again.
 - `resume`: unfinished renders, whose parts are rendered again.
 - `shared` and `kept`: listed only. Outputs, models, the catalog, logs, stats, run keys, and a download cache in uv's shared default place, which other tools may use.
 
