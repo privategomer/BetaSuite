@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/perf.optimize_progress.schema.json",
+  "title": "perf.optimize_progress",
+  "description": "An optimization's progress. state running: stage is the stage that just ended (null at the start), done of total stages. finished: proposal, each setting with the value measured faster on this machine and the one in effect (empty: nothing measured faster). failed: code optimize.failed with the exit code. cancelled. Never dropped.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "state",
+        "stage",
+        "done",
+        "total"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "running",
+            "finished",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "stage": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "inventory",
+                "detect",
+                "prefetch",
+                "render",
+                "encode",
+                "scan"
+              ]
+            }
+          ]
+        },
+        "done": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proposal": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "setting",
+              "value",
+              "current"
+            ],
+            "properties": {
+              "setting": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {},
+              "current": {}
+            }
+          }
+        },
+        "code": {
+          "const": "optimize.failed"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

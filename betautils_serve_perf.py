@@ -97,7 +97,128 @@ def perf_rebuild( _server, _data ):
     return { 'imported': imported, 'read': read, 'runs': index.count() }
 
 
+# ---------------------------------------------------------------------------
+# Optimize for this PC
+# ---------------------------------------------------------------------------
+
+def _bad_params( field, reason ):
+    import betautils_protocol as bu_proto
+    return bu_proto.ProtocolError( 'command.bad_params', { 'field': field, 'reason': reason } )
+
+
+def optimizer_for( server ):
+    if getattr( server, 'optimizer', None ) is None:
+        import betautils_optimize as bu_optimize
+        server.optimizer = bu_optimize.Optimizer( server.send_event, server._logger )
+    return server.optimizer
+
+
+def _busy_job( server ):
+    jobs = getattr( server, 'jobs', None )
+    return jobs.busy_job() if jobs is not None else None
+
+
+def machine_busy( run=None ):
+    """True when tune_machine's preflight says the machine is busy (load, GPU use, a command-line run)."""
+    import os
+    import subprocess
+    import sys
+    script = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), 'tools', 'bench', 'tune_machine.py' )
+    run = run or ( lambda command: subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True,
+                                                   timeout=60 ).returncode )
+    return run( [ sys.executable, script, 'preflight' ] ) == 3
+
+
+def _settings_snapshot( config ):
+    import betautils_optimize as bu_optimize
+    snapshot = current_settings( config )
+    snapshot.update( bu_optimize.encode_settings( config ) )
+    return snapshot
+
+
+def perf_optimize( server, data ):
+    """
+    data: { full?: bool, stages?: [ stage ], video?: absolute path, force?: bool }
+    Starts the measurements; progress and the proposal come as
+    perf.optimize_progress events. Answers the plan.
+    """
+    import os
+    import time
+    import betaconfig
+    import betaconst
+    import betautils_optimize as bu_optimize
+    import betautils_protocol as bu_proto
+    full = data.get( 'full', False )
+    force = data.get( 'force', False )
+    video = data.get( 'video' )
+    stages = data.get( 'stages' )
+    for name, value in ( ( 'full', full ), ( 'force', force ) ):
+        if not isinstance( value, bool ):
+            raise _bad_params( name, bu_proto.REASON_TYPE )
+    if video is not None and ( not isinstance( video, str ) or not os.path.isabs( video ) ):
+        raise _bad_params( 'video', bu_proto.REASON_VALUE )
+    if video is not None and not os.path.isfile( video ):
+        raise bu_proto.ProtocolError( 'job.no_such_file', { 'index': 0 } )
+    if stages is not None and ( not isinstance( stages, list )
+                                or not all( stage in bu_optimize.STAGES for stage in stages ) ):
+        raise _bad_params( 'stages', bu_proto.REASON_VALUE )
+    busy = _busy_job( server )
+    if busy is not None:
+        raise bu_proto.ProtocolError( 'perf.busy', { 'job': busy } )
+    optimizer = optimizer_for( server )
+    if optimizer.running:
+        raise bu_proto.ProtocolError( 'perf.optimize_running', {} )
+    if not force and machine_busy():
+        raise bu_proto.ProtocolError( 'perf.machine_busy', {} )
+    facts, fingerprint = machine()
+    index = shared_index()
+    optimized = index.last_optimization( fingerprint )
+    evidence = perf_evidence( server, {} )
+    planned = bu_optimize.plan( evidence, betaconfig, optimized['settings'] if optimized else None,
+                                full=full, stages=stages )
+    out_dir = os.path.join( betaconst.benchmark_dir, 'optimize-%s'%( time.strftime( '%Y%m%d-%H%M%S' ), ) )
+
+    def finished( proposal ):
+        import betaconfig as config
+        index.record_optimization( optimizer.last['at'], fingerprint, _settings_snapshot( config ), proposal, False )
+        return bu_optimize.proposal_rows( proposal, config )
+
+    optimizer.start( planned, out_dir, video=video, on_finished=finished )
+    return { 'plan': planned['stages'], 'narrow': planned['narrow'] }
+
+
+def perf_optimize_cancel( server, _data ):
+    return { 'cancelled': optimizer_for( server ).cancel() }
+
+
+def perf_optimize_apply( server, _data ):
+    """Write the last finished optimization's proposal through the settings registry."""
+    import betaconfig
+    import betautils_optimize as bu_optimize
+    import betautils_protocol as bu_proto
+    import betautils_serve_config as bu_serve_config
+    optimizer = optimizer_for( server )
+    last = optimizer.last
+    if not last or last['state'] != bu_optimize.FINISHED:
+        raise bu_proto.ProtocolError( 'perf.no_proposal', {} )
+    busy = _busy_job( server )
+    if busy is not None:
+        raise bu_proto.ProtocolError( 'config.busy', { 'job': busy } )
+    rows = bu_optimize.proposal_rows( last['proposal'], betaconfig )
+    updates = { tuple( row['setting'].split( '.' ) ): row['value'] for row in rows }
+    answer = bu_serve_config._edit( {}, updates, [] ) if updates else { 'moves': [], 'may_move': [],
+                                                                       'written': False, 'dry_run': False }
+    _facts, fingerprint = machine()
+    shared_index().record_optimization( last['at'], fingerprint, _settings_snapshot( betaconfig ),
+                                        last['proposal'], True )
+    answer['applied'] = [ row['setting'] for row in rows ]
+    return answer
+
+
 HANDLERS = {
     'perf.evidence': perf_evidence,
     'perf.rebuild': perf_rebuild,
+    'perf.optimize': perf_optimize,
+    'perf.optimize_cancel': perf_optimize_cancel,
+    'perf.optimize_apply': perf_optimize_apply,
 }

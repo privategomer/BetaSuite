@@ -230,11 +230,13 @@ class TestHandshake( _EngineTest ):
                                                'hello', 'hw.detect', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
                                                'models.cancel', 'models.import', 'models.install', 'models.list',
                                                'models.remove', 'models.use',
-                                               'perf.evidence', 'perf.rebuild', 'ping', 'preview.look', 'resources.watch', 'shutdown', 'storage.clean',
+                                               'perf.evidence', 'perf.optimize', 'perf.optimize_apply',
+                                               'perf.optimize_cancel', 'perf.rebuild', 'ping', 'preview.look', 'resources.watch', 'shutdown', 'storage.clean',
                                                'storage.usage' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
                                              'job.decision', 'job.error', 'catalog.changed', 'models.state',
-                                             'models.progress', 'resource.sample', 'governor.change' ] )
+                                             'models.progress', 'resource.sample', 'governor.change',
+                                             'perf.optimize_progress' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )
         self.assertTrue( engine.request( 'ping' )['ok'] )

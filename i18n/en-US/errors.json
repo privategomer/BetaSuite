@@ -66,5 +66,10 @@
  "error.storage.unknown_category": "That kind of file is not one the app knows.",
  "error.storage.not_cleanable": "These files are kept. They cannot be removed here.",
  "error.storage.needs_confirm": "Removing these means redoing work. Confirm to go ahead.",
- "error.storage.busy": "A job is using these files. Try again when your jobs are done."
+ "error.storage.busy": "A job is using these files. Try again when your jobs are done.",
+ "error.perf.busy": "Optimize needs the computer to itself. Try again when your jobs are done.",
+ "error.perf.optimize_running": "Optimize is measuring this computer. Wait for it to finish, or stop it.",
+ "error.perf.machine_busy": "This computer is busy right now, so measurements would be off. Close other programs, or run anyway.",
+ "error.perf.no_proposal": "There is nothing to apply yet. Run Optimize first.",
+ "error.optimize.failed": "Optimize stopped with an error. The log has details."
 }

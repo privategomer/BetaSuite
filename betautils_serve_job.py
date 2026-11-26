@@ -533,7 +533,11 @@ def job_submit( server, data ):
     """
     data: { files: [ absolute path ], overrides?: { dotted path: value } }
     result: { job, position }: position counts the jobs ahead of this one.
+    Refused with perf.optimize_running while Optimize measures the machine.
     """
+    optimizer = getattr( server, 'optimizer', None )
+    if optimizer is not None and optimizer.running:
+        raise bu_proto.ProtocolError( 'perf.optimize_running', {} )
     return queue_for( server ).submit( server, data )
 
 
