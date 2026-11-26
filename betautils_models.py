@@ -13,7 +13,6 @@ it), so a config written before the catalog existed still finds them.
 Stdlib only at import time.
 """
 
-import http.client
 import json
 import os
 
@@ -403,6 +402,10 @@ def _place( part, row ):
     if _sha256( part, use_memo=False ) != row['sha256']:
         os.remove( part )
         raise ModelError( 'model.hash_mismatch', model=row['id'] )
+    if os.path.exists( install_path( row ) ):
+        # A different file was there (status 'modified'): keep it beside,
+        # never used, rather than lose a file the user put there.
+        os.replace( install_path( row ), install_path( row ) + '.bad' )
     os.replace( part, install_path( row ) )
     _sha256( install_path( row ) )
     _flush_memo()
@@ -418,6 +421,9 @@ def install( model_id, progress=None, should_stop=None, opener=None, catalog=Non
 
     Returns 'installed' or 'already'. Raises ModelError or Stopped.
     """
+    # Imported here, not at module level: importing the engine must not
+    # open files (http.client loads ssl), see test_serve's stdio tests.
+    import http.client
     import urllib.request
     row = entry( model_id, catalog )
     if row is None:

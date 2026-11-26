@@ -100,7 +100,7 @@ class _Handler( http.server.BaseHTTPRequestHandler ):
                     # sees the end of the stream early).
                     if server.drop_reset:
                         self.connection.setsockopt( socket.SOL_SOCKET, socket.SO_LINGER,
-                                                    struct.pack( 'ii', 1, 0 ) )
+                                                    struct.pack( 'HH' if os.name == 'nt' else 'ii', 1, 0 ) )
                     self.close_connection = True
                     return
                 end = min( len( body ), sent + piece )
@@ -385,6 +385,8 @@ class TestImportAndRemove( _ModelDirTest ):
             out.write( PAYLOAD[:-1] + b'x' )
         self.assertEqual( bu_models.status( self.catalog['models'][0] )['state'], 'modified' )
         self.assertEqual( self.install(), 'installed' )
+        with open( self.installed() + '.bad', 'rb' ) as kept:
+            self.assertEqual( kept.read(), PAYLOAD[:-1] + b'x', "the swapped-in file is kept aside" )
 
     def test_remove_deletes_file_and_part( self ):
         self.install()
