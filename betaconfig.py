@@ -309,7 +309,7 @@ governor = {
     'enabled': True,
     'memory_pressure_pct': 10,    # Linux memory stall share (some avg10) that counts as pressure
     'memory_severe_pct': 40,      # ...and as severe (one render worker)
-    'busy_cpu_pct': 25,           # other programs' CPU use, percent of all cores
+    'busy_cpu_pct': 67,           # other programs' CPU use, percent of all cores
     'user_idle_seconds': 60,      # Windows: input more recent than this is an active user
     'battery_low_pct': 20,
     'detection_pace_max': 0.10,   # most detection time per file spent yielding

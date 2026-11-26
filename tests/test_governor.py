@@ -81,7 +81,7 @@ class TestIdle( _Base ):
 
 class TestBusy( _Base ):
 
-    BUSY = dict( IDLE, other_cpu_percent=60.0 )
+    BUSY = dict( IDLE, other_cpu_percent=80.0 )   # over the default 67
 
     def test_busy_lowers_priority_but_keeps_workers( self ):
         decision = self.feed( 10, **self.BUSY )
@@ -89,7 +89,13 @@ class TestBusy( _Base ):
         self.assertEqual( decision.priority, bu_gov.LOW )
         self.assertIsNone( decision.worker_cap )
         self.assertEqual( decision.pace, bu_gov.PACE[bu_gov.BUSY] )
-        self.assertEqual( decision.reasons[0]['params'], { 'other_cpu': 60.0 } )
+        self.assertEqual( decision.reasons[0]['params'], { 'other_cpu': 80.0 } )
+
+    def test_an_ordinary_desktop_is_not_busy( self ):
+        # A desktop at rest can show a fifth of the processor in use;
+        # only a clearly loaded machine slows a run.
+        self.assertFalse( self.feed( 30, **dict( IDLE, other_cpu_percent=60.0 ) ).throttled )
+        self.assertTrue( self.feed( 10, **dict( IDLE, other_cpu_percent=70.0 ) ).throttled )
 
     def test_a_short_burst_is_ignored( self ):
         decision = self.feed( 3, **self.BUSY )
@@ -367,7 +373,7 @@ class TestListenersAndHistory( _Base ):
         self.assertEqual( len( self.gov.history ), 2 )
 
     def test_drifting_parameters_are_not_a_change( self ):
-        for cpu in ( 60.0, 61.0, 70.0, 80.0, 65.0, 90.0, 75.0, 66.0 ):
+        for cpu in ( 70.0, 71.0, 80.0, 90.0, 75.0, 95.0, 85.0, 76.0 ):
             self.feed( 2, **dict( IDLE, other_cpu_percent=cpu ) )
         self.assertEqual( len( self.changes ), 1 )
 

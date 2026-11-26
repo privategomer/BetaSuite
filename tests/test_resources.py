@@ -205,6 +205,35 @@ class TestCpu( unittest.TestCase ):
         self.assertFalse( found['on_battery'] )
 
 
+class TestTheAppCountsAsTheRun( unittest.TestCase ):
+
+    def test_the_app_and_its_web_view_are_not_other_programs( self ):
+        m = _Proc()
+        self.addCleanup( m.close )
+        m.meminfo( 16 * 2**20, 8 * 2**20 )
+        m.cpu( busy=0, idle=1000 )
+        # The app (20) runs the engine (21, with an ffmpeg 22) and a web view (23).
+        m.process( 20, 1, utime=0, children=( 21, 23 ) )
+        m.process( 21, 20, utime=0, children=( 22, ) )
+        m.process( 22, 21, utime=0 )
+        m.process( 23, 20, utime=0 )
+        reader = bu_resources.LinuxReader( m.proc, m.sys, pid=21, own_root=20 )
+        reader.read()
+        m.cpu( busy=600, idle=1400 )
+        m.process( 22, 21, utime=300 )
+        m.process( 23, 20, utime=200 )
+        found = reader.read()
+        self.assertEqual( found['own_cpu_percent'], 50.0 )
+        self.assertEqual( found['other_cpu_percent'], 10.0 )
+        engine_only = bu_resources.LinuxReader( m.proc, m.sys, pid=21 )
+        self.assertEqual( engine_only.pid, 21 )
+
+    def test_the_platform_reader_takes_the_root( self ):
+        self.assertEqual( bu_resources.platform_reader( 'linux', own_root=20 ).pid, 20 )
+        self.assertEqual( bu_resources.platform_reader( 'win32', own_root=20 ).own_root, 20 )
+        self.assertEqual( bu_resources.platform_reader( 'linux' ).pid, os.getpid() )
+
+
 class _FakeProc:
 
     def __init__( self, lines ):

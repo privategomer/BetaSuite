@@ -44,8 +44,13 @@ class Resources:
         self.sampler = None
 
     def _default_sampler( self ):
+        import os
         import betautils_resources as bu_resources
-        return bu_resources.Sampler( gpu=bu_resources.GpuStream(), logger=self._logger )
+        # The app starts the engine (python betaengine.py serve) itself, so
+        # the parent's tree is the app: its window and web view count as
+        # the run, never as other programs keeping the computer busy.
+        reader = bu_resources.platform_reader( own_root=os.getppid() )
+        return bu_resources.Sampler( reader=reader, gpu=bu_resources.GpuStream(), logger=self._logger )
 
     def _on_sample( self, snapshot ):
         if 'watch' in self._users:
