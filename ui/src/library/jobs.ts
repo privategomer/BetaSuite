@@ -18,8 +18,9 @@ export interface Progress {
 export interface Queue {
   readonly rows: readonly JobRow[];
   readonly progress: Readonly<Record<string, Progress>>;
-  // Videos each job wrote, from its job.file events. A preview's output is
-  // not an item's result in the catalog, so this is where it can be played.
+  // Videos each job wrote or found already there, from its job.file events.
+  // A preview's output is not an item's result in the catalog, so this is
+  // where it can be played.
   readonly outputs: Readonly<Record<string, readonly string[]>>;
   // A job is queued, running or paused and holding the queue.
   readonly busy: boolean;
@@ -83,7 +84,7 @@ function start(): void {
   onEvent( 'job.file', ( data ) => {
     const job = data[ 'job' ];
     const output = data[ 'output' ];
-    if ( data[ 'state' ] === 'processed' && typeof job === 'string' && typeof output === 'string' ) {
+    if ( typeof job === 'string' && typeof output === 'string' ) {
       current = { ...current, outputs: { ...current.outputs, [ job ]: [ ...( current.outputs[ job ] ?? [] ), output ] } };
     }
     void refreshJobs();
