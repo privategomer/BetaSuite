@@ -18,6 +18,16 @@ overrides (preview_mode_enabled, preview_max_seconds) applied on top.
 Also answered: look_seen, whether any earlier run used the look this
 job would render (its censor key), so the app can suggest a preview
 the first time a look is used.
+
+THE PROBE
+    With no comparable run (a new machine, a new model), the estimate
+    would be empty. So when a rate is missing and the queue is idle,
+    job.estimate starts a probe (betautils_estimate_probe) on one of the
+    files and answers probing: true; jobs submitted meanwhile wait for
+    it, and the job.probed event says when it has ended. Its rates are
+    kept for this engine's life, per settings, and fill in only where
+    the history has none (basis probe). A file a probe could not measure
+    is not tried again for the same settings.
 """
 
 import os
@@ -133,9 +143,22 @@ def cache_state( digest, facts, ctx ):
     return bu_estimate.FRESH
 
 
-def answer( files, ctx, timings, hash_of, censor_seen, probe=None ):
-    """job.estimate's result, from a settings context and the history's timings."""
+def answer( files, ctx, timings, hash_of, censor_seen, probe=None, probed=None ):
+    """
+    job.estimate's result, from a settings context and the history's
+    timings. probed: rates a probe measured for this context, used only
+    where the history has none.
+    """
     measured = bu_estimate.rates( timings, ctx['identity'] )
+    from_probe = False
+    for rate in ( 'detect', 'render' ):
+        if measured[rate] is None and probed and probed.get( rate ):
+            measured[rate] = probed[rate]
+            from_probe = True
+    if measured['detect_runs'] or measured['render_runs']:
+        basis = 'history'
+    else:
+        basis = 'probe' if from_probe else 'none'
     rows = []
     total = 0.0
     known = True
@@ -159,10 +182,86 @@ def answer( files, ctx, timings, hash_of, censor_seen, probe=None ):
     return {
         'files': rows,
         'seconds': round( total, 1 ) if known else None,
-        'basis': 'history' if measured['detect'] or measured['render'] else 'none',
+        'basis': basis,
         'runs': { 'detect': measured['detect_runs'], 'render': measured['render_runs'] },
         'look_seen': bool( censor_seen( ctx['censor_key'] ) ),
+        'probing': False,
+        'missing': [ rate for rate in ( 'detect', 'render' ) if measured[rate] is None ],
     }
+
+
+# --- the probe -------------------------------------------------------------------
+
+PROBED = {}           # identity key -> { detect, render }, measured this session
+_TRIED = set()        # ( identity key, path ) a probe has been tried on
+_PROBE_LOCK = None
+
+
+def _key( ctx ):
+    import json
+    return json.dumps( ctx['identity'], sort_keys=True )
+
+
+def _probe_lock():
+    global _PROBE_LOCK
+    if _PROBE_LOCK is None:
+        import threading
+        _PROBE_LOCK = threading.Lock()
+    return _PROBE_LOCK
+
+
+def probed_for( ctx ):
+    with _probe_lock():
+        return PROBED.get( _key( ctx ) )
+
+
+def maybe_probe( server, jobs, files, ctx, hash_of, result, measure=None ):
+    """
+    Start a probe when the estimate lacks a rate no probe has given yet
+    for these settings, the queue is idle and no command-line run holds
+    the library. The first file not tried yet is measured. Sets
+    result['probing']. job.probed { ok } says when it has ended; asking
+    again then gives the measured estimate.
+    """
+    if jobs.probing:
+        result['probing'] = True
+        return
+    if result['seconds'] is not None or not result['missing']:
+        return
+    key = _key( ctx )
+    with _probe_lock():
+        if key in PROBED:
+            return
+        path = next( ( path for path in files if ( key, path ) not in _TRIED ), None )
+        if path is None:
+            return
+    import betautils_runlock as bu_runlock
+    if bu_runlock.library_held():
+        return
+    measure = measure or _measure
+
+    def work( session ):
+        with _probe_lock():
+            _TRIED.add( ( key, path ) )
+        rates = measure( path, hash_of( path ), session, ctx, server._logger )
+        if rates.get( 'detect' ) or rates.get( 'render' ):
+            with _probe_lock():
+                PROBED[key] = rates
+            server._logger.info( "estimate probe: detect %s sampled frames/s, render %s pixel-frames/s"%(
+                rates.get( 'detect' ), rates.get( 'render' ) ) )
+
+    def done( ok ):
+        server.send_event( 'job.probed', { 'ok': bool( ok and probed_for( ctx ) ) } )
+
+    result['probing'] = jobs.start_probe( work, done )
+
+
+def _measure( path, digest, session, ctx, logger ):
+    import betautils_estimate_probe as bu_probe
+    if digest is None:
+        import betautils_hash as bu_hash
+        digest = bu_hash.md5_for_file( path, 16 )
+    return bu_probe.probe( path, digest, session, ctx, logger )
 
 
 def job_estimate( server, data ):
@@ -195,7 +294,12 @@ def job_estimate( server, data ):
         def censor_seen( key ):
             return bool( key ) and bool( catalog.store.read( 'SELECT 1 FROM runs WHERE censor_key = ? LIMIT 1',
                                                              ( key, ) ) )
-    return answer( files, ctx, timings, hash_of, censor_seen )
+    result = answer( files, ctx, timings, hash_of, censor_seen, probed=probed_for( ctx ) )
+    if busy_context is None:
+        maybe_probe( server, jobs, files, ctx, hash_of, result )
+    else:
+        result['probing'] = jobs.probing
+    return result
 
 
 HANDLERS = {

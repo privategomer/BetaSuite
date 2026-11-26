@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/job.probed.schema.json",
+  "title": "job.probed",
+  "description": "The estimate probe a job.estimate started (probing true) has ended, and the queue runs again. ok is true when it measured at least one rate for the settings it was started with; asking job.estimate again then answers with them (basis probe). With ok false, nothing was measured: the next estimate for those settings tries another file, or answers null.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

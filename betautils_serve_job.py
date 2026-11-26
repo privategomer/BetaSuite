@@ -188,6 +188,7 @@ class JobQueue:
         self._lock = None                         # the run lock while busy
         self.snapshot = None                      # config.get's answer while busy
         self.estimate_context = None              # job.estimate's settings while busy
+        self._probing = False                     # an estimate probe has the model and the GPU
         self._stopping = False
         self._thread = threading.Thread( target=self._work, name='job-worker', daemon=True )
         self._thread.start()
@@ -268,6 +269,40 @@ class JobQueue:
             self.logger.info( "job queue idle, run lock released" )
         self.snapshot = None
         self.estimate_context = None
+
+    @property
+    def probing( self ):
+        with self._cond:
+            return self._probing
+
+    def start_probe( self, work, done ):
+        """
+        Run work( session ) on a thread of its own, with the detector's
+        session, when the queue is idle and no probe runs. A job
+        submitted meanwhile waits for it. done( ok ) is called once it
+        has ended and the queue may run again, whether or not work
+        succeeded. Returns whether it started.
+        """
+        with self._cond:
+            if self._stopping or self._probing or self._busy_locked():
+                return False
+            self._probing = True
+
+        def run():
+            ok = False
+            try:
+                work( self._load_session() )
+                ok = True
+            except BaseException:   # noqa: BLE001  a probe never takes the engine down
+                self.logger.warning( "the estimate probe failed", exc_info=True )
+            finally:
+                with self._cond:
+                    self._probing = False
+                    self._cond.notify_all()
+                done( ok )
+
+        threading.Thread( target=run, name='estimate-probe', daemon=True ).start()
+        return True
 
     def estimate_context_if_busy( self ):
         """
@@ -441,7 +476,7 @@ class JobQueue:
 
     def _next_locked( self ):
         """The job to run now, or None to wait."""
-        if self._stopping:
+        if self._stopping or self._probing:
             return None
         if self.active is not None:
             job = self.active
