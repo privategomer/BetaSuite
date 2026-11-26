@@ -19,8 +19,8 @@ export interface StartupInfo {
   locale: string | null;
   // light or dark from --theme; null follows the system.
   theme: 'light' | 'dark' | null;
-  // The view from --view; null opens on the player.
-  view: 'player' | 'what-to-hide' | 'settings' | 'all-settings' | null;
+  // The view from --view; null opens on the library (the player with --open).
+  view: 'library' | 'player' | 'what-to-hide' | 'settings' | 'all-settings' | null;
   // All Settings' starting search text, from --search.
   search: string | null;
   // A help section to open at start, from --help-topic.

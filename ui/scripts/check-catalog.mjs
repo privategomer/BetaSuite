@@ -47,7 +47,7 @@ const CODE_ATTRIBUTES = new Set( [
   'accept', 'autoComplete', 'autoPlay', 'className', 'controls', 'crossOrigin', 'cx', 'cy', 'd', 'dir',
   'draggable', 'fill', 'focusable', 'form', 'height', 'hidden', 'href', 'htmlFor', 'id', 'inputMode', 'key',
   'lang', 'loop', 'method', 'muted', 'name', 'playsInline', 'points', 'poster', 'preload', 'r', 'ref', 'rel',
-  'role', 'rx', 'ry', 'spellCheck', 'src', 'stroke', 'strokeLinecap', 'strokeLinejoin', 'strokeWidth',
+  'role', 'rx', 'ry', 'scope', 'spellCheck', 'src', 'stroke', 'strokeLinecap', 'strokeLinejoin', 'strokeWidth',
   'tabIndex', 'target', 'transform', 'type', 'viewBox', 'width', 'x', 'xmlns', 'y',
 ] );
 const TEXT_ARIA = new Set( [ 'aria-label', 'aria-description', 'aria-valuetext', 'aria-roledescription', 'aria-placeholder' ] );

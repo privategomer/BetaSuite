@@ -6,13 +6,13 @@
 // the asset protocol.
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useEffect, useRef, useState } from 'react';
-import type { EngineError } from '../engine/client';
+import { isEngineError, type EngineError } from '../engine/client';
 import { errorText } from '../i18n/errors';
 import { t } from '../i18n/format';
 import { describeError, log } from '../log';
+import { openVideo } from '../library/api';
+import { VIDEO_EXTENSIONS } from '../library/names';
 import { pickVideo, uiMark, type PlayableVideo } from '../shell';
-
-const VIDEO_EXTENSIONS = [ 'mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'wmv', 'ts', 'mts' ];
 
 function source( video: PlayableVideo ): string {
   return video.file_url ?? convertFileSrc( video.path );
@@ -37,13 +37,38 @@ interface PlayerProps {
   // The --open video, played at once, muted; or the error opening it.
   openAtStart: PlayableVideo | null;
   openError: EngineError | null;
+  // A library video to play (a result or a source); nonce changes to play it again.
+  request: { path: string; nonce: number } | null;
 }
 
-export function Player( { openAtStart, openError }: PlayerProps ) {
+export function Player( { openAtStart, openError, request }: PlayerProps ) {
   const [ video, setVideo ] = useState<PlayableVideo | null>( openAtStart );
   const [ autoPlay, setAutoPlay ] = useState( openAtStart !== null );
+  // Only --open starts muted: it plays with no one having asked.
+  const [ muted, setMuted ] = useState( openAtStart !== null );
   const [ error, setError ] = useState<string | null>( openError === null ? null : errorText( openError ) );
   const element = useRef<HTMLVideoElement>( null );
+
+  useEffect( () => {
+    if ( request === null ) {
+      return;
+    }
+    let live = true;
+    openVideo( request.path ).then( ( playable ) => {
+      if ( live ) {
+        setError( null );
+        setAutoPlay( true );
+        setMuted( false );
+        setVideo( playable );
+      }
+    }, ( reason: unknown ) => {
+      log.warn( `open_video failed: ${describeError( reason )}` );
+      if ( live ) {
+        setError( isEngineError( reason ) ? errorText( reason ) : t( 'player.error.open_failed' ) );
+      }
+    } );
+    return () => { live = false; };
+  }, [ request ] );
 
   useEffect( () => {
     const node = element.current;
@@ -77,6 +102,7 @@ export function Player( { openAtStart, openError }: PlayerProps ) {
         if ( picked !== null ) {
           setError( null );
           setAutoPlay( false );
+          setMuted( false );
           setVideo( picked );
         }
       },
@@ -104,7 +130,7 @@ export function Player( { openAtStart, openError }: PlayerProps ) {
             src={source( video )}
             controls
             autoPlay={autoPlay}
-            muted={autoPlay}
+            muted={muted}
             preload="auto"
             onError={( event ) => {
               const code = event.currentTarget.error?.code;
