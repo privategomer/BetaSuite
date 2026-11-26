@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/models.state.schema.json",
+  "title": "models.state",
+  "description": "A model's install changed state: queued, downloading, installed, stopped (cancelled or the engine stopped; a partial file is kept), failed (with code and params, an error from errors.schema.json), removed.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "downloading",
+            "installed",
+            "stopped",
+            "failed",
+            "removed"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
