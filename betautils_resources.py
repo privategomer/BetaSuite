@@ -243,11 +243,16 @@ def process_tree( proc_root, root_pid ):
 
 
 class LinuxReader:
+    """
+    own_root: the process whose whole tree counts as the run, not as
+    other programs: this engine by default; the app that started it in
+    serve mode (so its window and web view are the run too).
+    """
 
-    def __init__( self, proc_root='/proc', sys_root='/sys', pid=None, page_size=None ):
+    def __init__( self, proc_root='/proc', sys_root='/sys', pid=None, page_size=None, own_root=None ):
         self.proc_root = proc_root
         self.sys_root = sys_root
-        self.pid = pid or os.getpid()
+        self.pid = own_root or pid or os.getpid()
         self.page_size = page_size or ( os.sysconf( 'SC_PAGE_SIZE' ) if hasattr( os, 'sysconf' ) else 4096 )
         self.cpu = CpuMeter()
 
@@ -285,15 +290,16 @@ class WindowsReader:
     its limit; the governor also watches free memory.
     """
 
-    def __init__( self ):
+    def __init__( self, own_root=None ):
         self.cpu = CpuMeter()
+        self.own_root = own_root or os.getpid()
 
     def read( self ):
         import betautils_hardware as bu_hardware
         memory = bu_hardware.windows_memory_status()
         power = bu_hardware.windows_power_status()
         busy, total = _windows_system_times()
-        own_cpu, own_rss = _windows_tree( os.getpid() )
+        own_cpu, own_rss = _windows_tree( self.own_root )
         cpu, other, own = self.cpu.update( busy, total, own_cpu )
         return {
             'memory_available_mb': memory.get( 'MemAvailable' ),
@@ -406,12 +412,13 @@ class NullReader:
         return {}
 
 
-def platform_reader( platform_name=None ):
+def platform_reader( platform_name=None, own_root=None ):
+    """The reader for this platform; own_root as LinuxReader takes it."""
     platform_name = platform_name or sys.platform
     if platform_name.startswith( 'linux' ):
-        return LinuxReader()
+        return LinuxReader( own_root=own_root )
     if platform_name == 'win32':
-        return WindowsReader()
+        return WindowsReader( own_root=own_root )
     return NullReader()
 
 

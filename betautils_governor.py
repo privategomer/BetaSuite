@@ -89,7 +89,7 @@ class Thresholds:
         'enabled': True,
         'memory_pressure_pct': 10.0,
         'memory_severe_pct': 40.0,
-        'busy_cpu_pct': 25.0,
+        'busy_cpu_pct': 67.0,
         'user_idle_seconds': 60.0,
         'battery_low_pct': 20.0,
         'detection_pace_max': 0.10,
