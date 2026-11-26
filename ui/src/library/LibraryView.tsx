@@ -370,7 +370,7 @@ export function LibraryView( { onPlay, onHelp }: LibraryViewProps ) {
         </div>
         <div className="library-side">
           {chosen.size > 0 && <RunBar items={[ ...chosen ]} onSubmitted={() => { setChosen( new Set() ); }} />}
-          <QueuePanel />
+          <QueuePanel onPlay={onPlay} />
           <LibraryOptions onHelp={onHelp} />
         </div>
       </div>

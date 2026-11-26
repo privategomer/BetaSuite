@@ -45,7 +45,7 @@ function ProgressLine( { row, progress }: { row: JobRow; progress: Progress | un
   );
 }
 
-export function QueuePanel() {
+export function QueuePanel( { onPlay }: { onPlay: ( path: string ) => void } ) {
   const queue = useQueue();
   const [ problem, setProblem ] = useState<EngineError | null>( null );
   const live = queue.rows.filter( ( row ) => row.position !== null );
@@ -114,6 +114,10 @@ export function QueuePanel() {
                 <span>{jobName( row )}</span>
                 <span>{t( msgKey( 'queue.state.', row.state ) )}</span>
                 {row.code !== undefined && <span>{errorText( { code: row.code, params: row.params ?? {} } )}</span>}
+                {( queue.outputs[ row.job ] ?? [] ).map( ( output ) => (
+                  <button key={output} type="button" aria-label={t( 'queue.play_label', { name: baseName( output ) } )}
+                    onClick={() => { onPlay( output ); }}>{isPreview( row ) ? t( 'queue.play_preview' ) : t( 'queue.play' )}</button>
+                ) )}
               </li>
             ) )}
           </ul>
