@@ -980,3 +980,154 @@ button.link {
 .unsaved-failed {
   color: var(--color-status-problem);
 }
+
+/* Models */
+
+.models-view {
+  overflow-y: auto;
+  gap: 0.75rem;
+}
+
+.models-title {
+  margin-block: 0;
+  font-size: 1.2rem;
+}
+
+.models-notice,
+.models-recommend,
+.models-result {
+  margin-block: 0;
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  border-inline-start: 4px solid var(--color-status-busy);
+  background: var(--color-surface);
+}
+
+.models-notice,
+.models-recommend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.models-notice p,
+.models-recommend p,
+.models-recommend h3 {
+  margin-block: 0;
+}
+
+.models-recommend {
+  border-inline-start-color: var(--color-accent);
+}
+
+.models-recommend h3 {
+  font-size: 1rem;
+  flex-basis: 100%;
+}
+
+.models-result.ok {
+  border-inline-start-color: var(--color-status-ok);
+}
+
+.models-result.problem {
+  border-inline-start-color: var(--color-status-problem);
+}
+
+.models-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.models-group h3 {
+  margin-block: 0.5rem 0.25rem;
+  font-size: 1.05rem;
+}
+
+.models-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.model-row.in-use {
+  border-color: var(--color-accent);
+}
+
+.model-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.model-name {
+  margin-block: 0;
+  font-size: 1rem;
+}
+
+.badge.in-use,
+.badge.recommended {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.badge.missing {
+  border-color: var(--color-status-problem);
+  color: var(--color-text);
+}
+
+.model-desc,
+.model-facts,
+.model-failure {
+  margin-block: 0;
+}
+
+.model-facts,
+.model-note {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.model-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.model-state.state-installed {
+  font-weight: 600;
+}
+
+.model-progress {
+  inline-size: 100%;
+  accent-color: var(--color-accent);
+}
+
+.model-failure {
+  padding-inline-start: 0.5rem;
+  border-inline-start: 3px solid var(--color-status-problem);
+}
+
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-start: auto;
+}
