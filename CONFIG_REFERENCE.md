@@ -4288,6 +4288,53 @@ detections cached on one are reused on the other.
 
 ---
 
+## The resource governor
+
+`governor` slows a run when the computer needs it and speeds it back up
+when it does not. It changes when and how fast work happens, never what
+is detected or rendered, so none of its settings is in a cache key.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `governor.enabled` | `True` | `False` runs at full speed always |
+| `governor.memory_pressure_pct` | `10` | Linux's memory stall share (`/proc/pressure/memory`, `some avg10`) at which render workers are cut, one at a time. Free memory under `render_memory_reserve_mb` counts too, on every system |
+| `governor.memory_severe_pct` | `40` | The stall share at which only one render worker runs (the memory guard). Free memory under half the reserve counts too |
+| `governor.busy_cpu_pct` | `25` | Other programs' processor use, in percent of all cores, at which the run lowers its priority. This engine and its ffmpeg children are never counted |
+| `governor.user_idle_seconds` | `60` | Windows: key or mouse input more recent than this means someone is using the computer. Linux cannot see input under Wayland and uses `busy_cpu_pct` instead |
+| `governor.battery_low_pct` | `20` | On battery: half the render workers; under this charge, one |
+| `governor.detection_pace_max` | `0.10` | The most a file's detection may be slowed by yielding, as a share of its detection time |
+
+What each signal does, cheapest first:
+
+- **Other programs busy, or someone using the computer:** work started
+  from then on runs at a lower priority, which only costs time when
+  another program wants the processor, and detection yields briefly
+  after each batch. Workers are not cut.
+- **Memory pressure:** render workers drop by one every few seconds,
+  down to one, and climb back the same way once it has passed.
+- **Severe memory pressure:** one render worker (the memory guard).
+- **On battery:** half the workers, a lower priority, and a longer
+  detection yield. Under `battery_low_pct`, one worker.
+
+A condition must last a moment before it acts (memory 2 s, a busy
+computer 5 s) and be gone longer before it lets go, so the run does not
+flap. Detection's yields are short: each is at most 50 ms, and all of
+them together are capped at `detection_pace_max` of the file's detection
+time. They are counted in the file's stats row (`governor_paced_seconds`).
+
+"Run at full speed anyway" (`governor.override`) undoes every throttle
+except the memory guard, for this run or until the app closes. Running
+out of memory gets a run stopped by the operating system, which costs
+more than any slowdown, so the guard stays unless the override also says
+`memory_guard: false` (in the app, "Also ignore low memory", with a
+warning).
+
+The defaults are starting points: the thresholds for memory were checked
+on the hardware named in the milestone evidence, by a run under induced
+memory pressure.
+
+---
+
 ## BetaVision screen capture
 
 BetaVision censors a region of the screen live instead of a file.
