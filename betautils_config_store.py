@@ -298,7 +298,10 @@ class ConfigStore( object ):
         current = self.evaluate( self.text() )
         before = current.keys
         text = self.text() or bu_local.template_text()
-        if removals and not self.text():
+        if removals and not updates and not self.text():
+            # Removing from a file that is not there changes nothing. With
+            # updates too (models.use sets a model and clears a hand-set
+            # path in one edit), the updates still go into a new file.
             new_text = self.text()
         else:
             new_text = bu_local.edit_text( text, updates or {}, removals or [], comment, section )
