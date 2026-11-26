@@ -225,13 +225,15 @@ class TestHandshake( _EngineTest ):
                                                'catalog.forget', 'catalog.get', 'catalog.list', 'catalog.pin_type',
                                                'catalog.remove_folder', 'catalog.rescan', 'catalog.thumbnail',
                                                'config.get', 'config.reset', 'config.schema', 'config.set',
+                                               'governor.enable', 'governor.get', 'governor.override',
+                                               'governor.override_clear',
                                                'hello', 'hw.detect', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
                                                'models.cancel', 'models.import', 'models.install', 'models.list',
                                                'models.remove', 'models.use',
                                                'ping', 'preview.look', 'resources.watch', 'shutdown' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
                                              'job.decision', 'job.error', 'catalog.changed', 'models.state',
-                                             'models.progress', 'resource.sample' ] )
+                                             'models.progress', 'resource.sample', 'governor.change' ] )
         self.assertEqual( hello['limits'], { 'max_line_bytes': bu_proto.MAX_LINE_BYTES } )
         self.assertEqual( hello['engine']['platform'], sys.platform )
         self.assertTrue( engine.request( 'ping' )['ok'] )

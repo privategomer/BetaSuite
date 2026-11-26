@@ -4320,7 +4320,24 @@ A condition must last a moment before it acts (memory 2 s, a busy
 computer 5 s) and be gone longer before it lets go, so the run does not
 flap. Detection's yields are short: each is at most 50 ms, and all of
 them together are capped at `detection_pace_max` of the file's detection
-time. They are counted in the file's stats row (`governor_paced_seconds`).
+time. They are counted in the file's stats row.
+
+Each stats row says what the governor did to that file:
+`governor_throttled_seconds` (time under any throttle),
+`governor_paced_seconds` (detection's yields), `governor_reasons` (the
+codes that acted) and `governor_fewest_workers` (the lowest render
+worker cap, or null when none applied). Speed evidence can leave
+throttled runs out or account for them.
+
+How it acts on a run: each render chunk starts on a fresh thread, and
+the governor decides as it starts how many may run at once and at what
+priority; a chunk already running is never stopped or slowed, and chunk
+boundaries and encoder threads are the render's own, so the output is
+the same whatever it decides. Linux lets a program lower a thread's
+priority but never raise it back, so only these short-lived chunk
+threads and the ffmpeg each starts are ever lowered. Detection runs on
+the job's own thread, so there a lower priority becomes the short yields
+above.
 
 "Run at full speed anyway" (`governor.override`) undoes every throttle
 except the memory guard, for this run or until the app closes. Running

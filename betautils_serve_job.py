@@ -170,7 +170,7 @@ class JobQueue:
     """
 
     def __init__( self, send, logger, acquire_lock=None, pipeline=None, load_session=None, recorder=None,
-                  types=None ):
+                  types=None, governor=None ):
         import betautils_job as bu_job
         self._bu_job = bu_job
         self.logger = logger
@@ -178,7 +178,9 @@ class JobQueue:
         self._acquire_lock = acquire_lock or self._library_lock
         self._load_session_override = load_session
         self.runner = bu_job.Runner( logger, emit=self._emit, pipeline=pipeline,
-                                     load_session=self._load_session, recorder=recorder, types=types )
+                                     load_session=self._load_session, recorder=recorder, types=types,
+                                     governor=governor )
+        self._when_idle = collections.OrderedDict()   # key -> callback, run once the queue is idle
         self._cond = threading.Condition()
         self.jobs = collections.OrderedDict()     # id -> Job, every job not yet forgotten
         self._waiting = collections.deque()       # ids queued, in order
@@ -261,6 +263,25 @@ class JobQueue:
             self._lock = None
             self.logger.info( "job queue idle, run lock released" )
         self.snapshot = None
+        waiting, self._when_idle = self._when_idle, collections.OrderedDict()
+        for key, callback in waiting.items():
+            try:
+                callback()
+            except Exception:
+                self.logger.error( "after the jobs: %s failed"%( key, ), exc_info=True )
+
+    def when_idle( self, key, callback ):
+        """
+        Run callback() once the queue is idle; now when it already is. A
+        later callback for the same key replaces an earlier one.
+        """
+        with self._cond:
+            if self._busy_locked():
+                self._when_idle.pop( key, None )
+                self._when_idle[key] = callback
+                return False
+        callback()
+        return True
 
     # --- commands ---
 
@@ -499,9 +520,11 @@ def queue_for( server ):
         # The catalog hears the job events (queued, processing) and keeps
         # every file's record in its history.
         import betautils_serve_catalog as bu_serve_catalog
+        import betautils_serve_resources as bu_serve_resources
         jobs = JobQueue( bu_serve_catalog.job_events_for( server ), server._logger,
                          recorder=bu_serve_catalog.job_recorder_for( server ),
-                         types=bu_serve_catalog.job_types_for( server ) )
+                         types=bu_serve_catalog.job_types_for( server ),
+                         governor=bu_serve_resources.runtime_for( server ) )
         server.jobs = jobs
     return jobs
 
