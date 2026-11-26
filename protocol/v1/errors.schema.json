@@ -61,7 +61,12 @@
     { "$ref": "#/$defs/storage.unknown_category" },
     { "$ref": "#/$defs/storage.not_cleanable" },
     { "$ref": "#/$defs/storage.needs_confirm" },
-    { "$ref": "#/$defs/storage.busy" }
+    { "$ref": "#/$defs/storage.busy" },
+    { "$ref": "#/$defs/perf.busy" },
+    { "$ref": "#/$defs/perf.optimize_running" },
+    { "$ref": "#/$defs/perf.machine_busy" },
+    { "$ref": "#/$defs/perf.no_proposal" },
+    { "$ref": "#/$defs/optimize.failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -815,6 +820,51 @@
           "type": "object",
           "required": [ "category" ],
           "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.busy": {
+      "description": "A job holds the queue; Optimize measures the machine alone, so it waits for the jobs.",
+      "properties": {
+        "code": { "const": "perf.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.optimize_running": {
+      "description": "An optimization is measuring the machine; another one, or a job, waits for it.",
+      "properties": {
+        "code": { "const": "perf.optimize_running" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.machine_busy": {
+      "description": "The machine is busy (load, GPU use or a command-line run), so measurements would be skewed. force: true runs anyway.",
+      "properties": {
+        "code": { "const": "perf.machine_busy" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.no_proposal": {
+      "description": "There is no finished optimization to apply.",
+      "properties": {
+        "code": { "const": "perf.no_proposal" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "optimize.failed": {
+      "description": "The measurements stopped with an error; the log in its benchmarks folder has details.",
+      "properties": {
+        "code": { "const": "optimize.failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exit_code" ],
+          "properties": { "exit_code": { "type": [ "integer", "null" ] } },
           "additionalProperties": false
         }
       }

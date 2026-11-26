@@ -188,6 +188,30 @@ Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and ru
 
 A run measures only the settings it used; Optimize measures the others.
 
+### Optimize for this PC
+
+| Command | Does |
+|---|---|
+| `perf.optimize` | measure the settings that set this machine's speed and propose values, changing nothing; answers the plan |
+| `perf.optimize_cancel` | stop it; nothing is proposed or applied |
+| `perf.optimize_apply` | write the last finished proposal to the local config, as `config.set` does |
+
+| Event | Says |
+|---|---|
+| `perf.optimize_progress` | `running` (each stage as it ends), then `finished` with the proposal, `failed` (`optimize.failed`, the exit code) or `cancelled`. Never dropped |
+
+**How it runs.** Optimize runs `tools/bench/tune_machine.py` in a child process and follows the `results.json` it writes after each stage. It never reads the log. The measurements go to the benchmarks folder (`optimize-<time>`).
+
+**Shortened by evidence.** The evidence from past runs decides how much to measure:
+- Where past runs at the settings in use are steady, detect, prefetch and render try only values next to the ones in use.
+- When memory has been capping the render, the render's full spread is measured.
+- The encode stage is skipped when an earlier optimization on this machine measured the same encoder.
+- The scan stage never runs: it tunes the bench tool only.
+
+`full: true` measures every stage a run uses, and `stages` limits it to some stages (a nudge's action). Each proposal still needs tune_machine's own checks: a gain above the measurement noise, and identical detections for a batch size.
+
+**When it may run.** It is refused while a job holds the queue (`perf.busy`), while another one runs (`perf.optimize_running`), and when the machine is busy (`perf.machine_busy`, the same check as `tune_machine.sh`) unless `force: true`. While it measures, `job.submit` answers `perf.optimize_running`.
+
 ## Storage
 
 | Command | Does |

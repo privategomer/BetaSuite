@@ -95,6 +95,12 @@ EXAMPLE_PARAMS = {
     'catalog.item_busy':            { 'item': '0123456789abcdef', 'job': '3f2a' },
     'catalog.missing':              { 'item': '0123456789abcdef' },
     'catalog.thumbnail_failed':     { 'item': '0123456789abcdef', 'reason': 'not_video' },
+    # perf.* and Optimize
+    'perf.busy':                    { 'job': '3f2a' },
+    'perf.optimize_running':        {},
+    'perf.machine_busy':            {},
+    'perf.no_proposal':             {},
+    'optimize.failed':              { 'exit_code': 1 },
     # storage.*
     'storage.unknown_category':     { 'category': 'everything' },
     'storage.not_cleanable':        { 'category': 'outputs', 'policy': 'kept' },

@@ -62,7 +62,8 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
-           'catalog.changed', 'models.state', 'models.progress', 'resource.sample', 'governor.change' )
+           'catalog.changed', 'models.state', 'models.progress', 'resource.sample', 'governor.change',
+           'perf.optimize_progress' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -271,6 +272,7 @@ class Server:
         self.models = None            # betautils_serve_models.Installer, made by the first models.install
         self.resources = None         # betautils_serve_resources.Resources, made by the first user of the sampler
         self.governor = None          # betautils_governor_run.Runtime, made by the first job or governor command
+        self.optimizer = None         # betautils_optimize.Optimizer, made by the first perf.optimize
         self._after_reply = []
 
     @property
@@ -294,6 +296,11 @@ class Server:
         """Stop the model installer, if one was made; a download in progress keeps its partial file."""
         if self.models is not None:
             self.models.stop()
+
+    def stop_optimizer( self ):
+        """Stop an optimization in progress: its measurements are thrown away, nothing is applied."""
+        if self.optimizer is not None and self.optimizer.cancel():
+            self.optimizer.wait( 10 )
 
     def stop_resources( self ):
         """Stop the resource sampler, if it runs."""
@@ -471,7 +478,7 @@ from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E
 for _name, _handler in _RESOURCE_HANDLERS.items():
     register( _name, _handler )
 
-# perf.evidence, perf.rebuild
+# perf.evidence, perf.rebuild, perf.optimize, perf.optimize_cancel, perf.optimize_apply
 from betautils_serve_perf import HANDLERS as _PERF_HANDLERS   # noqa: E402
 for _name, _handler in _PERF_HANDLERS.items():
     register( _name, _handler )
@@ -549,6 +556,10 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_models()
         except BaseException:
             logger.error( "the model installer did not stop cleanly", exc_info=True )
+        try:
+            server.stop_optimizer()
+        except BaseException:
+            logger.error( "the optimization did not stop cleanly", exc_info=True )
         try:
             server.stop_resources()
         except BaseException:

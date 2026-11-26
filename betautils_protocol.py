@@ -120,6 +120,12 @@ ERRORS = {
     'catalog.item_busy':            ( 'item', 'job' ),
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
+    # perf.* and Optimize
+    'perf.busy':                    ( 'job', ),
+    'perf.optimize_running':        (),
+    'perf.machine_busy':            (),
+    'perf.no_proposal':             (),
+    'optimize.failed':              ( 'exit_code', ),
     # storage.*
     'storage.unknown_category':     ( 'category', ),
     'storage.not_cleanable':        ( 'category', 'policy' ),
