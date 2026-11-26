@@ -225,7 +225,7 @@ class TestHandshake( _EngineTest ):
                                                'catalog.forget', 'catalog.get', 'catalog.list', 'catalog.pin_type',
                                                'catalog.remove_folder', 'catalog.rescan', 'catalog.thumbnail',
                                                'config.get', 'config.reset', 'config.schema', 'config.set',
-                                               'hello', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
+                                               'hello', 'hw.detect', 'job.cancel', 'job.pause', 'job.resume', 'job.submit',
                                                'models.cancel', 'models.import', 'models.install', 'models.list',
                                                'models.remove', 'models.use',
                                                'ping', 'preview.look', 'shutdown' ] )
