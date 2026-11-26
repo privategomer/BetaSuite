@@ -53,12 +53,14 @@ struct StartupInfo {
     locale: Option<String>,
     /// The `--theme` option: "light", "dark", or None to follow the system.
     theme: Option<String>,
-    /// The `--view` option: "player", "all-settings", or None for the player.
+    /// The `--view` option: "library", "player", "all-settings", ..., or None for the library.
     view: Option<String>,
     /// The `--search` option: All Settings' starting search text.
     search: Option<String>,
     /// The `--help-topic` option: a help section to open at start.
     help_topic: Option<String>,
+    /// The `--measure-scrub` option.
+    measure_scrub: bool,
     /// The `--open` video, already allowed, so the page's first render can
     /// start it; or why it could not be opened.
     open: Option<video::PlayableVideo>,
@@ -335,6 +337,7 @@ pub fn run() -> i32 {
         view: options.view.clone(),
         search: options.search.clone(),
         help_topic: options.help_topic.clone(),
+        measure_scrub: options.measure_scrub,
         open: None,
         open_error: None,
     };

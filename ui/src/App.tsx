@@ -118,7 +118,7 @@ export function App( { startup }: AppProps ) {
       <main className="app-main">
         {/* The player stays mounted, so a video keeps its place across views. */}
         <div className="view" hidden={view !== 'player'}>
-          <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} request={playing} />
+          <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} request={playing} measureScrub={startup?.measure_scrub ?? false} />
         </div>
         {view === 'library' && <LibraryView onPlay={play} />}
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}

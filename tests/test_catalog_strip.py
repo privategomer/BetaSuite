@@ -85,8 +85,8 @@ class TestPureParts( unittest.TestCase ):
         self.assertFalse( bu_strip.needs_even_pass( [], 0.0 ) )
 
     def test_the_even_interval_caps_the_frames( self ):
-        self.assertEqual( bu_strip.even_interval( 60 ), 1.0 )
-        self.assertEqual( bu_strip.even_interval( 3600 ), 6.0 )
+        self.assertEqual( bu_strip.even_interval( 60 ), 0.25, "a short video: four frames a second" )
+        self.assertEqual( bu_strip.even_interval( 3600 ), 3.0, "a long one: MAX_FRAMES over its length" )
 
     def test_the_commands( self ):
         keyframes = bu_strip.command( '/v.mp4', bu_strip.KEYFRAMES, ( 160, 90 ) )
@@ -138,7 +138,7 @@ class TestBuild( _CacheTest ):
         self.assertEqual( keyframes['frames'], [ 0.0, 10.0 ] )
         self.assertTrue( bu_strip.needs_even_pass( keyframes['frames'], 12.0 ) )
         even = bu_strip.build( path, bu_strip.EVEN, False, self.facts() )
-        self.assertEqual( even['frames'], [ float( s ) for s in range( 12 ) ] )
+        self.assertEqual( even['frames'], [ quarter / 4.0 for quarter in range( 48 ) ] )
 
     def test_the_frame_cap_holds( self ):
         path = self.clip( gop=1, seconds=4 )
