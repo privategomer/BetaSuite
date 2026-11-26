@@ -12,7 +12,8 @@ once per video, in two passes:
              pictures within seconds
   even       when keyframes are sparser than one per MIN_SPACING
              seconds, a second pass decodes the whole stream and keeps a
-             frame at an even interval, at most MAX_FRAMES of them
+             frame at an even interval (at least MIN_INTERVAL apart), at
+             most MAX_FRAMES of them
 
 Both passes keep at most MAX_FRAMES frames, chosen as they decode, so a
 long file never holds more than that in memory.
@@ -39,7 +40,10 @@ import threading
 FOLDER_NAME = 'strips'
 TILE_WIDTH = 160
 COLUMNS = 20
-MAX_FRAMES = 600
+MAX_FRAMES = 1200
+# The even pass's closest spacing: 4 frames a second, so a short video's strip
+# is within a quarter second of the pointer.
+MIN_INTERVAL = 0.25
 MIN_SPACING = 2.0
 QUALITY = 75
 TIME_WAIT_SECONDS = 10
@@ -184,7 +188,7 @@ def needs_even_pass( times, duration ):
 
 
 def even_interval( duration ):
-    return max( 1.0, duration / float( MAX_FRAMES ) )
+    return max( MIN_INTERVAL, duration / float( MAX_FRAMES ) )
 
 
 def sprite( frames, blurred ):

@@ -128,10 +128,47 @@ button.primary:disabled {
   overflow: hidden;
 }
 
+.player-frame {
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
 .player-stage video {
   inline-size: 100%;
   block-size: 100%;
   background: var(--color-video-bg);
+}
+
+/* The scrub strip's frame, drawn over the video while the track is dragged. */
+.player-strip {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+  background: var(--color-video-bg);
+  image-rendering: auto;
+}
+
+.player-strip[hidden] {
+  display: none;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.player-scrub {
+  flex: 1;
+  min-inline-size: 6rem;
+}
+
+.player-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
 }
 
 .player-empty,

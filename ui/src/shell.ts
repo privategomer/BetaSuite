@@ -25,6 +25,8 @@ export interface StartupInfo {
   search: string | null;
   // A help section to open at start, from --help-topic.
   help_topic: string | null;
+  // --measure-scrub: drag across the --open video once its strip is ready, and log it.
+  measure_scrub: boolean;
   // The --open video, already allowed, or why it could not be opened.
   open: PlayableVideo | null;
   open_error: { code: string; params: Readonly<Record<string, unknown>> } | null;
