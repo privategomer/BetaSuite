@@ -187,6 +187,7 @@ class JobQueue:
         self.active = None                        # the job running, or paused and holding the queue
         self._lock = None                         # the run lock while busy
         self.snapshot = None                      # config.get's answer while busy
+        self.estimate_context = None              # job.estimate's settings while busy
         self._stopping = False
         self._thread = threading.Thread( target=self._work, name='job-worker', daemon=True )
         self._thread.start()
@@ -220,9 +221,12 @@ class JobQueue:
     def busy_job( self ):
         """The id config.busy names: the active job, else the first queued; None when idle."""
         with self._cond:
-            if self.active is not None:
-                return self.active.id
-            return self._waiting[0] if self._waiting else None
+            return self.busy_job_locked()
+
+    def busy_job_locked( self ):
+        if self.active is not None:
+            return self.active.id
+        return self._waiting[0] if self._waiting else None
 
     def _job( self, data ):
         job_id = data.get( 'job' )
@@ -263,6 +267,20 @@ class JobQueue:
             self._lock = None
             self.logger.info( "job queue idle, run lock released" )
         self.snapshot = None
+        self.estimate_context = None
+
+    def estimate_context_if_busy( self ):
+        """
+        job.estimate's settings while the queue is busy (taken when it
+        became busy), or None when idle and the live settings can be
+        evaluated.
+        """
+        with self._cond:
+            if not self._busy_locked():
+                return None
+            if self.estimate_context is None:
+                raise bu_proto.ProtocolError( 'config.busy', { 'job': self.busy_job_locked() } )
+            return self.estimate_context
 
     # --- commands ---
 
@@ -296,6 +314,8 @@ class JobQueue:
                     raise bu_proto.ProtocolError( locked.error()['code'], locked.error()['params'] )
                 try:
                     self.snapshot = bu_serve_config.config_get( server, {} )['settings']
+                    import betautils_serve_estimate as bu_serve_estimate
+                    self.estimate_context = bu_serve_estimate.context()
                 except BaseException:
                     self._lock.release()
                     self._lock = None

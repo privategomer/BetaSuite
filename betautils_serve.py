@@ -448,6 +448,11 @@ from betautils_serve_catalog import HANDLERS as _CATALOG_HANDLERS   # noqa: E402
 for _name, _handler in _CATALOG_HANDLERS.items():
     register( _name, _handler )
 
+# job.estimate
+from betautils_serve_estimate import HANDLERS as _ESTIMATE_HANDLERS   # noqa: E402
+for _name, _handler in _ESTIMATE_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 

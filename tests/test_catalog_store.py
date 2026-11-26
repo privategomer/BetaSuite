@@ -18,6 +18,7 @@ import betautils_catalog_store as bu_store
 # a change to the schema is a new step. Update this only by appending.
 SHIPPED_CHECKSUMS = {
     1: '2d41624e4d6d14ef75d5c8f4f1aff89e5c2533e676768b08cabd6c95b5005de2',
+    2: '070b4ae793f07daac2ca86699e2f90dc1cbe0578bf62736b9e19034f34972978',
 }
 
 V2_FOR_TESTS = ( 2, 'test_step', "CREATE TABLE extra ( id INTEGER PRIMARY KEY, note TEXT );\n"

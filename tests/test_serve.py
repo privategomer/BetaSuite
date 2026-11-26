@@ -225,7 +225,7 @@ class TestHandshake( _EngineTest ):
                                                'catalog.forget', 'catalog.get', 'catalog.list', 'catalog.pin_type',
                                                'catalog.remove_folder', 'catalog.rescan', 'catalog.thumbnail',
                                                'config.get', 'config.reset', 'config.schema', 'config.set',
-                                               'hello', 'job.cancel', 'job.list', 'job.move', 'job.pause', 'job.resume', 'job.submit',
+                                               'hello', 'job.cancel', 'job.estimate', 'job.list', 'job.move', 'job.pause', 'job.resume', 'job.submit',
                                                'ping', 'preview.look', 'shutdown' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
                                              'job.decision', 'job.error', 'catalog.changed' ] )
