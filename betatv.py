@@ -1058,6 +1058,9 @@ def main():
     sinks = [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink() ]
     if catalog is not None:
         sinks.append( catalog.sink )
+    # The performance index (betautils_perf), best effort like the catalog.
+    import betautils_serve_perf as bu_serve_perf
+    sinks.append( bu_serve_perf.sink() )
     recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
     # The resource governor paces the command line as it does the app's
     # jobs; it logs each decision, and governor.enabled turns it off.
