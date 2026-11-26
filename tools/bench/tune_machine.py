@@ -334,19 +334,15 @@ def stage_inventory( context, logger ):
     import betautils_local as bu_local
     import betabench
 
+    # The engine's hardware detection (hw.detect) reads the same facts.
+    cpu_model, memory, _battery = bu_hardware.platform_facts( sys.platform, '/proc', '/sys' )
     result = { 'platform': platform.platform(), 'python': platform.python_version(),
                'cpu_count': os.cpu_count() }
-    try:
-        with open( '/proc/cpuinfo', 'r', encoding='ascii', errors='replace' ) as handle:
-            for line in handle:
-                if line.startswith( 'model name' ):
-                    result['cpu_model'] = line.split( ':', 1 )[1].strip()
-                    break
-    except OSError:
-        pass
-    result['memory_total_mb'] = _status_meminfo_mb( 'MemTotal' )
-    result['memory_available_mb'] = _status_meminfo_mb( 'MemAvailable' )
-    result['swap_total_mb'] = _status_meminfo_mb( 'SwapTotal' )
+    if cpu_model:
+        result['cpu_model'] = cpu_model
+    result['memory_total_mb'] = memory.get( 'MemTotal' )
+    result['memory_available_mb'] = memory.get( 'MemAvailable' )
+    result['swap_total_mb'] = memory.get( 'SwapTotal' )
     result['gpu'] = nvidia_smi( [ 'name', 'driver_version', 'memory.total', 'memory.used',
                                   'utilization.gpu', 'encoder.stats.sessionCount' ] )
     code, text = _run_quiet( [ 'ffmpeg', '-hide_banner', '-version' ] )
@@ -403,17 +399,6 @@ def stage_inventory( context, logger ):
         betaconfig.gpu_enabled = value
         logger.info( "gpu_enabled: proposing %d (%s); the stages below run with it"%( value, reason ) )
     return result
-
-
-def _status_meminfo_mb( field ):
-    try:
-        with open( '/proc/meminfo', 'r', encoding='ascii' ) as handle:
-            for line in handle:
-                if line.startswith( field + ':' ):
-                    return int( line.split()[1] ) // 1024
-    except ( OSError, ValueError, IndexError ):
-        return None
-    return None
 
 
 def _video_info( path ):

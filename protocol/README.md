@@ -137,6 +137,14 @@ The catalog of models is data (`assets/models/catalog.json`): each file's pinned
 | `models.state` | `queued`, `downloading`, `installed`, `stopped`, `failed` (with an error `code` and `params`), `removed` |
 | `models.progress` | bytes on disk so far, of total; a few a second, the last one complete |
 
+## Resources
+
+| Command | Does |
+|---|---|
+| `hw.detect` | this machine: OS, CPU, memory, the NVIDIA GPU and whether onnxruntime can use it, whether it has a battery, free space on the disk of each kind of folder; and `safe_settings`, the settings these facts settle without measuring |
+
+Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and runs nvidia-smi once; no model is loaded. Disks are numbered by file system (`volume`), so kinds of folder on one disk share a number, and no path is sent. A safe setting is only one that cannot change what is detected: today `gpu_enabled`, which moves the same model between providers (`hw.gpu_usable`, `hw.gpu_not_usable`). The batch size is left to Optimize, which checks the detections.
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

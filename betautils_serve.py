@@ -459,6 +459,11 @@ from betautils_serve_models import HANDLERS as _MODELS_HANDLERS   # noqa: E402
 for _name, _handler in _MODELS_HANDLERS.items():
     register( _name, _handler )
 
+# hw.detect
+from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E402
+for _name, _handler in _RESOURCE_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 
