@@ -352,6 +352,8 @@ impl Inner {
     }
 
     fn record(&self, started: Instant, direction: &str, message: &Value) {
+        let redacted = redact(message);
+        let message = redacted.as_ref().unwrap_or(message);
         log::trace!(target: "engine", "{direction} {message}");
         if let Ok(mut transcript) = self.transcript.lock() {
             if let Some(file) = transcript.as_mut() {
@@ -824,6 +826,30 @@ fn drain_stderr(stderr: ChildStderr) {
             Ok(_) => log::debug!(target: "engine", "{}", String::from_utf8_lossy(&line).trim_end()),
         }
     }
+}
+
+/// Result fields that never reach the transcript or the log, as the engine's
+/// own `_NOT_LOGGED`: a source's clear frame (a revealed thumbnail) must not
+/// be written anywhere, and the transcript is a file.
+const NOT_RECORDED: &[(&str, &[&str])] = &[("catalog.thumbnail", &["data"])];
+
+/// The message as it may be written: None when nothing in it is withheld,
+/// else a copy with each withheld field replaced by its length.
+fn redact(message: &Value) -> Option<Value> {
+    if message["kind"] != "result" {
+        return None;
+    }
+    let name = message["name"].as_str()?;
+    let (_, fields) = NOT_RECORDED.iter().find(|(command, _)| *command == name)?;
+    let mut copy = message.clone();
+    let data = copy.get_mut("data")?.as_object_mut()?;
+    for field in *fields {
+        if let Some(value) = data.get_mut(*field) {
+            let length = value.as_str().map_or(0, str::len);
+            *value = json!(format!("<{length} bytes not recorded>"));
+        }
+    }
+    Some(copy)
 }
 
 #[cfg(test)]

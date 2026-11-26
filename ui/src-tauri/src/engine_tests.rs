@@ -489,3 +489,30 @@ fn a_refused_handshake_fails_and_stays_failed() {
     }
     assert_eq!(engine.status(), expected);
 }
+
+#[test]
+fn a_thumbnails_image_never_reaches_the_transcript() {
+    let result = json!({ "v": 1, "kind": "result", "id": "ui-1", "name": "catalog.thumbnail", "ok": true,
+                         "data": { "mime": "image/png", "data": "iVBORw0KGgoAAAA", "width": 320, "height": 180 } });
+    let shown = redact(&result).expect("a thumbnail result is redacted");
+    assert_eq!(shown["data"]["data"], "<15 bytes not recorded>");
+    assert_eq!(shown["data"]["width"], 320);
+    assert_eq!(shown["id"], "ui-1");
+    // Other results, and the request itself, are written as they are.
+    let other = json!({ "v": 1, "kind": "result", "id": "ui-2", "name": "catalog.get", "ok": true, "data": { "data": "x" } });
+    assert!(redact(&other).is_none());
+    let request = json!({ "v": 1, "kind": "cmd", "id": "ui-1", "name": "catalog.thumbnail", "data": { "item": "a", "reveal": true } });
+    assert!(redact(&request).is_none());
+}
+
+#[test]
+fn the_transcript_file_gets_the_redacted_thumbnail() {
+    let scratch = Scratch::new("redact");
+    let engine = engine(config(&scratch));
+    let result = json!({ "v": 1, "kind": "result", "id": "ui-1", "name": "catalog.thumbnail", "ok": true,
+                         "data": { "mime": "image/png", "data": "iVBORw0KGgoAAAA" } });
+    engine.inner.record(Instant::now(), "recv", &result);
+    let written = fs::read_to_string(scratch.0.join("transcript.jsonl")).expect("transcript");
+    assert!(!written.contains("iVBORw0KGgo"), "{written}");
+    assert!(written.contains("<15 bytes not recorded>"), "{written}");
+}
