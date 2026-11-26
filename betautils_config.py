@@ -861,7 +861,7 @@ def _validate_person_backend( errors ):
         return
     if not os.path.exists( model_path ):
         errors.append( bu_settings.rule( 'person_backend.model_missing', "reverse['person_windows'] is on but the person model %s is missing. Run setup "
-                       "again (tools/setup/fetch_models.py exports it), or set "
+                       "again or install it from the Models page (tools/setup/fetch_models.py), or set "
                        "reverse['person_windows']['enabled'] = False"%( model_path, ) ) )
 
 

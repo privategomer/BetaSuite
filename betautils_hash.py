@@ -200,6 +200,48 @@ def md5_for_file( filename, length, use_memo=True, should_stop=None ):
     return digest
 
 
+def sha256_for_file( filename, use_memo=True, should_stop=None ):
+    """
+    Full SHA-256 hex digest of a file, streamed, memoised like
+    md5_for_file on (path, size, mtime) in the same memo under its own
+    'sha256|' keys. Used for model files, whose pinned hashes are SHA-256.
+    No inode key: a model copied into place must be hashed again.
+
+    Raises HashStopped when should_stop() answers true; OSError when the
+    file cannot be read.
+    """
+    global _file_hash_memo_dirty
+    memo_key = None
+    if use_memo:
+        try:
+            stat = os.stat( filename )
+            memo_key = "sha256|%s|%d|%d"%( os.path.realpath( filename ), stat.st_size, stat.st_mtime_ns )
+        except OSError:
+            memo_key = None
+    if memo_key is not None:
+        with _file_hash_lock:
+            cached = _load_file_hash_memo().get( memo_key )
+        if cached:
+            return cached
+
+    file_hash = hashlib.sha256()
+    with open( filename, "rb" ) as fin:
+        while True:
+            if should_stop is not None and should_stop():
+                raise HashStopped( filename )
+            chunk = fin.read( _FILE_HASH_CHUNK_BYTES )
+            if not chunk:
+                break
+            file_hash.update( chunk )
+    digest = file_hash.hexdigest()
+
+    if memo_key is not None:
+        with _file_hash_lock:
+            _load_file_hash_memo()[ memo_key ] = digest
+            _file_hash_memo_dirty = True
+    return digest
+
+
 # --- Atomic JSON I/O --------------------------------------------------------
 
 def write_json( variable, filename ):
