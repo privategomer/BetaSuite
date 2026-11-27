@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://betasuite.invalid/protocol/v1/events/job.file.schema.json",
   "title": "job.file",
-  "description": "One file of a job started, or ended as processed, skipped (its output was already there, or it is not a video) or failed. file is its index in the job's files, from 0. Every other event about a file comes between its started and its ending; a file paused or cancelled part way has no ending, and a resumed one starts again. output is the finished file, for processed.",
+  "description": "One file of a job started, or ended as processed, skipped (its output was already there, or it is not a video) or failed. file is its index in the job's files, from 0. Every other event about a file comes between its started and its ending; a file paused or cancelled part way has no ending, and a resumed one starts again. output is the finished file, for processed, and for skipped when the skip was because that output is already there.",
   "$defs": {
     "data": {
       "type": "object",

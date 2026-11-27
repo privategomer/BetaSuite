@@ -415,6 +415,246 @@ class TestPauseResumeCancel( _QueueTest ):
         self.wait_state( later, 'completed' )
 
 
+class TestPreviewOverrides( _QueueTest ):
+    """The UI's Preview is a job with the preview settings as overrides, not a job kind of its own."""
+
+    def _spy( self ):
+        seen = []
+        real = self.pipeline.process_one_video
+
+        def spy( root, fname, censored_folder, index, total, session, preview, preview_max, *rest, **kwargs ):
+            seen.append( ( preview, preview_max ) )
+            return real( root, fname, censored_folder, index, total, session, preview, preview_max, *rest, **kwargs )
+
+        self.pipeline.process_one_video = spy
+        return seen
+
+    def test_preview_overrides_reach_the_pipeline( self ):
+        seen = self._spy()
+        job = self.submit( 'a.mp4', overrides={ 'preview_mode_enabled': True, 'preview_max_seconds': 20 } )
+        self.wait_state( job, 'completed' )
+        self.assertEqual( seen, [ ( True, 20 ) ] )
+
+    def test_a_full_run_can_turn_preview_off_over_a_config_that_has_it_on( self ):
+        seen = self._spy()
+        with mock.patch.object( betaconfig, 'preview_mode_enabled', True, create=True ):
+            job = self.submit( 'a.mp4', overrides={ 'preview_mode_enabled': False } )
+            self.wait_state( job, 'completed' )
+        self.assertEqual( [ preview for preview, _ in seen ], [ False ] )
+
+
+class TestListAndMove( _QueueTest ):
+
+    def setUp( self ):
+        super().setUp()
+        self.pipeline.auto = False
+
+    def jobs( self ):
+        return self.ok( 'job.list' )['jobs']
+
+    def order( self ):
+        return [ ( row['job'], row['position'] ) for row in self.jobs() if row['position'] is not None ]
+
+    def release_all( self ):
+        self.pipeline.auto = True
+        for _ in range( 20 ):
+            self.pipeline.release.release()
+
+    def test_list_is_empty_when_nothing_was_submitted( self ):
+        self.assertEqual( self.jobs(), [] )
+
+    def test_list_shows_the_active_job_then_the_waiting_ones_then_the_ended_ones( self ):
+        done = self.submit( 'c.mp4' )
+        for _ in range( 3 ):
+            self.pipeline.release.release()
+        self.wait_state( done, 'completed' )
+        first = self.submit( 'a.mp4', 'b.mp4', overrides={ 'encode_crf': 30 } )
+        second = self.submit( 'b.mp4' )
+        self.wait_state( first, 'running' )
+        rows = self.jobs()
+        self.assertEqual( [ ( row['job'], row['state'], row['position'] ) for row in rows ],
+                          [ ( first, 'running', 0 ), ( second, 'queued', 1 ), ( done, 'completed', None ) ] )
+        self.assertEqual( rows[0]['files'], [ self.files['a.mp4'], self.files['b.mp4'] ] )
+        self.assertEqual( rows[0]['overrides'], { 'encode_crf': 30 } )
+        self.assertEqual( rows[0]['counts'], { 'total': 2, 'processed': 0, 'skipped': 0, 'failed': 0 } )
+        self.assertEqual( rows[2]['counts']['processed'], 1 )
+        self.assertNotIn( 'code', rows[0] )
+
+    def test_ended_jobs_are_newest_first_and_a_stopped_one_carries_its_code( self ):
+        older = self.submit( 'c.mp4' )
+        self.release_all()
+        self.wait_state( older, 'completed' )
+        newer = self.submit( 'full.mp4' )
+        self.release_all()
+        self.wait_state( newer, 'stopped' )
+        rows = self.jobs()
+        self.assertEqual( [ row['job'] for row in rows ], [ newer, older ] )
+        self.assertEqual( rows[0]['code'], 'disk.full' )
+        self.assertIn( 'params', rows[0] )
+
+    def test_a_paused_job_holding_the_queue_is_at_position_zero( self ):
+        job = self.submit( 'a.mp4' )
+        behind = self.submit( 'b.mp4' )
+        self.wire.wait_for( lambda m: m['name'] == 'job.file' and m['data']['job'] == job, 'file started' )
+        self.ok( 'job.pause', { 'job': job } )
+        self.pipeline.release.release()
+        self.wait_state( job, 'paused' )
+        self.assertEqual( self.order(), [ ( job, 0 ), ( behind, 1 ) ] )
+
+    def test_move_reorders_the_waiting_jobs_and_they_run_in_the_new_order( self ):
+        first = self.submit( 'a.mp4' )
+        b = self.submit( 'b.mp4' )
+        c = self.submit( 'c.mp4' )
+        self.wait_state( first, 'running' )
+        self.assertEqual( self.ok( 'job.move', { 'job': c, 'position': 1 } ), { 'job': c, 'position': 1 } )
+        self.assertEqual( self.order(), [ ( first, 0 ), ( c, 1 ), ( b, 2 ) ] )
+        self.release_all()
+        self.wait_state( b, 'completed' )
+        self.assertEqual( self.pipeline.started, [ 'a.mp4', 'c.mp4', 'b.mp4' ] )
+
+    def test_move_to_the_back( self ):
+        first = self.submit( 'a.mp4' )
+        b = self.submit( 'b.mp4' )
+        c = self.submit( 'c.mp4' )
+        self.wait_state( first, 'running' )
+        self.assertEqual( self.ok( 'job.move', { 'job': b, 'position': 2 } )['position'], 2 )
+        self.assertEqual( self.order(), [ ( first, 0 ), ( c, 1 ), ( b, 2 ) ] )
+
+    def test_a_position_past_either_end_is_taken_as_that_end( self ):
+        first = self.submit( 'a.mp4' )
+        b = self.submit( 'b.mp4' )
+        c = self.submit( 'c.mp4' )
+        self.wait_state( first, 'running' )
+        self.assertEqual( self.ok( 'job.move', { 'job': c, 'position': 0 } )['position'], 1,
+                          "nothing goes ahead of the running job" )
+        self.assertEqual( self.order(), [ ( first, 0 ), ( c, 1 ), ( b, 2 ) ] )
+        self.assertEqual( self.ok( 'job.move', { 'job': c, 'position': 99 } )['position'], 2 )
+        self.assertEqual( self.order(), [ ( first, 0 ), ( b, 1 ), ( c, 2 ) ] )
+
+    def test_moving_ahead_of_a_paused_job_is_not_possible( self ):
+        job = self.submit( 'a.mp4' )
+        behind = self.submit( 'b.mp4' )
+        self.wire.wait_for( lambda m: m['name'] == 'job.file' and m['data']['job'] == job, 'file started' )
+        self.ok( 'job.pause', { 'job': job } )
+        self.pipeline.release.release()
+        self.wait_state( job, 'paused' )
+        self.assertEqual( self.ok( 'job.move', { 'job': behind, 'position': 0 } )['position'], 1 )
+        self.assertEqual( self.order(), [ ( job, 0 ), ( behind, 1 ) ] )
+
+    def test_only_a_waiting_job_moves( self ):
+        running = self.submit( 'a.mp4' )
+        queued = self.submit( 'b.mp4' )
+        self.wait_state( running, 'running' )
+        self.assertEqual( self.refused( 'job.move', { 'job': running, 'position': 1 }, 'job.bad_state' ),
+                          { 'job': running, 'state': 'running' } )
+        self.ok( 'job.cancel', { 'job': queued } )
+        self.assertEqual( self.refused( 'job.move', { 'job': queued, 'position': 0 }, 'job.bad_state' ),
+                          { 'job': queued, 'state': 'cancelled' } )
+
+    def test_move_bad_requests( self ):
+        job = self.submit( 'a.mp4' )
+        self.assertEqual( self.refused( 'job.move', { 'job': job }, 'command.bad_params' ),
+                          { 'field': 'position', 'reason': 'missing' } )
+        self.assertEqual( self.refused( 'job.move', { 'job': job, 'position': '1' }, 'command.bad_params' ),
+                          { 'field': 'position', 'reason': 'type' } )
+        self.assertEqual( self.refused( 'job.move', { 'job': job, 'position': True }, 'command.bad_params' ),
+                          { 'field': 'position', 'reason': 'type' } )
+        self.assertEqual( self.refused( 'job.move', { 'job': job, 'position': -1 }, 'command.bad_params' ),
+                          { 'field': 'position', 'reason': 'value' } )
+        self.assertEqual( self.refused( 'job.move', { 'job': 'nope', 'position': 0 }, 'job.unknown' ),
+                          { 'job': 'nope' } )
+
+
+class TestEstimate( _QueueTest ):
+    """job.estimate through the server: which settings it reads, idle and busy. The arithmetic is in test_estimate."""
+
+    def setUp( self ):
+        super().setUp()
+        import betautils_serve_catalog as bu_serve_catalog
+        import betautils_serve_estimate as bu_serve_estimate
+        self.bu_serve_estimate = bu_serve_estimate
+        patcher = mock.patch.object( bu_serve_catalog, '_open_quietly', return_value=None )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+        self.seen = []
+        real = bu_serve_estimate.answer
+
+        def spy( files, ctx, *rest, **kwargs ):
+            self.seen.append( ctx )
+            return real( files, ctx, *rest, **kwargs )
+
+        patcher = mock.patch.object( bu_serve_estimate, 'answer', side_effect=spy )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+        # The probe has its own tests (test_estimate_probe); here it never starts.
+        patcher = mock.patch.object( bu_serve_estimate, 'maybe_probe' )
+        patcher.start()
+        self.addCleanup( patcher.stop )
+
+    def estimate( self, *names, overrides=None ):
+        data = { 'files': [ self.files[name] for name in names ] }
+        if overrides is not None:
+            data['overrides'] = overrides
+        return self.ok( 'job.estimate', data )
+
+    def test_an_unreadable_file_and_no_history_give_no_estimate( self ):
+        out = self.estimate( 'a.mp4', 'b.mp4' )
+        self.assertEqual( out, { 'files': [ { 'seconds': None, 'detect_cache': None } ] * 2, 'seconds': None,
+                                 'basis': 'none', 'runs': { 'detect': 0, 'render': 0 }, 'look_seen': False,
+                                 'probing': False, 'missing': [ 'detect', 'render' ] } )
+
+    def test_idle_it_reads_the_settings_with_the_overrides_and_changes_nothing( self ):
+        before = ( getattr( betaconfig, 'preview_mode_enabled', False ), betaconfig.encode_preset )
+        self.estimate( 'a.mp4', overrides={ 'preview_mode_enabled': True, 'preview_max_seconds': 7,
+                                            'encode_preset': 'slow' } )
+        [ ctx ] = self.seen
+        self.assertEqual( ( ctx['preview'], ctx['preview_max'] ), ( True, 7 ) )
+        self.assertEqual( ctx['identity']['preset'], getattr( betaconfig, 'preview_encode_preset', 'ultrafast' ) )
+        self.estimate( 'a.mp4', overrides={ 'encode_preset': 'slow' } )
+        self.assertEqual( self.seen[1]['identity']['preset'], 'slow' )
+        self.assertEqual( ( getattr( betaconfig, 'preview_mode_enabled', False ), betaconfig.encode_preset ), before )
+
+    def test_busy_it_uses_the_settings_taken_when_the_queue_became_busy( self ):
+        self.pipeline.auto = False
+        job = self.submit( 'a.mp4', overrides={ 'encode_preset': 'veryslow' } )
+        self.wait_state( job, 'running' )
+        taken = self.server.jobs.estimate_context
+        self.assertIsNotNone( taken )
+        self.estimate( 'b.mp4', overrides={ 'encode_preset': 'slow', 'preview_mode_enabled': True } )
+        [ ctx ] = self.seen
+        self.assertTrue( ctx['preview'] )
+        self.assertEqual( { key: value for key, value in ctx.items() if key not in ( 'preview', 'identity' ) },
+                          { key: value for key, value in taken.items() if key not in ( 'preview', 'identity' ) } )
+        self.assertNotEqual( ctx['identity']['preset'], 'slow', "only the preview overrides apply while busy" )
+        self.pipeline.auto = True
+        for _ in range( 3 ):
+            self.pipeline.release.release()
+        self.wait_state( job, 'completed' )
+        self.assertIsNone( self.server.jobs.estimate_context, "forgotten once the queue is idle" )
+
+    def test_busy_with_no_settings_taken_is_refused_not_evaluated( self ):
+        self.pipeline.auto = False
+        job = self.submit( 'a.mp4' )
+        self.wait_state( job, 'running' )
+        self.server.jobs.estimate_context = None
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ self.files['b.mp4'] ] }, 'config.busy' ),
+                          { 'job': job } )
+        self.assertEqual( self.seen, [] )
+
+    def test_bad_requests( self ):
+        self.assertEqual( self.refused( 'job.estimate', {}, 'command.bad_params' ),
+                          { 'field': 'files', 'reason': 'missing' } )
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ 'a.mp4' ] }, 'command.bad_params' ),
+                          { 'field': 'files', 'reason': 'value' } )
+        self.assertEqual( self.refused( 'job.estimate', { 'files': [ self.tmp + '/nope.mp4' ] }, 'job.no_such_file' ),
+                          { 'index': 0 } )
+        self.refused( 'job.estimate', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'encode_crff': 1 } },
+                      'config.unknown_key' )
+        self.refused( 'job.estimate', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'encode_crf': 'x' } },
+                      'config.invalid' )
+        self.assertFalse( self.server.jobs.busy )
+
+
 class TestRaces( _QueueTest ):
     """Windows the independent review found, each held open by the test."""
 
@@ -772,7 +1012,7 @@ class TestRegistration( unittest.TestCase ):
     def test_hello_lists_the_job_commands_and_events( self ):
         server = bu_serve.Server( io.BytesIO(), io.BytesIO(), logging.getLogger( 'test_serve_job' ) )
         result = bu_serve._hello( server, { 'protocol': [ 1 ] } )
-        for name in ( 'job.submit', 'job.pause', 'job.resume', 'job.cancel' ):
+        for name in ( 'job.submit', 'job.pause', 'job.resume', 'job.cancel', 'job.list', 'job.move' ):
             self.assertIn( name, result['commands'] )
         self.assertEqual( set( bu_serve_job.EVENTS ) - set( result['events'] ), set() )
 

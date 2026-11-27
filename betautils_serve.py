@@ -61,8 +61,8 @@ EXIT_TERMINATED = 143
 ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
-EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error',
-           'catalog.changed', 'models.state', 'models.progress' )
+EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error', 'job.probed',
+           'catalog.changed', 'catalog.strip_ready', 'models.state', 'models.progress' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -452,6 +452,16 @@ for _name, _handler in _PREVIEW_HANDLERS.items():
 # catalog.list, get, folders, add_folder, remove_folder, add_files, rescan, forget
 from betautils_serve_catalog import HANDLERS as _CATALOG_HANDLERS   # noqa: E402
 for _name, _handler in _CATALOG_HANDLERS.items():
+    register( _name, _handler )
+
+# job.estimate
+from betautils_serve_estimate import HANDLERS as _ESTIMATE_HANDLERS   # noqa: E402
+for _name, _handler in _ESTIMATE_HANDLERS.items():
+    register( _name, _handler )
+
+# catalog.strip
+from betautils_serve_strip import HANDLERS as _STRIP_HANDLERS   # noqa: E402
+for _name, _handler in _STRIP_HANDLERS.items():
     register( _name, _handler )
 
 # models.list, install, cancel, import, remove, use

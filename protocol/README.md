@@ -61,8 +61,13 @@ A job is a list of files run one after another through the same pipeline as `bet
 | `job.pause` | the running job stops at its next safe point and the queue waits behind it; detection checkpoints and finished render chunks are kept |
 | `job.resume` | the paused job runs again: the file it paused in continues from its checkpoints, finished files are not run again |
 | `job.cancel` | a queued or paused job is cancelled at once, a running one at its next safe point; the partial outputs of the file it was on are removed, finished outputs and detection caches stay |
+| `job.list` | the jobs the queue remembers: the active one at position 0, the waiting ones in run order, then the ended ones (position null), with their files, counts and overrides |
+| `job.move` | moves a waiting job to another position; it cannot go ahead of the active job, and a position past either end is taken as that end |
+| `job.estimate` | how long the same `files` and `overrides` would take, before submitting, from the timings of earlier comparable runs in the catalog's history; per file and in total, `null` where no comparable run gives a rate (`basis: none`), plus whether an earlier run used the same look (`look_seen`). With no comparable run and the queue idle, it starts a short probe of this machine (`probing`, then the `job.probed` event); jobs wait for it, and its rates fill in where the history has none (`basis: probe`) |
 
-Jobs run one at a time, in the order submitted. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
+Jobs run one at a time, in queue order: the order submitted unless `job.move` changed it. A paused job holds the queue. While any job is queued, running or paused, the engine holds the library's run lock, so a command-line run is refused, and `job.submit` answers `run.locked` while a command-line run holds it. A file under the input folder writes its output to the same place under the output folder; any other file writes to the output folder itself.
+
+**Kept across restarts.** Every job that has not ended is written to `queue.json` in the state folder each time the queue changes, and so is a job stopped only because the engine shut down. The next engine reads them back held: `paused`, `restored` in `job.list`, after the waiting jobs. A held job runs nothing and holds nothing (no run lock; settings stay writable; a command-line run is not refused) until `job.resume` puts it back in the queue. It then continues from the file it had reached, its detection checkpoints and finished render chunks being on disk already. `job.cancel` drops a held job; it cannot be moved or paused. A saved job whose settings no longer validate is dropped, with a warning in the log.
 
 A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probability` above 0, `job.nothing_to_render`) refuse `job.submit` when the queue is idle. A job submitted behind another is checked when it starts, and stops with that code if it fails.
 
@@ -71,10 +76,11 @@ A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probabi
 | event | when |
 |---|---|
 | `job.state` | the job is `queued`, `running` or `paused`, or ends `completed`, `cancelled` or `stopped`; a stopped job carries the `code` (`disk.full`, `model.load_failed`, `config.invalid`, `engine.stopping`, ...) |
-| `job.file` | one file `started`, or ended `processed` (with its `output`), `skipped` or `failed` |
+| `job.file` | one file `started`, or ended `processed` (with its `output`), `skipped` (with its `output` when that was already there) or `failed` |
 | `job.progress` | a file's stage (`detect` per size, `persons`, `render`): done, total, rate |
 | `job.decision` | a choice the engine made about a file, as a code: the structure profile and the rule that chose it, an output already present, a source that is not a video |
 | `job.error` | a file that failed (`file.failed`, the job goes on), or the code that stopped the job, just before its `stopped` state |
+| `job.probed` | the estimate probe a `job.estimate` started has ended (`ok` when it measured a rate); asking `job.estimate` again gives the measured estimate |
 
 Order: `job.submit`'s result comes before the job's first event. A file's events come between its `started` and its ending; a job's last event is its final `job.state`. When the last job in the queue sends its final `job.state`, the run lock is already given back and `config.set` is accepted, so a client can start a command-line run or change settings as soon as it reads it. `job.progress` is coalesced to a few per second per job (the latest of each stage), and is the only event that can be dropped. A full disk stops the job and every job queued behind it with `disk.full`. When the engine shuts down (`shutdown`, end of input, a signal), a running job stops at its next safe point with `engine.stopping` and its checkpoints kept, so submitting it again continues where it was.
 
@@ -92,7 +98,7 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 | command | does |
 |---|---|
-| `catalog.list` | a page of items (at most 500), filtered by status, availability, video type, output, duplicates, pinned or folder, sorted by name, added_at, size or status; with `total`, `pending` (files waiting to be hashed) and `reclaimable_bytes` (what removing every extra copy would free) |
+| `catalog.list` | a page of items (at most 500), filtered by status, availability, video type, output, duplicates, pinned, folder or censors applied (`censored`: labels hidden and kinds of look used, by one present output), sorted by name, added_at, size or status; with `total`, `pending` (files waiting to be hashed) and `reclaimable_bytes` (what removing every extra copy would free) |
 | `catalog.get` | one item with every path it was found at, its outputs and their keys, and its last 50 runs |
 | `catalog.folders` | the watched folders |
 | `catalog.add_folder` | watch a folder; with `type_from_folder` its subfolder names pick the video type, as a 1.x `uncensored_vids` tree did |
@@ -102,6 +108,7 @@ The library: every video the engine knows, identified by its content (the 16-cha
 | `catalog.pin_type` | pin an item's video type, or unpin it (Auto) |
 | `catalog.thumbnail` | an item's blurred thumbnail, or with `reveal` its clear frame, made in memory and written nowhere; or its censored output's thumbnail |
 | `catalog.forget` | remove an item and its history; its files are not touched |
+| `catalog.strip` | a video's scrub strip for the player (by `path`): small frames at known times, in a JPEG in the cache folder; answered at once with what is on disk, while the missing pass is built in the background |
 
 **Watching.** A pass lists each watched folder and reads each file's size, modification time and inode, never its bytes. A rename or a move on one disk is followed by inode; anything else is hashed once it has held still for a few seconds, and found again as the same item when its content is known. Hashing waits while a run is on (a job of this engine, or any run holding the library's run lock, such as the command line). Passes run at start, every `catalog_scan_interval_seconds` (0: only when asked), never sooner than ten times the last pass's length, and on `catalog.rescan`. A new catalog watches the library's `source` and `uncensored_vids` folders and the 1.x video folders a migration recorded, each with its folder rule. A file named as a censored output is an output, wherever it sits.
 
@@ -113,7 +120,9 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 **Thumbnails.** Only a source's blurred thumbnail (24 pixels on its long side, blurred) is ever written to disk. `reveal` decodes the frame again into memory and answers it; it is written nowhere. A censored output's thumbnail is stored like any other.
 
-`catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped.
+**Scrub strips** are built in two passes. The keyframes pass decodes only keyframes, which is quick even on long-GOP 4K, so the player has pictures within seconds. When keyframes are sparser than one every 2 seconds, an even pass follows: the whole stream is decoded and a frame kept at an even interval (four frames a second at most), at most 1200. The even pass waits while a run is on. Each pass's end is announced by `catalog.strip_ready`. A file the catalog lists as a present censored output gets a clear strip. Any other file's frames are shrunk and blurred as a source thumbnail is before anything is written.
+
+`catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped. `catalog.strip_ready` says a strip pass for a `path` was written (`ok`) or could not be made.
 
 ## Models
 

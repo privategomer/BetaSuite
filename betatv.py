@@ -55,6 +55,7 @@ import betautils_cache_paths as bu_cache
 import betautils_cli as bu_cli
 import betautils_config as bu_config
 import betautils_detector as bu_detector
+import betautils_estimate as bu_estimate
 import betautils_hash as bu_hash
 import betautils_job as bu_job
 import betautils_local as bu_local
@@ -411,6 +412,23 @@ def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suff
     return raw_boxes
 
 
+def detection_cache_state( file_hash, picture_sizes, sample_fps, preview_suffix ):
+    """
+    Whether this file's detections come from cache before they are run:
+    'cached' (every size), 'partial' (some size cached or checkpointed),
+    or 'fresh'. Only a fresh detection's time says how fast the model is.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    paths = [ bu_cache.box_hash_path_for( file_hash, size, sample_fps, global_min_prob, backend_name, preview_suffix )
+              for size in picture_sizes ]
+    if paths and all( os.path.exists( path ) for path in paths ):
+        return bu_estimate.CACHED
+    if any( os.path.exists( path ) or bu_hash.has_checkpoint( path ) for path in paths ):
+        return bu_estimate.PARTIAL
+    return bu_estimate.FRESH
+
+
 def detect_boxes_for_video( source, fname, session, file_hash, picture_sizes,
                             preview_suffix, preview_offset_seconds, preview_max_seconds,
                             logger, sample_fps=None ):
@@ -697,6 +715,7 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
                 source, fname, file_hash, paths['preview_suffix'], preview_offset_seconds,
                 effective_preview_seconds, logger, sample_fps )
 
+        detect_cache = detection_cache_state( file_hash, picture_sizes, sample_fps, paths['preview_suffix'] )
         raw_boxes = detect_boxes_for_video(
             source, fname, session, file_hash, picture_sizes, paths['preview_suffix'],
             preview_offset_seconds, effective_preview_seconds, logger, sample_fps )
@@ -771,6 +790,9 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
             fname, paths, preview_mode_enabled, preview_offset_seconds,
             detection_seconds, encode_seconds, finished_at - started_at,
             picture_sizes, session, source, track_stats, render_stats )
+        run.timing = bu_estimate.timing_for(
+            detection_seconds, encode_seconds, finished_at - started_at, detect_cache, scanned_seconds,
+            sample_fps, picture_sizes, source.width, source.height, source.vid_fps, bu_estimate.identity() )
         recorder.record( run.end( 'processed' ) )
         if person_pass is not None:
             person_pass.stop()

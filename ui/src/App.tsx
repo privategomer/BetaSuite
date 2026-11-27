@@ -6,6 +6,10 @@ import { t } from './i18n/format';
 import { describeError, log } from './log';
 import { StyleEditor } from './hide/StyleEditor';
 import { WhatToHide } from './hide/WhatToHide';
+import { useBackground } from './library/background';
+import { queueNow } from './library/jobs';
+import { LibraryView } from './library/LibraryView';
+import { RunCloseDialog } from './library/RunCloseDialog';
 import { ModelsView } from './models/ModelsView';
 import { AllSettings } from './settings/AllSettings';
 import { SettingsView } from './settings/SettingsView';
@@ -23,20 +27,30 @@ const HelpPanel = lazy( () => import( './help/HelpPanel' ).then( ( module ) => (
 
 registerStyleEditor( 'censor_style', StyleEditor );
 
-type View = 'player' | 'what_to_hide' | 'models' | 'settings' | 'all_settings';
+type View = 'library' | 'player' | 'what_to_hide' | 'models' | 'settings' | 'all_settings';
 
-function startView( view: StartupInfo[ 'view' ] | undefined ): View {
+function startView( view: StartupInfo[ 'view' ] | undefined, opening: boolean ): View {
   switch ( view ) {
+    case 'library': return 'library';
+    case 'player': return 'player';
     case 'what-to-hide': return 'what_to_hide';
     case 'models': return 'models';
     case 'settings': return 'settings';
     case 'all-settings': return 'all_settings';
-    default: return 'player';
+    default: return opening ? 'player' : 'library';
   }
 }
 
 export function App( { startup }: AppProps ) {
-  const [ view, setView ] = useState<View>( startView( startup?.view ) );
+  const [ view, setView ] = useState<View>( startView( startup?.view, startup?.open !== null && startup?.open !== undefined ) );
+  // A library video to play: the path, and a count so the same one plays again.
+  const [ playing, setPlaying ] = useState<{ path: string; nonce: number } | null>( null );
+  const [ closingRun, setClosingRun ] = useState( false );
+  useBackground();
+  const play = useCallback( ( path: string ) => {
+    setPlaying( ( current ) => ( { path, nonce: ( current?.nonce ?? 0 ) + 1 } ) );
+    setView( 'player' );
+  }, [] );
   const [ help, setHelp ] = useState<string | null>( startup?.help_topic ?? null );
   const onHelp = useCallback( ( anchor: string ) => { setHelp( anchor ); }, [] );
   const closeHelp = useCallback( () => { setHelp( null ); }, [] );
@@ -64,10 +78,12 @@ export function App( { startup }: AppProps ) {
   useEffect( () => {
     // The shell holds a window close while the page has unapplied changes.
     const unlisten = onCloseRequested( () => {
-      if ( getGuard() === null ) {
-        closeWindow().catch( ( error: unknown ) => { log.error( `close_window failed: ${describeError( error )}` ); } );
-      } else {
+      if ( getGuard() !== null ) {
         setAsking( 'close' );
+      } else if ( queueNow().busy ) {
+        setClosingRun( true );
+      } else {
+        closeWindow().catch( ( error: unknown ) => { log.error( `close_window failed: ${describeError( error )}` ); } );
       }
     } );
     return () => { unlisten.then( ( stop ) => { stop(); }, () => undefined ); };
@@ -93,6 +109,7 @@ export function App( { startup }: AppProps ) {
       <header className="app-header">
         <h1>{t( 'app.name' )}</h1>
         <nav className="app-nav" aria-label={t( 'nav.label' )}>
+          {tab( 'library', t( 'nav.library' ) )}
           {tab( 'player', t( 'nav.player' ) )}
           {tab( 'what_to_hide', t( 'nav.what_to_hide' ) )}
           {tab( 'models', t( 'nav.models' ) )}
@@ -104,8 +121,9 @@ export function App( { startup }: AppProps ) {
       <main className="app-main">
         {/* The player stays mounted, so a video keeps its place across views. */}
         <div className="view" hidden={view !== 'player'}>
-          <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} />
+          <Player openAtStart={startup?.open ?? null} openError={startup?.open_error ?? null} request={playing} measureScrub={startup?.measure_scrub ?? false} />
         </div>
+        {view === 'library' && <LibraryView onPlay={play} onHelp={onHelp} />}
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}
         {view === 'models' && <ModelsView />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
@@ -119,6 +137,15 @@ export function App( { startup }: AppProps ) {
       </div>
       {asking !== null && guard !== null && (
         <UnsavedDialog guard={guard} closing={asking === 'close'} onDone={answered} onStay={() => { setAsking( null ); }} />
+      )}
+      {closingRun && (
+        <RunCloseDialog
+          onClose={() => {
+            setClosingRun( false );
+            closeWindow().catch( ( error: unknown ) => { log.error( `close_window failed: ${describeError( error )}` ); } );
+          }}
+          onStay={() => { setClosingRun( false ); }}
+        />
       )}
       <StatusStrip />
     </div>

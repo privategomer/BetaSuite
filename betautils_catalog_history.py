@@ -22,6 +22,7 @@ Recording a run also keeps the item in step:
     is followed to where it went: the same item, same status and type
 """
 
+import json
 import os
 
 import betautils_catalog_index as bu_index
@@ -66,14 +67,15 @@ class History:
         with self.store.write() as db:
             db.execute( 'INSERT INTO runs ( hash, program, job, path, started_at, ended_at, outcome, reason,'
                         ' output, detection_key, censor_key, encode_key, profile, rule, rule_params, sample_fps,'
-                        ' preview, error_type, stage ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,'
-                        ' ?, ?, ? )',
+                        ' preview, error_type, stage, timing ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,'
+                        ' ?, ?, ?, ?, ?, ? )',
                         ( digest, run.program, run.job, bu_index.norm( run.path ), run.started_at,
                           run.ended_at if run.ended_at is not None else run.started_at, outcome, run.reason,
                           bu_index.norm( run.output ) if run.output else None, keys.get( 'detection' ),
                           keys.get( 'censor' ), keys.get( 'encode' ), run.profile, run.rule,
                           bu_store.dumps_params( run.rule_params ), run.sample_fps, int( bool( run.preview ) ),
-                          run.error_type, run.stage ) )
+                          run.error_type, run.stage,
+                          json.dumps( run.timing, sort_keys=True ) if getattr( run, 'timing', None ) else None ) )
         status = status_after( run )
         if status is not None:
             self.index.set_status( digest, status )

@@ -123,9 +123,12 @@ class ServedCatalog:
             self.events.stop()
             raise
         self.catalog.start()
+        import betautils_serve_strip as bu_serve_strip
+        self.strips = bu_serve_strip.StripService( server.send_event, busy, server._logger )
 
     def close( self ):
         try:
+            self.strips.stop()
             self.catalog.close()
         finally:
             self.events.stop()
@@ -161,6 +164,12 @@ def catalog_for( server ):
                 raise _protocol_error( err )
             server.catalog = served
     return served.catalog
+
+
+def served_strips( server ):
+    """The server's strip builder, made with its catalog."""
+    catalog_for( server )
+    return server.catalog.strips
 
 
 def _call( function, *args, **kwargs ):
@@ -298,6 +307,13 @@ def _filters( data ):
         if isinstance( raw['folder'], bool ) or not isinstance( raw['folder'], int ):
             raise _bad_params( 'filter.folder', bu_proto.REASON_TYPE )
         filters['folder'] = raw['folder']
+    if 'censored' in raw:
+        censored = raw['censored']
+        if not isinstance( censored, dict ):
+            raise _bad_params( 'filter.censored', bu_proto.REASON_TYPE )
+        filters['censored'] = {
+            field: _string_list( censored, field, required=False, label='filter.censored.' + field )
+            for field in ( 'labels', 'looks' ) if field in censored }
     return filters
 
 

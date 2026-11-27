@@ -9,8 +9,8 @@ use log::LevelFilter;
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
-                 [--measure-startup FILE] [--view player|what-to-hide|models|settings|all-settings]
-                 [--search TEXT] [--help-topic ANCHOR]
+                 [--measure-startup FILE] [--view library|player|what-to-hide|models|settings|all-settings]
+                 [--search TEXT] [--help-topic ANCHOR] [--measure-scrub]
 
   --log-level LEVEL      log file level (default info)
   --console-level LEVEL  terminal level (default info)
@@ -21,9 +21,11 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
   --open VIDEO           play this video at once, muted
   --measure-startup FILE write the time of each startup step to FILE as JSON,
                          then close (with --open, after its first frame)
-  --view VIEW            open on this view: player (default), what-to-hide, models, settings or all-settings
+  --view VIEW            open on this view: library (default), player, what-to-hide, models, settings or all-settings
   --search TEXT          start All Settings with this search filled in
   --help-topic ANCHOR    open the help panel at this section of the reference
+  --measure-scrub        with --open: once the scrub strip is ready, drag across the
+                         video the way the spike did and log what it shows
 
 LEVEL is trace, debug, info, warn or error.";
 
@@ -38,12 +40,14 @@ pub struct Options {
     pub theme: Option<String>,
     pub open: Option<PathBuf>,
     pub measure_startup: Option<PathBuf>,
-    /// The view the page opens on; None is the player.
+    /// The view the page opens on; None is the library (the player with --open).
     pub view: Option<String>,
     /// Text All Settings starts with in its search box.
     pub search: Option<String>,
     /// A help section to open at start.
     pub help_topic: Option<String>,
+    /// Measure the player's scrub on the --open video (evidence runs).
+    pub measure_scrub: bool,
     pub help: bool,
     /// Arguments this version does not know. Logged and ignored, so a
     /// launcher that adds its own arguments cannot stop the app starting.
@@ -63,6 +67,7 @@ impl Default for Options {
             view: None,
             search: None,
             help_topic: None,
+            measure_scrub: false,
             help: false,
             unknown: Vec::new(),
         }
@@ -116,17 +121,18 @@ where
                 options.measure_startup = Some(PathBuf::from(value("--measure-startup")?))
             }
             "--view" => match value("--view")?.as_str() {
-                view @ ("player" | "what-to-hide" | "models" | "settings" | "all-settings") => {
+                view @ ("library" | "player" | "what-to-hide" | "models" | "settings" | "all-settings") => {
                     options.view = Some(view.to_owned())
                 }
                 other => {
                     return Err(format!(
-                        "unknown view {other:?}; use player, what-to-hide, models, settings or all-settings"
+                        "unknown view {other:?}; use library, player, what-to-hide, models, settings or all-settings"
                     ))
                 }
             },
             "--search" => options.search = Some(value("--search")?),
             "--help-topic" => options.help_topic = Some(value("--help-topic")?),
+            "--measure-scrub" => options.measure_scrub = true,
             "-h" | "--help" => options.help = true,
             _ => options.unknown.push(arg),
         }

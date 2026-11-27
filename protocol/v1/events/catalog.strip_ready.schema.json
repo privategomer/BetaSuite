@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/catalog.strip_ready.schema.json",
+  "title": "catalog.strip_ready",
+  "description": "A pass of a video's scrub strip that catalog.strip queued has ended: written (ok true), or it could not be made (ok false, and that pass is not tried again until the engine restarts). Asking catalog.strip again gives the new strip.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "path",
+        "density",
+        "ok"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "density": {
+          "enum": [
+            "keyframes",
+            "even"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
