@@ -12,17 +12,23 @@ Releases 1.4.0 to 1.5.2 were published under the PolyForm Noncommercial
 License 1.0.0 and stay available under those terms. The same contributions
 are also available under AGPL-3.0-or-later from this version on.
 
-Upstream (open question)
-This project is a fork of BetaSuite 0.2.4 by solarorb93:
+Upstream
+This project began as a fork of BetaSuite 0.2.4 by solarorb93, with
+thanks for the original idea and work:
 https://github.com/solarorb93/BetaSuite
 
-The upstream repository carries no license file. Permission to license its
-code has been requested and not yet answered. The code that originates
-there remains under its author's rights; the license in LICENSE does not
-grant any rights to it beyond what its author has granted. Choosing a
-different license for the fork does not change this. It stays unresolved
-until the author grants permission or the upstream code still present is
-rewritten.
+The upstream repository carries no license file, and permission to
+license its code was requested and not answered. Every part of this
+repository that came from it has since been removed or replaced by code
+written independently from descriptions of the required behavior,
+without access to the upstream code. What remains
+in common is what any implementation must share: names that other code
+calls, model tensor names and class order fixed by the model files, and
+library calls and data values the behavior requires.
+
+The repository's history from before that rewrite still contains the
+upstream code. It remains under its author's rights, and the license in
+LICENSE grants nothing for it.
 
 Third-party components
 The project hosts the detection and segmentation models the app downloads,
