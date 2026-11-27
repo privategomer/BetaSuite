@@ -1,13 +1,15 @@
 // The status strip along the bottom of the window: one item per subsystem,
 // each with an icon whose shape (not only its color) says how it is, a
-// plain-language line, and an action when there is something to do. Only
-// the engine has an item so far.
+// plain-language line, and an action when there is something to do: the
+// engine, and model downloads while there are any.
 import { useState } from 'react';
 import { restartEngine, type EngineStatus } from '../engine/client';
 import { useEngineStatus } from '../engine/status';
 import { errorText } from '../i18n/errors';
 import { t } from '../i18n/format';
 import { describeError, log } from '../log';
+import { modelName } from '../models/ModelsView';
+import { useModelEvents } from '../models/store';
 
 type Tone = 'ok' | 'busy' | 'problem';
 
@@ -105,10 +107,33 @@ function EngineItem() {
   );
 }
 
+function ModelsItem() {
+  const { active } = useModelEvents();
+  if ( active.size === 0 ) {
+    return null;
+  }
+  let text = t( 'status.models.waiting', { count: active.size } );
+  for ( const [ id, progress ] of active ) {
+    if ( active.size === 1 && progress !== null ) {
+      text = t( 'status.models.downloading', {
+        name: modelName( id ),
+        percent: progress.total > 0 ? Math.min( 100, Math.floor( ( progress.bytes * 100 ) / progress.total ) ) : 0,
+      } );
+    }
+  }
+  return (
+    <div className="status-item" data-state="downloading">
+      <StatusIcon tone="busy" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
 export function StatusStrip() {
   return (
     <footer className="status-strip" role="status" aria-live="polite" aria-label={t( 'status.strip_label' )}>
       <EngineItem />
+      <ModelsItem />
     </footer>
   );
 }

@@ -124,6 +124,28 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 `catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped. `catalog.strip_ready` says a strip pass for a `path` was written (`ok`) or could not be made.
 
+## Models
+
+| Command | Does |
+|---|---|
+| `models.list` | every installable model with its state, which ones the settings use, the detector recommended for this machine and why, and whether the GPU is usable and enabled |
+| `models.install` | queue a download; returns at once |
+| `models.cancel` | stop a download or take it off the queue, keeping what arrived |
+| `models.import` | "I already have the file": install a file whose SHA-256 is a catalog model's |
+| `models.remove` | delete a model and any partial download |
+| `models.use` | change the settings to use an installed model; `gpu: true` also turns on GPU detection |
+
+The catalog of models is data (`assets/models/catalog.json`): each file's pinned SHA-256 and size, the mirrors it is hosted on, its license and the upstream source files mirrored beside it. A file is never used unless its hash matches: a download is checked before it is moved into place, and a file someone swapped in shows as `modified`, not `installed`.
+
+**Downloads** run one at a time, in the order asked, and use the network only then. Each goes to a partial file that a later install resumes with a range request: after `models.cancel`, a lost connection, an engine shutdown or a killed engine. Mirrors are tried in turn. A wrong file is deleted (`model.hash_mismatch`), and a web page served instead of the file is not kept (`model.download_failed`, reason `not_a_model`). There must be room for the file plus a margin first (`disk.full`).
+
+**Using a model** writes its backend and variant to the local config, like `config.set`, and clears a `model_path` set by hand so the model chosen is the one that runs. It is refused while a job holds the queue (`config.busy`), as is `models.remove`. The recommended detector is 640m on a machine whose GPU onnxruntime can use (the CUDA provider and a GPU nvidia-smi sees) and 320n otherwise; the app sends `gpu: true` with it on such a machine, so the recommendation never runs on the CPU. A model's file hash is part of the detection key (and of the person-mask identity), so switching files is never mistaken for a cache hit.
+
+| Event | Says |
+|---|---|
+| `models.state` | `queued`, `downloading`, `installed`, `stopped`, `failed` (with an error `code` and `params`), `removed` |
+| `models.progress` | bytes on disk so far, of total; a few a second, the last one complete |
+
 ## Files
 
 - `v1/envelope.schema.json`: the four message shapes

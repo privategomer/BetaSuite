@@ -27,7 +27,7 @@ Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup
   -Python VERSION        Python version (default: from .python-version)
   -Vision                also install betavision-* dependencies (mss, pywin32)
   -Tests | -NoTests      run the unit tests at the end (default: ask, no)
-  -PersonBackends LIST   person models to export for reverse mode, comma separated:
+  -PersonBackends LIST   person models to install for reverse mode, comma separated:
                          yolo11_seg, rf_detr_seg, all or none (default: ask, yolo11_seg)
   -NoReleaseCheck        stay on the current branch or commit instead of offering to switch to the latest release
   -Yes                   accept the default answer to every prompt
@@ -299,12 +299,11 @@ $InputVids = $Folders[1]
 $OutputVids = $Folders[7]
 
 # ---------------------------------------------------------------- models
-# 320n downloads automatically; 640m and RetinaNet are manual (GitHub only
-# serves them to signed-in users). The person models (YOLO11-seg, RF-DETR-Seg) are exported
-# to ONNX in a throwaway environment that is deleted afterwards, only for the
+# Downloads the project's hosted models, each checked against its pinned
+# hash: 320n always, and the person models (YOLO11-seg, RF-DETR-Seg) for the
 # person backends chosen (fetch_models.py asks; default yolo11_seg). It
-# checks whatever is there and moves bad files (e.g. a saved sign-in page) aside.
-$fetchArgs = @('tools\setup\fetch_models.py', '--log-level', $LogLevel, '--log-file', $LogFile, '--uv', $Uv)
+# checks whatever is there and moves a file that is not the pinned one aside.
+$fetchArgs = @('tools\setup\fetch_models.py', '--log-level', $LogLevel, '--log-file', $LogFile)
 if ($PersonBackends) { $fetchArgs += @('--person-backends', $PersonBackends) }
 if ($Yes -or -not [Environment]::UserInteractive) { $fetchArgs += '--yes' }
 & $VenvPy @fetchArgs

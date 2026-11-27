@@ -102,6 +102,14 @@ ERRORS = {
     'file.failed':                  ( 'exception_type', 'stage' ),
     'disk.full':                    ( 'free_bytes', ),
     'model.load_failed':            ( 'exception_type', ),
+    # models.*
+    'model.unknown':                ( 'model', ),
+    'model.hash_mismatch':          ( 'model', ),
+    'model.download_failed':        ( 'model', 'reason' ),
+    'model.unknown_file':           (),
+    'model.in_use':                 ( 'model', ),
+    'model.busy':                   ( 'model', ),
+    'model.not_installed':          ( 'model', ),
     # catalog.*
     'catalog.unavailable':          ( 'reason', ),
     'catalog.too_new':              ( 'version', 'supported' ),

@@ -58,6 +58,7 @@ import betaconfig
 import betaconst
 import betautils_detector as bu_detector
 import betautils_log as bu_log
+import betautils_models as bu_models
 
 
 def _rule( rule_id, text ):
@@ -227,6 +228,7 @@ def detection_identity( config ):
     return {
         'model_variant':   resolved['model_variant'],
         'model_path':      resolved['model_path'],
+        'model_sha256':    bu_models.file_identity( resolved['model_path'] ),
         'candidate_floor': round( float( resolved['candidate_floor'] ), 6 ),
         'nms_iou':         round( float( resolved['nms_iou'] ), 6 ),
         'nms_mode':        resolved['nms_mode'],

@@ -10,6 +10,7 @@ import { useBackground } from './library/background';
 import { queueNow } from './library/jobs';
 import { LibraryView } from './library/LibraryView';
 import { RunCloseDialog } from './library/RunCloseDialog';
+import { ModelsView } from './models/ModelsView';
 import { AllSettings } from './settings/AllSettings';
 import { SettingsView } from './settings/SettingsView';
 import { registerStyleEditor } from './settings/structured';
@@ -26,13 +27,14 @@ const HelpPanel = lazy( () => import( './help/HelpPanel' ).then( ( module ) => (
 
 registerStyleEditor( 'censor_style', StyleEditor );
 
-type View = 'library' | 'player' | 'what_to_hide' | 'settings' | 'all_settings';
+type View = 'library' | 'player' | 'what_to_hide' | 'models' | 'settings' | 'all_settings';
 
 function startView( view: StartupInfo[ 'view' ] | undefined, opening: boolean ): View {
   switch ( view ) {
     case 'library': return 'library';
     case 'player': return 'player';
     case 'what-to-hide': return 'what_to_hide';
+    case 'models': return 'models';
     case 'settings': return 'settings';
     case 'all-settings': return 'all_settings';
     default: return opening ? 'player' : 'library';
@@ -110,6 +112,7 @@ export function App( { startup }: AppProps ) {
           {tab( 'library', t( 'nav.library' ) )}
           {tab( 'player', t( 'nav.player' ) )}
           {tab( 'what_to_hide', t( 'nav.what_to_hide' ) )}
+          {tab( 'models', t( 'nav.models' ) )}
           {tab( 'settings', t( 'nav.settings' ) )}
           {tab( 'all_settings', t( 'nav.all_settings' ) )}
         </nav>
@@ -122,6 +125,7 @@ export function App( { startup }: AppProps ) {
         </div>
         {view === 'library' && <LibraryView onPlay={play} onHelp={onHelp} />}
         {view === 'what_to_hide' && <WhatToHide onHelp={onHelp} />}
+        {view === 'models' && <ModelsView />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
         {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}
       </main>

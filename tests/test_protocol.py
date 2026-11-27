@@ -78,6 +78,13 @@ EXAMPLE_PARAMS = {
     'file.failed':                  { 'exception_type': 'RenderError', 'stage': 'render' },
     'disk.full':                    { 'free_bytes': 0 },
     'model.load_failed':            { 'exception_type': 'RuntimeError' },
+    'model.unknown':                { 'model': 'nudenet-999' },
+    'model.hash_mismatch':          { 'model': 'nudenet-640m' },
+    'model.download_failed':        { 'model': 'nudenet-640m', 'reason': 'network' },
+    'model.unknown_file':           {},
+    'model.in_use':                 { 'model': 'nudenet-320n' },
+    'model.busy':                   { 'model': 'nudenet-640m' },
+    'model.not_installed':          { 'model': 'nudenet-640m' },
     # catalog.*
     'catalog.unavailable':          { 'reason': 'corrupt' },
     'catalog.too_new':              { 'version': 3, 'supported': 2 },

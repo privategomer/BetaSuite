@@ -349,6 +349,25 @@ class TestPrecedence( unittest.TestCase ):
             store.edit( removals=[ ( 'encode_crf', ) ] )
             self.assertEqual( 17, betaconfig.encode_crf )
 
+    def test_updates_with_removals_create_a_missing_file( self ):
+        # models.use on a fresh install: a value set and a hand-set path
+        # cleared in one edit, before any local file exists.
+        with harness.shipped():
+            store = bu_store.ConfigStore( path=self.local )
+            self.assertFalse( os.path.exists( self.local ) )
+            _evaluation, moves, written = store.edit( { ( 'encode_crf', ): 23 },
+                                                     [ ( 'detector_backend', 'nudenet_v3', 'model_path' ) ] )
+            self.assertTrue( written )
+            self.assertEqual( 23, betaconfig.encode_crf )
+            self.assertIn( 'encode', moves )
+
+    def test_removals_alone_on_a_missing_file_write_nothing( self ):
+        with harness.shipped():
+            store = bu_store.ConfigStore( path=self.local )
+            _evaluation, _moves, written = store.edit( removals=[ ( 'encode_crf', ) ] )
+            self.assertFalse( written )
+            self.assertFalse( os.path.exists( self.local ) )
+
     def test_evaluating_leaves_the_live_config_as_it_was( self ):
         with harness.shipped():
             before = harness.snapshot()
