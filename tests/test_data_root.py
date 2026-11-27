@@ -297,15 +297,6 @@ class TestFilesystemBoundary( _RootCase ):
             bu_detector.build_onnx_session( '../resources/model/absent.onnx', backend_name='nudenet_v3' )
         self.assertIn( os.path.join( self.root, 'resources', 'model', 'absent.onnx' ), str( raised.exception ) )
 
-    def test_the_legacy_retinanet_session_opens_under_the_root( self ):
-        import betautils_model as bu_model
-        self.set_root()
-        with mock.patch.object( bu_model.onnxruntime, 'InferenceSession' ) as session, \
-             mock.patch.object( betaconfig, 'gpu_enabled', 0 ):
-            bu_model.get_session()
-        self.assertEqual( session.call_args[0][0], os.path.join(
-            self.root, 'resources', 'model', 'detector_v2_default_checkpoint.onnx' ) )
-
     def test_stickers_load_from_under_the_root( self ):
         import cv2
         import betautils_censor as bu_censor

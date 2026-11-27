@@ -306,11 +306,6 @@ class TestNothingToRender( unittest.TestCase ):
             self.assertEqual( done.returncode, 0, ( script, output ) )
             self.assertIn( 'items_to_censor is empty', output, script )
             self.assertIn( 'Nothing was processed', output, script )
-        # betavision-censor.py imports win32 modules, so read its source.
-        with open( os.path.join( REPO, 'betavision-censor.py' ), encoding='utf-8' ) as handle:
-            source = handle.read()
-        main = source[ source.index( 'def main():' ): ]
-        self.assertLess( main.index( 'exit_if_nothing_to_render' ), main.index( 'open_detection_shared_memory()' ) )
 
     def test_censoring_anything_runs( self ):
         betaconfig.items_to_censor = [ 'exposed_breast' ]

@@ -827,19 +827,6 @@ _ENTRIES = [
     S( 'stats_path', 'path', 'stats_path', 'stats', nullable=True,
        none_means='no stats file', probe='../output/stats/other.jsonl' ),
 
-    # --- BetaVision screen capture ---
-    S( 'vision_cap_monitor', 'int', 'vision_cap_monitor', 'betavision-screen-capture', minimum=0, probe=1 ),
-    S( 'vision_cap_top', 'int', 'vision_cap_top', 'betavision-screen-capture', minimum=0, probe=10 ),
-    S( 'vision_cap_left', 'int', 'vision_cap_left', 'betavision-screen-capture', minimum=0, probe=10 ),
-    S( 'vision_cap_height', 'int', 'vision_cap_height', 'betavision-screen-capture', minimum=1, probe=720 ),
-    S( 'vision_cap_width', 'int', 'vision_cap_width', 'betavision-screen-capture', minimum=1, probe=640 ),
-    S( 'vision_cursor_color', 'color', 'vision_cursor_color', 'betavision-screen-capture',
-       probe=( 255, 0, 0 ) ),
-    S( 'betavision_delay', 'number', 'betavision_delay', 'betavision-screen-capture', minimum=0,
-       probe=0.25 ),
-    S( 'betavision_interpolate', 'bool', 'betavision_interpolate', 'betavision-screen-capture',
-       probe=True ),
-
     # --- miscellaneous ---
     S( 'debug_mode', 'int', 'debug_mode', 'debug_mode', minimum=0, maximum=3, moves=( CENSOR, ),
        cli='--debug-mode', probe=1 ),

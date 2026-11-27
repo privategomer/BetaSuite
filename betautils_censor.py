@@ -1441,7 +1441,7 @@ def censor_image( image, box ):
     # position and extent still follow the subject. See
     # censor_scale_for_image_box for why a per-frame size flickers.
     # Falls back to the live box for anything that has no track behind it
-    # (betastare's stills, betavision's live capture, a hand-built box in
+    # (betastare's stills, a hand-built box in
     # a bench or test), which is the earlier behaviour.
     scale_w = box.get( 'style_scale_w' )
     scale_h = box.get( 'style_scale_h' )

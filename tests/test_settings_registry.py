@@ -450,9 +450,13 @@ class TestCheckValue( unittest.TestCase ):
         self.assertEqual( [], self.codes( 'blur_approximation_min_kernel', 23 ) )
 
     def test_a_color_is_three_whole_numbers_from_0_to_255( self ):
-        self.assertEqual( [], self.codes( 'vision_cursor_color', ( 0, 128, 255 ) ) )
+        spec = bu_settings.STYLE_TYPE_FIELDS[ 'bar' ][ 'color' ]
+
+        def codes( value ):
+            return [ problem.code for problem in bu_settings.check_value( 'color', value, spec ) ]
+        self.assertEqual( [], codes( ( 0, 128, 255 ) ) )
         for bad in ( ( 0, 0, 256 ), ( -1, 0, 0 ), ( 0, 0 ), ( 0.5, 0, 0 ), 'red' ):
-            self.assertEqual( [ 'config.bad_type' ], self.codes( 'vision_cursor_color', bad ), bad )
+            self.assertEqual( [ 'config.bad_type' ], codes( bad ), bad )
 
     def test_picture_sizes_are_a_non_empty_list_of_whole_numbers_from_0( self ):
         path = 'detector_backend.retinanet_v2.picture_sizes'

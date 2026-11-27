@@ -1,24 +1,4 @@
 {
- "betavision_delay = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "betavision_delay = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "betavision_delay = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "betavision_interpolate = 'yes'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
  "blur_approximation_min_kernel = 'x'": {
   "fires": true,
   "named": true,
@@ -6620,91 +6600,6 @@
   "raises": null
  },
  "video_censor_fps = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_height = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_height = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_height = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_left = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_left = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_left = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_monitor = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_monitor = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_monitor = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_top = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_top = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_top = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_width = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_width = -1": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cap_width = 1000000000": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cursor_color = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": null
- },
- "vision_cursor_color = 123": {
   "fires": false,
   "named": false,
   "raises": null

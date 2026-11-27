@@ -141,14 +141,6 @@ def check_packages( c ):
     else:
         c.ok( 'onnxruntime%s %s'%( '-gpu' if gpu_ver else '', gpu_ver or cpu_ver ) )
 
-    if platform.system() == 'Windows':
-        for module in ( 'mss', 'win32gui' ):
-            try:
-                importlib.import_module( module )
-                c.ok( '%s (betavision)'%(module) )
-            except Exception:
-                c.log.info( 'skip  %s not installed; only needed for betavision-*'%(module) )
-
 
 def check_ffmpeg( c ):
     for tool in ( 'ffmpeg', 'ffprobe' ):

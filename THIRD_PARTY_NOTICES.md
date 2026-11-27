@@ -517,14 +517,13 @@ From ui/package-lock.json: the packages the window ships, not build tools.
 | scheduler | 0.28.0 | MIT | https://react.dev/ |
 | uc.micro | 3.0.0 | MIT | markdown-it/uc.micro |
 
-## The engine: Python packages (18)
+## The engine: Python packages (16)
 
 Installed by setup from the requirement files, within their version ranges. The versions shown are those this list was made from.
 
 | Name | Version | License | Source |
 |---|---|---|---|
 | flatbuffers | 25.12.19 | Apache-2.0 | https://google.github.io/flatbuffers/ |
-| mss | not installed here; latest 10.2.0 | MIT | https://pypi.org/project/mss/ |
 | numpy | 2.5.4 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |  |
 | nvidia-cublas-cu12 | 12.9.2.10 | LicenseRef-NVIDIA-Proprietary | https://developer.nvidia.com/cuda-zone |
 | nvidia-cuda-nvrtc-cu12 | 12.9.86 | LicenseRef-NVIDIA-Proprietary | https://developer.nvidia.com/cuda-zone |
@@ -540,7 +539,6 @@ Installed by setup from the requirement files, within their version ranges. The 
 | opencv-python | 4.14.0.94 | Apache-2.0 | https://github.com/opencv/opencv-python |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause |  |
 | protobuf | 7.36.2 | BSD-3-Clause | https://developers.google.com/protocol-buffers/ |
-| pywin32 | not installed here; latest 312 | PSF-2.0 | https://pypi.org/project/pywin32/ |
 
 ## Downloaded by setup (1)
 
