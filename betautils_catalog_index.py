@@ -344,10 +344,13 @@ class Index:
             'SELECT * FROM locations WHERE hash = ? ORDER BY added_at, id', ( digest, ) ) ]
 
     def forget( self, digest ):
-        """Remove an item, its locations, outputs and history."""
+        """Remove an item, its locations, outputs, history and feedback."""
         self.item_row( digest )
         with self.store.write() as db:
             db.execute( 'DELETE FROM items WHERE hash = ?', ( digest, ) )
+            # Feedback is not tied to items (so nothing cascades it away);
+            # forgetting the item is the one thing that removes it.
+            db.execute( 'DELETE FROM feedback WHERE hash = ?', ( digest, ) )
         return { digest }
 
     def set_status( self, digest, status ):
