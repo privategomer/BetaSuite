@@ -190,6 +190,11 @@ def art_style_names():
     return bu_art.art_styles()
 
 
+def app_icon_names():
+    import betautils_icons as bu_icons
+    return bu_icons.app_icons()
+
+
 def look_presets():
     import betautils_looks as bu_looks
     return bu_looks.presets()
@@ -841,6 +846,8 @@ _ENTRIES = [
     # --- the desktop app ---
     S( 'art_style', 'choice', 'art_style', 'art_style', level=SIMPLE, choices=art_style_names,
        probe='cel' ),
+    S( 'app_icon', 'choice', 'app_icon', 'app_icon', choices=app_icon_names, probe='bars_shield' ),
+    S( 'tray_icon_shown', 'bool', 'tray_icon_shown', 'tray_icon_shown', probe=False ),
 ]
 
 # Keys an entry can move for some files only. A config-level key cannot

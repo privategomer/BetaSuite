@@ -1,4 +1,6 @@
 {
+ "setting.app_icon.label": "App icon",
+ "setting.app_icon.tip": "The icon on the window, the taskbar and the system tray. It changes nothing in your videos or photos.",
  "setting.area_fraction.label": "Box size limits",
  "setting.area_fraction.none": "No limit",
  "setting.area_fraction.tip": "Ignore or adjust boxes smaller or larger than this share of the frame.",
@@ -335,6 +337,8 @@
  "setting.time_safety.tip": "Seconds of extra cover before and after each appearance.",
  "setting.track_max_gap.label": "Track memory",
  "setting.track_max_gap.tip": "Seconds a track may go undetected before it ends.",
+ "setting.tray_icon_shown.label": "Show the tray icon",
+ "setting.tray_icon_shown.tip": "Keep an icon in the system tray while the app is open. While a job runs in the background, it is shown either way.",
  "setting.type_default_shapes.label": "Shape per style",
  "setting.type_default_shapes.tip": "The shape a style type uses when it sets none.",
  "setting.video_censor_fps.label": "Sample rate",

@@ -115,6 +115,8 @@
   "betavision-screen-capture",
   "miscellaneous",
   "art_style",
+  "app_icon",
+  "tray_icon_shown",
   "the-settings-registry",
   "why-the-shipped-values-are-what-they-are",
   "retinanet_v2-class_suppressionexposed_breast",
@@ -132,6 +134,7 @@
   "reading-structure-and-what-profiles-would-need"
  ],
  "paths": [
+  "app_icon",
   "art_style",
   "betavision_delay",
   "betavision_interpolate",
@@ -385,6 +388,7 @@
   "stats_path",
   "storage_delete_permanently",
   "structure_scan_workers",
+  "tray_icon_shown",
   "type_default_shapes.bar",
   "video_censor_fps",
   "vision_cap_height",
@@ -3720,6 +3724,43 @@
     "scope": "global",
     "screen": "what_to_hide",
     "tip": "setting.art_style.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "censored_play",
+     "bars_shield",
+     "focus_blur",
+     "pixel_play",
+     "pixel_b"
+    ],
+    "help": "app_icon",
+    "kind": "choice",
+    "label": "setting.app_icon.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "app_icon",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.app_icon.tip",
+    "when": []
+   },
+   {
+    "help": "tray_icon_shown",
+    "kind": "bool",
+    "label": "setting.tray_icon_shown.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "tray_icon_shown",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.tray_icon_shown.tip",
     "when": []
    },
    {
