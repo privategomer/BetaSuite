@@ -1,0 +1,45 @@
+{
+ "format": 1,
+ "ico": "icon.ico",
+ "id": "pixel_b",
+ "name_key": "app_icon.pixel_b",
+ "order": 4,
+ "sizes": {
+  "128": {
+   "png": "icon-128.png",
+   "source": "icon.svg"
+  },
+  "16": {
+   "png": "icon-16.png",
+   "source": "icon-16.svg"
+  },
+  "22": {
+   "png": "icon-22.png",
+   "source": "icon-22.svg"
+  },
+  "24": {
+   "png": "icon-24.png",
+   "source": "icon-24.svg"
+  },
+  "256": {
+   "png": "icon-256.png",
+   "source": "icon.svg"
+  },
+  "32": {
+   "png": "icon-32.png",
+   "source": "icon-32.svg"
+  },
+  "48": {
+   "png": "icon-48.png",
+   "source": "icon.svg"
+  },
+  "512": {
+   "png": "icon-512.png",
+   "source": "icon.svg"
+  },
+  "64": {
+   "png": "icon-64.png",
+   "source": "icon.svg"
+  }
+ }
+}
