@@ -34,6 +34,7 @@ export interface SettingSchema {
   readonly max_open?: true;
   readonly nullable?: true;
   readonly odd?: true;
+  readonly app_only?: true;
   readonly choices?: readonly unknown[];
   readonly none?: string;
 }

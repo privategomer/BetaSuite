@@ -78,12 +78,12 @@ class Setting( object ):
 
     __slots__ = ( 'path', 'kind', 'family', 'help', 'level', 'moves', 'when', 'minimum',
                   'maximum', 'min_open', 'max_open', 'choices', 'nullable', 'none_means',
-                  'odd', 'cli', 'probe', 'note', 'may_move' )
+                  'odd', 'cli', 'probe', 'note', 'may_move', 'app_only' )
 
     def __init__( self, path, kind, family, help, level=ADVANCED, moves=(), when=(),
                   minimum=None, maximum=None, min_open=False, max_open=False, choices=None,
                   nullable=False, none_means=None, odd=False, cli=None, probe=None, note=None,
-                  may_move=() ):
+                  may_move=(), app_only=False ):
         self.path = tuple( path.split( '.' ) ) if isinstance( path, str ) else tuple( path )
         self.kind = kind
         self.family = family
@@ -103,6 +103,9 @@ class Setting( object ):
         self.probe = probe
         self.note = note
         self.may_move = frozenset( may_move )
+        # Changes only the desktop app itself (its art, icon, tray), right
+        # away; never what a run writes, so it moves no cache key.
+        self.app_only = app_only
 
     @property
     def dotted( self ):
@@ -845,9 +848,10 @@ _ENTRIES = [
 
     # --- the desktop app ---
     S( 'art_style', 'choice', 'art_style', 'art_style', level=SIMPLE, choices=art_style_names,
-       probe='cel' ),
-    S( 'app_icon', 'choice', 'app_icon', 'app_icon', choices=app_icon_names, probe='bars_shield' ),
-    S( 'tray_icon_shown', 'bool', 'tray_icon_shown', 'tray_icon_shown', probe=False ),
+       probe='cel', app_only=True ),
+    S( 'app_icon', 'choice', 'app_icon', 'app_icon', choices=app_icon_names, probe='bars_shield',
+       app_only=True ),
+    S( 'tray_icon_shown', 'bool', 'tray_icon_shown', 'tray_icon_shown', probe=False, app_only=True ),
 ]
 
 # Keys an entry can move for some files only. A config-level key cannot
@@ -1400,7 +1404,7 @@ def schema():
         for key in ( 'minimum', 'maximum' ):
             if getattr( entry, key ) is not None:
                 item[key] = getattr( entry, key )
-        for key in ( 'min_open', 'max_open', 'nullable', 'odd' ):
+        for key in ( 'min_open', 'max_open', 'nullable', 'odd', 'app_only' ):
             if getattr( entry, key ):
                 item[key] = True
         choices = entry.choice_list()

@@ -449,6 +449,7 @@
  "settings.cost.checking": "Checking what this change costs…",
  "settings.cost.detection": "Every video is detected again. This is the slowest kind of change.",
  "settings.cost.encode": "Every video is encoded again. Detections and censoring are reused.",
+ "settings.cost.app_only": "Nothing is made again. The app changes as soon as you apply.",
  "settings.cost.none": "Nothing is made again. The change applies from the next run.",
  "settings.cost.some.censor": "Some videos may be censored again.",
  "settings.cost.some.detection": "Some videos may be detected again: those whose profile or preview slice changes.",

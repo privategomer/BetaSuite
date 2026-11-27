@@ -85,7 +85,7 @@ function someFilesLine( cost: Cost ): string {
 }
 
 // What a change costs, worst first, from the keys the engine says it moves.
-export function costLines( change: Change ): string[] {
+export function costLines( change: Change, appOnly = false ): string[] {
   const lines: string[] = [];
   for ( const cost of COST_ORDER ) {
     if ( change.moves.includes( cost ) ) {
@@ -98,7 +98,7 @@ export function costLines( change: Change ): string[] {
     }
   }
   if ( lines.length === 0 ) {
-    lines.push( t( 'settings.cost.none' ) );
+    lines.push( appOnly ? t( 'settings.cost.app_only' ) : t( 'settings.cost.none' ) );
   }
   return lines;
 }

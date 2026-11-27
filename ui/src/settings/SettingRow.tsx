@@ -50,9 +50,12 @@ interface CostNoticeProps {
   // keep it (BusyChoices) rather than lose it.
   readonly change?: SettingsChange;
   readonly onBusyDone?: ( outcome: BusyOutcome ) => void;
+  // The change touches only the app itself (registry app_only), so it
+  // shows at once rather than from the next run.
+  readonly appOnly?: boolean;
 }
 
-export function CostNotice( { check, change, onBusyDone }: CostNoticeProps ) {
+export function CostNotice( { check, change, onBusyDone, appOnly = false }: CostNoticeProps ) {
   switch ( check.state ) {
     case 'idle':
       return null;
@@ -62,7 +65,7 @@ export function CostNotice( { check, change, onBusyDone }: CostNoticeProps ) {
       return (
         <div className="cost-notice" role="status">
           <span className="cost-notice-title">{t( 'settings.cost.title' )}</span>
-          <ul>{costLines( check.change ).map( ( line ) => <li key={line}>{line}</li> )}</ul>
+          <ul>{costLines( check.change, appOnly ).map( ( line ) => <li key={line}>{line}</li> )}</ul>
         </div>
       );
     case 'refused':
@@ -189,7 +192,7 @@ export function SettingRow( { row, data, onHelp, onChanged }: SettingRowProps ) 
           {t( 'settings.default_was', { value: JSON.stringify( held.default ) } )}
         </p>
       )}
-      <CostNotice check={check}
+      <CostNotice check={check} appOnly={entry.app_only === true}
         change={pending === null ? undefined : pending.action === 'set' ? { values: { [ path ]: pending.value } } : { resets: [ path ] }}
         onBusyDone={() => { setPending( null ); onChanged(); }} />
       <div className="setting-actions">

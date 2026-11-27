@@ -80,6 +80,18 @@ class SettingsTest( unittest.TestCase ):
                 self.assertEqual( entry.help, path )
                 self.assertEqual( entry.tip, 'setting.%s.tip'%( path, ) )
 
+    def test_app_only_settings_move_no_key( self ):
+        app_only = sorted( entry.dotted for entry in bu_settings.REGISTRY if entry.app_only )
+        self.assertEqual( app_only, [ 'app_icon', 'art_style', 'tray_icon_shown' ] )
+        for entry in bu_settings.REGISTRY:
+            if entry.app_only:
+                with self.subTest( path=entry.dotted ):
+                    self.assertEqual( entry.moves, frozenset() )
+                    self.assertEqual( entry.may_move, frozenset() )
+        sent = { item[ 'path' ]: item for item in bu_settings.schema()[ 'settings' ] }
+        self.assertIs( sent[ 'app_icon' ][ 'app_only' ], True )
+        self.assertNotIn( 'app_only', sent[ 'debug_mode' ] )
+
     def test_tray_shown_by_default( self ):
         self.assertIs( betaconfig.tray_icon_shown, True )
         self.assertEqual( bu_settings.find( ( 'tray_icon_shown', ) ).kind, 'bool' )
