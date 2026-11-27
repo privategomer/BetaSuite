@@ -22,6 +22,7 @@ import threading
 import time
 import types
 import unittest
+from unittest import mock
 
 import betautils_governor as bu_gov
 import betautils_governor_run as bu_gov_run
@@ -388,6 +389,55 @@ class TestAccount( unittest.TestCase ):
                                                             'governor_paced_seconds': 0.0,
                                                             'governor_reasons': [],
                                                             'governor_fewest_workers': None } )
+
+
+class TestOutsideARun( unittest.TestCase ):
+
+    def test_follows_the_machine_with_no_run_and_says_so( self ):
+        runtime = bu_gov_run.Runtime( clock=lambda: 0.0, sleep=lambda _s: None )
+        sent = []
+        runtime.send = lambda name, data: sent.append( data )
+        config = types.SimpleNamespace( governor={ 'enabled': True } )
+        runtime.observe( S( **SEVERE ), config=config )
+        self.assertEqual( runtime.decision().reasons[0]['code'], bu_gov.MEMORY_SEVERE )
+        self.assertFalse( sent[-1]['active'] )
+
+    def test_ignored_while_a_run_is_attached( self ):
+        runtime = _runtime()
+        self.assertTrue( runtime.state_data()['active'] )
+        runtime.observe( S( **SEVERE ), config=types.SimpleNamespace() )
+        self.assertFalse( runtime.decision().throttled )
+        runtime.end_run()
+        self.assertFalse( runtime.state_data()['active'] )
+
+    def test_follows_the_setting_as_it_is( self ):
+        runtime = bu_gov_run.Runtime( clock=lambda: 0.0, sleep=lambda _s: None )
+        runtime.observe( S( **SEVERE ), config=types.SimpleNamespace( governor={ 'enabled': False } ) )
+        self.assertEqual( runtime.decision().reasons[0]['code'], bu_gov.OFF )
+
+    def test_the_sampler_feeds_the_governor_outside_a_run( self ):
+        server = _Server()
+        runtime = bu_serve_resources.runtime_for( server )
+        made = []
+
+        class Fake:
+            listeners = []
+            latest = None
+
+            def add_listener( self, listener ):
+                self.listeners.append( listener )
+
+            def start( self ):
+                made.append( self )
+
+            def stop( self ):
+                pass
+        resources = server.resources
+        resources._make_sampler = Fake
+        resources.use( 'watch' )
+        with mock.patch( 'betaconfig.governor', { 'enabled': True } ):
+            made[0].listeners[0]( S( **SEVERE ) )
+        self.assertTrue( runtime.decision().guard )
 
 
 class TestAttached( unittest.TestCase ):

@@ -169,7 +169,7 @@ The catalog of models is data (`assets/models/catalog.json`): each file's pinned
 
 | Event | Says |
 |---|---|
-| `governor.change` | the decision changed: the render worker cap (null: as planned), priority, detection pace, the reasons as codes with params, whether the memory guard holds, the override in force. Never dropped |
+| `governor.change` | the decision changed: the render worker cap (null: as planned), priority, detection pace, the reasons as codes with params, whether the memory guard holds, the override in force, and `active` (a run is attached). Outside a run, while `resources.watch` is on, the governor still follows the machine, so the decision says what a run would meet now. Never dropped |
 
 Reason codes: `governor.full`, `governor.off`, `governor.override`, `governor.memory`, `governor.memory_severe`, `governor.busy`, `governor.user_active`, `governor.battery`, `governor.battery_low`. The policy and its settings are in CONFIG_REFERENCE.md, "The resource governor". A decision changes when and how fast work happens, never what is computed: the render's chunks and encoder threads stay as planned, and a chunk already running finishes as it started. The command line runs under the same governor and logs each change.
 

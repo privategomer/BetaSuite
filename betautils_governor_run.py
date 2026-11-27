@@ -192,6 +192,7 @@ class Runtime:
         self.account = None
         self._last_accrual = None
         self._sampler = None
+        self.active = False             # a run is attached (start_run .. end_run)
 
     # --- run lifecycle ----------------------------------------------------
 
@@ -202,6 +203,7 @@ class Runtime:
                 thresholds.enabled = self.enabled
             self.governor.set_thresholds( thresholds, self.clock() )
             self._apply()
+            self.active = True
         if self.resources is not None:
             self._sampler = self.resources.use( 'job' )
             self._sampler.add_listener( self.on_sample )
@@ -213,6 +215,7 @@ class Runtime:
             self.resources.release( 'job' )
         with self.lock:
             self.gate = None
+            self.active = False
             self.governor.end_run( self.clock() )
 
     def set_enabled( self, enabled ):
@@ -226,6 +229,24 @@ class Runtime:
             return decision
 
     # --- inputs -----------------------------------------------------------
+
+    def observe( self, snapshot, config=None ):
+        """
+        A sample while no run is attached (the Performance page watching):
+        the governor follows the machine, so the page can say what a run
+        would meet now, with the settings as they are. During a run the
+        run's own listener (on_sample) feeds it instead.
+        """
+        with self.lock:
+            if self.active:
+                return
+            if config is None:
+                import betaconfig as config
+            thresholds = bu_gov.Thresholds.from_config( config )
+            if self.enabled is not None:
+                thresholds.enabled = self.enabled
+            self.governor.thresholds = thresholds
+            self.governor.update( snapshot, self.clock() )
 
     def on_sample( self, snapshot ):
         with self.lock:
@@ -350,6 +371,7 @@ class Runtime:
         data['planned'] = self.governor.planned
         data['running'] = self.gate.running if self.gate is not None else None
         data['enabled'] = self.governor.thresholds.enabled
+        data['active'] = self.active
         data['time'] = self.wall()
         return data
 

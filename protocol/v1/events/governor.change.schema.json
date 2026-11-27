@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json",
   "title": "governor.change",
-  "description": "The resource governor's decision changed. worker_cap is the most render chunks running at once (null: as many as the render planned, planned); priority applies to work started from now on; pace is the share of each detection batch's time yielded after it (each yield at most 50 ms, a file's yields together at most governor.detection_pace_max of its detection time). reasons say why, the first being the main one: governor.full (nothing to slow for), governor.off (governor.enabled is off), governor.override (run at full speed anyway; params scope and memory_guard), governor.memory and governor.memory_severe (params pressure, available_mb; either may be null), governor.busy (other_cpu), governor.user_active (idle_seconds), governor.battery and governor.battery_low (percent). guard is true when the memory guard holds the cap at one worker: the ordinary override leaves it in force, an override with memory_guard false releases it. Never dropped.",
+  "description": "The resource governor's decision changed. worker_cap is the most render chunks running at once (null: as many as the render planned, planned); priority applies to work started from now on; pace is the share of each detection batch's time yielded after it (each yield at most 50 ms, a file's yields together at most governor.detection_pace_max of its detection time). reasons say why, the first being the main one: governor.full (nothing to slow for), governor.off (governor.enabled is off), governor.override (run at full speed anyway; params scope and memory_guard), governor.memory and governor.memory_severe (params pressure, available_mb; either may be null), governor.busy (other_cpu), governor.user_active (idle_seconds), governor.battery and governor.battery_low (percent). guard is true when the memory guard holds the cap at one worker: the ordinary override leaves it in force, an override with memory_guard false releases it. Never dropped. active is true while a run is attached; outside a run (the Performance page watching) the decision says what a run would meet now.",
   "$defs": {
     "data": {
       "allOf": [
@@ -15,6 +15,7 @@
         "planned",
         "running",
         "enabled",
+        "active",
         "time"
       ],
       "properties": {
@@ -37,6 +38,9 @@
         },
         "time": {
           "type": "number"
+        },
+        "active": {
+          "type": "boolean"
         }
       }
     },

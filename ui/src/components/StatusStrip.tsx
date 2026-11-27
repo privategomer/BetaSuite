@@ -140,7 +140,8 @@ const TONE_FOR: Readonly<Record<'slowed' | 'full', Tone>> = { slowed: 'busy', fu
 function ResourcesItem() {
   const { governor } = useResources();
   const [ working, setWorking ] = useState( false );
-  if ( governor === null || ( !governor.throttled && governor.override === null ) ) {
+  // Only a running job is slowed; with no run the Performance page says what one would meet.
+  if ( governor === null || !governor.active || ( !governor.throttled && governor.override === null ) ) {
     return null;
   }
   const full = () => {
