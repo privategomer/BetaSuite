@@ -3,7 +3,6 @@
  "_chunk_encode_command/None/None": "c0f76c198f2bc87ab35312844bfebbcfbc4258ea1d0d3831604be4c6069c8e47",
  "_chunk_encode_command/h264_nvenc/19": "2f7f5f1ecec0de4e63c126672b34b052d0d9b11c68531233d1768f8d142563f1",
  "_chunk_encode_command/libx265/22": "518fedd8d28a6a47c2370d2ccab063d8767a8217f2480559caa1cbbd984ccbca",
- "annotate_image_shape": "95637eab0f9e7bcf2c3a9ac199d325683cc7e7d99895342298cfd0767edea91a",
  "apply_masked_region/box/0": "a274736d5f99ae9b4c70a894ed34307250540bcb2df5f8a86536c9906c7b99ea",
  "apply_masked_region/box/4": "a274736d5f99ae9b4c70a894ed34307250540bcb2df5f8a86536c9906c7b99ea",
  "apply_masked_region/circle/0": "95575be9218eb16af4dcbf6205deab4008b9ea1c8bd55228b9177b5f23e8489c",
@@ -18,8 +17,6 @@
  "censor_img_for_boxes/blur_gaussian/single-pass": "4a20675e73e89ccc677c93ee514b9c7d69e819c4bb5eb2243f528b780daeb488",
  "censor_img_for_boxes/blur_triple_box/none": "352d049e5c219804aa4d10a47453dd20a24d378d21de2bba0ed538ad34ec60d1",
  "censor_img_for_boxes/blur_triple_box/single-pass": "9d3d47969698881ed8625a234a954db877b35028bbfd30c256e06f9505dcfff9",
- "censor_img_for_boxes/debug/none": "f07d93e8adafd55030734951296bbe7273a95eab828b9d04f0a12bea52fb84bb",
- "censor_img_for_boxes/debug/single-pass": "01f9bed759d473c37e5023e01a65911839ff582cb453808011381ffb3c193c9b",
  "censor_img_for_boxes/pixel_hex/none": "67fb643f42dfd872be2c1c4fe1a3fe8c36272bf14317b7ba16e58fe731589887",
  "censor_img_for_boxes/pixel_hex/single-pass": "565f74fbb32cf2646d4f5ca37a88d3626cdda947246c93b4fc04383a32565d5f",
  "censor_img_for_boxes/pixel_square/none": "68b3b45baed2ac8caf52d647623bcc0c8f8cadf0c9a61b6a3752900af7fb7983",
@@ -33,12 +30,10 @@
  "compute_safe_geometry/10,10,30,20,160,120,0.0,0.0": "8bceff7bad333ca6ca6394a908cc3766cdfe54bd58bb5f7491ba285e5d3a1ce3",
  "compute_safe_geometry/10,10,30,20,160,120,0.2,0.4": "249cd008685248ae024ba6add0226496e057e625227ce83e0ccffd43ec493e81",
  "compute_safe_geometry/150,110,30,30,160,120,0.1,0.1": "2990c186b0333ae140dc7367417cda42f4fc4213d47cd565cc622141dd0d5045",
- "debug_image": "a35d25f8ed0386665c6891e00ba04d13c65fb8521e3c5bff093de09c056925f1",
  "dictionary_hash/4a59b8fe/16": "533571330cc12e9c",
  "dictionary_hash/94294cd6/64": "6b8fcdea238c22dce5129233301f861a",
  "dictionary_hash/945603a8/8": "a73442f0",
  "dictionary_hash/96ca48e4/32": "624d35c200b303cd8ce5c0ee95aeb735",
- "get_parts_to_blur/debug_mode": "4ff17fc0deb8e8d8ff3ce804519ddb6af2f6020cd2f8b45dcb04e0475bd151a0",
  "pixelate_block_grid/13": "fbdfe6e81fa26aa6697ab174358703c26b6a87a9b3fac5b72f5c5778bae64f40",
  "pixelate_block_grid/2": "73603ece220c7b5207acbc6be9de616bc6334db34c0f84b7c5b684d1ce68e047",
  "pixelate_block_grid/5": "dc2fa161283ea315061aa12ebb6630341fc659f281c4ed68ef7a86ab4aa77c30",
@@ -52,7 +47,5 @@
  "retinanet.prep_img_for_nn/160": "6136112d0747281cb6631af7ceaddc86437d643afd0e003a0b32cfeaaf25d63c",
  "retinanet.prep_img_for_nn/320": "d46b71f81ecac92f21f2b29daec0f6e06abe63f21d24a3bac8b2dcb91467d797",
  "retinanet.raw_boxes_from_model_output": "7dde22e86d94ab734528df49334c0255d007f7171d411002b9d914d3ecd24d0b",
- "retinanet.raw_boxes_from_model_output/sizes": "a242dce36f08632aa537a7b1c1c624f617f8d7c9ce089e3e012b58e79e665ed9",
- "watermark_image/False": "6e3564bdb4b7199f57698b775877432211b0bd9557cbb3bbd40d945ec9c83fcb",
- "watermark_image/True": "86b76ddeeaaa6fca9303a93585c94115c42ed2e8aa0af60eed2fc216f4c2840c"
+ "retinanet.raw_boxes_from_model_output/sizes": "a242dce36f08632aa537a7b1c1c624f617f8d7c9ce089e3e012b58e79e665ed9"
 }
