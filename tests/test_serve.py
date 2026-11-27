@@ -226,6 +226,7 @@ class TestHandshake( _EngineTest ):
                                                'catalog.remove_folder', 'catalog.rescan', 'catalog.strip', 'catalog.thumbnail',
                                                'config.get', 'config.pending', 'config.pending_discard',
                                                'config.reset', 'config.schema', 'config.set',
+                                               'feedback.add', 'feedback.list', 'feedback.remove',
                                                'governor.enable', 'governor.get', 'governor.override',
                                                'governor.override_clear',
                                                'hello', 'hw.detect', 'job.cancel', 'job.estimate', 'job.list', 'job.move',

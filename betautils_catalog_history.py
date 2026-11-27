@@ -5,7 +5,7 @@ catalog as a record of its own.
 History is written from the RunRecord the pipeline hands its recorder
 (betautils_run_record), through HistorySink, beside the stats and
 failure logs and never from them. It is not rebuilt from disk: like
-pins (and feedback later) it exists only in the catalog, so the
+pins and feedback it exists only in the catalog, so the
 catalog's file is what to back up.
 
 Recording a run also keeps the item in step:
