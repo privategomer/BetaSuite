@@ -4,6 +4,7 @@
 // (encode_preset's follow the codec).
 import { useCallback, useEffect, useState } from 'react';
 import { isEngineError, type EngineError } from '../engine/client';
+import { applyAppIcon } from '../appIcon';
 import { useEngineStatus } from '../engine/status';
 import { describeError, log } from '../log';
 import { getSchema, getValues, type LabelView } from './api';
@@ -57,6 +58,7 @@ export function useSettings(): { settings: SettingsState; reload: () => void } {
         if ( live ) {
           log.debug( `settings loaded: ${String( data.rows.length )} rows, ${String( data.values.size )} values` );
           setResult( { key, data } );
+          applyAppIcon( ( path ) => data.values.get( path )?.value );
           setLast( data );
         }
       },

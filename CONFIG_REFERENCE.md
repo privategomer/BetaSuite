@@ -481,6 +481,11 @@ across disks is refused rather than done, and nothing is then deleted
 instead: the Storage view says so, and this setting is the way to remove
 it for good. `True` removes the files outright. Moves no cache key.
 
+"Clear history" on the Storage view has its own "Delete permanently"
+box, which starts as this setting and applies to that one clearing only.
+Its catalog records (run history, the library list) are deleted for good
+either way, since a database row cannot go to the trash.
+
 ### `cache_dir`
 
 Moves the cache, the large kind, to another folder (an absolute path).
@@ -4410,6 +4415,29 @@ shadow planes), `'ink'` (an ink and wash comic) or `'cel'` (hand-painted
 cel shading). The choices are the folders under `assets/art/`, so a style
 added there is a choice with no code change. It is in no cache key: it
 changes how previews look, never what a run writes. The command-line tools
+ignore it.
+
+### `app_icon`
+
+The desktop app's icon on its window, taskbar entry and tray:
+`'censored_play'` (a play mark with a censor bar, the default),
+`'bars_shield'` (a shield crossed by two bars), `'focus_blur'` (a sharp dot
+in a soft halo), `'pixel_play'` (a play mark made of mosaic cells) or
+`'pixel_b'` (a B made of mosaic cells). The choices are the folders under
+`assets/icons/`, so an icon added there is a choice with no code change;
+`tools/art/make_icons.sh` redraws them. The app changes its icon as soon as
+the setting is applied, with no restart. On a Wayland desktop the window
+and taskbar icon come from the app's desktop entry instead, so there only
+the tray icon follows the setting. It is in no cache key: it changes the
+app's own icon, never what a run writes. The command-line tools ignore it.
+
+### `tray_icon_shown`
+
+`True` (the default) keeps an icon in the system tray while the desktop
+app is open; clicking it brings the window back. `False` shows the tray
+icon only while a job runs in the background with the window hidden. A
+desktop with no tray (a Linux desktop without the AppIndicator library)
+shows none either way. It is in no cache key. The command-line tools
 ignore it.
 
 ---

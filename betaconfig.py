@@ -558,6 +558,8 @@ betavision_interpolate = False
 debug_mode = 0   # 0 off | 1 debug overlay | 3 also save debug output
 enable_betasuite_watermark = False
 art_style = 'flat'   # the desktop app's figure art: 'flat' | 'angular' | 'ink' | 'cel'
+app_icon = 'censored_play'   # the desktop app's icon: a folder under assets/icons
+tray_icon_shown = True   # the desktop app keeps an icon in the system tray
 
 # --- Your own settings: betaconfig_local.py, merged over everything above ---
 

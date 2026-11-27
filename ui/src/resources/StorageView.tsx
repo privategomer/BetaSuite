@@ -10,6 +10,7 @@ import { errorText } from '../i18n/errors';
 import { msgKey, t } from '../i18n/format';
 import { describeError, log } from '../log';
 import { cleanStorage, storageUsage, type Category, type StorageUsage } from './api';
+import { ClearHistory, type Cleared } from './ClearHistory';
 import { categoryName, kindName, policyText, sizeText } from './text';
 
 type Notice = { readonly tone: 'ok' | 'problem'; readonly text: string } | null;
@@ -89,6 +90,7 @@ export function StorageView() {
   const [ usage, setUsage ] = useState<StorageUsage | null>( null );
   const [ working, setWorking ] = useState( false );
   const [ notice, setNotice ] = useState<Notice>( null );
+  const [ clearing, setClearing ] = useState( false );
 
   const refresh = useCallback( () => {
     storageUsage().then( setUsage, ( error: unknown ) => {
@@ -115,6 +117,15 @@ export function StorageView() {
     ).finally( () => { setWorking( false ); refresh(); } );
   };
 
+  const historyClosed = ( cleared: Cleared | null ) => {
+    setClearing( false );
+    if ( cleared !== null ) {
+      setNotice( { tone: 'ok', text: cleared.trashed ? t( 'history.done_trashed', { size: sizeText( cleared.bytes ) } )
+        : t( 'history.done_deleted', { size: sizeText( cleared.bytes ) } ) } );
+      refresh();
+    }
+  };
+
   if ( usage === null ) {
     return (
       <section className="view storage-view" aria-labelledby="storage-title">
@@ -134,6 +145,12 @@ export function StorageView() {
       <h2 id="storage-title" className="models-title">{t( 'storage.title' )}</h2>
       <p className="view-intro">{t( 'storage.intro' )}</p>
       {usage.busy && <p className="models-notice">{t( 'storage.busy' )}</p>}
+      <p className="history-open">
+        <button type="button" disabled={working || clearing} onClick={() => { setNotice( null ); setClearing( true ); }}>{t( 'history.open' )}</button>
+        {' '}
+        {t( 'history.open_tip' )}
+      </p>
+      {clearing && <ClearHistory onClose={historyClosed} />}
       {notice !== null && <p className={`models-result ${notice.tone}`} role={notice.tone === 'problem' ? 'alert' : 'status'}>{notice.text}</p>}
       <section className="perf-section" aria-labelledby="storage-disks">
         <h3 id="storage-disks">{t( 'storage.disks' )}</h3>

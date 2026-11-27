@@ -38,7 +38,7 @@ Four commands read and change the settings. They use the same local config file 
 
 | command | does |
 |---|---|
-| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the settings it requires, the cache keys it moves, and its message and help keys |
+| `config.schema` | the settings registry: every setting's path, kind, limits, scope, level, screen, the settings it requires, the cache keys it moves, its message and help keys, and `app_only: true` for a setting that changes only the app itself (its art, icon or tray) and shows at once |
 | `config.get` | current values, with their defaults, where each came from (`default`, `local`, or `run` for an override sent with the request) and every layer that sets it; with `labels: true`, also every label as a run resolves it: each per-label value, the tier it comes from, every other tier that sets it and why it is not in effect, and a profile's value on top. A label the selected backend cannot report has `available: false` and `unavailable: {code: "label.not_in_model", params: {backend}}` |
 | `config.set` | checks a change as a run would and writes it to the local config only if it passes; `dry_run` checks without writing |
 | `config.reset` | removes settings from the local config, so the shipped values apply again |
@@ -251,6 +251,8 @@ A run measures only the settings it used; Optimize measures the others.
 |---|---|
 | `storage.usage` | what the app's files use, by category, with what removing each costs; free space per kind of folder; where the cache folder comes from |
 | `storage.clean` | remove named categories |
+| `storage.history` | "Clear history": for a time range, what clearing each kind would remove (bytes, files, catalog rows), which kinds the dialog ticks by default, and whether "Delete permanently" starts ticked |
+| `storage.clear_history` | clear the named kinds for a time range |
 
 Each category has a policy:
 - `safe`: made again when needed, quickly. Look previews, thumbnails, transcodes, partial or set-aside model files, the setup's own download cache, and a previous cache folder.
@@ -259,6 +261,8 @@ Each category has a policy:
 - `shared` and `kept`: listed only. Outputs, models, the catalog, logs, stats, run keys, and a download cache in uv's shared default place, which other tools may use.
 
 `storage.clean` refuses `shared` and `kept` categories (`storage.not_cleanable`). It needs `confirm: true` for `costly` and `resume` ones (`storage.needs_confirm`), and while a job holds the queue it refuses anything the pipeline writes (`storage.busy`). It removes nothing unless every named category may be removed. No paths are sent.
+
+`storage.history` and `storage.clear_history` take `range`: `hour`, `day`, `week` or `all` (the default). The kinds are `run_history`, `previews`, `transcodes`, `logs` (ticked by default), and `detections`, `run_keys`, `stats`, `library` (each needs `confirm: true`), and `feedback` (unticked, no confirm). `run_keys` and `library` have no time and always clear everything (`ranged: false`). While a job holds the queue every kind is refused (`storage.busy`). Files go to the system trash unless `permanent: true` (default: the `storage_delete_permanently` setting); catalog rows are deleted for good either way and the catalog file is vacuumed. A log the app is writing is cut back in place and only the cleared lines are discarded. Clearing `run_history` or `library` also forgets the ended jobs `job.list` showed. Catalog backups the user saved are kept; the app's own copies beside the catalog are cleared with the rows they hold.
 
 The cache folder comes from `BETASUITE_CACHE_DIR`, else the `cache_dir` setting, else the operating system's cache folder (`cache_source`: `variable`, `setting`, `default`). The folder is found when the engine starts. When it has moved, the old folder is listed as `previous_cache` until it is deleted. Setup keeps its downloads in `setup-downloads` inside the cache folder.
 

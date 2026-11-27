@@ -32,6 +32,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 # The queue-finished notice while the window is hidden; used from Rust only.
 tauri-plugin-notification = "2"
+# Decodes the app icon PNGs for the window and tray. Already in the build
+# through tray-icon and muda; the same version, named directly.
+png = "0.18"
 
 # WebKitGTK's security manager, to let the app's page load local video.
 # Same major as the copy wry uses.

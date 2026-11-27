@@ -14,6 +14,7 @@
         "label": { "type": "string" },
         "minimum": { "type": "number" },
         "maximum": { "type": "number" },
+        "app_only": { "const": true },
         "min_open": { "const": true },
         "max_open": { "const": true },
         "choices": { "type": "array" }

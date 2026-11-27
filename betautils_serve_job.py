@@ -307,6 +307,13 @@ class JobQueue:
     def _bad_state( self, job ):
         return bu_proto.ProtocolError( 'job.bad_state', { 'job': job.id, 'state': job.state } )
 
+    def forget_ended( self ):
+        """Clear history: forget every job that has ended (none run while it is allowed)."""
+        with self._cond:
+            for job_id in [ job_id for job_id, job in self.jobs.items() if job.state in self._bu_job.FINAL ]:
+                del self.jobs[job_id]
+            self._save_locked()
+
     def _forget_finished_locked( self ):
         finished = [ job_id for job_id, job in self.jobs.items() if job.state in self._bu_job.FINAL ]
         for job_id in finished[:max( 0, len( finished ) - REMEMBERED_FINISHED )]:

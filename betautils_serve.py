@@ -513,7 +513,7 @@ from betautils_serve_feedback import HANDLERS as _FEEDBACK_HANDLERS   # noqa: E4
 for _name, _handler in _FEEDBACK_HANDLERS.items():
     register( _name, _handler )
 
-# storage.usage, storage.clean
+# storage.usage, storage.clean, storage.history, storage.clear_history
 from betautils_serve_storage import HANDLERS as _STORAGE_HANDLERS   # noqa: E402
 for _name, _handler in _STORAGE_HANDLERS.items():
     register( _name, _handler )
