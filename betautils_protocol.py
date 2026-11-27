@@ -121,6 +121,9 @@ ERRORS = {
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
     'catalog.no_such_file':         (),
+    # feedback.*
+    'feedback.not_a_result':        (),
+    'feedback.no_such_record':      ( 'id', ),
     # perf.* and Optimize
     'perf.busy':                    ( 'job', ),
     'perf.optimize_running':        (),

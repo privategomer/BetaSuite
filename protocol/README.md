@@ -119,7 +119,7 @@ The library: every video the engine knows, identified by its content (the 16-cha
 | `catalog.rescan` | a pass over every watched folder now |
 | `catalog.pin_type` | pin an item's video type, or unpin it (Auto) |
 | `catalog.thumbnail` | an item's blurred thumbnail, or with `reveal` its clear frame, made in memory and written nowhere; or its censored output's thumbnail |
-| `catalog.forget` | remove an item and its history; its files are not touched |
+| `catalog.forget` | remove an item, its history and its feedback; its files are not touched |
 | `catalog.strip` | a video's scrub strip for the player (by `path`): small frames at known times, in a JPEG in the cache folder; answered at once with what is on disk, while the missing pass is built in the background |
 
 **Watching.** A pass lists each watched folder and reads each file's size, modification time and inode, never its bytes. A rename or a move on one disk is followed by inode; anything else is hashed once it has held still for a few seconds, and found again as the same item when its content is known. Hashing waits while a run is on (a job of this engine, or any run holding the library's run lock, such as the command line). Passes run at start, every `catalog_scan_interval_seconds` (0: only when asked), never sooner than ten times the last pass's length, and on `catalog.rescan`. A new catalog watches the library's `source` and `uncensored_vids` folders and the 1.x video folders a migration recorded, each with its folder rule. A file named as a censored output is an output, wherever it sits.
@@ -128,13 +128,25 @@ The library: every video the engine knows, identified by its content (the 16-cha
 
 **Video type.** Precedence, highest first: the item's pin, `--profile`, a path pattern, a folder rule, measurement, the default. An item's `type` says which one decides and when: `declared` (a pin or a rule, known before the run), `last_run` (measured on its last run) or `at_run` (the scan will decide). What the catalog chooses (a pin, or the folder rule of a watched folder outside the 1.x tree) is keyed in the censor key, so the next run renders again and never reuses an output made under another type. The command line honors pins and folder rules too.
 
-**History** is kept from each run's own record, for the app's jobs and command-line runs alike: outcome and reason, output and keys, the video type and its rule, a failure's type and stage. It exists only in the catalog, like pins: back up the catalog file to keep them. `tools/setup/catalog_rebuild.sh` builds the catalog again from the disk and carries folders, pins and history from the old file while it can be read.
+**History** is kept from each run's own record, for the app's jobs and command-line runs alike: outcome and reason, output and keys, the video type and its rule, a failure's type and stage. It exists only in the catalog, like pins and feedback: `tools/setup/catalog_backup.sh` backs up the catalog file, safely while the app runs, and restores it with the app closed. `tools/setup/catalog_rebuild.sh` builds the catalog again from the disk and carries folders, pins, history and feedback from the old file while it can be read.
 
 **Thumbnails.** Only a source's blurred thumbnail (24 pixels on its long side, blurred) is ever written to disk. `reveal` decodes the frame again into memory and answers it; it is written nowhere. A censored output's thumbnail is stored like any other.
 
 **Scrub strips** are built in two passes. The keyframes pass decodes only keyframes, which is quick even on long-GOP 4K, so the player has pictures within seconds. When keyframes are sparser than one every 2 seconds, an even pass follows: the whole stream is decoded and a frame kept at an even interval (four frames a second at most), at most 1200. The even pass waits while a run is on. Each pass's end is announced by `catalog.strip_ready`. A file the catalog lists as a present censored output gets a clear strip. Any other file's frames are shrunk and blurred as a source thumbnail is before anything is written.
 
 `catalog.changed` says which items changed (`items`, or `all` when another process wrote the catalog or more than 1000 changed at once) and why (`reasons`: scan, job, pin, external). It is merged to a few a second and never dropped. `catalog.strip_ready` says a strip pass for a `path` was written (`ok`) or could not be made.
+
+### Feedback
+
+Marks made in the player on a result: "missed something" (`missed`) or "censored too much" (`too_much`), at a time, about a label or none ("not sure"). Capture only: kept in the catalog, sent nowhere.
+
+| command | does |
+|---|---|
+| `feedback.list` | whether the file at `path` is a result, with its item, keys and preview offset, and the marks already made on it; `result` null for any other file; `labels`, every label a mark can be about |
+| `feedback.add` | keep one mark at `time` seconds into the result at `path` |
+| `feedback.remove` | remove one mark by `id`, for one made by mistake |
+
+The client names the result by its path and never sends keys. The engine finds the result as a censored output the catalog lists, then as a run that wrote that file (previews are recorded only there), then by its name for an item the library knows. Anything else is `feedback.not_a_result`. A mark is stored with the source's content hash, the time in the source (`at_seconds`: a preview slice's offset, from its name, is added), the label, the verdict and the result's detection, censor and encode keys. `time` is on the result's own timeline, as the player shows it. No path is stored. Feedback is not tied to the item's row: a rebuild carries it, and an item that comes back (a share mounted again, a restored backup on a new machine) has its feedback with it. Forgetting the item removes it.
 
 ## Models
 

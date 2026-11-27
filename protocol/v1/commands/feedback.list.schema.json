@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/feedback.list.schema.json",
+  "title": "feedback.list",
+  "description": "Whether the file at path is a result feedback can be given on, and the marks already made on it, in time order. A result is a censored output the catalog knows, a preview or output a run wrote, or a file named as an output of a library item; its keys come from the catalog. result is null for any other file (a source, a file no longer on disk), with no records. offset is where a preview slice starts in its source, in seconds (0 otherwise). labels lists every label a mark can be about.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An absolute path to the result being played."
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "result",
+        "records",
+        "labels"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Every label a mark can be about, in the engine's display order, for the label picker."
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "item",
+                "keys",
+                "preview",
+                "offset"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "description": "The source's content hash."
+                },
+                "keys": {
+                  "type": "object",
+                  "required": [
+                    "detection",
+                    "censor",
+                    "encode"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "detection": {
+                      "type": "string"
+                    },
+                    "censor": {
+                      "type": "string"
+                    },
+                    "encode": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "preview": {
+                  "type": "boolean"
+                },
+                "offset": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "time",
+              "at_seconds",
+              "label",
+              "verdict",
+              "keys",
+              "preview",
+              "created_at"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "time": {
+                "type": "number",
+                "description": "Seconds into this result, as the player shows it."
+              },
+              "at_seconds": {
+                "type": "number",
+                "description": "Seconds into the source (a preview's offset added); what is stored."
+              },
+              "label": {
+                "enum": [
+                  null,
+                  "exposed_anus",
+                  "exposed_armpits",
+                  "covered_belly",
+                  "exposed_belly",
+                  "covered_buttocks",
+                  "exposed_buttocks",
+                  "face_femme",
+                  "face_masc",
+                  "covered_feet",
+                  "exposed_feet",
+                  "covered_breast",
+                  "exposed_breast",
+                  "covered_vulva",
+                  "exposed_vulva",
+                  "exposed_chest",
+                  "exposed_penis",
+                  "covered_armpits",
+                  "covered_anus"
+                ],
+                "description": "The label the mark is about (betautils_labels.LABELS), or null for \"not sure\"."
+              },
+              "verdict": {
+                "enum": [
+                  "missed",
+                  "too_much"
+                ],
+                "description": "missed: something that should have been hidden was not. too_much: something was hidden that should not have been."
+              },
+              "keys": {
+                "type": "object",
+                "required": [
+                  "detection",
+                  "censor",
+                  "encode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "detection": {
+                    "type": "string"
+                  },
+                  "censor": {
+                    "type": "string"
+                  },
+                  "encode": {
+                    "type": "string"
+                  }
+                }
+              },
+              "preview": {
+                "type": "boolean"
+              },
+              "created_at": {
+                "type": "number",
+                "description": "When the mark was made, in seconds since the epoch."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

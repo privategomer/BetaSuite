@@ -89,10 +89,13 @@ class Feedback:
         if fields is not None and os.path.isfile( path ) and self.store.read(
                 'SELECT 1 FROM items WHERE hash = ?', ( fields['hash'], ) ):
             return _result( fields, fields['preview'], preview_offset( name ) )
-        raise bu_store.CatalogError( 'feedback.not_a_result', path=path )
+        raise bu_store.CatalogError( 'feedback.not_a_result' )
 
     def add( self, path, time_seconds, verdict, label=None ):
-        """Keep one mark made at time_seconds into the result at path. Returns the record."""
+        """
+        Keep one mark made at time_seconds into the result at path.
+        Returns the record, with time on the result's own timeline.
+        """
         if verdict not in VERDICTS:
             raise ValueError( 'verdict' )
         if label is not None and label not in _labels():
@@ -109,7 +112,9 @@ class Feedback:
                                  ( result['hash'], at, label, verdict, keys['detection'], keys['censor'],
                                    keys['encode'], int( result['preview'] ), self.clock(), bu_store._app_version() ) )
             record_id = cursor.lastrowid
-        return self.record( record_id )
+        record = self.record( record_id )
+        record['time'] = round( record['at_seconds'] - result['offset'], 3 )
+        return record
 
     def record( self, record_id ):
         rows = self.store.read( 'SELECT * FROM feedback WHERE id = ?', ( record_id, ) )
