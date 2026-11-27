@@ -4094,7 +4094,8 @@ The catalog is `catalog.sqlite` in the data folder. It holds two kinds
 of thing. What it reads from the disk (the videos in the watched
 folders, where each is, which outputs exist) can be built again with
 `tools/setup/catalog_rebuild.sh` (`.ps1` on Windows). What exists only
-there (the watched folders, type pins and run history) is carried by a
+there (the watched folders, type pins, run history and feedback marks)
+is carried by a
 rebuild while the old file can be read; keep a copy of the file as the
 backup of those. Before a newer version changes the file's layout it
 copies it to `catalog.sqlite.v<N>.bak` (the last three are kept), and a

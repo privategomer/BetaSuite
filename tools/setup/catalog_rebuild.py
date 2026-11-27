@@ -8,7 +8,7 @@ catalog_rebuild.py - build the library catalog again from the disk.
 The items in the watched folders, where each one is, and the outputs in
 the output folders are read from the disk (every new or changed file is
 hashed, which reads it whole). The watched folders, type pins, run
-history and items not on disk right now are carried from the old file
+history, feedback and items not on disk right now are carried from the old file
 when it can still be read; when it cannot, they are lost, so keep a
 copy of the catalog file as a backup. The old file stays beside the new
 one as catalog.sqlite.pre-rebuild.bak.
@@ -89,10 +89,10 @@ def _run( args, argv, stdin, stdout, logger ):
     old = bu_rebuild.read_old( path, logger )
     logger.info( "catalog: %s"%( path, ) )
     if old.readable:
-        logger.info( "the old file is readable: %d watched folder(s), %d item(s), %d run(s) are carried over"%(
-            len( old.folders ), len( old.items ), len( old.runs ) ) )
+        logger.info( "the old file is readable: %d watched folder(s), %d item(s), %d run(s), %d feedback mark(s) "
+                     "are carried over"%( len( old.folders ), len( old.items ), len( old.runs ), len( old.feedback ) ) )
     elif os.path.exists( path ):
-        logger.warning( "the old file cannot be read: pins and history will be lost; the default folders are watched" )
+        logger.warning( "the old file cannot be read: pins, history and feedback will be lost; the default folders are watched" )
     else:
         logger.info( "there is no catalog yet: the default folders are watched" )
     interactive = not args.yes and stdin.isatty()
