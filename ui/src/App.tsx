@@ -26,11 +26,12 @@ interface AppProps {
 
 // The help panel and the reference it shows load on first use, keeping
 // them out of the startup bundle.
+const AboutView = lazy( () => import( './about/AboutView' ).then( ( module ) => ( { default: module.AboutView } ) ) );
 const HelpPanel = lazy( () => import( './help/HelpPanel' ).then( ( module ) => ( { default: module.HelpPanel } ) ) );
 
 registerStyleEditor( 'censor_style', StyleEditor );
 
-type View = 'library' | 'player' | 'what_to_hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all_settings';
+type View = 'library' | 'player' | 'what_to_hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all_settings' | 'about';
 
 function startView( view: StartupInfo[ 'view' ] | undefined, opening: boolean ): View {
   switch ( view ) {
@@ -42,6 +43,7 @@ function startView( view: StartupInfo[ 'view' ] | undefined, opening: boolean ):
     case 'storage': return 'storage';
     case 'settings': return 'settings';
     case 'all-settings': return 'all_settings';
+    case 'about': return 'about';
     default: return opening ? 'player' : 'library';
   }
 }
@@ -123,6 +125,7 @@ export function App( { startup }: AppProps ) {
           {tab( 'storage', t( 'nav.storage' ) )}
           {tab( 'settings', t( 'nav.settings' ) )}
           {tab( 'all_settings', t( 'nav.all_settings' ) )}
+          {tab( 'about', t( 'nav.about' ) )}
         </nav>
       </header>
       <div className="app-body">
@@ -138,6 +141,7 @@ export function App( { startup }: AppProps ) {
         {view === 'storage' && <StorageView />}
         {view === 'settings' && <SettingsView onHelp={onHelp} />}
         {view === 'all_settings' && <AllSettings initialQuery={startup?.search ?? ''} onHelp={onHelp} />}
+        {view === 'about' && <Suspense fallback={null}><AboutView /></Suspense>}
       </main>
       {help !== null && (
         <Suspense fallback={null}>

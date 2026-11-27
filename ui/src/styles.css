@@ -1106,6 +1106,73 @@ button.link {
   color: var(--color-status-problem);
 }
 
+/* About (about/AboutView.tsx). */
+.about-view {
+  max-inline-size: 60rem;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.about-notice {
+  margin-block: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  border-inline-start: 4px solid var(--color-accent);
+  background: var(--color-surface);
+}
+
+.about-notice h3 {
+  margin-block: 0 0.3rem;
+}
+
+.about-notice p {
+  margin: 0;
+}
+
+.about-document {
+  margin-block: 0.5rem;
+}
+
+.about-document summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.about-document pre {
+  max-block-size: 24rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  white-space: pre-wrap;
+  font-size: 0.85em;
+}
+
+.about-third-party {
+  max-block-size: 32rem;
+  overflow: auto;
+  font-size: 0.9em;
+}
+
+.about-third-party h1 {
+  font-size: 1.15rem;
+}
+
+.about-third-party h2 {
+  font-size: 1rem;
+}
+
+.about-third-party table {
+  border-collapse: collapse;
+}
+
+.about-third-party th,
+.about-third-party td {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--color-border);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
 /* Clear history (resources/ClearHistory.tsx). */
 .history-dialog {
   max-inline-size: 40rem;
