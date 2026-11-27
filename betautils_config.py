@@ -431,14 +431,17 @@ def get_parts_to_blur( backend_name=None ):
         parts_to_blur[item] = get_label_settings( item, backend_name )
 
     if betaconfig.debug_mode & 1:
-        for class_name, debug_color in betaconst.classes.items():
-            parts_to_blur[class_name] = {
+        # Debug mode draws every class as a labelled box in its own colour,
+        # replacing any real look, so detections can be eyeballed. Each
+        # class gets its own dict: the entries must never alias.
+        for item, colour in betaconst.classes.items():
+            parts_to_blur[item] = {
                 'min_prob': 0.5,
                 'min_prob_continue': None,
                 'width_area_safety': 0,
                 'height_area_safety': 0,
                 'time_safety': 0.4,
-                'censor_style': { 'type': 'debug', 'color': debug_color },
+                'censor_style': { 'type': 'debug', 'color': colour },
                 'censor_shape': 'box',
                 'position_smoothing': betaconfig.default_position_smoothing,
                 'interpolation_enabled': False,

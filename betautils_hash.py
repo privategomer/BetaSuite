@@ -29,21 +29,26 @@ import betaconst
 
 def dictionary_hash( to_hash, hash_len ):
     """
-    Compute a short, stable hash of a JSON-serialisable value.
+    Short, stable hash of any JSON-serialisable value.
 
-    Serialised with sorted keys, so two dicts with identical contents in
-    a different insertion order hash the same. That is what makes it
-    safe to key a cache on a config dict.
+    Detection and render cache keys are built from this, so its output
+    for a given input must never change. Keys are serialised in sorted
+    order, which is what makes two dicts holding the same content in a
+    different insertion order hash alike. Values JSON cannot represent
+    fall back to their str().
+
+    Takes the FIRST `hash_len` hex characters of the MD5 digest (unlike
+    md5_for_file, which takes the last).
 
     Args:
         to_hash: Any JSON-serialisable value.
-        hash_len: Hex characters to keep, from the FRONT of the digest.
+        hash_len: Number of hex characters to keep.
 
     Returns:
-        A hash_len-character lowercase hex string.
+        Lowercase hex string of length hash_len.
     """
-    canonical = json.dumps( to_hash, sort_keys=True, ensure_ascii=True, default=str )
-    return hashlib.md5( canonical.encode('utf-8') ).hexdigest()[:hash_len]
+    serialised = json.dumps( to_hash, sort_keys=True, ensure_ascii=True, default=str )
+    return hashlib.md5( serialised.encode( 'UTF-8' ) ).hexdigest()[:hash_len]
 
 
 # File-content hashes are memoised on (realpath, size, mtime_ns). Hashing
@@ -246,21 +251,31 @@ def sha256_for_file( filename, use_memo=True, should_stop=None ):
 
 def write_json( variable, filename ):
     """
-    Gzip-compress and write a JSON-serialisable value, atomically.
+    Write a value as gzip-compressed JSON, atomically.
 
-    Writes to '<filename>.tmp' then os.replace()s it into position.
-    This one rule is what makes os.path.exists() a trustworthy "is this
-    cache complete" signal everywhere else in the codebase: a reader can
-    never observe a half-written file, even if this process is killed
-    mid-write.
+    The value goes to a temporary sibling first and is moved onto
+    `filename` only once complete, so a reader can trust that a cache
+    file which exists is whole, even if the writer was killed midway.
+    No temporary file is left behind, on success or on failure.
+
+    Args:
+        variable: Any JSON-serialisable value.
+        filename: Destination path; its folder is created if missing.
     """
     dest_dir = os.path.dirname( filename )
     if dest_dir:
         os.makedirs( dest_dir, exist_ok=True )
     tmp_filename = filename + '.tmp'
-    with gzip.open( tmp_filename, 'wt', encoding='UTF-8' ) as fout:
-        json.dump( variable, fout )
-    os.replace( tmp_filename, filename )
+    try:
+        with gzip.open( tmp_filename, 'wt', encoding='UTF-8' ) as fout:
+            json.dump( variable, fout )
+        os.replace( tmp_filename, filename )
+    except BaseException:
+        try:
+            os.remove( tmp_filename )
+        except OSError:
+            pass
+        raise
 
 
 def write_json_plain( variable, filename ):
@@ -285,7 +300,7 @@ def _write_json_plain_via( variable, filename, tmp_filename ):
 
 
 def read_json( filename ):
-    """Read and decompress a value previously written by write_json."""
+    """Read a value previously written by write_json."""
     with gzip.open( filename, 'rt', encoding='UTF-8' ) as fin:
         return json.load( fin )
 
