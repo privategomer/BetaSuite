@@ -513,7 +513,18 @@ def _raw_boxes_from_decoded( decoded, t, size, min_prob_floor ):
 # ---------------------------------------------------------------------------
 
 def raw_boxes_for_img( img, size, session, t ):
-    """Detect on one raw image. See betautils_detector.Detector."""
+    """
+    Detect on one raw image: raw_boxes_for_imgs with a batch of one.
+
+    Args:
+        img: A raw HxWxC BGR uint8 array.
+        size: Target square input size.
+        session: An onnxruntime.InferenceSession from get_session().
+        t: The image's timestamp.
+
+    Returns:
+        A flat list of raw box dicts.
+    """
     return raw_boxes_for_imgs( [ img ], size, session, [ t ] )
 
 
