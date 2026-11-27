@@ -22,8 +22,15 @@ then, log lines stamped since then.
   run_keys      run keys and the file-hash cache (confirm, all time only:
                 every video is hashed again and outputs count as stale)
   stats         run statistics and benchmark results (confirm)
+  feedback      the "missed something" and "censored too much" marks
+                (unticked: they are the user's own notes)
   library       the catalog's videos, watched folders and pins (confirm,
-                all time only); their run records go with them
+                all time only); their run records go with them, feedback
+                marks stay unless their own kind is cleared
+
+Backups the user saved (data/backups/) are kept, as a browser keeps
+exported bookmarks; the app's own copies beside the catalog (taken before
+a schema step or a restore) are cleared with the rows they hold.
 
 Settings, models and outputs are never touched. Files go to the system
 trash (betautils_trash) unless permanent; catalog rows are deleted from
@@ -34,7 +41,8 @@ do not linger in free pages. Stdlib only.
 import os
 import re
 
-KIND_IDS = ( 'run_history', 'previews', 'transcodes', 'logs', 'detections', 'run_keys', 'stats', 'library' )
+KIND_IDS = ( 'run_history', 'previews', 'transcodes', 'logs', 'detections', 'run_keys', 'stats', 'feedback',
+             'library' )
 
 # A log line's time: 2026-01-02 03:04:05 anywhere near its start, with or
 # without brackets (Python logging, the shell harness, the UI log).
@@ -84,16 +92,20 @@ def kinds( catalog_path=None ):
         Kind( 'run_keys', confirm=True, ranged=False,
               paths=[ betaconst.run_key_dir, betaconst.file_hash_cache_path ] ),
         Kind( 'stats', confirm=True, paths=[ os.path.join( state, 'stats' ), betaconst.benchmark_dir ] ),
+        Kind( 'feedback', paths=[ backups ], rows='feedback' ),
         Kind( 'library', confirm=True, ranged=False, paths=[ backups ], rows='library' ),
     ]
 
 
 class _Backups:
-    """The catalog's backup copies (catalog.sqlite.v<N>.bak), beside it."""
+    """
+    The app's own copies of the catalog, beside it: before each schema step
+    (catalog.sqlite.v<N>.bak) and before a restore (catalog.sqlite.pre-restore.bak).
+    """
 
     def __init__( self, catalog_path ):
         self.folder = os.path.dirname( os.path.abspath( catalog_path ) )
-        self.prefix = os.path.basename( catalog_path ) + '.v'
+        self.prefix = os.path.basename( catalog_path ) + '.'
 
     def files( self ):
         if not os.path.isdir( self.folder ):
@@ -224,13 +236,18 @@ def _free_name( base ):
 # Catalog rows
 # ---------------------------------------------------------------------------
 
+# Catalog rows with a time: kind rows -> ( table, time column ).
+_TIMED = { 'runs': ( 'runs', 'ended_at' ), 'feedback': ( 'feedback', 'created_at' ) }
+
+
 def _row_count( store, rows, since ):
     if store is None or rows is None:
         return 0
-    if rows == 'runs':
+    if rows in _TIMED:
+        table, column = _TIMED[rows]
         if since is None:
-            return store.read( 'SELECT COUNT(*) FROM runs' )[0][0]
-        return store.read( 'SELECT COUNT(*) FROM runs WHERE ended_at >= ?', ( since, ) )[0][0]
+            return store.read( 'SELECT COUNT(*) FROM %s'%( table, ) )[0][0]
+        return store.read( 'SELECT COUNT(*) FROM %s WHERE %s >= ?'%( table, column ), ( since, ) )[0][0]
     return ( store.read( 'SELECT COUNT(*) FROM items' )[0][0]
              + store.read( 'SELECT COUNT(*) FROM folders' )[0][0] )
 
@@ -240,11 +257,12 @@ def _clear_rows( store, rows, since ):
         return 0
     count = _row_count( store, rows, since )
     with store.write() as db:
-        if rows == 'runs':
+        if rows in _TIMED:
+            table, column = _TIMED[rows]
             if since is None:
-                db.execute( 'DELETE FROM runs' )
+                db.execute( 'DELETE FROM %s'%( table, ) )
             else:
-                db.execute( 'DELETE FROM runs WHERE ended_at >= ?', ( since, ) )
+                db.execute( 'DELETE FROM %s WHERE %s >= ?'%( table, column ), ( since, ) )
         else:
             # Locations, outputs and runs go with their items (ON DELETE CASCADE).
             db.execute( 'DELETE FROM items' )

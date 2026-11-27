@@ -48,6 +48,7 @@
                   "detections",
                   "run_keys",
                   "stats",
+                  "feedback",
                   "library"
                 ]
               },
