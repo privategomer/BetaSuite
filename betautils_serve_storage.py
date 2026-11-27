@@ -8,6 +8,11 @@ betautils_serve_storage.py - the Storage view's commands.
                   cache_dir setting, or the default)
   storage.clean   remove named categories; costly and resume ones need
                   confirm: true, and what a running job writes is refused
+  storage.history what "Clear history" would remove for a time range, by
+                  kind (betautils_history), and whether the dialog's
+                  "Delete permanently" box starts ticked
+  storage.clear_history  clear the named kinds for a range; refused while
+                  a job holds the queue; to the trash unless permanent
 
 A cache folder the app used before cache_dir moved it is listed as
 previous_cache, so it can be deleted rather than left behind: the engine
@@ -143,7 +148,78 @@ def storage_clean( server, data ):
     return { 'freed': freed, 'trashed': not permanent }
 
 
+# "Clear history" ranges: how far back, in seconds; 'all' has no limit.
+RANGES = { 'hour': 3600, 'day': 86400, 'week': 7 * 86400, 'all': None }
+
+
+def _since( data, clock ):
+    name = data.get( 'range', 'all' )
+    if not isinstance( name, str ) or name not in RANGES:
+        raise _bad_params( 'range', bu_proto.REASON_TYPE if not isinstance( name, str ) else bu_proto.REASON_VALUE )
+    seconds = RANGES[name]
+    return None if seconds is None else clock() - seconds
+
+
+def _store( server ):
+    import betautils_serve_catalog as bu_serve_catalog
+    return bu_serve_catalog.catalog_for( server ).store
+
+
+def _clock( server ):
+    import time
+    return getattr( server, 'clock', None ) or time.time
+
+
+def storage_history( server, data ):
+    import betaconfig
+    import betautils_history as bu_history
+    since = _since( data, _clock( server ) )
+    return {
+        'kinds': bu_history.summary( bu_history.kinds(), since=since, store=_store( server ) ),
+        'busy': _busy( server ) is not None,
+        'permanent': bool( getattr( betaconfig, 'storage_delete_permanently', False ) ),
+    }
+
+
+def storage_clear_history( server, data ):
+    import betaconfig
+    import betautils_history as bu_history
+    import betautils_trash as bu_trash
+    ids = data.get( 'kinds' )
+    if not isinstance( ids, list ) or not all( isinstance( item, str ) and item for item in ids ):
+        raise _bad_params( 'kinds', bu_proto.REASON_MISSING if ids is None else bu_proto.REASON_TYPE )
+    if not ids:
+        raise _bad_params( 'kinds', bu_proto.REASON_VALUE )
+    since = _since( data, _clock( server ) )
+    confirm = data.get( 'confirm', False )
+    if not isinstance( confirm, bool ):
+        raise _bad_params( 'confirm', bu_proto.REASON_TYPE )
+    permanent = data.get( 'permanent', bool( getattr( betaconfig, 'storage_delete_permanently', False ) ) )
+    if not isinstance( permanent, bool ):
+        raise _bad_params( 'permanent', bu_proto.REASON_TYPE )
+    try:
+        cleared = bu_history.clear( bu_history.kinds(), ids, since=since, confirm=confirm,
+                                    busy=_busy( server ) is not None, permanent=permanent,
+                                    store=_store( server ) )
+    except bu_history.HistoryError as err:
+        raise bu_proto.ProtocolError( err.code, err.params )
+    except bu_trash.TrashError as err:
+        server._logger.warning( "storage: clear history stopped, the trash refused a file (%s)"%( err.reason, ) )
+        raise bu_proto.ProtocolError( 'storage.trash_failed', {} )
+    if 'run_history' in ids or 'library' in ids:
+        jobs = getattr( server, 'jobs', None )
+        if jobs is not None:
+            jobs.forget_ended()
+    server._logger.info( "storage: cleared history (%s, %s): %s"%(
+        data.get( 'range', 'all' ), 'deleted' if permanent else 'to the trash',
+        ', '.join( '%s (%d bytes, %d files, %d rows)'%( row['id'], row['bytes'], row['files'], row['rows'] )
+                   for row in cleared ) ) )
+    return { 'cleared': cleared, 'trashed': not permanent }
+
+
 HANDLERS = {
     'storage.usage': storage_usage,
     'storage.clean': storage_clean,
+    'storage.history': storage_history,
+    'storage.clear_history': storage_clear_history,
 }

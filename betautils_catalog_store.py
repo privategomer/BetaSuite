@@ -395,6 +395,16 @@ class Store:
     def write( self ):
         return _Transaction( self )
 
+    def vacuum( self ):
+        """
+        Rewrite the file without its free pages, then empty the write-ahead
+        log: SQLite keeps deleted rows readable in both until then, so a
+        cleared history would still be in the file.
+        """
+        with self._mutex:
+            self._db.execute( 'VACUUM' )
+            self._db.execute( 'PRAGMA wal_checkpoint(TRUNCATE)' )
+
     def data_version( self ):
         """Changes when another connection commits (PRAGMA data_version)."""
         with self._mutex:

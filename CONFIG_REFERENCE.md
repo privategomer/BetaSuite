@@ -481,6 +481,11 @@ across disks is refused rather than done, and nothing is then deleted
 instead: the Storage view says so, and this setting is the way to remove
 it for good. `True` removes the files outright. Moves no cache key.
 
+"Clear history" on the Storage view has its own "Delete permanently"
+box, which starts as this setting and applies to that one clearing only.
+Its catalog records (run history, the library list) are deleted for good
+either way, since a database row cannot go to the trash.
+
 ### `cache_dir`
 
 Moves the cache, the large kind, to another folder (an absolute path).

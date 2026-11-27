@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/storage.clear_history.schema.json",
+  "title": "storage.clear_history",
+  "description": "Clear the named kinds for a time range. Kinds that need it require confirm: true (storage.needs_confirm); an unknown kind is storage.unknown_category; while a job holds the queue everything is refused (storage.busy). Files go to the system trash (trashed: true) unless permanent: true (default: storage_delete_permanently); if the trash refuses a file, clearing stops with storage.trash_failed, what was already moved stays in the trash, and nothing is removed for good instead. Catalog rows are deleted for good either way. cleared says what each kind removed.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "kinds"
+      ],
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "range": {
+          "enum": [
+            "hour",
+            "day",
+            "week",
+            "all"
+          ]
+        },
+        "confirm": {
+          "type": "boolean"
+        },
+        "permanent": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "cleared",
+        "trashed"
+      ],
+      "properties": {
+        "cleared": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "bytes",
+              "files",
+              "rows"
+            ],
+            "properties": {
+              "id": {
+                "enum": [
+                  "run_history",
+                  "previews",
+                  "transcodes",
+                  "logs",
+                  "detections",
+                  "run_keys",
+                  "stats",
+                  "library"
+                ]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "trashed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -234,7 +234,7 @@ class TestHandshake( _EngineTest ):
                                                'models.remove', 'models.use',
                                                'perf.evidence', 'perf.optimize', 'perf.optimize_apply',
                                                'perf.optimize_cancel', 'perf.rebuild', 'ping', 'preview.look', 'resources.watch', 'shutdown', 'storage.clean',
-                                               'storage.usage' ] )
+                                               'storage.clear_history', 'storage.history', 'storage.usage' ] )
         self.assertEqual( hello['events'], [ 'protocol.rejected', 'job.state', 'job.file', 'job.progress',
                                              'job.decision', 'job.error', 'job.probed', 'catalog.changed',
                                              'catalog.strip_ready', 'models.state', 'models.progress', 'resource.sample',
