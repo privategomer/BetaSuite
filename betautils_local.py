@@ -219,7 +219,17 @@ def known_names( namespace ):
                    and not callable( value ) )
 
 
+# Settings that existed and were removed, with what happened to them, so a
+# local config that still sets one says why instead of guessing a typo.
+RETIRED = dict.fromkeys(
+    ( 'vision_cap_monitor', 'vision_cap_top', 'vision_cap_left', 'vision_cap_height',
+      'vision_cap_width', 'vision_cursor_color', 'betavision_delay', 'betavision_interpolate' ),
+    'the BetaVision screen-capture scripts were removed in 2.0' )
+
+
 def _unknown_name_message( name, known ):
+    if name in RETIRED:
+        return "%s was removed (%s), so nothing reads it. Delete this line"%( name, RETIRED[ name ] )
     close = difflib.get_close_matches( name, known, n=1 )
     hint = " (did you mean %s?)"%( close[0], ) if close else ''
     return ( "%s is not a setting betaconfig.py has%s, so nothing reads it. Only settings that "

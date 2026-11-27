@@ -91,9 +91,6 @@ Check it with `nvidia-smi`.
 CPU-only works, but expect detection to run something like 50-100x
 slower than on a GPU.
 
-`betavision-*.py` (live screen censoring) is Windows only, since it
-uses `pywin32`. Everything else runs on both.
-
 ## Quick setup (script)
 
 Clone the repository into the folder that will hold `resources/` and
@@ -187,7 +184,6 @@ The console shows `info` and above unless you pass a different level.
 |---|---|---|
 | `--gpu` / `--cpu` | `-Gpu` / `-Cpu` | skip the GPU/CPU question |
 | `--python 3.12` | `-Python 3.12` | override `.python-version` |
-| | `-Vision` | also install `betavision-*` dependencies |
 | `--tests` / `--no-tests` | `-Tests` / `-NoTests` | run the unit tests at the end, or don't |
 | `--person-backends yolo11_seg,rf_detr_seg` | `-PersonBackends yolo11_seg,rf_detr_seg` | skip the person-model question: comma separated backends, `all` or `none` |
 | `--yes` | `-Yes` | take the default answer to every question (unattended) |
@@ -322,19 +318,12 @@ pip uninstall -y onnxruntime onnxruntime-gpu
 pip install -r requirements-cpu.txt
 ```
 
-Windows, for `betavision-*` only:
-
-```powershell
-pip install -r requirements-vision-windows.txt
-```
-
 | File | Contents |
 |---|---|
 | `requirements.txt` | numpy, opencv-python (shared) |
 | `requirements-cpu.txt` | shared + `onnxruntime` |
 | `requirements-gpu.txt` | shared + `onnxruntime-gpu` (CUDA 12 build) + `gpu-requirements.txt` |
 | `gpu-requirements.txt` | CUDA 12.9 / cuDNN 9.10 runtime libraries as pip wheels |
-| `requirements-vision-windows.txt` | mss, pywin32 |
 | `requirements-dev.txt` | semver for `tools/release/release.py`; memray and py-spy for `tools/bench/profile.sh` (maintainers only) |
 
 `onnxruntime-gpu` is capped below 1.27 on purpose. From 1.27 on, the
@@ -495,7 +484,7 @@ these are the differences that matter:
 |---|---|---|
 | Python | 3.9 | 3.12 |
 | CUDA / cuDNN | 11.4 / 8.2.2, installed system-wide from NVIDIA | 12 / 9, installed into the venv by pip |
-| Platforms | Windows | Linux and Windows (`betavision` still Windows only) |
+| Platforms | Windows | Linux and Windows |
 | ffmpeg | `InstallFolder/ffmpeg/` | anywhere on `PATH` |
 | Model folder | `InstallFolder/model/` | `resources/model/` |
 | Default model | RetinaNet v2 | NudeNet v3.4 320n (RetinaNet still supported) |

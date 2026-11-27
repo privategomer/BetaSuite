@@ -184,14 +184,6 @@
    "version": "25.12.19"
   },
   {
-   "from": "pypi",
-   "home": "https://pypi.org/project/mss/",
-   "license": "MIT",
-   "name": "mss",
-   "requirement": "requirements-vision-windows.txt",
-   "version": "not installed here; latest 10.2.0"
-  },
-  {
    "home": "",
    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
    "name": "numpy",
@@ -296,14 +288,6 @@
    "name": "protobuf",
    "requirement": "pulled in",
    "version": "7.36.2"
-  },
-  {
-   "from": "pypi",
-   "home": "https://pypi.org/project/pywin32/",
-   "license": "PSF-2.0",
-   "name": "pywin32",
-   "requirement": "requirements-vision-windows.txt",
-   "version": "not installed here; latest 312"
   }
  ],
  "rust": [

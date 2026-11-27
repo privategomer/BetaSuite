@@ -1,3 +1,0 @@
-# Optional: betavision-* live screen censoring. Windows only.
-mss
-pywin32; sys_platform == "win32"

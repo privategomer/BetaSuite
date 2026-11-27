@@ -29,7 +29,6 @@ where the reasoning lives.
 - [Preview mode](#preview-mode)
 - [Logging and stats](#logging-and-stats)
 - [Hardware](#hardware)
-- [BetaVision screen capture](#betavision-screen-capture)
 - [Miscellaneous](#miscellaneous)
 - [The settings registry](#the-settings-registry)
 - [Why the shipped values are what they are](#why-the-shipped-values-are-what-they-are)
@@ -3431,8 +3430,6 @@ shipped style, the same without `dim`, and strength 20. `box` or
   model outlines her separately. When it merges them and none of her
   `female_labels` is detected inside the merged outline at that sample,
   her unlabeled skin inside it is shown with him
-- **betavision refuses to run** with reverse mode on. Its live loop would
-  draw the censored labels and leave the rest of the screen clear
 - **Fades are not merged across short gaps.** Two intervals closer than
   twice `fade_seconds` dip toward clear between them; raise
   `hold_seconds` to bridge gaps instead
@@ -4384,21 +4381,6 @@ warning).
 The defaults are starting points: the thresholds for memory were checked
 on the hardware named in the milestone evidence, by a run under induced
 memory pressure.
-
----
-
-## BetaVision screen capture
-
-BetaVision censors a region of the screen live instead of a file.
-
-| Setting | Meaning |
-|---|---|
-| `vision_cap_monitor` | Which monitor to capture, counting from `0` |
-| `vision_cap_top`, `vision_cap_left` | The capture region's top-left corner, in pixels |
-| `vision_cap_height`, `vision_cap_width` | The capture region's size, in pixels |
-| `vision_cursor_color` | The `(r, g, b)` color the cursor is drawn in |
-| `betavision_delay` | Seconds between captures |
-| `betavision_interpolate` | Slide boxes between captures instead of jumping |
 
 ---
 

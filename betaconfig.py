@@ -542,17 +542,6 @@ console_palette = 'standard'   # 'standard' | 'deuteranopia' | 'protanopia' | 'm
 stats_enabled = True
 stats_path = '../output/stats/betasuite_stats.jsonl'
 
-# --- BetaVision screen-capture region -----------------------------------
-
-vision_cap_monitor = 0
-vision_cap_top = 0
-vision_cap_left = 0
-vision_cap_height = 1080
-vision_cap_width = 960
-vision_cursor_color = (168, 93, 253)
-betavision_delay = 0.5
-betavision_interpolate = False
-
 # --- Miscellaneous ------------------------------------------------------
 
 debug_mode = 0   # 0 off | 1 debug overlay | 3 also save debug output

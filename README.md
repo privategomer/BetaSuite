@@ -11,7 +11,6 @@ Three entry points, one configuration file, one engine:
 |---|---|
 | `betatv.py` | censors video files |
 | `betastare.py` | censors still images |
-| `betavision-*.py` | live screen-capture censoring (needs `gpu_enabled`) |
 
 - **`betaconfig.py`**: every setting, at its shipped default. Values and
   one-line headers only. Never edit it: copy a setting into
@@ -390,7 +389,7 @@ Reference: [Shot-cut detection](CONFIG_REFERENCE.md#shot-cut-detection)
 
 | Setting | What it does |
 |---|---|
-| `items_to_censor` | `[]` as shipped: nothing is censored until you choose, and `betatv.py`, `betastare.py` and betavision stop before any detection, naming the setting. `[ 'exposed_vulva', 'exposed_breast' ]` is what the shipped tuning covers ([Example local config](CONFIG_REFERENCE.md#example-local-config)). Every other detected label is a suppression or promotion signal or ignored |
+| `items_to_censor` | `[]` as shipped: nothing is censored until you choose, and `betatv.py` and `betastare.py` stop before any detection, naming the setting. `[ 'exposed_vulva', 'exposed_breast' ]` is what the shipped tuning covers ([Example local config](CONFIG_REFERENCE.md#example-local-config)). Every other detected label is a suppression or promotion signal or ignored |
 
 Every label BetaSuite understands is listed in `betaconst.classes`.
 Some (`exposed_anus`, `exposed_armpits`, `exposed_chest`) exist purely
@@ -499,18 +498,6 @@ Reference: [Logging and stats](CONFIG_REFERENCE.md#logging-and-stats)
 | `input_delete_probability` | `0` | chance of deleting each source file once its censored output exists. Non-zero requires typing a confirmation at startup |
 | `debug_mode` | `0` | `1` draws labelled debug boxes for every class instead of censoring; `3` also saves debug output |
 | `enable_betasuite_watermark` | `False` | draw a watermark on every frame |
-
-### BetaVision screen capture
-
-| Setting | Default |
-|---|---|
-| `vision_cap_monitor`, `vision_cap_top`, `vision_cap_left`, `vision_cap_height`, `vision_cap_width` | `0`, `0`, `0`, `1080`, `960` |
-| `vision_cursor_color` | `(168, 93, 253)` |
-| `betavision_delay` | `0.5` |
-| `betavision_interpolate` | `False` |
-
-The capture region is the rectangle read from your screen. The censored
-copy is displayed elsewhere.
 
 ---
 
@@ -1067,8 +1054,6 @@ tests against reference implementations.
   window when the model outlines her separately; when it merges the two
   into one outline and none of her labels is detected inside it, her
   unlabeled skin there is shown with him.
-- **Reverse mode is not available in betavision**, which refuses to start
-  with it on.
 
 ---
 

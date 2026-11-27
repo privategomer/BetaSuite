@@ -201,6 +201,14 @@ class TestWhatItMaySet( TempDir ):
         self.assertIn( 'did you mean render_workers?', loaded.problems[0] )
         self.assertIn( 'skipped', stderr )
 
+    def test_a_retired_setting_says_it_was_removed( self ):
+        loaded, namespace, _stderr = self.apply( "vision_cap_width = 960\nencode_crf = 20\n" )
+        self.assertNotIn( 'vision_cap_width', namespace )
+        self.assertEqual( namespace['encode_crf'], 20 )
+        self.assertEqual( len( loaded.problems ), 1 )
+        self.assertIn( 'vision_cap_width was removed', loaded.problems[0] )
+        self.assertNotIn( 'did you mean', loaded.problems[0] )
+
     def test_names_that_are_not_settings_are_unknown( self ):
         loaded, namespace, _stderr = self.apply( "os = 1\nhelper = 2\n__name__ = 'x'\nzzzz_qqqq = 1\n" )
         self.assertEqual( len( loaded.problems ), 4 )

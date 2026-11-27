@@ -76,6 +76,11 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
 - Each file's run is one record (`betautils_run_record.py`) handed to every sink: the stats row and the failure row as before, byte for byte, and the library catalog's history. `betatv.py` opens the catalog beside a running app and records into it; a catalog it cannot open is a warning and the run goes on. A file whose video type the library chose (a pin, or a watched folder's folder rule) runs under that type, with the type in its censor key (keyed only then, so every other output keeps its name). Upgrade cost: none for an unchanged config; pinning a finished file renders it once more
 - The file-hash memo merges with the file on disk when it is saved, through a temporary file of its own, so the app's library scan and a command-line run no longer drop each other's entries (a lost entry meant reading that file whole again). Upgrade cost: none
 
+### Removed
+
+- BetaVision, the live screen-capture scripts (`betavision-censor.py`, `betavision-detect.py`, `betavision-screenshot.py`, `betavision-coordinates.py`, `betautils_vision.py`), with their settings (`vision_cap_*`, `vision_cursor_color`, `betavision_delay`, `betavision_interpolate`), `requirements-vision-windows.txt` and `setup.ps1 -Vision`. A local config that still sets one of these settings is told it was removed. Upgrade cost: delete those lines from your local config
+- `betautils_model.py`, the 1.x RetinaNet loader nothing used since detector adapters (`detectors/retinanet_v2.py`) replaced it
+
 ### Fixed
 
 - The engine's settings commands failed with an internal error (`TypeError`) when the local config gave a label `item_overrides` that `betaconfig.py` has none of, which choosing a look for most labels in the desktop app does. Rebuilding `betaconfig.py`'s own values put the added label back as a stray "not set" marker instead of removing it, because that marker did not survive being copied. Upgrade cost: none

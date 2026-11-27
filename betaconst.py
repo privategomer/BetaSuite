@@ -1,8 +1,8 @@
 """
 betaconst.py - Structural constants. Nothing here is user-tunable.
 
-These are facts about model I/O contracts, the on-disk layout, and the
-BetaVision IPC convention. User-tunable settings live in betaconfig.py;
+These are facts about model I/O contracts and the on-disk layout.
+User-tunable settings live in betaconfig.py;
 the reasoning behind every tunable lives in CONFIG_REFERENCE.md.
 
 Do not rename or reorder anything here without checking every caller.
@@ -98,17 +98,3 @@ run_lock_path         = _bu_paths.resolve( '../output/run.lock' )
 # described in betautils_labels.py; this is their debug overlay colour.
 
 classes = _bu_labels.debug_colors()
-
-# --- BetaVision shared-memory / IPC names -----------------------------------
-
-bv_ss_timestamp1_name = 'bv_ss_timestamp1_name'
-bv_ss_timestamp2_name = 'bv_ss_timestamp2_name'
-bv_detect_timestamp1_name = 'bv_detect_timestamp1_name'
-bv_detect_timestamp2_name = 'bv_detect_timestamp2_name'
-
-bv_detect_shm_boxes_name = "bv_detect_shm_boxes_name"
-bv_detect_shm_count_name = "bv_detect_shm_count_name"
-
-# Preallocated box-record slots in the BetaVision shared-memory segment.
-# Overflow beyond this is dropped (see betautils_vision.boxes_to_shared_array).
-bv_detect_max_boxes = 2000

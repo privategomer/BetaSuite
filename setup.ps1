@@ -8,7 +8,6 @@ param(
     [switch]$Gpu,
     [switch]$Cpu,
     [string]$Python = '',
-    [switch]$Vision,               # also install betavision deps (mss, pywin32)
     [switch]$Tests,
     [switch]$NoTests,
     [string]$PersonBackends = '',  # comma separated; '' lets fetch_models.py ask
@@ -25,7 +24,6 @@ Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup
 
   -Gpu | -Cpu            CUDA build or CPU build (default: ask; GPU suggested when nvidia-smi finds one)
   -Python VERSION        Python version (default: from .python-version)
-  -Vision                also install betavision-* dependencies (mss, pywin32)
   -Tests | -NoTests      run the unit tests at the end (default: ask, no)
   -PersonBackends LIST   person models to install for reverse mode, comma separated:
                          yolo11_seg, rf_detr_seg, all or none (default: ask, yolo11_seg)
@@ -287,9 +285,6 @@ if ($LASTEXITCODE -eq 0) {
 
 if (-not (Invoke-Logged "install requirements-$Mode.txt" $Uv @('pip','install','--python',$VenvPy,'-r',"requirements-$Mode.txt"))) {
     Stop-Setup 'package install failed'
-}
-if ($Vision -or (Ask-YesNo 'Install betavision-* live screen censoring dependencies (mss, pywin32)?' $false)) {
-    Invoke-Logged 'install requirements-vision-windows.txt' $Uv @('pip','install','--python',$VenvPy,'-r','requirements-vision-windows.txt') | Out-Null
 }
 
 # ---------------------------------------------------------------- folders

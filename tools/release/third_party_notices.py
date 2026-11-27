@@ -37,7 +37,7 @@ DATA = os.path.join(REPO, 'assets', 'notices', 'third_party.json')
 MARKDOWN = os.path.join(REPO, 'THIRD_PARTY_NOTICES.md')
 REVIEWED = os.path.join(HERE, 'license_review.json')
 REQUIREMENT_FILES = ('requirements.txt', 'requirements-cpu.txt', 'requirements-gpu.txt',
-                     'gpu-requirements.txt', 'requirements-vision-windows.txt')
+                     'gpu-requirements.txt')
 FORMAT = 1
 
 # Licenses whose terms let them ship in, or alongside, an AGPL-3.0-or-later
