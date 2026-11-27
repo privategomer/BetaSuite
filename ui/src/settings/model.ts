@@ -112,10 +112,18 @@ export const EDITOR_FOR_KIND = {
   profile_map: 'profile_map',
 } as const;
 
-export type Kind = keyof typeof EDITOR_FOR_KIND;
-export type EditorId = ( typeof EDITOR_FOR_KIND )[ Kind ];
+// A setting whose values need more than its kind's editor shows.
+export const EDITOR_FOR_PATH = {
+  app_icon: 'icon_choice',
+} as const;
 
-export function editorFor( kind: string ): EditorId | null {
+export type Kind = keyof typeof EDITOR_FOR_KIND;
+export type EditorId = ( typeof EDITOR_FOR_KIND )[ Kind ] | ( typeof EDITOR_FOR_PATH )[ keyof typeof EDITOR_FOR_PATH ];
+
+export function editorFor( kind: string, path?: string ): EditorId | null {
+  if ( path !== undefined && Object.hasOwn( EDITOR_FOR_PATH, path ) ) {
+    return EDITOR_FOR_PATH[ path as keyof typeof EDITOR_FOR_PATH ];
+  }
   return Object.hasOwn( EDITOR_FOR_KIND, kind ) ? EDITOR_FOR_KIND[ kind as Kind ] : null;
 }
 
@@ -212,7 +220,7 @@ export interface Row {
 export function buildRows( schema: Schema ): Row[] {
   return schema.settings.map( ( entry ) => ( {
     entry,
-    editor: editorFor( entry.kind ),
+    editor: editorFor( entry.kind, entry.path ),
     pattern: hasPlaceholders( entry.path ),
   } ) );
 }
