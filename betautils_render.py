@@ -949,34 +949,41 @@ def encoder_options( codec, quality, preset, threads ):
 def _chunk_encode_command( tmp_path, vid_w, vid_h, vid_fps, preset, encoder_threads,
                            codec=None, quality=None ):
     """
-    ffmpeg command that reads raw BGR frames on stdin and writes H.264.
+    The ffmpeg command that encodes raw BGR frames from stdin into one chunk.
 
-    The even-dimension pad is applied here, at the chunk encode, rather
-    than at a later re-encode: every chunk pads identically, so the
-    concatenated stream has consistent parameters and can be copied
-    rather than re-encoded.
+    Every chunk pads both dimensions up to even numbers here, at encode
+    time, so all chunks share one set of stream parameters and their
+    concatenation can be stream-copied instead of re-encoded.
 
-    codec and quality default to encode_video_codec and encode_crf;
-    `betabench encode` passes its own to time other encoders through
-    this exact command.
+    Args:
+        tmp_path: Where the chunk is written.
+        vid_w, vid_h: Frame size of the raw input.
+        vid_fps: Frame rate of the raw input.
+        preset: Encoder preset.
+        encoder_threads: Encoder threads, for CPU encoders.
+        codec: ffmpeg encoder; default betaconfig.encode_video_codec.
+            `betabench encode` passes its own to time other encoders
+            through this same command.
+        quality: CRF (or NVENC cq); default betaconfig.encode_crf.
+
+    Returns:
+        A list of ffmpeg arguments.
     """
     if codec is None:
         codec = getattr( betaconfig, 'encode_video_codec', 'libx264' )
     if quality is None:
         quality = getattr( betaconfig, 'encode_crf', 17 )
-    return _ffmpeg_base_command() + [
-        '-f', 'rawvideo',
-        '-vcodec', 'rawvideo',
-        '-s', '{}x{}'.format( vid_w, vid_h ),
-        '-pix_fmt', 'bgr24',
-        '-r', '%.6f'%(vid_fps),
-        '-i', '-',
-        '-an',
-    ] + encoder_options( codec, quality, preset, encoder_threads ) + [
-        '-pix_fmt', 'yuv420p',
-        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
-        tmp_path,
-    ]
+    return ( _ffmpeg_base_command()
+             + [ '-f', 'rawvideo', '-vcodec', 'rawvideo',
+                 '-s', '%dx%d' % ( vid_w, vid_h ),
+                 '-pix_fmt', 'bgr24',
+                 '-r', '%.6f' % vid_fps,
+                 '-i', '-',
+                 '-an' ]
+             + encoder_options( codec, quality, preset, encoder_threads )
+             + [ '-pix_fmt', 'yuv420p',
+                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+                 tmp_path ] )
 
 
 def _write_chunk_metadata( plan, frames_written, ended_at_eof=False ):

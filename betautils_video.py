@@ -418,13 +418,16 @@ def probe_video_ok( filepath, timeout=120 ):
 
 def video_file_has_audio( filepath, timeout=120 ):
     """
-    Whether a file contains an audio stream.
+    Whether a media file has an audio stream, as ffprobe reports it.
 
-    Returns False rather than raising when ffprobe fails, so a probe
-    failure degrades to "render without audio" instead of aborting the
-    file. The earlier version let the exception propagate.
+    Any probe failure (ffprobe missing, a timeout, a non-zero exit)
+    answers False: the file then renders without audio rather than
+    failing outright.
+
+    Returns:
+        True if ffprobe lists an audio stream, False otherwise.
     """
-    command = [ "ffprobe", '-loglevel', 'error',
+    command = [ "ffprobe", '-v', 'error',
                 '-show_entries', 'stream=index,codec_type', '-of', 'csv=p=0', filepath ]
     try:
         result = subprocess.run( command, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout )
@@ -432,7 +435,7 @@ def video_file_has_audio( filepath, timeout=120 ):
         return False
     if result.returncode != 0:
         return False
-    return 'audio' in result.stdout.decode( 'utf-8', errors='replace' )
+    return 'audio' in result.stdout.decode( 'UTF-8', errors='replace' )
 
 
 def probe_stream_info( filepath, timeout=120 ):
