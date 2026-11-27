@@ -16,27 +16,24 @@
 // exists, the video chases the pointer, one seek in flight at a time, the
 // newest position next, as the spike's "latest" did. The keyboard (arrows,
 // Home, End, Page Up and Down) seeks at once.
+//
+// FEEDBACK. Under the controls, on a result only: "missed something" and
+// "censored too much" at the time they are pressed (../feedback).
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isEngineError, type EngineError } from '../engine/client';
+import { FeedbackPanel } from '../feedback/FeedbackPanel';
 import { errorText } from '../i18n/errors';
 import { t } from '../i18n/format';
 import { describeError, log } from '../log';
 import { openVideo } from '../library/api';
 import { VIDEO_EXTENSIONS } from '../library/names';
 import { pickVideo, uiMark, type PlayableVideo } from '../shell';
+import { clock } from './clock';
 import { frameAt, tileRect, useStrip, type LoadedStrip } from './strip';
 
 function source( video: PlayableVideo ): string {
   return video.file_url ?? convertFileSrc( video.path );
-}
-
-function clock( seconds: number ): string {
-  const whole = Math.max( 0, Math.floor( seconds ) );
-  const hours = Math.floor( whole / 3600 );
-  const minutes = Math.floor( ( whole % 3600 ) / 60 );
-  const rest = String( whole % 60 ).padStart( 2, '0' );
-  return hours > 0 ? [ String( hours ), String( minutes ).padStart( 2, '0' ), rest ].join( ':' ) : [ String( minutes ), rest ].join( ':' );
 }
 
 function drawFrame( canvas: HTMLCanvasElement | null, strip: LoadedStrip, seconds: number ): boolean {
@@ -411,6 +408,15 @@ export function Player( { openAtStart, openError, request, measureScrub = false 
           <button type="button" aria-pressed={muted} onClick={() => { setMuted( !muted ); }}>{muted ? t( 'player.unmute' ) : t( 'player.mute' )}</button>
           <button type="button" onClick={fullScreen}>{t( 'player.full_screen' )}</button>
         </div>
+      )}
+      {error === null && video !== null && (
+        <FeedbackPanel
+          key={video.path}
+          path={video.path}
+          now={() => element.current?.currentTime ?? current}
+          pause={() => { element.current?.pause(); }}
+          seek={( seconds ) => { setCurrent( seconds ); seek( seconds ); }}
+        />
       )}
     </section>
   );

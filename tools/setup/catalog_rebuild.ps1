@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File tools\setup\catalog_rebuild.ps1         says what it will do, asks
 #   powershell -ExecutionPolicy Bypass -File tools\setup\catalog_rebuild.ps1 --yes   rebuilds without asking
 #
-# Close the app first. Folders, pins and history are carried from the old
+# Close the app first. Folders, pins, history and feedback are carried from the old
 # file while it can be read; the old file is kept beside the new one. Log:
 # <state folder>\logs\catalog_rebuild.log; --console-level (info) filters
 # the terminal only. Every argument goes to catalog_rebuild.py.

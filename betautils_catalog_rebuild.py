@@ -6,9 +6,9 @@ the items in the watched folders, keyed by their content hash, where
 each one is, and the outputs in the output folders (so which items are
 done). What exists nowhere else is carried from the old file while it
 can still be read: the watched folders and their rules, type pins, run
-history (and with it a failed status), and items that are not on disk
+history (and with it a failed status), feedback, and items that are not on disk
 right now (a share not mounted), with their paths marked missing or
-offline. When the old file cannot be read, pins and history are lost:
+offline. When the old file cannot be read, pins, history and feedback are lost:
 that is what backing up the catalog file is for.
 
 The rebuild holds the catalog's lock exclusive the whole time, so it
@@ -33,6 +33,8 @@ OLD_SUFFIX = '.pre-rebuild.bak'
 _RUN_COLUMNS = ( 'hash', 'program', 'job', 'path', 'started_at', 'ended_at', 'outcome', 'reason', 'output',
                  'detection_key', 'censor_key', 'encode_key', 'profile', 'rule', 'rule_params', 'sample_fps',
                  'preview', 'error_type', 'stage', 'timing' )
+_FEEDBACK_COLUMNS = ( 'hash', 'at_seconds', 'label', 'verdict', 'detection_key', 'censor_key', 'encode_key',
+                      'preview', 'created_at', 'app_version' )
 
 
 class Carried:
@@ -44,6 +46,7 @@ class Carried:
         self.items = {}          # hash -> item row
         self.locations = {}      # hash -> [ location rows ]
         self.runs = []           # run rows, oldest first
+        self.feedback = []       # feedback rows, in the order they were made
 
 
 def read_old( path, logger=None ):
@@ -65,12 +68,14 @@ def read_old( path, logger=None ):
                 carried.locations.setdefault( row['hash'], [] ).append( dict( row ) )
             if version >= 2:
                 carried.runs = [ dict( row ) for row in db.execute( 'SELECT * FROM runs ORDER BY ended_at, id' ) ]
+            if version >= 4:
+                carried.feedback = [ dict( row ) for row in db.execute( 'SELECT * FROM feedback ORDER BY id' ) ]
             carried.readable = True
         finally:
             db.close()
     except sqlite3.DatabaseError as err:
         if logger is not None:
-            logger.warning( "the old catalog could not be read (%s); pins and history are not carried"%(
+            logger.warning( "the old catalog could not be read (%s); pins, history and feedback are not carried"%(
                 type( err ).__name__, ) )
         return Carried()
     return carried
@@ -79,7 +84,8 @@ def read_old( path, logger=None ):
 def rebuild( path=None, seed_folders=None, hasher=None, logger=None, clock=None ):
     """
     Build the catalog again. Returns a summary dict: items, locations,
-    outputs, carried_pins, carried_runs, carried_missing, old_readable.
+    outputs, carried_pins, carried_runs, carried_feedback, carried_missing,
+    old_readable.
     Raises CatalogError catalog.unavailable {in_use} when anything has
     the catalog open, catalog.too_new for a file this code cannot read.
     """
@@ -103,7 +109,8 @@ def rebuild( path=None, seed_folders=None, hasher=None, logger=None, clock=None 
         os.replace( new_path, path )
         if logger is not None:
             logger.info( "catalog rebuilt: %(items)d items, %(locations)d paths, %(outputs)d outputs; "
-                         "carried %(carried_pins)d pins, %(carried_runs)d runs, %(carried_missing)d items "
+                         "carried %(carried_pins)d pins, %(carried_runs)d runs, %(carried_feedback)d feedback marks, "
+                         "%(carried_missing)d items "
                          "not on disk"%summary )
         return summary
     finally:
@@ -196,13 +203,14 @@ def _carry_known_location( index, location, digest ):
 
 def _carry( store, index, carried, clock ):
     pins = runs = missing = 0
+    marked = { row['hash'] for row in carried.feedback }
     folders = index.folders()
     with store.write() as db:
         for digest, item in carried.items.items():
             exists = db.execute( 'SELECT 1 FROM items WHERE hash = ?', ( digest, ) ).fetchone() is not None
             if not exists:
                 if not ( item['type_pin'] or any( run['hash'] == digest for run in carried.runs )
-                         or carried.locations.get( digest ) ):
+                         or carried.locations.get( digest ) or digest in marked ):
                     continue
                 # Not on disk now: kept, with its paths missing or offline.
                 db.execute( 'INSERT INTO items ( hash, kind, size, name, added_at, status ) VALUES ( ?, ?, ?, ?, ?, ? )',
@@ -229,8 +237,14 @@ def _carry( store, index, carried, clock ):
                                                                  ', '.join( '?' for _ in _RUN_COLUMNS ) ),
                         tuple( run.get( column ) for column in _RUN_COLUMNS ) )
             runs += 1
+        # All of it, item known or not: feedback is keyed by hash alone.
+        for row in carried.feedback:
+            db.execute( 'INSERT INTO feedback ( %s ) VALUES ( %s )'%( ', '.join( _FEEDBACK_COLUMNS ),
+                                                                     ', '.join( '?' for _ in _FEEDBACK_COLUMNS ) ),
+                        tuple( row.get( column ) for column in _FEEDBACK_COLUMNS ) )
     _settle_from_runs( store, index, carried )
-    return { 'carried_pins': pins, 'carried_runs': runs, 'carried_missing': missing }
+    return { 'carried_pins': pins, 'carried_runs': runs, 'carried_feedback': len( carried.feedback ),
+             'carried_missing': missing }
 
 
 def _settle_from_runs( store, index, carried ):
