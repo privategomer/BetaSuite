@@ -9,10 +9,15 @@
 //!
 //! Quit shows the window again before closing it: on Windows, exiting with
 //! a hidden window once left the event loop stuck (see lib.rs, close).
+//! The tray shows while the app is open unless `tray_icon_shown` is off
+//! (`tray_shown`); while the window is hidden for a job it shows either
+//! way. Its image is the chosen app icon (app_icon.rs).
+//!
 //! Where the desktop has no tray (a Linux desktop without the
 //! AppIndicator library), `tray_setup` answers false, and the page does
 //! not offer to keep running in the background.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Deserialize;
@@ -28,10 +33,60 @@ const SHOW: &str = "show";
 const PAUSE: &str = "pause";
 const QUIT: &str = "quit";
 
-/// The tray icon, once made.
-#[derive(Default)]
+/// The tray icon, once made, and whether it should show.
 pub struct Tray {
     icon: Mutex<Option<TrayIcon>>,
+    /// The `tray_icon_shown` setting, as the page last sent it.
+    shown: AtomicBool,
+    /// The window is hidden while a job runs, so the tray must show.
+    background: AtomicBool,
+}
+
+impl Default for Tray {
+    fn default() -> Self {
+        Tray {
+            icon: Mutex::new(None),
+            shown: AtomicBool::new(true),
+            background: AtomicBool::new(false),
+        }
+    }
+}
+
+/// Whether the tray shows: always while in the background, else as set.
+pub fn visible(shown: bool, background: bool) -> bool {
+    shown || background
+}
+
+impl Tray {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<TrayIcon>> {
+        self.icon
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn apply_visibility(&self) {
+        let show = visible(
+            self.shown.load(Ordering::SeqCst),
+            self.background.load(Ordering::SeqCst),
+        );
+        if let Some(icon) = self.lock().as_ref() {
+            if let Err(error) = icon.set_visible(show) {
+                log::warn!(
+                    "cannot {} the tray icon: {error}",
+                    if show { "show" } else { "hide" }
+                );
+            }
+        }
+    }
+
+    /// Gives the tray a new image (the app icon changed).
+    pub fn set_image(&self, image: tauri::image::Image<'static>) {
+        if let Some(icon) = self.lock().as_ref() {
+            if let Err(error) = icon.set_icon(Some(image)) {
+                log::warn!("cannot change the tray icon: {error}");
+            }
+        }
+    }
 }
 
 /// The tray's words, from the page's catalog.
@@ -63,6 +118,9 @@ pub fn action_for(id: &str) -> Action {
 
 /// Shows the main window again and gives it focus.
 pub fn bring_back(app: &AppHandle, why: &str) {
+    let tray = app.state::<Tray>();
+    tray.background.store(false, Ordering::SeqCst);
+    tray.apply_visibility();
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         if let Err(error) = window.show() {
@@ -119,7 +177,13 @@ fn build(app: &AppHandle, texts: &TrayTexts) -> tauri::Result<TrayIcon> {
                 bring_back(tray.app_handle(), "tray click");
             }
         });
-    if let Some(icon) = app.default_window_icon() {
+    let scale = app
+        .get_webview_window("main")
+        .and_then(|window| window.scale_factor().ok())
+        .unwrap_or(1.0);
+    if let Some(image) = app.state::<crate::app_icon::AppIcon>().tray_image(scale) {
+        builder = builder.icon(image);
+    } else if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)
@@ -146,6 +210,13 @@ pub fn tray_setup(app: AppHandle, tray: tauri::State<'_, Tray>, texts: TrayTexts
     match build(&app, &texts) {
         Ok(made) => {
             log::info!("tray icon ready");
+            let show = visible(
+                tray.shown.load(Ordering::SeqCst),
+                tray.background.load(Ordering::SeqCst),
+            );
+            if !show {
+                let _ = made.set_visible(false);
+            }
             *icon = Some(made);
             true
         }
@@ -154,6 +225,22 @@ pub fn tray_setup(app: AppHandle, tray: tauri::State<'_, Tray>, texts: TrayTexts
             false
         }
     }
+}
+
+/// The `tray_icon_shown` setting: show the tray while the app is open, or
+/// only while a job runs in the background.
+#[tauri::command]
+pub fn tray_shown(tray: tauri::State<'_, Tray>, shown: bool) {
+    tray.shown.store(shown, Ordering::SeqCst);
+    tray.apply_visibility();
+    log::info!(
+        "tray icon {}",
+        if shown {
+            "shown"
+        } else {
+            "shown only in the background"
+        }
+    );
 }
 
 /// The tray's tooltip: the queue's progress, worded by the page.
@@ -183,8 +270,12 @@ pub fn hide_to_tray(app: AppHandle, tray: tauri::State<'_, Tray>) -> Result<(), 
     let Some(window) = app.get_webview_window("main") else {
         return Err(ErrorCode::new("ui.tray.unavailable", json!({})));
     };
+    tray.background.store(true, Ordering::SeqCst);
+    tray.apply_visibility();
     window.hide().map_err(|error| {
         log::warn!("cannot hide the window: {error}");
+        tray.background.store(false, Ordering::SeqCst);
+        tray.apply_visibility();
         ErrorCode::new("ui.tray.unavailable", json!({}))
     })?;
     log::info!("window hidden; running in the background");
@@ -203,6 +294,14 @@ pub fn notify(app: AppHandle, title: String, body: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tray_shows_in_the_background_whatever_the_setting() {
+        assert!(visible(true, false));
+        assert!(visible(true, true));
+        assert!(visible(false, true));
+        assert!(!visible(false, false));
+    }
 
     #[test]
     fn menu_ids_map_to_actions() {
