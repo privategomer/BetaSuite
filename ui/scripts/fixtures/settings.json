@@ -3706,6 +3706,7 @@
     "when": []
    },
    {
+    "app_only": true,
     "choices": [
      "angular",
      "cel",
@@ -3727,6 +3728,7 @@
     "when": []
    },
    {
+    "app_only": true,
     "choices": [
      "censored_play",
      "bars_shield",
@@ -3749,6 +3751,7 @@
     "when": []
    },
    {
+    "app_only": true,
     "help": "tray_icon_shown",
     "kind": "bool",
     "label": "setting.tray_icon_shown.label",
