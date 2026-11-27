@@ -27,8 +27,16 @@ export function reasonText( reason: Reason ): string {
 
 // The governor's whole decision in one line, for the status strip.
 export function decisionText( state: GovernorState ): string {
+  // A render that started narrower for want of memory says so, whatever else holds.
+  const startCap = state.active ? state.memory_start_cap ?? null : null;
+  const atStart = startCap === null ? null
+    : t( 'resources.state.memory_at_start', { cap: startCap.workers, wanted: startCap.wanted } );
   if ( !state.enabled ) {
-    return t( 'resources.state.off' );
+    // Off keeps the memory guard.
+    if ( state.active && state.guard ) {
+      return t( 'resources.state.guard' );
+    }
+    return atStart ?? t( 'resources.state.off' );
   }
   const main = state.reasons[ 0 ];
   const reason = main === undefined ? '' : reasonText( main );
@@ -43,10 +51,10 @@ export function decisionText( state: GovernorState ): string {
     return t( 'resources.state.guard' );
   }
   if ( state.override !== null ) {
-    return t( 'resources.state.full_override' );
+    return atStart ?? t( 'resources.state.full_override' );
   }
   if ( !state.throttled ) {
-    return t( 'resources.state.full' );
+    return atStart ?? t( 'resources.state.full' );
   }
   return t( 'resources.state.slowed', { reason } );
 }
@@ -54,8 +62,11 @@ export function decisionText( state: GovernorState ): string {
 // What the governor is doing to the run, in plain words.
 export function leversText( state: GovernorState ): string[] {
   const lines: string[] = [];
+  const startCap = state.active ? state.memory_start_cap ?? null : null;
   if ( state.worker_cap !== null ) {
     lines.push( t( 'resources.levers.workers', { cap: state.worker_cap, planned: state.planned ?? state.worker_cap } ) );
+  } else if ( startCap !== null ) {
+    lines.push( t( 'resources.levers.workers', { cap: startCap.workers, planned: startCap.wanted } ) );
   }
   if ( state.priority === 'low' ) {
     lines.push( t( 'resources.levers.priority' ) );

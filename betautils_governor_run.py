@@ -189,6 +189,7 @@ class Runtime:
         self.sleep = sleep or bu_signals.wait
         self.enabled = None             # the live on/off switch; None follows the setting
         self.gate = None
+        self.start_cap = None           # the render's own memory cap at its start, or None
         self.account = None
         self._last_accrual = None
         self._sampler = None
@@ -215,6 +216,7 @@ class Runtime:
             self.resources.release( 'job' )
         with self.lock:
             self.gate = None
+            self.start_cap = None
             self.active = False
             self.governor.end_run( self.clock() )
 
@@ -273,18 +275,33 @@ class Runtime:
 
     # --- the render -------------------------------------------------------
 
-    def render_started( self, planned ):
-        """A render planned `planned` workers: the gate it waits on."""
+    def render_started( self, planned, wanted=None, available_mb=None ):
+        """
+        A render planned `planned` workers: the gate it waits on. wanted:
+        what the processor allowed, when the render's own memory check
+        planned fewer (available_mb: the free memory it saw). That cap is
+        the render's, fixed for its length, so it is reported
+        (memory_start_cap) and never lifted here.
+        """
         with self.lock:
             self.gate = Gate( planned )
+            self.start_cap = ( { 'workers': planned, 'wanted': wanted, 'available_mb': available_mb }
+                               if wanted is not None and wanted > planned else None )
+            before = self.governor.decision.key()
             self.governor.set_planned( planned, self.clock() )
             self._apply()
+            if self.start_cap is not None and self.governor.decision.key() == before:
+                self._send_state()
             return self.gate
 
     def render_ended( self ):
         with self.lock:
             self.gate = None
+            capped, self.start_cap = self.start_cap, None
+            before = self.governor.decision.key()
             self.governor.set_planned( None, self.clock() )
+            if capped is not None and self.governor.decision.key() == before:
+                self._send_state()
 
     def _apply( self ):
         decision = self.governor.decision
@@ -358,6 +375,11 @@ class Runtime:
 
     # --- events -----------------------------------------------------------
 
+    def _send_state( self ):
+        """The state changed with no new decision (a render capped at its start): say so."""
+        if self.send is not None:
+            self.send( 'governor.change', self.state_data() )
+
     def _on_change( self, decision, _now ):
         if self.logger is not None:
             self.logger.info( "governor: %s"%( ', '.join(
@@ -372,6 +394,7 @@ class Runtime:
         data['running'] = self.gate.running if self.gate is not None else None
         data['enabled'] = self.governor.thresholds.enabled
         data['active'] = self.active
+        data['memory_start_cap'] = self.start_cap
         data['time'] = self.wall()
         return data
 

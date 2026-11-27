@@ -409,6 +409,7 @@
  "resources.state.guard": "Slowed down: memory is very low",
  "resources.state.idle": "Nothing is running. A run would start at full speed.",
  "resources.state.idle_override": "Nothing is running. The next run goes at full speed, as you asked.",
+ "resources.state.memory_at_start": "Fewer render parts: memory was short when this render started ({cap} of {wanted} at a time)",
  "resources.state.off": "Running at full speed: slowing down is off",
  "resources.state.slowed": "Slowed down: {reason}",
  "resources.state.would_slow": "Nothing is running. A run would slow down now: {reason}",
