@@ -405,8 +405,8 @@ def attached( runtime, config ):
         yield NEVER
         return
     previous = _active
-    _active = runtime
     runtime.start_run( config )
+    _active = runtime
     try:
         yield runtime
     finally:

@@ -291,7 +291,7 @@
  "perf.optimize.cancelled": "Stopped. Nothing was changed.",
  "perf.optimize.force": "Measure anyway",
  "perf.optimize.full": "Measure everything (slower)",
- "perf.optimize.intro": "Measures the settings that set this computer's speed and proposes faster ones. Nothing changes until you apply them. It takes several minutes and needs the computer to itself.",
+ "perf.optimize.intro": "Measures the settings that set this computer's speed and proposes faster ones. Nothing changes until you apply them, and Apply first says what it costs, such as rendering outputs again. It takes several minutes and needs the computer to itself.",
  "perf.optimize.measured": "Faster",
  "perf.optimize.nothing": "The settings in use were as fast as anything measured.",
  "perf.optimize.now": "Now",

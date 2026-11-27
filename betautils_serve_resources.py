@@ -35,10 +35,11 @@ class Resources:
     resource.sample event.
     """
 
-    def __init__( self, send, logger, make_sampler=None ):
+    def __init__( self, send, logger, make_sampler=None, own_root=None ):
         self._send = send
         self._logger = logger
         self._make_sampler = make_sampler or self._default_sampler
+        self.own_root = own_root      # the process whose tree is the run; None: this engine alone
         self._lock = threading.Lock()
         self._users = set()
         self.sampler = None
@@ -47,10 +48,7 @@ class Resources:
     def _default_sampler( self ):
         import os
         import betautils_resources as bu_resources
-        # The app starts the engine (python betaengine.py serve) itself, so
-        # the parent's tree is the app: its window and web view count as
-        # the run, never as other programs keeping the computer busy.
-        reader = bu_resources.platform_reader( own_root=os.getppid() )
+        reader = bu_resources.platform_reader( own_root=self.own_root )
         return bu_resources.Sampler( reader=reader, gpu=bu_resources.GpuStream(), logger=self._logger )
 
     def _on_sample( self, snapshot ):
@@ -98,7 +96,12 @@ class Resources:
 
 def resources_for( server ):
     if getattr( server, 'resources', None ) is None:
-        server.resources = Resources( server.send_event, server._logger )
+        import os
+        # The app starts the engine (python betaengine.py serve) itself, so
+        # the parent's tree is the app: its window and web view count as
+        # the run, never as other programs keeping the computer busy. The
+        # command line (betatv) makes its own Resources, with the engine alone.
+        server.resources = Resources( server.send_event, server._logger, own_root=os.getppid() )
     return server.resources
 
 

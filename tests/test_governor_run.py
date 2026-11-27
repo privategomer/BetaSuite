@@ -160,7 +160,9 @@ class TestDecisionsReachTheGate( unittest.TestCase ):
         decision = runtime.set_enabled( False )
         self.assertEqual( gate.limit, 4 )
         self.assertEqual( decision.reasons[0]['code'], bu_gov.OFF )
-        self.assertFalse( _hold( runtime, SEVERE, 5 ).throttled )
+        # Off still keeps the memory guard: one render worker when memory is very low.
+        self.assertTrue( _hold( runtime, SEVERE, 5 ).guard )
+        self.assertEqual( gate.limit, 1 )
         runtime.set_enabled( True )
         self.assertEqual( gate.limit, 1 )
 
@@ -412,7 +414,7 @@ class TestOutsideARun( unittest.TestCase ):
 
     def test_follows_the_setting_as_it_is( self ):
         runtime = bu_gov_run.Runtime( clock=lambda: 0.0, sleep=lambda _s: None )
-        runtime.observe( S( **SEVERE ), config=types.SimpleNamespace( governor={ 'enabled': False } ) )
+        runtime.observe( S( **BATTERY ), config=types.SimpleNamespace( governor={ 'enabled': False } ) )
         self.assertEqual( runtime.decision().reasons[0]['code'], bu_gov.OFF )
 
     def test_the_sampler_feeds_the_governor_outside_a_run( self ):
@@ -440,7 +442,31 @@ class TestOutsideARun( unittest.TestCase ):
         self.assertTrue( runtime.decision().guard )
 
 
+class TestWhoseRun( unittest.TestCase ):
+
+    def test_the_command_line_counts_the_engine_alone_and_serve_its_app( self ):
+        import os
+        cli = bu_serve_resources.Resources( lambda n, d: None, None )
+        self.assertIsNone( cli.own_root )
+        if sys.platform.startswith( 'linux' ):
+            self.assertEqual( cli._default_sampler().reader.pid, os.getpid() )
+        server = _Server()
+        served = bu_serve_resources.resources_for( server )
+        self.assertEqual( served.own_root, os.getppid() )
+
+
 class TestAttached( unittest.TestCase ):
+
+    def test_a_run_that_fails_to_start_is_not_left_active( self ):
+        runtime = bu_gov_run.Runtime()
+
+        def broken( config ):
+            raise RuntimeError( 'sampler' )
+        runtime.start_run = broken
+        with self.assertRaises( RuntimeError ):
+            with bu_gov_run.attached( runtime, types.SimpleNamespace() ):
+                pass
+        self.assertIs( bu_gov_run.active(), bu_gov_run.NEVER )
 
     def test_active_only_while_attached_and_samples_flow( self ):
         sampler = types.SimpleNamespace( listeners=[] )

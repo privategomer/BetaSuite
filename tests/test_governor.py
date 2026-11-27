@@ -319,10 +319,24 @@ class TestOverride( _Base ):
 
 class TestDisabled( _Base ):
 
-    def test_switched_off_never_throttles( self ):
+    def test_switched_off_drops_every_throttle_but_the_memory_guard( self ):
         self.gov.set_thresholds( bu_gov.Thresholds( { 'enabled': False } ), self.clock.now )
-        decision = self.feed( 30, **dict( IDLE, memory_pressure=90.0, on_battery=True, battery_percent=5,
+        decision = self.feed( 30, **dict( IDLE, memory_pressure=15.0, on_battery=True, battery_percent=5,
                                           other_cpu_percent=99.0 ) )
+        self.assertFalse( decision.throttled )
+        self.assertEqual( _codes( decision ), [ bu_gov.OFF ] )
+        # Severe memory pressure: one render worker, nothing else slowed.
+        decision = self.feed( 2, **dict( IDLE, memory_pressure=90.0, on_battery=True, battery_percent=5,
+                                         other_cpu_percent=99.0 ) )
+        self.assertTrue( decision.guard )
+        self.assertEqual( decision.worker_cap, 1 )
+        self.assertEqual( ( decision.priority, decision.pace ), ( bu_gov.NORMAL, 0.0 ) )
+        self.assertEqual( _codes( decision ), [ bu_gov.MEMORY_SEVERE, bu_gov.OFF ] )
+
+    def test_switched_off_and_the_guard_released( self ):
+        self.gov.set_thresholds( bu_gov.Thresholds( { 'enabled': False } ), self.clock.now )
+        self.gov.set_override( bu_gov.SESSION, self.clock.now, memory_guard=False )
+        decision = self.feed( 5, **dict( IDLE, memory_pressure=90.0 ) )
         self.assertFalse( decision.throttled )
         self.assertEqual( _codes( decision ), [ bu_gov.OFF ] )
 
