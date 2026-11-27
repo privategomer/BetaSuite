@@ -4096,8 +4096,13 @@ folders, where each is, which outputs exist) can be built again with
 `tools/setup/catalog_rebuild.sh` (`.ps1` on Windows). What exists only
 there (the watched folders, type pins, run history and feedback marks)
 is carried by a
-rebuild while the old file can be read; keep a copy of the file as the
-backup of those. Before a newer version changes the file's layout it
+rebuild while the old file can be read; keep a backup of the file for
+those. `tools/setup/catalog_backup.sh` (`.ps1` on Windows) writes one,
+safely while the app runs (default folder: `backups` in the data folder;
+keep a copy off the machine), and puts one back with the app closed,
+keeping the replaced file as `catalog.sqlite.pre-restore.bak`. On a new
+machine, add the watched folders again: items are known by content, so
+pins, history and feedback come back with each file a scan finds. Before a newer version changes the file's layout it
 copies it to `catalog.sqlite.v<N>.bak` (the last three are kept), and a
 file from a newer version is never opened.
 
