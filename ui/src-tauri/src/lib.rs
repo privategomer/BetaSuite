@@ -4,6 +4,7 @@
 //! for the user: what it reports to the page are codes and parameters,
 //! and the page words them from the message catalog.
 
+mod app_icon;
 mod cli;
 mod engine;
 mod files;
@@ -356,6 +357,9 @@ pub fn run() -> i32 {
         .manage(unsaved::Unsaved::new())
         .manage(startup_timing)
         .manage(tray::Tray::default())
+        .manage(app_icon::AppIcon::new(
+            engine::locate_engine_dir().as_deref(),
+        ))
         // First, so a second start exits here: before its webview (which
         // would share this one's profile) or its engine exists.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -406,6 +410,9 @@ pub fn run() -> i32 {
             tray::tray_status,
             tray::hide_to_tray,
             tray::notify,
+            tray::tray_shown,
+            app_icon::set_app_icon,
+            app_icon::app_icon_image,
             set_unsaved,
             close_window
         ])

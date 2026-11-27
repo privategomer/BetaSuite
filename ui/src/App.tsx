@@ -6,6 +6,7 @@ import { t } from './i18n/format';
 import { describeError, log } from './log';
 import { StyleEditor } from './hide/StyleEditor';
 import { WhatToHide } from './hide/WhatToHide';
+import { useAppIcon } from './appIcon';
 import { useBackground } from './library/background';
 import { queueNow } from './library/jobs';
 import { LibraryView } from './library/LibraryView';
@@ -51,6 +52,7 @@ export function App( { startup }: AppProps ) {
   const [ playing, setPlaying ] = useState<{ path: string; nonce: number } | null>( null );
   const [ closingRun, setClosingRun ] = useState( false );
   useBackground();
+  useAppIcon();
   const play = useCallback( ( path: string ) => {
     setPlaying( ( current ) => ( { path, nonce: ( current?.nonce ?? 0 ) + 1 } ) );
     setView( 'player' );
