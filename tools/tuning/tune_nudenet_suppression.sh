@@ -167,9 +167,9 @@ rm -f "$SUPPRESSION_STATS_TMP"
 log_info "=== [3/4] replay_tune.py (per video under uncensored_vids, backend: $BACKEND, variants: $(basename "$REPLAY_VARIANTS_FILE")) ==="
 VIDEO_LIST=$("$PYTHON_BIN" -c "
 import betaconst, os
-for root, d_names, f_names in os.walk(betaconst.video_path_uncensored):
-    for fname in f_names:
-        print(fname)
+for _folder, _subfolders, names in os.walk(betaconst.video_path_uncensored):
+    for name in names:
+        print(name)
 ")
 if [ -z "$VIDEO_LIST" ]; then
     log_warn "no video files found under video_path_uncensored - skipping replay_tune.py (step 3)"
