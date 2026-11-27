@@ -126,6 +126,8 @@ class LocalConfig( object ):
         new_keys: [ ( setting path, closest existing key or None, line ) ]
             for merged keys betaconfig.py's dict does not have.
         problems: Human-readable strings, one per skipped line.
+        retired: Warnings, one per line that sets a removed setting
+            (RETIRED). Skipped, and not problems: they do not stop a run.
         legacy_machine_path: The old machine config when it still exists
             and so still needs migrating, else None.
         ignored_repo_path: A betaconfig_local.py beside betaconfig.py
@@ -140,6 +142,7 @@ class LocalConfig( object ):
         self.replaced = {}
         self.new_keys = []
         self.problems = []
+        self.retired = []
         self.legacy_machine_path = None
         self.ignored_repo_path = None
 
@@ -407,6 +410,12 @@ def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None, re
     else:
         filename = os.path.basename( path )
         entries, problems = parse( text, filename )
+        # A setting that was removed is skipped with a warning, never an
+        # error: the engine's own settings editor could have written it,
+        # and an error here would refuse every job and every later edit.
+        result.retired = [ "%s line %d: %s"%( filename, lineno, _unknown_name_message( name, () ) )
+                           for name, _value, lineno in entries if name in RETIRED ]
+        entries = [ entry for entry in entries if entry[0] not in RETIRED ]
         updates, new_keys, resolve_problems = resolve( entries, namespace, filename )
         result.problems.extend( problems + resolve_problems )
         result.new_keys = new_keys
@@ -415,11 +424,13 @@ def apply( namespace, path=None, environ=None, stderr=None, legacy_path=None, re
                 result.replaced[ setting_path ] = copy.deepcopy( current_value( namespace, setting_path ) )
             _set( namespace, setting_path, value )
             result.applied[ setting_path ] = value
-    if result.problems:
-        stream = stderr if stderr is not None else sys.stderr
+    stream = stderr if stderr is not None else sys.stderr
+    for header, lines in ( ( 'line(s) skipped', result.problems ),
+                           ( 'removed setting(s) ignored', result.retired ) ):
+        if not lines:
+            continue
         try:
-            stream.write( "%s: %d line(s) skipped:\n  %s\n"%(
-                path, len( result.problems ), '\n  '.join( result.problems ) ) )
+            stream.write( "%s: %d %s:\n  %s\n"%( path, len( lines ), header, '\n  '.join( lines ) ) )
         except Exception:
             pass
     return result

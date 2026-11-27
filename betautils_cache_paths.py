@@ -406,6 +406,13 @@ def censor_identity( backend_name=None, catalog_profile=None ):
     # without one keeps its key and its finished output.
     if censor_uses_feathered_shape( per_label ):
         identity['feathered_shape_mask'] = 2
+    # The watermark and the debug overlay are drawn differently since the
+    # clean-room rewrite of their drawing, with no config change to show
+    # for it, so a render or a paused job's chunks made before it would be
+    # reused or mixed with new ones. Keyed only while either is on, so
+    # every other config keeps its key and its finished output.
+    if identity['watermark'] or identity['debug_overlay']:
+        identity['overlay_layout'] = 2
     if catalog_profile:
         identity['catalog_profile'] = catalog_profile
     return identity

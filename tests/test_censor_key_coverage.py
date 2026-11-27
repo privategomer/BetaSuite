@@ -235,5 +235,31 @@ class TestTheKeyIsStable( CensorKeyHarness ):
             betaconfig.__dict__.pop( '_test_only_unused_setting', None )
 
 
+class TestOverlayLayoutIsKeyedOnlyWhileDrawn( CensorKeyHarness ):
+    """
+    The watermark and debug overlay changed their drawing with no setting
+    to show for it. Their layout is keyed while either is on, so old
+    renders and a paused job's old chunks are not reused or mixed in, and
+    left out otherwise, so every other config keeps its finished outputs.
+    """
+
+    def identity( self, watermark, debug_mode ):
+        from unittest import mock
+        with mock.patch.object( betaconfig, 'enable_betasuite_watermark', watermark, create=True ), \
+             mock.patch.object( betaconfig, 'debug_mode', debug_mode ):
+            bu_config.invalidate_config_caches()
+            try:
+                return bu_cache.censor_identity()
+            finally:
+                bu_config.invalidate_config_caches()
+
+    def test_keyed_with_the_watermark_or_the_debug_overlay( self ):
+        self.assertEqual( 2, self.identity( True, 0 ).get( 'overlay_layout' ) )
+        self.assertEqual( 2, self.identity( False, 1 ).get( 'overlay_layout' ) )
+
+    def test_absent_otherwise( self ):
+        self.assertNotIn( 'overlay_layout', self.identity( False, 0 ) )
+
+
 if __name__ == '__main__':
     unittest.main()

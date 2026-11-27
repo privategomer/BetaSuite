@@ -209,6 +209,15 @@ class TestNothingIsWrittenUnlessItPasses( _ConfigEngineTest ):
                           'config.local_unparsable', {} )
         self.assertEqual( "encode_crf = (\n", self.text() )
 
+    def test_a_removed_setting_in_the_file_does_not_block_edits( self ):
+        # This editor could write these settings before they were removed.
+        with open( self.local, 'w', encoding='utf-8' ) as handle:
+            handle.write( "input_delete_probability = 0\nvision_cap_width = 960\n" )
+        engine = self.engine()
+        result = engine.request( 'config.set', { 'values': { 'encode_crf': 20 } } )
+        self.assertTrue( result['ok'], result )
+        self.assertEqual( 20, read_setting( self.local, 'betaconfig.encode_crf' ) )
+
     def test_resetting_what_the_file_does_not_set_changes_nothing( self ):
         engine = self.engine()
         result = engine.request( 'config.reset', { 'paths': [ 'encode_crf' ] } )

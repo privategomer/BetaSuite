@@ -31,6 +31,9 @@ htmlcov/
 # Local environment files
 .env
 
+# Logs that setup and tools write beside the code (setup.log, verify_env.log, fetch_models.log)
+*.log
+
 # IDE configuration (local machine-specific)
 .vscode/
 .idea/
