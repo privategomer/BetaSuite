@@ -35,7 +35,9 @@ short time before it acts, and to be gone for longer before it lets go):
 The override undoes every throttle but the memory guard: running out of
 memory gets the run killed by the operating system, which loses more
 time than any throttle. A second override, memory_guard: False, turns
-the guard off too, and the UI warns before it is used.
+the guard off too, and the UI warns before it is used. Switching the
+governor off (governor.enabled) is the same: every throttle goes but the
+memory guard.
 
 Pure: no threads, no clock of its own (every call is given the time),
 no I/O. The levers that apply a decision are in the render and detection
@@ -358,7 +360,16 @@ class Governor:
 
     def _decide( self, now ):
         if not self.thresholds.enabled:
-            decision = Decision( reasons=[ { 'code': OFF, 'params': {} } ] )
+            # Off means never slowed for comfort, not a run the system stops
+            # for want of memory: the memory guard stays, unless the
+            # override that names it (memory_guard false) says otherwise.
+            guard_released = self.override is not None and not self.override[1]
+            if MEMORY_SEVERE in self._active and not guard_released:
+                decision = Decision( worker_cap=1 if ( self.planned or 2 ) > 1 else None,
+                                     reasons=[ { 'code': MEMORY_SEVERE, 'params': self._active[MEMORY_SEVERE] },
+                                               { 'code': OFF, 'params': {} } ], guard=True, override=self.override )
+            else:
+                decision = Decision( reasons=[ { 'code': OFF, 'params': {} } ], override=self.override )
         else:
             active = dict( self._active )
             if MEMORY not in active and self._memory_cap is not None:

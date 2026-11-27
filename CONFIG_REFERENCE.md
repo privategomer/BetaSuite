@@ -4320,7 +4320,7 @@ is detected or rendered, so none of its settings is in a cache key.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `governor.enabled` | `True` | `False` runs at full speed always |
+| `governor.enabled` | `True` | `False` runs at full speed always, except the memory guard: under severe memory pressure one render worker still runs (see the override below) |
 | `governor.memory_pressure_pct` | `10` | Linux's memory stall share (`/proc/pressure/memory`, `some avg10`) at which render workers are cut, one at a time. Free memory under `render_memory_reserve_mb` counts too, on every system |
 | `governor.memory_severe_pct` | `40` | The stall share at which only one render worker runs (the memory guard). Free memory under half the reserve counts too |
 | `governor.busy_cpu_pct` | `67` | Other programs' processor use, in percent of all cores, at which the run lowers its priority and paces detection. This engine and its ffmpeg children are never counted, nor, when the desktop app runs the engine, the app itself (its window and web view). High on purpose: a desktop at rest can show a fifth of the processor in use, and pacing costs time |

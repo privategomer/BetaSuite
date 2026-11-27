@@ -108,6 +108,8 @@ class TestGovernedRender( unittest.TestCase ):
         started = {}          # chunk index -> chunks running when it started (itself included)
         encoder_nice = {}     # chunk index -> its ffmpeg encoder's nice value
         first = threading.Barrier( 4, timeout=30 )
+        later = threading.Barrier( 2, timeout=10 )
+        later_met = []
         real_chunk = bu_render.render_one_chunk
         real_popen = subprocess.Popen
         chunk_of_thread = {}
@@ -124,6 +126,12 @@ class TestGovernedRender( unittest.TestCase ):
                         hold( SEVERE_AND_BUSY, 6 )
                 if plan.index == 6:
                     hold( IDLE, 120 )
+                if plan.index in ( 7, 8 ):
+                    try:
+                        later.wait()          # met only if two may run at once again
+                        later_met.append( plan.index )
+                    except threading.BrokenBarrierError:
+                        pass
                 return real_chunk( plan, *args, **kwargs )
             finally:
                 with lock:
@@ -155,6 +163,7 @@ class TestGovernedRender( unittest.TestCase ):
             self.assertEqual( encoder_nice.get( index ), low, "chunk %d's encoder was lowered"%( index, ) )
         for index in range( 4 ):
             self.assertEqual( encoder_nice.get( index ), base )
+        self.assertEqual( sorted( later_met ), [ 7, 8 ], "several chunks at once again after the all-clear" )
         later = [ i for i in started if i > 6 ]
         self.assertTrue( later )
         for index in later:

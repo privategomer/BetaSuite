@@ -8,6 +8,8 @@ import { useEngineStatus } from '../engine/status';
 import { errorText } from '../i18n/errors';
 import { t } from '../i18n/format';
 import { describeError, log } from '../log';
+import { setValues } from '../settings/api';
+import { CostNotice, refusal, type Check } from '../settings/SettingRow';
 import {
   applyOptimize, cancelOptimize, clearFullSpeed, detectMachine, enableGovernor, evidence as loadEvidence,
   fullSpeed, optimize, type Evidence, type GovernorState, type Machine, type Nudge, type PlanStep, type Sample,
@@ -314,6 +316,27 @@ function Optimize( { plan, onStart }: { plan: readonly PlanStep[] | null; onStar
   const [ full, setFull ] = useState( false );
   const [ notice, setNotice ] = useState<Notice>( null );
   const running = progress?.state === 'running';
+  // What applying the proposal costs (re-detect, re-render), checked as a
+  // dry run the way every settings change is, before Apply is offered.
+  // The answer is kept with the proposal it was for, so a new proposal
+  // reads as checking until its own answer arrives.
+  const proposal = progress?.state === 'finished' ? progress.proposal : null;
+  const [ answer, setAnswer ] = useState<{ readonly for: readonly unknown[]; readonly check: Check } | null>( null );
+  const check: Check = proposal === null || proposal.length === 0
+    ? { state: 'idle' }
+    : answer !== null && answer.for === proposal ? answer.check : { state: 'checking' };
+  useEffect( () => {
+    if ( proposal === null || proposal.length === 0 ) {
+      return;
+    }
+    let live = true;
+    const values = Object.fromEntries( proposal.map( ( row ) => [ row.setting, row.value ] ) );
+    setValues( values, true ).then(
+      ( change ) => { if ( live ) { setAnswer( { for: proposal, check: { state: 'ok', change } } ); } },
+      ( error: unknown ) => { if ( live ) { setAnswer( { for: proposal, check: refusal( error ) } ); } },
+    );
+    return () => { live = false; };
+  }, [ proposal ] );
   const apply = () => {
     applyOptimize().then(
       ( answer ) => { setNotice( { tone: 'ok', text: t( 'perf.optimize.applied', { count: answer.applied.length } ) } ); },
@@ -377,7 +400,10 @@ function Optimize( { plan, onStart }: { plan: readonly PlanStep[] | null; onStar
                   ) )}
                 </tbody>
               </table>
-              <button type="button" className="primary" onClick={apply}>{t( 'perf.optimize.apply' )}</button>
+              <CostNotice check={check} />
+              <button type="button" className="primary" disabled={check.state !== 'ok'} onClick={apply}>
+                {t( 'perf.optimize.apply' )}
+              </button>
             </>
           )
       )}
