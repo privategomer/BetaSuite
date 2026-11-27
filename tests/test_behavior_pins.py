@@ -1,6 +1,7 @@
 """
-test_behavior_pins.py - the exact output of the censor drawing, hashing
-and RetinaNet adapter helpers is pinned.
+test_behavior_pins.py - the exact output of the censor rendering, hashing
+and RetinaNet adapter helpers and betastare's per-file path is pinned;
+debug drawing and the watermark are checked loosely.
 
 Each case builds a seeded synthetic input, runs one function and reduces
 its output to a digest (the sha256 of an image's shape, dtype and bytes,
@@ -26,7 +27,9 @@ from unittest import mock
 import numpy as np
 
 import betaconfig
+import betaconst
 import betautils_censor as bu_censor
+import betautils_config as bu_config
 import betautils_hash as bu_hash
 import betautils_render as bu_render
 from detectors import retinanet_v2
@@ -59,8 +62,8 @@ STYLES = {
     'pixel_square': { 'type': 'pixel', 'pattern': 'square', 'strength': 12 },
     'pixel_hex': { 'type': 'pixel', 'pattern': 'hex', 'strength': 10 },
     'bar_black': { 'type': 'bar', 'color': ( 0, 0, 0 ), 'thickness': 1 },
-    'debug': { 'type': 'debug', 'color': ( 0, 255, 0 ) },
 }
+DEBUG_STYLE = { 'type': 'debug', 'color': ( 0, 255, 0 ) }
 
 
 def _cases():
@@ -88,15 +91,6 @@ def _cases():
                 region = 255 - image[ 20:70, 30:110 ].copy()
                 return _digest_image( bu_censor.apply_masked_region( image, 30, 20, 80, 50, region, shape, feather ) )
             cases[ 'apply_masked_region/%s/%d' % ( shape, feather ) ] = masked
-
-    cases[ 'debug_image' ] = lambda: _digest_image(
-        bu_censor.debug_image( _image(), _box( 20, 30, 60, 40, STYLES[ 'debug' ] ) ) )
-    cases[ 'annotate_image_shape' ] = lambda: _digest_image( bu_censor.annotate_image_shape( _image() ) )
-    for enabled in ( False, True ):
-        def watermark( enabled=enabled ):
-            with mock.patch.object( betaconfig, 'enable_betasuite_watermark', enabled, create=True ):
-                return _digest_image( bu_censor.watermark_image( _image( 240, 320 ) ) )
-        cases[ 'watermark_image/%s' % enabled ] = watermark
 
     for name, style in STYLES.items():
         for merge in ( 'none', 'single-pass' ):
@@ -183,7 +177,71 @@ def _cases():
             return _digest_value( { 'raw': raw, 'calls': session.calls } )
         cases[ 'retinanet.detect_raw_boxes/batch%d' % batch_size ] = detect
 
+    for sizes in ( [ 320 ], [ 320, 640 ] ):
+        cases[ 'betastare._process_one_file/%s' % '-'.join( str( s ) for s in sizes ) ] = (
+            lambda sizes=sizes: _stare_one_file( sizes ) )
+
     return cases
+
+
+class _StubDetector:
+    """Answers one fixed detection per size, and counts calls."""
+
+    def __init__( self ):
+        self.calls = []
+
+    def raw_boxes_for_img( self, image, size, session, t ):
+        self.calls.append( ( list( image.shape ), size, t ) )
+        return [ { 'x': 20.0 + size % 7, 'y': 15.0, 'w': 60.0, 'h': 50.0, 'class_id': 'exposed_breast',
+                   'score': 0.91, 't': t, 'size': size } ]
+
+
+def _stare_one_file( sizes ):
+    """
+    betastare's whole per-file path, twice (a cold run, then one served
+    from its detection cache), on a synthetic image with a stub detector:
+    the output name, the output bytes as read back, the cached detections,
+    the detector calls and the log lines with their timings masked.
+    """
+    import random
+    import re
+    import betastare
+    random.seed( 7 )   # a look with several styles picks one at random
+    with tempfile.TemporaryDirectory() as tmp:
+        root, out, cache = ( os.path.join( tmp, name ) for name in ( 'in', 'out', 'cache' ) )
+        for folder in ( root, out, cache ):
+            os.makedirs( folder )
+        import cv2
+        cv2.imwrite( os.path.join( root, 'photo.png' ), _image( 90, 120, 3 ) )
+        detector = _StubDetector()
+        logger = mock.Mock()
+
+        def cache_path( image_hash, size, min_prob, backend ):
+            return os.path.join( cache, '%s-%s-%s-%s.json.gz' % ( image_hash, size, min_prob, backend ) )
+
+        with mock.patch.object( betastare.bu_detector, 'get_detector', return_value=detector ), \
+             mock.patch.object( betastare.bu_detector, 'get_picture_sizes', return_value=sizes ), \
+             mock.patch.object( betastare.bu_cache, 'pic_hash_path_for', side_effect=cache_path ), \
+             mock.patch.object( betaconfig, 'items_to_censor', [ 'exposed_breast' ] ):
+            bu_config.invalidate_config_caches()
+            try:
+                betastare._process_one_file( root, 'photo.png', out, 1, 2, None, logger )
+                first = sorted( os.listdir( out ) )
+                written = cv2.imread( os.path.join( out, first[ 0 ] ), cv2.IMREAD_UNCHANGED )
+                for name in first:
+                    os.remove( os.path.join( out, name ) )
+                betastare._process_one_file( root, 'photo.png', out, 2, 2, None, logger )
+                betastare._process_one_file( root, 'photo.png', out, 2, 2, None, logger )
+                cached = { name: bu_hash.read_json( os.path.join( cache, name ) ) for name in sorted( os.listdir( cache ) ) }
+                with open( os.path.join( root, 'notes.txt' ), 'w' ) as handle:
+                    handle.write( 'not an image' )
+                betastare._process_one_file( root, 'notes.txt', out, 2, 2, None, logger )
+            finally:
+                bu_config.invalidate_config_caches()
+        lines = [ ( call[ 0 ], re.sub( r'\d+\.\d{3}s', '#s', str( call[ 1 ][ 0 ] ) ) )
+                  for call in logger.method_calls ]
+        return _digest_value( { 'outputs': first, 'image': _digest_image( written ), 'cached': cached,
+                                'calls': detector.calls, 'log': lines } )
 
 
 def _record():
@@ -204,6 +262,45 @@ class TestRectanglesIntersect( unittest.TestCase ):
         for x, y in ( ( 31, 10 ), ( 10, 31 ), ( -11, 10 ), ( 10, -11 ), ( 31, 31 ) ):
             self.assertFalse( bu_censor.rectangles_intersect( a, b( x, y ) ), ( x, y ) )
             self.assertFalse( bu_censor.rectangles_intersect( b( x, y ), a ), ( x, y ) )
+
+
+class TestDebugAids( unittest.TestCase ):
+    """Debug drawing and the watermark are checked loosely: their pixels may change."""
+
+    def test_debug_box_draws_in_its_colour_and_keeps_the_shape( self ):
+        image = np.zeros( ( 120, 160, 3 ), np.uint8 )
+        drawn = bu_censor.debug_image( image, _box( 20, 30, 60, 40, DEBUG_STYLE ) )
+        self.assertEqual( drawn.shape, ( 120, 160, 3 ) )
+        self.assertTrue( ( drawn == ( 0, 255, 0 ) ).all( axis=2 ).any(), "the style colour, as BGR" )
+
+    def test_shape_annotation_draws_and_keeps_the_shape( self ):
+        drawn = bu_censor.annotate_image_shape( np.zeros( ( 120, 160, 3 ), np.uint8 ) )
+        self.assertEqual( drawn.shape, ( 120, 160, 3 ) )
+        self.assertTrue( drawn.any() )
+
+    def test_watermark_only_when_enabled( self ):
+        image = _image( 240, 320 )
+        with mock.patch.object( betaconfig, 'enable_betasuite_watermark', False, create=True ):
+            self.assertIs( bu_censor.watermark_image( image ), image )
+        with mock.patch.object( betaconfig, 'enable_betasuite_watermark', True, create=True ):
+            marked = bu_censor.watermark_image( image.copy() )
+        self.assertEqual( marked.shape, image.shape )
+        self.assertFalse( np.array_equal( marked, image ) )
+
+    def test_debug_mode_gives_every_class_a_debug_entry( self ):
+        with mock.patch.object( betaconfig, 'debug_mode', 1 ), \
+             mock.patch.object( betaconfig, 'items_to_censor', [ 'exposed_breast' ] ):
+            bu_config.invalidate_config_caches()
+            try:
+                parts = bu_config.get_parts_to_blur()
+            finally:
+                bu_config.invalidate_config_caches()
+        normal = bu_config.get_label_settings( 'exposed_breast' )
+        for label, colour in betaconst.classes.items():
+            self.assertEqual( parts[ label ][ 'censor_style' ], { 'type': 'debug', 'color': colour } )
+            self.assertLessEqual( set( parts[ label ] ), set( normal ), "only keys a normal entry has" )
+            self.assertLessEqual( { 'min_prob', 'censor_shape', 'time_safety', 'min_track_hits' },
+                                  set( parts[ label ] ) )
 
 
 class TestJsonFiles( unittest.TestCase ):
