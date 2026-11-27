@@ -116,9 +116,9 @@ echo
 echo "=== [4/5] replay_tune.py (per video, fps=9 preview-slice cache from step 1, variants from replay_variants_example.json) ==="
 VIDEO_LIST=$("$PYTHON_BIN" -c "
 import betaconst, os
-for root, d_names, f_names in os.walk(betaconst.video_path_uncensored):
-    for fname in f_names:
-        print(fname)
+for _folder, _subfolders, names in os.walk(betaconst.video_path_uncensored):
+    for name in names:
+        print(name)
 ")
 if [ -z "$VIDEO_LIST" ]; then
     echo "no video files found under $("$PYTHON_BIN" -c 'import betaconst; print(betaconst.video_path_uncensored)') - skipping replay_tune.py"
