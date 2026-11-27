@@ -105,7 +105,8 @@ export function StorageView() {
     cleanStorage( [ category.id ], ASKS.has( category.policy ) ).then(
       ( answer ) => {
         const freed = answer.freed.reduce( ( sum, row ) => sum + row.bytes, 0 );
-        setNotice( { tone: 'ok', text: t( 'storage.freed', { size: sizeText( freed ) } ) } );
+        setNotice( { tone: 'ok', text: answer.trashed ? t( 'storage.trashed', { size: sizeText( freed ) } )
+          : t( 'storage.freed', { size: sizeText( freed ) } ) } );
       },
       ( error: unknown ) => {
         log.error( `storage.clean failed: ${describeError( error )}` );

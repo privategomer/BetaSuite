@@ -42,6 +42,7 @@ This fork's releases. Versions follow [semantic versioning](https://semver.org/)
   
   Upgrade cost: none
 - Engine commands `storage.usage` and `storage.clean` (`protocol/README.md`, "Storage"): what each kind of the app's files uses on disk and what removing it costs, with safe clean-up. Detections and unfinished renders need a confirm; outputs, models, the catalog, logs and stats are listed only; nothing a running job writes is removed. New error codes: `storage.unknown_category`, `storage.not_cleanable`, `storage.needs_confirm`, `storage.busy`. Upgrade cost: none
+- Clearing in the Storage view moves files to the system trash, so they can be put back: the freedesktop Trash on Linux, the Recycle Bin on Windows, `~/.Trash` on macOS. It never copies across disks, and a kind the trash cannot take is left in place (`storage.trash_failed`). New setting `storage_delete_permanently` removes files for good instead. The previous cache folder asks before it is cleared. Unfinished renders are matched by the exact names renders write, so a finished output is never taken for one. Upgrade cost: none
 - Setting `cache_dir`: moves the cache folder (CONFIG_REFERENCE.md, "Where data lives"). `BETASUITE_CACHE_DIR` still wins. Setup keeps uv's downloads in the cache folder's `setup-downloads`, not uv's shared default, so the Storage view can delete them. Upgrade cost: none; downloads an earlier setup left in uv's default folder stay there and are listed, never removed
 
 ### Changed

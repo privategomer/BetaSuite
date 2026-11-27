@@ -58,6 +58,10 @@ def note_cache_folder( current=None ):
     is not inside the new one). Returns the previous cache or None.
     """
     import betautils_paths as bu_paths
+    if current is None and bu_paths.cache_source() == 'variable':
+        # BETASUITE_CACHE_DIR is a run's own choice (tests, spikes, one-off
+        # runs), never a move of the user's cache: not remembered.
+        return previous_cache()
     current = os.path.normpath( current or bu_paths.kind_dir( 'cache' ) )
     last = ( _read_json( _state_file( LAST_CACHE_FILE ) ) or {} ).get( 'folder' )
     if last and os.path.normpath( last ) != current:
@@ -122,8 +126,11 @@ def storage_clean( server, data ):
     confirm = data.get( 'confirm', False )
     if not isinstance( confirm, bool ):
         raise _bad_params( 'confirm', bu_proto.REASON_TYPE )
+    import betaconfig
+    permanent = bool( getattr( betaconfig, 'storage_delete_permanently', False ) )
     try:
-        freed = bu_storage.clean( _categories(), ids, confirm=confirm, busy=_busy( server ) is not None )
+        freed = bu_storage.clean( _categories(), ids, confirm=confirm, busy=_busy( server ) is not None,
+                                  permanent=permanent )
     except bu_storage.StorageError as err:
         raise bu_proto.ProtocolError( err.code, err.params )
     if 'previous_cache' in ids:
@@ -133,7 +140,7 @@ def storage_clean( server, data ):
             pass
     server._logger.info( "storage: cleaned %s"%( ', '.join( '%s (%d bytes, %d files)'%(
         row['id'], row['bytes'], row['files'] ) for row in freed ), ) )
-    return { 'freed': freed }
+    return { 'freed': freed, 'trashed': not permanent }
 
 
 HANDLERS = {

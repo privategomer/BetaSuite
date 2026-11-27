@@ -516,6 +516,7 @@ move_completed_sources = False   # move each finished source to ../resources/sou
 # --- Where the cache lives ----------------------------------------------
 
 cache_dir = None   # an absolute folder for the cache; None = the OS cache folder. Read at start
+storage_delete_permanently = False   # the Storage view clears to the system trash; True removes for good
 
 # --- Library catalog ----------------------------------------------------
 
