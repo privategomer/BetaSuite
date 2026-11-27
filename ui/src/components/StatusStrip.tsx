@@ -141,9 +141,13 @@ function ResourcesItem() {
   const { governor } = useResources();
   const [ working, setWorking ] = useState( false );
   // Only a running job is slowed; with no run the Performance page says what one would meet.
-  if ( governor === null || !governor.active || ( !governor.throttled && governor.override === null ) ) {
+  // A render that started narrower for want of memory shows too, with no override to offer.
+  const startCapped = governor !== null && ( governor.memory_start_cap ?? null ) !== null;
+  if ( governor === null || !governor.active
+       || ( !governor.throttled && governor.override === null && !startCapped ) ) {
     return null;
   }
+  const slowed = governor.throttled || startCapped;
   const full = () => {
     setWorking( true );
     log.info( 'full speed for this run, from the status strip' );
@@ -153,8 +157,8 @@ function ResourcesItem() {
       .finally( () => { setWorking( false ); } );
   };
   return (
-    <div className="status-item" data-state={governor.throttled ? 'slowed' : 'full'}>
-      <StatusIcon tone={TONE_FOR[ governor.throttled ? 'slowed' : 'full' ]} />
+    <div className="status-item" data-state={slowed ? 'slowed' : 'full'}>
+      <StatusIcon tone={TONE_FOR[ slowed ? 'slowed' : 'full' ]} />
       <span>{decisionText( governor )}</span>
       {governor.guard && <span className="status-detail">{t( 'status.resources.guard_detail' )}</span>}
       {governor.throttled && governor.override === null && (

@@ -21,6 +21,8 @@ export interface GovernorState {
   readonly enabled: boolean;
   // A run is attached; false while the Performance page shows what a run would meet.
   readonly active: boolean;
+  // Set while a render runs narrower because memory was short when it started; no override lifts it.
+  readonly memory_start_cap?: { readonly workers: number; readonly wanted: number; readonly available_mb: number | null } | null;
   readonly time: number;
   readonly history?: readonly ( GovernorState & { readonly time: number } )[];
 }

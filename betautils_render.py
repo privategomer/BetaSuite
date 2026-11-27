@@ -1480,7 +1480,7 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def run_chunks( plans, render_plan, worker_count, logger=None, runtime=None ):
+def run_chunks( plans, render_plan, worker_count, logger=None, runtime=None, wanted=None, available_mb=None ):
     """
     render_plan( plan ) for every plan, at most worker_count at once, in
     plan order. Returns their results in plan order.
@@ -1494,9 +1494,12 @@ def run_chunks( plans, render_plan, worker_count, logger=None, runtime=None ):
     whatever the governor decides. A stop (betautils_signals) raised by
     any chunk, or while waiting, starts no more chunks, waits for the
     running ones and is raised again here, as the pool's map did.
+    wanted and available_mb: when memory planned fewer workers than the
+    processor allows, how many it allows and the free memory seen, so the
+    governor can say why the render runs narrower.
     """
     runtime = runtime or bu_gov_run.active()
-    gate = runtime.render_started( worker_count )
+    gate = runtime.render_started( worker_count, wanted=wanted, available_mb=available_mb )
     results = [ 0 ] * len( plans )
     stops = []
     threads = []
@@ -1627,7 +1630,11 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
                         failures.append( err )
                     return 0
 
-            results = run_chunks( outstanding, render_plan, worker_count, logger )
+            by_cpu = resolve_worker_count( max( 1, len( outstanding ) ) )
+            results = run_chunks( outstanding, render_plan, worker_count, logger,
+                                  wanted=by_cpu if by_cpu > worker_count else None,
+                                  available_mb=( round( memory_available / 2**20 )
+                                                 if memory_available is not None else None ) )
             frames_written = sum( results )
             progress.finish( "%d chunk(s)"%(len( outstanding )) )
 

@@ -617,6 +617,68 @@ class TestCommands( unittest.TestCase ):
         self.assertEqual( answer['history'], [] )
 
 
+class TestRenderCappedAtItsStart( unittest.TestCase ):
+    """A render the memory check started narrower: reported, sent, never widened."""
+
+    def _sent( self, runtime ):
+        sent = []
+        runtime.send = lambda name, data: sent.append( ( name, data ) )
+        return sent
+
+    def test_reported_and_sent_while_it_runs( self ):
+        runtime = _runtime()
+        sent = self._sent( runtime )
+        gate = runtime.render_started( 1, wanted=8, available_mb=1400 )
+        cap = { 'workers': 1, 'wanted': 8, 'available_mb': 1400 }
+        self.assertEqual( sent, [ ( 'governor.change', runtime.state_data() ) ] )
+        self.assertEqual( sent[0][1]['memory_start_cap'], cap )
+        self.assertFalse( sent[0][1]['throttled'] )
+        self.assertEqual( gate.limit, 1 )
+        # No override widens it: the render planned for the memory it had.
+        runtime.set_override( bu_gov.RUN, memory_guard=False )
+        self.assertEqual( gate.limit, 1 )
+        self.assertEqual( runtime.state_data()['memory_start_cap'], cap )
+        del sent[:]
+        runtime.render_ended()
+        self.assertEqual( [ data['memory_start_cap'] for _, data in sent ], [ None ] )
+
+    def test_one_event_when_the_decision_changes_too( self ):
+        runtime = _runtime()
+        _hold( runtime, BATTERY, 2 )
+        sent = self._sent( runtime )
+        runtime.render_started( 4, wanted=8, available_mb=3000 )
+        self.assertEqual( len( sent ), 1 )
+        self.assertEqual( sent[0][1]['worker_cap'], 2 )
+        self.assertEqual( sent[0][1]['memory_start_cap']['wanted'], 8 )
+        del sent[:]
+        runtime.render_ended()
+        self.assertEqual( len( sent ), 1 )
+        self.assertIsNone( sent[0][1]['memory_start_cap'] )
+
+    def test_not_capped_sends_nothing_extra( self ):
+        for wanted in ( None, 4, 2 ):
+            runtime = _runtime()
+            sent = self._sent( runtime )
+            runtime.render_started( 4, wanted=wanted, available_mb=9000 )
+            runtime.render_ended()
+            self.assertEqual( sent, [], wanted )
+            self.assertIsNone( runtime.state_data()['memory_start_cap'] )
+
+    def test_the_run_ending_clears_it( self ):
+        runtime = _runtime()
+        runtime.render_started( 2, wanted=8, available_mb=None )
+        runtime.end_run()
+        self.assertIsNone( runtime.state_data()['memory_start_cap'] )
+
+    def test_run_chunks_passes_it_on( self ):
+        runtime = _runtime()
+        seen = []
+        chunks = _Chunks( on_start=lambda plan: seen.append( runtime.state_data()['memory_start_cap'] ) )
+        bu_render.run_chunks( [ 0, 1 ], chunks, 1, runtime=runtime, wanted=6, available_mb=1200 )
+        self.assertEqual( seen, [ { 'workers': 1, 'wanted': 6, 'available_mb': 1200 } ] * 2 )
+        self.assertIsNone( runtime.state_data()['memory_start_cap'] )
+
+
 @schemas.needs_jsonschema
 class TestSchemas( unittest.TestCase ):
 
@@ -629,7 +691,11 @@ class TestSchemas( unittest.TestCase ):
             _hold( runtime, values, 40 )
         runtime.set_override( bu_gov.RUN, memory_guard=False )
         runtime.set_enabled( False )
+        runtime.render_ended()
+        runtime.render_started( 2, wanted=8, available_mb=1400 )
+        runtime.render_started( 2, wanted=8, available_mb=None )
         self.assertGreater( len( sent ), 4 )
+        self.assertIsNotNone( sent[-1]['memory_start_cap'] )
         for data in sent:
             schemas.validate_event_data( 'governor.change', data )
 

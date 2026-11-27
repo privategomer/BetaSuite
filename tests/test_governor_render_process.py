@@ -173,6 +173,24 @@ class TestGovernedRender( unittest.TestCase ):
         self.assertEqual( _framemd5( governed ), _framemd5( plain ),
                           "the governed render decodes to the same frames" )
 
+    def test_a_render_capped_by_memory_reports_what_the_processor_allows( self ):
+        seen = []
+
+        class Recording( bu_gov_run.Runtime ):
+            def render_started( self, planned, wanted=None, available_mb=None ):
+                seen.append( ( planned, wanted, available_mb ) )
+                return super().render_started( planned, wanted=wanted, available_mb=available_mb )
+        saved = ( bu_render.available_memory_bytes, bu_render.plan_worker_count )
+        self.addCleanup( lambda: ( setattr( bu_render, 'available_memory_bytes', saved[0] ),
+                                   setattr( bu_render, 'plan_worker_count', saved[1] ) ) )
+        bu_render.available_memory_bytes = lambda *a: 1500 * 2**20
+        bu_render.plan_worker_count = lambda chunks, w, h, available, logger: ( 1, 1 )
+        self._render( 'capped', Recording( sleep=lambda _s: None ) )
+        bu_render.plan_worker_count = lambda chunks, w, h, available, logger: ( 4, 9 )
+        self._render( 'uncapped', Recording( sleep=lambda _s: None ) )
+        # render_workers 4: the processor allows 4; memory held the first render to 1.
+        self.assertEqual( seen, [ ( 1, 4, 1500 ), ( 4, None, 1500 ) ] )
+
     def test_each_chunk_encoder_gets_the_priority_arguments( self ):
         seen = []
         real_popen = subprocess.Popen
