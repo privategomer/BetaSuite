@@ -149,7 +149,8 @@ function Governor( { governor }: { governor: GovernorState } ) {
       <div className="perf-actions">
         {governor.override === null && governor.enabled && (
           <>
-            <button type="button" className="primary" disabled={working} onClick={() => { full( 'run', true ); }}>
+            <button type="button" className={governor.throttled ? 'primary' : undefined} disabled={working}
+              onClick={() => { full( 'run', true ); }}>
               {t( 'perf.governor.full_run' )}
             </button>
             <button type="button" disabled={working} onClick={() => { full( 'session', true ); }}>
@@ -263,7 +264,7 @@ function ThisPc( { machine, onChanged }: { machine: Machine; onChanged: () => vo
   );
 }
 
-function PastRuns( { found, onNudge }: { found: Evidence; onNudge: ( nudge: Nudge ) => void } ) {
+function PastRuns( { found, onNudge, hidden }: { found: Evidence; onNudge: ( nudge: Nudge ) => void; hidden: ReadonlySet<string> } ) {
   return (
     <section className="perf-section" aria-labelledby="perf-runs">
       <h3 id="perf-runs">{t( 'perf.runs.title' )}</h3>
@@ -295,7 +296,7 @@ function PastRuns( { found, onNudge }: { found: Evidence; onNudge: ( nudge: Nudg
       {found.memory_capped.of > 0 && (
         <p className="model-note">{t( 'perf.runs.memory_capped', { runs: found.memory_capped.runs, of: found.memory_capped.of } )}</p>
       )}
-      {found.nudges.map( ( nudge ) => (
+      {found.nudges.filter( ( nudge ) => !hidden.has( nudge.code ) ).map( ( nudge ) => (
         <p key={nudge.code} className="models-notice">
           {nudgeText( nudge )}
           {' '}
@@ -441,7 +442,11 @@ export function PerformanceView() {
       <SpeedNow />
       <History changes={changes} />
       {machine !== null && <ThisPc machine={machine} onChanged={refresh} />}
-      {found !== null && <PastRuns found={found} onNudge={onNudge} />}
+      {found !== null && (
+        // The GPU fix is already offered under This computer; not twice.
+        <PastRuns found={found} onNudge={onNudge}
+          hidden={new Set( machine?.safe_settings.some( ( pick ) => pick.setting === 'gpu_enabled' ) ? [ 'perf.gpu_off' ] : [] )} />
+      )}
       <Optimize plan={plan} onStart={( full, force ) => { start( full, force ); }} />
       {busyMachine !== null && (
         <div className="busy-choices-confirm" role="alert">
