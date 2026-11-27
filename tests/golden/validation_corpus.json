@@ -2929,21 +2929,6 @@
   "named": true,
   "raises": null
  },
- "input_delete_probability = 'x'": {
-  "fires": false,
-  "named": false,
-  "raises": "TypeError"
- },
- "input_delete_probability = -1": {
-  "fires": true,
-  "named": true,
-  "raises": null
- },
- "input_delete_probability = 1000000000": {
-  "fires": true,
-  "named": true,
-  "raises": null
- },
  "item_overrides.covered_vulva.censor_shape = 'zz_not_a_choice'": {
   "fires": true,
   "named": true,

@@ -225,6 +225,8 @@ RETIRED = dict.fromkeys(
     ( 'vision_cap_monitor', 'vision_cap_top', 'vision_cap_left', 'vision_cap_height',
       'vision_cap_width', 'vision_cursor_color', 'betavision_delay', 'betavision_interpolate' ),
     'the BetaVision screen-capture scripts were removed in 2.0' )
+RETIRED[ 'input_delete_probability' ] = ( 'deleting sources after a render was retired in 2.0; '
+                                          'move_completed_sources moves them instead' )
 
 
 def _unknown_name_message( name, known ):

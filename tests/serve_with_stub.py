@@ -90,7 +90,7 @@ def main():
     for name, value in ( ( 'video_censor_fps', 5 ), ( 'encode_preset', 'ultrafast' ),
                          ( 'render_workers', 1 ), ( 'render_chunk_seconds', 1 ),
                          ( 'items_to_censor', [ 'exposed_breast' ] ), ( 'stats_enabled', True ),
-                         ( 'move_completed_sources', False ), ( 'input_delete_probability', 0 ) ):
+                         ( 'move_completed_sources', False ) ):
         setattr( betaconfig, name, value )
     bu_config.invalidate_config_caches()
     if sys.platform.startswith( 'linux' ):

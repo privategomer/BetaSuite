@@ -4039,14 +4039,6 @@ the trusted cache path.
 **2** and **5**. Additional attempts after the first, and the pause
 between. A deliberate interrupt is never retried.
 
-### `input_delete_probability`
-
-Chance of deleting each **source** file after its censored counterpart
-is confirmed on disk. **0**.
-
-Non-zero requires typing `DELETE MY FILES` at startup. Deletion only
-happens once the censored output exists and is non-trivially sized.
-
 ### `move_completed_sources`
 
 Move each finished source out of the queue. **False**.

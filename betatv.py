@@ -90,8 +90,7 @@ def _startup():
 
     Side effects:
         Mutates betaconfig with CLI overrides, may SystemExit(1) on a
-        bad config, may prompt on stdin when input_delete_probability is
-        non-zero, and installs the cooperative SIGINT handler.
+        bad config, and installs the cooperative SIGINT handler.
     """
     parser = bu_cli.build_arg_parser( "BetaTV: censor videos",
                                       include_preview=True, include_logging=True )
@@ -106,7 +105,6 @@ def _startup():
 
     bu_config.validate_config()
     bu_config.exit_if_nothing_to_render( logger )
-    bu_config.verify_input_delete_probability()
     return logger
 
 
@@ -776,10 +774,6 @@ def process_one_video( root, fname, censored_folder, file_index, total_files, se
 
         finished_at = time.perf_counter()
 
-        delete_note = bu_config.delete_file_with_probability( uncensored_path, paths['final'] )
-        if delete_note:
-            logger.info( "%s%s"%(fname, delete_note) )
-
         detection_seconds = detection_finished_at - started_at
         encode_seconds = finished_at - detection_finished_at
         logger.info( "done %s: %s  detect=%.1fs render=%.1fs total=%.1fs  "
@@ -892,7 +886,7 @@ def move_completed_source( uncensored_path, logger ):
     if not getattr( betaconfig, 'move_completed_sources', False ):
         return None
     if not os.path.exists( uncensored_path ):
-        return None                      # deleted by input_delete_probability
+        return None                      # gone since the run started
     target = completed_source_path( uncensored_path )
     if target is None:
         logger.debug( "not moving %s: not under %s"%( uncensored_path, betaconst.video_path_uncensored ) )

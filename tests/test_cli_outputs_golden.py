@@ -82,7 +82,6 @@ PINNED = (
     ( 'items_to_censor', [ 'exposed_breast' ] ),
     ( 'video_censor_fps', 5 ),
     ( 'move_completed_sources', False ),
-    ( 'input_delete_probability', 0 ),
 )
 
 # Stats fields compared under any ffmpeg.

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://betasuite.invalid/protocol/v1/events/job.state.schema.json",
   "title": "job.state",
-  "description": "A job changed state: queued (sent after job.submit's result), running, paused, or one of the final states completed, cancelled and stopped. A job's last event is its final state. A stopped job carries code and params, an error code from errors.schema.json: disk.full, model.load_failed, config.invalid, job.unsafe_setting, job.nothing_to_render, engine.stopping (the engine shut down; checkpoints are kept) or engine.internal. counts are the job's files so far.",
+  "description": "A job changed state: queued (sent after job.submit's result), running, paused, or one of the final states completed, cancelled and stopped. A job's last event is its final state. A stopped job carries code and params, an error code from errors.schema.json: disk.full, model.load_failed, config.invalid, job.nothing_to_render, engine.stopping (the engine shut down; checkpoints are kept) or engine.internal. counts are the job's files so far.",
   "$defs": {
     "data": {
       "type": "object",

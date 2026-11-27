@@ -47,14 +47,11 @@ import betautils_track  as bu_track
 def _parse_cli_args_and_validate_config():
     """
     Parse betastare.py's command-line flags, apply any overrides onto
-    betaconfig, then validate the effective config and (if configured)
-    prompt for the input-delete-probability safety confirmation.
+    betaconfig, then validate the effective config.
 
     Side effects:
         Mutates the betaconfig module via CLI overrides. May print and
-        raise SystemExit(1) if the config is invalid (validate_config),
-        or print/prompt/quit() if input_delete_probability is non-zero
-        and the user doesn't confirm (verify_input_delete_probability).
+        raise SystemExit(1) if the config is invalid (validate_config).
     """
     cli_parser = bu_cli.build_arg_parser( "BetaStare: censor photos", include_preview=False, include_logging=False )
     cli_args = cli_parser.parse_args()
@@ -65,7 +62,6 @@ def _parse_cli_args_and_validate_config():
         betaconst.picture_path_uncensored, betaconst.picture_path_censored ) )
     bu_config.validate_config()
     bu_config.exit_if_nothing_to_render( bu_log.get_logger() )
-    bu_config.verify_input_delete_probability()
 
 
 def _count_total_files():
@@ -264,12 +260,11 @@ def _process_one_file( root, fname, censored_folder, file_index, total_files, se
         after_render_time = time.perf_counter()
 
         cv2.imwrite( censored_path, image )
-        delete_result = bu_config.delete_file_with_probability( uncensored_path, censored_path )
         after_write_time = time.perf_counter()
 
-        logger.info( "processed %d/%d%s (nn=%d) hash=%.3fs detect=%.3fs render=%.3fs write=%.3fs "
+        logger.info( "processed %d/%d (nn=%d) hash=%.3fs detect=%.3fs render=%.3fs write=%.3fs "
                      "total=%.3fs: %s"%(
-            file_index, total_files, delete_result, used_neural_net,
+            file_index, total_files, used_neural_net,
             after_hash_time-start_time, after_detect_time-after_hash_time,
             after_render_time-after_detect_time, after_write_time-after_render_time,
             after_write_time-start_time, fname ) )

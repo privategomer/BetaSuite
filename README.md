@@ -495,7 +495,6 @@ Reference: [Logging and stats](CONFIG_REFERENCE.md#logging-and-stats)
 
 | Setting | Default | What it does |
 |---|---|---|
-| `input_delete_probability` | `0` | chance of deleting each source file once its censored output exists. Non-zero requires typing a confirmation at startup |
 | `debug_mode` | `0` | `1` draws labelled debug boxes for every class instead of censoring; `3` also saves debug output |
 | `enable_betasuite_watermark` | `False` | draw a watermark on every frame |
 

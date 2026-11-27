@@ -81,7 +81,7 @@ Jobs run one at a time, in queue order: the order submitted unless `job.move` ch
 
 **Kept across restarts.** Every job that has not ended is written to `queue.json` in the state folder each time the queue changes, and so is a job stopped only because the engine shut down. The next engine reads them back held: `paused`, `restored` in `job.list`, after the waiting jobs. A held job runs nothing and holds nothing (no run lock; settings stay writable; a command-line run is not refused) until `job.resume` puts it back in the queue. It then continues from the file it had reached, its detection checkpoints and finished render chunks being on disk already. `job.cancel` drops a held job; it cannot be moved or paused. A saved job whose settings no longer validate is dropped, with a warning in the log.
 
-A job's checks (`config.invalid`, `job.unsafe_setting` for `input_delete_probability` above 0, `job.nothing_to_render`) refuse `job.submit` when the queue is idle. A job submitted behind another is checked when it starts, and stops with that code if it fails.
+A job's checks (`config.invalid`, `job.nothing_to_render`) refuse `job.submit` when the queue is idle. A job submitted behind another is checked when it starts, and stops with that code if it fails.
 
 ### Job events
 

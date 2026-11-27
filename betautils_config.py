@@ -40,7 +40,6 @@ app's sliders and menus and the CLI's validation cannot disagree.
 """
 
 import os
-import random
 import threading
 
 import betaconfig
@@ -459,73 +458,6 @@ def get_parts_to_blur( backend_name=None ):
     with _parts_cache_lock:
         _parts_cache[cache_key] = parts_to_blur
     return parts_to_blur
-
-
-def verify_input_delete_probability():
-    """
-    If betaconfig.input_delete_probability is non-zero, interactively
-    prompt the user to type an exact confirmation phrase before
-    continuing, since this setting can permanently delete input files.
-
-    Side effects:
-        Prints warnings and reads one line from stdin when
-        input_delete_probability is non-zero. Calls quit() (exits the
-        process) if the user doesn't type the exact required phrase.
-        No-op entirely when input_delete_probability is 0.
-    """
-    delete_probability = betaconfig.input_delete_probability
-    if delete_probability == 0:
-        return()
-
-    print( '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' )
-    print( 'You have configured BetaSuite to delete input files with a %.2f%% chance.'%(100*delete_probability))
-    print( 'If you are SURE this is what you want, enter "DELETE MY FILES" at the prompt' )
-    print( 'All upper-case, without the quotes.' )
-    print( 'Are you sure?' )
-    confirmation = input()
-
-    if confirmation == 'DELETE MY FILES':
-        print( "Okay!  Proceeding with %.2f%% chance of deleting each input file."%(100*delete_probability) )
-        return()
-    else:
-        print( 'You did not enter "DELETE MY FILES", all upper-case, with no quotes.')
-        print( 'Aborting program.' )
-        quit()
-
-
-def delete_file_with_probability( delete_path, check_path ):
-    """
-    Randomly delete delete_path, at betaconfig.input_delete_probability
-    odds, but only once a censored counterpart has actually been
-    produced.
-
-    Args:
-        delete_path: The original (uncensored) input file that may be
-            deleted.
-        check_path: Path to the censored output that must already exist
-            (and be non-trivially sized) before deletion is even
-            considered - guards against deleting the only copy of a
-            file whose censoring failed or never ran.
-
-    Returns:
-        A human-readable status suffix string describing what happened
-        (deleted, not deleted, or skipped because the censored version
-        wasn't found), suitable for appending to a log/print line. Never
-        raises for the "nothing to report" case (probability 0).
-    """
-    delete_probability = betaconfig.input_delete_probability
-    if delete_probability == 0:
-        return('')
-
-    if not os.path.exists( check_path ) or os.path.getsize( check_path ) < 1000:
-        return( ' (Original NOT DELETED - censored version NOT FOUND)' )
-
-    roll = random.random()
-    if roll < delete_probability:
-        os.remove( delete_path )
-        return( ' (Original DELETED!!!!)' )
-    else:
-        return( ' (Original not deleted)' )
 
 
 # --- Shared vocabulary for censor-style validation --------------------------
