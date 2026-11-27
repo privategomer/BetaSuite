@@ -42,6 +42,7 @@ class Resources:
         self._lock = threading.Lock()
         self._users = set()
         self.sampler = None
+        self.observer = None    # the governor's observe(), fed every sample outside a run
 
     def _default_sampler( self ):
         import os
@@ -55,6 +56,13 @@ class Resources:
     def _on_sample( self, snapshot ):
         if 'watch' in self._users:
             self._send( SAMPLE_EVENT, snapshot )
+        observer = self.observer
+        if observer is not None:
+            try:
+                observer( snapshot )
+            except Exception:
+                if self._logger is not None:
+                    self._logger.warning( "the governor could not take a sample", exc_info=True )
 
     def use( self, who ):
         with self._lock:
@@ -105,6 +113,8 @@ def runtime_for( server ):
         import betautils_governor as bu_gov
         server.governor.governor.set_thresholds( bu_gov.Thresholds.from_config( betaconfig ),
                                                  server.governor.clock() )
+        # And the machine, whenever the sampler runs (the Performance page).
+        resources_for( server ).observer = server.governor.observe
     return server.governor
 
 
@@ -191,6 +201,7 @@ def resources_watch( server, data ):
     if not isinstance( on, bool ):
         raise _bad_params( 'on', bu_proto.REASON_TYPE if on is not None else bu_proto.REASON_MISSING )
     resources = resources_for( server )
+    runtime_for( server )     # so the governor follows what is watched
     if on:
         resources.use( 'watch' )
     else:

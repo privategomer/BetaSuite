@@ -19,6 +19,8 @@ export interface GovernorState {
   readonly planned: number | null;
   readonly running: number | null;
   readonly enabled: boolean;
+  // A run is attached; false while the Performance page shows what a run would meet.
+  readonly active: boolean;
   readonly time: number;
   readonly history?: readonly ( GovernorState & { readonly time: number } )[];
 }

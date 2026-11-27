@@ -30,6 +30,15 @@ export function decisionText( state: GovernorState ): string {
   if ( !state.enabled ) {
     return t( 'resources.state.off' );
   }
+  const main = state.reasons[ 0 ];
+  const reason = main === undefined ? '' : reasonText( main );
+  if ( !state.active ) {
+    // No run: what one would meet now.
+    if ( state.override !== null ) {
+      return t( 'resources.state.idle_override' );
+    }
+    return state.throttled ? t( 'resources.state.would_slow', { reason } ) : t( 'resources.state.idle' );
+  }
   if ( state.guard ) {
     return t( 'resources.state.guard' );
   }
@@ -39,8 +48,7 @@ export function decisionText( state: GovernorState ): string {
   if ( !state.throttled ) {
     return t( 'resources.state.full' );
   }
-  const main = state.reasons[ 0 ];
-  return t( 'resources.state.slowed', { reason: main === undefined ? '' : reasonText( main ) } );
+  return t( 'resources.state.slowed', { reason } );
 }
 
 // What the governor is doing to the run, in plain words.
