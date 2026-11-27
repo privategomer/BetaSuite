@@ -35,14 +35,17 @@ detection_key_len = 6     # detection-identity key   -> "d<key>"
 censor_key_len = 6        # censor/tracking key      -> "c<key>"
 encode_key_len = 4        # final-encode key         -> "e<key>"
 
-# --- Neural net input/output tensor names (retinanet_v2 only) ---------------
+# --- RetinaNet model tensor names --------------------------------------------
 
+# Fixed by the exported model file; used only by detectors/retinanet_v2.py.
+# session.run returns the outputs in this order: per-image box corners,
+# their confidence scores, then their class indexes.
 model_outputs = [
-        'filtered_detections/map/TensorArrayStack/TensorArrayGatherV3:0',   # boxes
-        'filtered_detections/map/TensorArrayStack_1/TensorArrayGatherV3:0', # scores
-        'filtered_detections/map/TensorArrayStack_2/TensorArrayGatherV3:0', # classes
+    'filtered_detections/map/TensorArrayStack/TensorArrayGatherV3:0',
+    'filtered_detections/map/TensorArrayStack_1/TensorArrayGatherV3:0',
+    'filtered_detections/map/TensorArrayStack_2/TensorArrayGatherV3:0',
 ]
-
+# The batch of preprocessed images goes in here.
 model_input = 'input_1:0'
 
 # --- Default input/output directory layout ----------------------------------
