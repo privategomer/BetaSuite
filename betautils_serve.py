@@ -473,7 +473,7 @@ from betautils_serve_preview import HANDLERS as _PREVIEW_HANDLERS   # noqa: E402
 for _name, _handler in _PREVIEW_HANDLERS.items():
     register( _name, _handler )
 
-# catalog.list, get, folders, add_folder, remove_folder, add_files, rescan, forget
+# catalog.list, get, folders, add_folder, remove_folder, add_files, rescan, forget, pin_type, thumbnail
 from betautils_serve_catalog import HANDLERS as _CATALOG_HANDLERS   # noqa: E402
 for _name, _handler in _CATALOG_HANDLERS.items():
     register( _name, _handler )
@@ -506,6 +506,11 @@ for _name, _handler in _CHANGES_HANDLERS.items():
 # perf.evidence, perf.rebuild, perf.optimize, perf.optimize_cancel, perf.optimize_apply
 from betautils_serve_perf import HANDLERS as _PERF_HANDLERS   # noqa: E402
 for _name, _handler in _PERF_HANDLERS.items():
+    register( _name, _handler )
+
+# feedback.list, add, remove
+from betautils_serve_feedback import HANDLERS as _FEEDBACK_HANDLERS   # noqa: E402
+for _name, _handler in _FEEDBACK_HANDLERS.items():
     register( _name, _handler )
 
 # storage.usage, storage.clean

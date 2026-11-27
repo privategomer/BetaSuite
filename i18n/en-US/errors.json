@@ -76,5 +76,7 @@
  "error.perf.machine_busy": "This computer is busy right now, so measurements would be off. Close other programs, or run anyway.",
  "error.perf.no_proposal": "There is nothing to apply yet. Run Optimize first.",
  "error.optimize.failed": "Optimize stopped with an error. The log has details.",
- "error.storage.trash_failed": "These files could not go to the trash, so nothing was removed. To remove them anyway, turn on \"Delete for good when clearing storage\" in the settings."
+ "error.storage.trash_failed": "These files could not go to the trash, so nothing was removed. To remove them anyway, turn on \"Delete for good when clearing storage\" in the settings.",
+ "error.feedback.not_a_result": "Feedback can only be given on a censored result the library knows.",
+ "error.feedback.no_such_record": "That mark is no longer there."
 }

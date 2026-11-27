@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/feedback.add.schema.json",
+  "title": "feedback.add",
+  "description": "Keep one mark made time seconds into the result at path: what the verdict says, about label. Stored with the source's content hash, the time in the source and the result's detection, censor and encode keys, which the engine looks up; nothing is sent anywhere. feedback.not_a_result when path is not a result (see feedback.list).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "path",
+        "time",
+        "verdict",
+        "label"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An absolute path to the result being played."
+        },
+        "time": {
+          "type": "number",
+          "minimum": 0
+        },
+        "verdict": {
+          "enum": [
+            "missed",
+            "too_much"
+          ],
+          "description": "missed: something that should have been hidden was not. too_much: something was hidden that should not have been."
+        },
+        "label": {
+          "enum": [
+            null,
+            "exposed_anus",
+            "exposed_armpits",
+            "covered_belly",
+            "exposed_belly",
+            "covered_buttocks",
+            "exposed_buttocks",
+            "face_femme",
+            "face_masc",
+            "covered_feet",
+            "exposed_feet",
+            "covered_breast",
+            "exposed_breast",
+            "covered_vulva",
+            "exposed_vulva",
+            "exposed_chest",
+            "exposed_penis",
+            "covered_armpits",
+            "covered_anus"
+          ],
+          "description": "The label the mark is about (betautils_labels.LABELS), or null for \"not sure\"."
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "time",
+        "at_seconds",
+        "label",
+        "verdict",
+        "keys",
+        "preview",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "time": {
+          "type": "number",
+          "description": "Seconds into this result, as the player shows it."
+        },
+        "at_seconds": {
+          "type": "number",
+          "description": "Seconds into the source (a preview's offset added); what is stored."
+        },
+        "label": {
+          "enum": [
+            null,
+            "exposed_anus",
+            "exposed_armpits",
+            "covered_belly",
+            "exposed_belly",
+            "covered_buttocks",
+            "exposed_buttocks",
+            "face_femme",
+            "face_masc",
+            "covered_feet",
+            "exposed_feet",
+            "covered_breast",
+            "exposed_breast",
+            "covered_vulva",
+            "exposed_vulva",
+            "exposed_chest",
+            "exposed_penis",
+            "covered_armpits",
+            "covered_anus"
+          ],
+          "description": "The label the mark is about (betautils_labels.LABELS), or null for \"not sure\"."
+        },
+        "verdict": {
+          "enum": [
+            "missed",
+            "too_much"
+          ],
+          "description": "missed: something that should have been hidden was not. too_much: something was hidden that should not have been."
+        },
+        "keys": {
+          "type": "object",
+          "required": [
+            "detection",
+            "censor",
+            "encode"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "detection": {
+              "type": "string"
+            },
+            "censor": {
+              "type": "string"
+            },
+            "encode": {
+              "type": "string"
+            }
+          }
+        },
+        "preview": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "number",
+          "description": "When the mark was made, in seconds since the epoch."
+        }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@
 #   bash tools/setup/catalog_rebuild.sh --yes    rebuilds without asking
 #   bash tools/setup/catalog_rebuild.sh --help   every option
 #
-# Close the app first. Folders, pins and history are carried from the old
+# Close the app first. Folders, pins, history and feedback are carried from the old
 # file while it can be read; the old file is kept beside the new one. Log:
 # <state folder>/logs/catalog_rebuild.log; --console-level (info) filters
 # the terminal only.

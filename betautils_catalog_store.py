@@ -4,7 +4,7 @@ how it is opened, and how its schema moves forward.
 
 The catalog is one SQLite file in the data folder
 (kind_dir('data')/catalog.sqlite). It holds what exists nowhere else
-(type pins, run history, later feedback) next to what it indexes from
+(type pins, run history, feedback) next to what it indexes from
 disk (items, locations, outputs), so it is durable data, not cache.
 Backing it up is backing up the library.
 
@@ -130,6 +130,22 @@ CREATE INDEX runs_hash ON runs( hash, ended_at );
 """ ),
     ( 3, 'run_timing', """
 ALTER TABLE runs ADD COLUMN timing TEXT;
+""" ),
+    ( 4, 'feedback', """
+CREATE TABLE feedback (
+    id            INTEGER PRIMARY KEY,
+    hash          TEXT    NOT NULL,
+    at_seconds    REAL    NOT NULL,
+    label         TEXT,
+    verdict       TEXT    NOT NULL CHECK ( verdict IN ( 'missed', 'too_much' ) ),
+    detection_key TEXT    NOT NULL,
+    censor_key    TEXT    NOT NULL,
+    encode_key    TEXT    NOT NULL,
+    preview       INTEGER NOT NULL DEFAULT 0,
+    created_at    REAL    NOT NULL,
+    app_version   TEXT
+);
+CREATE INDEX feedback_hash ON feedback( hash, at_seconds );
 """ ),
 )
 
