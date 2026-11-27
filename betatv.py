@@ -1030,19 +1030,26 @@ def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
 
 def job_files( logger ):
     """
-    Every file under betaconst.video_path_uncensored, in the order the
-    run takes them (folder by folder, names sorted), each with the folder
-    its output goes to. Creates each mirrored output folder as it goes,
-    empty ones included, as the run always has.
+    Every file under betaconst.video_path_uncensored, in run order.
+
+    Walks the tree top-down, names sorted within each folder. The output
+    tree mirrors the input, empty folders included, so each folder's
+    output folder is created here even when it holds no files.
+
+    Args:
+        logger: Where each folder's scan line goes.
+
+    Returns:
+        A list of bu_job.JobFile( path, output_folder ).
     """
     files = []
-    for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
-        censored_folder = root.replace(
-            betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
-        os.makedirs( censored_folder, exist_ok=True )
-        logger.info( "scanning %s (%d file(s))"%(root, len( file_names )) )
-        files.extend( bu_job.JobFile( os.path.join( root, fname ), censored_folder )
-                      for fname in sorted( file_names ) )
+    for root, _dirs, names in os.walk( betaconst.video_path_uncensored ):
+        output_folder = root.replace( betaconst.video_path_uncensored,
+                                      betaconst.video_path_censored, 1 )
+        os.makedirs( output_folder, exist_ok=True )
+        logger.info( "scanning %s (%d file(s))"%( root, len( names ) ) )
+        for name in sorted( names ):
+            files.append( bu_job.JobFile( os.path.join( root, name ), output_folder ) )
     return files
 
 
