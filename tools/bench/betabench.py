@@ -210,17 +210,16 @@ def format_describe( summary, unit='', fmt='%.4f' ):
 
 def find_sample_videos( limit ):
     """
-    Videos to measure against, newest-looking first.
-
-    Returns:
-        A list of paths under betaconst.video_path_uncensored.
+    Full paths of up to `limit` videos under betaconst.video_path_uncensored:
+    os.walk order, names sorted within each folder, only names ending in
+    one of VIDEO_EXTENSIONS (case-insensitive).
     """
     found = []
-    for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
-        for fname in sorted( file_names ):
-            if fname.lower().endswith( VIDEO_EXTENSIONS ):
-                found.append( os.path.join( root, fname ) )
-    return found[:limit]
+    for root, _dirs, names in os.walk( betaconst.video_path_uncensored ):
+        for name in sorted( names ):
+            if name.lower().endswith( VIDEO_EXTENSIONS ):
+                found.append( os.path.join( root, name ) )
+    return found[ :limit ]
 
 
 def load_cached_detections( backend_name, logger, preview_suffix=None, picture_sizes=None,

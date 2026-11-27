@@ -109,13 +109,16 @@ def clear_cache( path ):
 
 
 def find_video_files():
-    # same os.walk betatv.py itself uses, so file_hash/root pairing here
-    # matches exactly what betatv.py will process
-    files = []
-    for root, d_names, f_names in os.walk( betaconst.video_path_uncensored ):
-        for fname in f_names:
-            files.append( ( root, fname ) )
-    return( files )
+    """
+    Every file under betaconst.video_path_uncensored, as ( folder, name )
+    pairs in the order os.walk gives them (names unsorted, no extension
+    filter).
+    """
+    found = []
+    for root, _dirs, names in os.walk( betaconst.video_path_uncensored ):
+        for name in names:
+            found.append( ( root, name ) )
+    return found
 
 
 def load_stats_rows( stats_path ):
