@@ -318,19 +318,22 @@ function Optimize( { plan, onStart }: { plan: readonly PlanStep[] | null; onStar
   const running = progress?.state === 'running';
   // What applying the proposal costs (re-detect, re-render), checked as a
   // dry run the way every settings change is, before Apply is offered.
-  const [ check, setCheck ] = useState<Check>( { state: 'idle' } );
+  // The answer is kept with the proposal it was for, so a new proposal
+  // reads as checking until its own answer arrives.
   const proposal = progress?.state === 'finished' ? progress.proposal : null;
+  const [ answer, setAnswer ] = useState<{ readonly for: readonly unknown[]; readonly check: Check } | null>( null );
+  const check: Check = proposal === null || proposal.length === 0
+    ? { state: 'idle' }
+    : answer !== null && answer.for === proposal ? answer.check : { state: 'checking' };
   useEffect( () => {
     if ( proposal === null || proposal.length === 0 ) {
-      setCheck( { state: 'idle' } );
       return;
     }
-    setCheck( { state: 'checking' } );
     let live = true;
     const values = Object.fromEntries( proposal.map( ( row ) => [ row.setting, row.value ] ) );
     setValues( values, true ).then(
-      ( change ) => { if ( live ) { setCheck( { state: 'ok', change } ); } },
-      ( error: unknown ) => { if ( live ) { setCheck( refusal( error ) ); } },
+      ( change ) => { if ( live ) { setAnswer( { for: proposal, check: { state: 'ok', change } } ); } },
+      ( error: unknown ) => { if ( live ) { setAnswer( { for: proposal, check: refusal( error ) } ); } },
     );
     return () => { live = false; };
   }, [ proposal ] );

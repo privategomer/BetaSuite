@@ -234,6 +234,22 @@ class TestTheAppCountsAsTheRun( unittest.TestCase ):
         self.assertEqual( bu_resources.platform_reader( 'linux' ).pid, os.getpid() )
 
 
+class TestTheEngineReadsItsRoot( unittest.TestCase ):
+
+    def test_the_sampler_counts_the_tree_it_was_given( self ):
+        seen = []
+        real = bu_resources.platform_reader
+
+        def reader( platform_name=None, own_root=None ):
+            seen.append( own_root )
+            return bu_resources.NullReader()
+        bu_resources.platform_reader = reader
+        self.addCleanup( setattr, bu_resources, 'platform_reader', real )
+        bu_serve_resources.Resources( lambda n, d: None, None, own_root=20 )._default_sampler()
+        bu_serve_resources.Resources( lambda n, d: None, None )._default_sampler()
+        self.assertEqual( seen, [ 20, None ] )
+
+
 class _FakeProc:
 
     def __init__( self, lines ):

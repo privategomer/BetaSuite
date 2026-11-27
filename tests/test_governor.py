@@ -339,6 +339,8 @@ class TestDisabled( _Base ):
         decision = self.feed( 5, **dict( IDLE, memory_pressure=90.0 ) )
         self.assertFalse( decision.throttled )
         self.assertEqual( _codes( decision ), [ bu_gov.OFF ] )
+        # The override still shows, so it can be cleared.
+        self.assertEqual( decision.override, ( bu_gov.SESSION, False ) )
 
     def test_switching_on_mid_run_takes_effect( self ):
         self.gov.set_thresholds( bu_gov.Thresholds( { 'enabled': False } ), self.clock.now )
