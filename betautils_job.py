@@ -419,7 +419,11 @@ class Runner:
                     self._disk_full( entry.censored_folder )
                 job.counts[outcome] += 1
                 data = { 'job': job.id, 'file': index, 'state': outcome }
-                if outcome == 'processed' and reporter.paths:
+                # A file skipped because its output is already there names
+                # that output too: it is this job's result as much as a new one.
+                # Paths are only set once the output name is known, so a
+                # skip before that (not a video, unreadable) names none.
+                if outcome in ( 'processed', 'skipped' ) and reporter.paths:
                     data['output'] = reporter.paths['final']
                 self.send( 'job.file', data )
                 job.next_index = index + 1

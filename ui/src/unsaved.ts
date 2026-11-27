@@ -19,18 +19,32 @@ export interface Guard {
 }
 
 let current: Guard | null = null;
+// A job is queued, running or paused: closing asks whether to keep it
+// running in the background or pause it (library/RunCloseDialog.tsx).
+let jobsHeld = false;
+let told: boolean | null = null;
 const listeners = new Set<() => void>();
 
-export function setGuard( guard: Guard | null ): void {
-  const held = guard !== null;
-  const changed = held !== ( current !== null );
-  current = guard;
-  if ( changed ) {
-    invoke( 'set_unsaved', { held } ).catch( ( error: unknown ) => {
-      log.warn( `set_unsaved failed: ${describeError( error )}` );
-    } );
+function tell(): void {
+  const held = current !== null || jobsHeld;
+  if ( held === told ) {
+    return;
   }
+  told = held;
+  invoke( 'set_unsaved', { held } ).catch( ( error: unknown ) => {
+    log.warn( `set_unsaved failed: ${describeError( error )}` );
+  } );
+}
+
+export function setGuard( guard: Guard | null ): void {
+  current = guard;
+  tell();
   listeners.forEach( ( listener ) => { listener(); } );
+}
+
+export function setJobsHold( busy: boolean ): void {
+  jobsHeld = busy;
+  tell();
 }
 
 export function getGuard(): Guard | null {

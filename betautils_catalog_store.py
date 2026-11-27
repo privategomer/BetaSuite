@@ -128,6 +128,9 @@ CREATE TABLE runs (
 );
 CREATE INDEX runs_hash ON runs( hash, ended_at );
 """ ),
+    ( 3, 'run_timing', """
+ALTER TABLE runs ADD COLUMN timing TEXT;
+""" ),
 )
 
 LATEST_VERSION = MIGRATIONS[-1][0]
