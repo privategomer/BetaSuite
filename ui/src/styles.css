@@ -1106,6 +1106,67 @@ button.link {
   color: var(--color-status-problem);
 }
 
+/* Clear history (resources/ClearHistory.tsx). */
+.history-dialog {
+  max-inline-size: 40rem;
+}
+
+.history-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-end: 0.5rem;
+}
+
+.history-kinds {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-kinds li {
+  padding-block: 0.3rem;
+}
+
+.history-kinds label,
+.history-permanent label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.history-name {
+  font-weight: 600;
+}
+
+.history-amount {
+  color: var(--color-text-muted);
+}
+
+.history-what {
+  margin: 0.1rem 0 0;
+  padding-inline-start: 1.6rem;
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+}
+
+.history-permanent {
+  margin-block-start: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--color-border);
+}
+
+.history-costly {
+  color: var(--color-status-problem);
+}
+
+.history-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Library (M7) */
 .library {
   display: flex;

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/storage.history.schema.json",
+  "title": "storage.history",
+  "description": "What \"Clear history\" would remove for a time range (range, default all), kind by kind: bytes and files on disk, catalog rows, whether the dialog ticks it by default, whether clearing it needs confirm: true, and whether it can be limited to a range (ranged: false kinds always clear everything). busy: a job holds the queue, so clearing is refused. permanent: whether the dialog's Delete permanently box starts ticked (the storage_delete_permanently setting).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "range": {
+          "enum": [
+            "hour",
+            "day",
+            "week",
+            "all"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "kinds",
+        "busy",
+        "permanent"
+      ],
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "default",
+              "confirm",
+              "ranged",
+              "bytes",
+              "files",
+              "rows"
+            ],
+            "properties": {
+              "id": {
+                "enum": [
+                  "run_history",
+                  "previews",
+                  "transcodes",
+                  "logs",
+                  "detections",
+                  "run_keys",
+                  "stats",
+                  "library"
+                ]
+              },
+              "default": {
+                "type": "boolean"
+              },
+              "confirm": {
+                "type": "boolean"
+              },
+              "ranged": {
+                "type": "boolean"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "permanent": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -508,7 +508,7 @@ from betautils_serve_perf import HANDLERS as _PERF_HANDLERS   # noqa: E402
 for _name, _handler in _PERF_HANDLERS.items():
     register( _name, _handler )
 
-# storage.usage, storage.clean
+# storage.usage, storage.clean, storage.history, storage.clear_history
 from betautils_serve_storage import HANDLERS as _STORAGE_HANDLERS   # noqa: E402
 for _name, _handler in _STORAGE_HANDLERS.items():
     register( _name, _handler )
