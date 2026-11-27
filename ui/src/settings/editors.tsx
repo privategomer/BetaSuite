@@ -6,6 +6,7 @@ import { t } from '../i18n/format';
 import { labelName } from '../i18n/labels';
 import type { EditorId, Schema, SettingSchema } from './model';
 import { GeometryActionEditor, ProfileMapEditor, PromotionEditor, RefusedPairsEditor, StyleSlot, SuppressionEditor } from './structured';
+import { IconPicker } from './IconPicker';
 import { noneMeaning } from './text';
 
 // What an editor may need beyond its own value: the setting paths the
@@ -299,4 +300,5 @@ export const EDITORS: Readonly<Record<EditorId, ComponentType<EditorProps>>> = {
   promotion_rules: PromotionEditor,
   refused_pairs: RefusedPairsEditor,
   profile_map: ProfileMapEditor,
+  icon_choice: IconPicker,
 };
