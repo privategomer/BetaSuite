@@ -95,6 +95,7 @@ class KindsTest( unittest.TestCase ):
         self.assertEqual( sorted( k for k, kind in kinds.items() if kind.confirm ),
                           [ 'detections', 'library', 'run_keys', 'stats' ] )
         self.assertEqual( sorted( k for k, kind in kinds.items() if not kind.ranged ), [ 'library', 'run_keys' ] )
+        self.assertFalse( kinds[ 'feedback' ].default )   # the user's own notes are never ticked for them
         for kind in kinds.values():
             self.assertFalse( kind.default and kind.confirm, kind.id )
 
@@ -225,8 +226,16 @@ class CatalogTest( unittest.TestCase ):
                 db.execute( "INSERT INTO runs ( hash, path, started_at, ended_at, outcome ) "
                             "VALUES ( 'h1', ?, ?, ?, 'processed' )",
                             ( '/videos/%s-%d.mp4'%( self.MARK, n ), ended - 10, ended ) )
+            for n, made in enumerate( ( NOW - 3 * HOUR, NOW - 60 ) ):
+                db.execute( "INSERT INTO feedback ( hash, at_seconds, verdict, detection_key, censor_key, encode_key, "
+                            "created_at, label ) VALUES ( 'h1', 1, 'missed', 'd', 'c', 'e', ?, ? )",
+                            ( made, '%s-fb%d'%( self.MARK, n ) ) )
         self.backup = self.path + '.v2.bak'
         _write( self.backup, self.MARK, mtime=NOW - 60 )
+        self.pre_restore = self.path + '.pre-restore.bak'
+        _write( self.pre_restore, self.MARK, mtime=NOW - 60 )
+        self.saved = os.path.join( self.root, 'backups', 'catalog-mine.sqlite' )
+        _write( self.saved, self.MARK, mtime=NOW - 60 )
         self.kinds = bu_history.kinds( catalog_path=self.path )
 
     def _clear( self, ids, **kw ):
@@ -248,6 +257,16 @@ class CatalogTest( unittest.TestCase ):
         self.assertEqual( left, [ '/videos/%s-0.mp4'%( self.MARK, ) ] )   # the older run stays
         self.assertEqual( self.store.read( 'SELECT COUNT(*) FROM items' )[0][0], 1 )
         self.assertFalse( os.path.exists( self.backup ) )
+        self.assertFalse( os.path.exists( self.pre_restore ) )
+        self.assertTrue( os.path.exists( self.saved ) )   # a backup the user saved is kept
+        self.assertEqual( self.store.read( 'SELECT COUNT(*) FROM feedback' )[0][0], 2 )
+
+    def test_feedback_range_keeps_older_marks( self ):
+        result = self._clear( [ 'feedback' ], since=NOW - HOUR )
+        self.assertEqual( result[0][ 'rows' ], 1 )
+        left = [ row[0] for row in self.store.read( 'SELECT label FROM feedback' ) ]
+        self.assertEqual( left, [ '%s-fb0'%( self.MARK, ) ] )
+        self.assertEqual( self.store.read( 'SELECT COUNT(*) FROM runs' )[0][0], 2 )
 
     def test_cleared_rows_do_not_linger_in_the_file( self ):
         self.assertIn( ( self.MARK + '-1' ).encode(), self._raw() )
@@ -263,31 +282,35 @@ class CatalogTest( unittest.TestCase ):
         self._clear( [ 'library' ], since=NOW - HOUR, confirm=True )
         for table in ( 'items', 'folders', 'runs' ):
             self.assertEqual( self.store.read( 'SELECT COUNT(*) FROM %s'%( table, ) )[0][0], 0, table )
+        # Feedback marks have their own box: the library list leaves them.
+        self.assertEqual( self.store.read( 'SELECT COUNT(*) FROM feedback' )[0][0], 2 )
+        self._clear( [ 'feedback' ] )
         self.assertNotIn( self.MARK.encode(), self._raw() )
 
 
 _END_TO_END = r'''
 import hashlib, json, os, sys
-import betautils_history as bu_history
+import betaconst
 import betautils_catalog_store as bu_store
+import betautils_catalog_strip as bu_strip
+import betautils_catalog_thumbs as bu_thumbs
+import betautils_history as bu_history
 import betautils_paths as bu_paths
-kinds = bu_history.kinds()
-written = []
-for kind in kinds:
-    for path in kind.paths:
-        if isinstance( path, bu_history._Backups ):
-            target = os.path.join( path.folder, path.prefix + '9.bak' )
-        elif isinstance( path, bu_history._Logs ):
-            target = os.path.join( path.folder, 'x.log' )
-        elif os.path.splitext( path )[1]:
-            target = path
-        else:
-            target = os.path.join( path, 'sub', kind.id + '.bin' )
-        os.makedirs( os.path.dirname( target ), exist_ok=True )
-        with open( target, 'w' ) as handle:
-            handle.write( '2030-01-01 00:00:00 [INFO ] trace of %s\n'%( kind.id, ) )
-        written.append( target )
-kept = [ os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_local.py' ),
+state = bu_paths.kind_dir( 'state' )
+catalog = bu_store.default_path()
+# Where traces live, named here on their own (not from kinds()), so a kind
+# that loses a path leaves its trace behind and the test sees it.
+folders = [ bu_thumbs.folder(), bu_strip.folder(), betaconst.look_preview_dir, betaconst.transcode_cache_dir,
+            os.path.join( state, 'logs' ), betaconst.vid_hash_dir, betaconst.pic_hash_dir, betaconst.shot_cut_dir,
+            betaconst.run_key_dir, os.path.join( state, 'stats' ), betaconst.benchmark_dir ]
+files = [ betaconst.file_hash_cache_path, catalog + '.v3.bak', catalog + '.pre-restore.bak' ]
+written = [ os.path.join( folder, 'sub', 'trace.log' ) for folder in folders ] + files
+for target in written:
+    os.makedirs( os.path.dirname( target ), exist_ok=True )
+    with open( target, 'w' ) as handle:
+        handle.write( '2030-01-01 00:00:00 [INFO ] trace of %s\\n'%( target, ) )
+kept = [ os.path.join( bu_paths.kind_dir( 'data' ), 'backups', 'catalog-saved.sqlite' ),
+         os.path.join( bu_paths.kind_dir( 'config' ), 'betaconfig_local.py' ),
          os.path.join( bu_paths.kind_dir( 'data' ), 'model', 'm.onnx' ),
          os.path.join( sys.argv[1], 'out', 'result.mp4' ) ]
 for path in kept:
@@ -297,12 +320,12 @@ for path in kept:
 digest = lambda p: hashlib.sha256( open( p, 'rb' ).read() ).hexdigest()
 before = { p: digest( p ) for p in kept }
 store = bu_store.Store()
-bu_history.clear( kinds, list( bu_history.KIND_IDS ), confirm=True, permanent=True, store=store )
+bu_history.clear( bu_history.kinds(), list( bu_history.KIND_IDS ), confirm=True, permanent=True, store=store )
 store.close()
 left = []
 for kind_dir in ( 'data', 'cache', 'state' ):
-    for root, _dirs, files in os.walk( bu_paths.kind_dir( kind_dir ) ):
-        for name in files:
+    for root, _dirs, names in os.walk( bu_paths.kind_dir( kind_dir ) ):
+        for name in names:
             full = os.path.join( root, name )
             if os.path.getsize( full ) and b'trace of' in open( full, 'rb' ).read():
                 left.append( full )
@@ -326,7 +349,7 @@ class EndToEndTest( unittest.TestCase ):
                                capture_output=True, text=True, timeout=120 )
         self.assertEqual( done.returncode, 0, done.stderr[-2000:] )
         found = json.loads( done.stdout.strip().splitlines()[-1] )
-        self.assertGreaterEqual( found[ 'written' ], 14 )
+        self.assertEqual( found[ 'written' ], 14 )
         self.assertEqual( found[ 'left' ], [] )
         self.assertTrue( found[ 'kept' ] )
 

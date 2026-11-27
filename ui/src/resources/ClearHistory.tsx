@@ -166,6 +166,7 @@ export function ClearHistory( { onClose }: { readonly onClose: ( cleared: Cleare
           </label>
           <p className="history-what">{permanent === true ? t( 'history.permanent_on' ) : t( 'history.permanent_off' )}</p>
           {removesRows && <p className="history-what">{t( 'history.records_gone' )}</p>}
+          {removesRows && <p className="history-what">{t( 'history.backups_kept' )}</p>}
         </div>
       )}
       {costly.length > 0 && <p className="history-costly" role="note">{t( 'history.costly', { count: costly.length } )}</p>}
