@@ -303,6 +303,67 @@ class TestDebugAids( unittest.TestCase ):
                                   set( parts[ label ] ) )
 
 
+class TestEdgeCases( unittest.TestCase ):
+    """Cases the mutation check found unpinned in the rewritten code."""
+
+    def test_overlapping_boxes_merge_only_with_the_same_label_and_style( self ):
+        blur = { 'type': 'blur', 'method': 'gaussian', 'strength': 20, 'merge': 'single-pass' }
+        pixel = { 'type': 'pixel', 'pattern': 'square', 'strength': 12, 'merge': 'single-pass' }
+        same = [ _box( 10, 10, 50, 40, blur ), _box( 40, 30, 50, 40, dict( blur ) ) ]
+        self.assertEqual( 1, len( bu_censor._censored_windows( same, 160, 120 ) ) )
+        other_label = [ _box( 10, 10, 50, 40, blur ), _box( 40, 30, 50, 40, blur, label='exposed_vulva' ) ]
+        self.assertEqual( 2, len( bu_censor._censored_windows( other_label, 160, 120 ) ) )
+        other_style = [ _box( 10, 10, 50, 40, blur ), _box( 40, 30, 50, 40, pixel ) ]
+        self.assertEqual( 2, len( bu_censor._censored_windows( other_style, 160, 120 ) ) )
+
+    def test_an_audio_probe_that_fails_means_no_audio( self ):
+        import subprocess
+        import betautils_video as bu_video
+        with mock.patch.object( bu_video.subprocess, 'run', side_effect=subprocess.TimeoutExpired( 'ffprobe', 1 ) ):
+            self.assertFalse( bu_video.video_file_has_audio( 'x.mp4' ) )
+        failed = mock.Mock( returncode=1, stdout=b'1,audio\n' )
+        with mock.patch.object( bu_video.subprocess, 'run', return_value=failed ):
+            self.assertFalse( bu_video.video_file_has_audio( 'x.mp4' ), "a failed probe is not trusted" )
+        found = mock.Mock( returncode=0, stdout=b'0,video\n1,audio\n' )
+        with mock.patch.object( bu_video.subprocess, 'run', return_value=found ):
+            self.assertTrue( bu_video.video_file_has_audio( 'x.mp4' ) )
+
+    def test_retinanet_drops_a_score_equal_to_the_floor( self ):
+        boxes = np.zeros( ( 1, 300, 4 ), np.float32 )
+        boxes[ 0, :2 ] = [ 10, 10, 50, 50 ]
+        scores = np.zeros( ( 1, 300 ), np.float32 )
+        classes = np.zeros( ( 1, 300 ), np.int32 )
+        with mock.patch.object( betaconfig, 'global_min_prob', 0.25 ):
+            scores[ 0, 0 ], scores[ 0, 1 ] = 0.25, 0.2501
+            raw = retinanet_v2.raw_boxes_from_model_output( [ boxes, scores, classes ], [ 1.0 ], [ 0.0 ] )
+        self.assertEqual( [ 0.2501 ], [ round( box[ 'score' ], 4 ) for box in raw[ 0 ] ] )
+
+    def test_retinanet_skips_class_indexes_outside_its_table( self ):
+        count = len( retinanet_v2._MODEL_CLASS_ORDER )
+        boxes = np.zeros( ( 1, 300, 4 ), np.float32 )
+        boxes[ 0, :4 ] = [ 10, 10, 50, 50 ]
+        scores = np.zeros( ( 1, 300 ), np.float32 )
+        scores[ 0, :4 ] = 0.9
+        classes = np.zeros( ( 1, 300 ), np.int32 )
+        classes[ 0, :4 ] = [ -1, count, count - 1, 0 ]
+        raw = retinanet_v2.raw_boxes_from_model_output( [ boxes, scores, classes ], [ 1.0 ], [ 0.0 ] )
+        self.assertEqual( [ retinanet_v2._MODEL_CLASS_ORDER[ -1 ], retinanet_v2._MODEL_CLASS_ORDER[ 0 ] ],
+                          [ box[ 'class_id' ] for box in raw[ 0 ] ] )
+
+    def test_retinanet_size_zero_resizes_without_padding( self ):
+        image = _image( 90, 140 )
+        prepared = retinanet_v2.prep_img_for_nn( image, 0, 0.5 )
+        self.assertEqual( prepared.shape, ( 45, 70, 3 ) )
+        self.assertEqual( retinanet_v2.prep_img_for_nn( image, 160, 0.5 ).shape, ( 160, 160, 3 ) )
+
+    def test_retinanet_rejects_negative_and_non_integer_sizes( self ):
+        errors = []
+        with mock.patch.object( retinanet_v2.bu_detector, 'get_picture_sizes', return_value=[ 0, 640, -1, 1.5 ] ):
+            retinanet_v2.validate_backend_config( {}, errors )
+        self.assertEqual( [ ( 'config.rule', 'backend.size_negative' ) ] * 2,
+                          [ ( error.code, error.params[ 'rule' ] ) for error in errors ] )
+
+
 class TestJsonFiles( unittest.TestCase ):
     def test_write_then_read_round_trips_through_gzip( self ):
         value = { 'boxes': [ { 'x': 1.5, 'label': 'exposed_breast' } ], 'n': None, 'ok': True }
