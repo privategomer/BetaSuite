@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/feedback.remove.schema.json",
+  "title": "feedback.remove",
+  "description": "Remove one mark, for one made by mistake. feedback.no_such_record for an unknown id.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      }
+    },
+    "result": {
+      "type": "object"
+    }
+  }
+}

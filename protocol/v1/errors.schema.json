@@ -59,6 +59,8 @@
     { "$ref": "#/$defs/catalog.missing" },
     { "$ref": "#/$defs/catalog.thumbnail_failed" },
     { "$ref": "#/$defs/catalog.no_such_file" },
+    { "$ref": "#/$defs/feedback.not_a_result" },
+    { "$ref": "#/$defs/feedback.no_such_record" },
     { "$ref": "#/$defs/storage.unknown_category" },
     { "$ref": "#/$defs/storage.not_cleanable" },
     { "$ref": "#/$defs/storage.needs_confirm" },
@@ -786,6 +788,30 @@
           "type": "object",
           "required": [],
           "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "feedback.not_a_result": {
+      "description": "The file is not a result the catalog knows (a source, another file, or a result no longer on disk), so feedback cannot be kept for it.",
+      "properties": {
+        "code": { "const": "feedback.not_a_result" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "feedback.no_such_record": {
+      "description": "No feedback mark has this id.",
+      "properties": {
+        "code": { "const": "feedback.no_such_record" },
+        "params": {
+          "type": "object",
+          "required": [ "id" ],
+          "properties": { "id": { "type": "integer" } },
           "additionalProperties": false
         }
       }
