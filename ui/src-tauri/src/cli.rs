@@ -9,7 +9,7 @@ use log::LevelFilter;
 pub const USAGE: &str = "\
 usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
                  [--locale TAG] [--theme light|dark] [--open VIDEO]
-                 [--measure-startup FILE] [--view library|player|what-to-hide|models|performance|storage|settings|all-settings]
+                 [--measure-startup FILE] [--view library|player|what-to-hide|models|performance|storage|settings|all-settings|about]
                  [--search TEXT] [--help-topic ANCHOR] [--measure-scrub]
 
   --log-level LEVEL      log file level (default info)
@@ -22,7 +22,7 @@ usage: betasuite [--log-level LEVEL] [--console-level LEVEL] [--log-file PATH]
   --measure-startup FILE write the time of each startup step to FILE as JSON,
                          then close (with --open, after its first frame)
   --view VIEW            open on this view: library (default), player, what-to-hide, models, performance, storage,
-                         settings or all-settings
+                         settings, all-settings or about
   --search TEXT          start All Settings with this search filled in
   --help-topic ANCHOR    open the help panel at this section of the reference
   --measure-scrub        with --open: once the scrub strip is ready, drag across the
@@ -123,12 +123,12 @@ where
             }
             "--view" => match value("--view")?.as_str() {
                 view @ ("library" | "player" | "what-to-hide" | "models" | "performance" | "storage"
-                | "settings" | "all-settings") => {
+                | "settings" | "all-settings" | "about") => {
                     options.view = Some(view.to_owned())
                 }
                 other => {
                     return Err(format!(
-                        "unknown view {other:?}; use library, player, what-to-hide, models, performance, storage, settings or all-settings"
+                        "unknown view {other:?}; use library, player, what-to-hide, models, performance, storage, settings, all-settings or about"
                     ))
                 }
             },

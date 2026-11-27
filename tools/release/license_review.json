@@ -1,0 +1,22 @@
+{
+ "allow": [
+  {
+   "section": "python",
+   "name": "nvidia-.*-cu12",
+   "license": "LicenseRef-NVIDIA-Proprietary",
+   "reason": "CUDA runtime packages under NVIDIA's own terms: fetched by the user's machine from the package index on NVIDIA GPU machines, never bundled (licensing ledger, spec section 12)"
+  },
+  {
+   "section": "python",
+   "name": "nvidia-curand-cu12",
+   "license": "NVIDIA Proprietary Software",
+   "reason": "As above; this package writes its license field in words"
+  },
+  {
+   "section": "downloads",
+   "name": "ffmpeg",
+   "license": "GPL (x264 included)",
+   "reason": "Shipped as a separate executable with the GPL text and a source pointer (licensing ledger, spec section 12)"
+  }
+ ]
+}
