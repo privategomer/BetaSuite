@@ -11,6 +11,7 @@ mod files;
 mod linux;
 mod logging;
 mod look;
+mod models;
 mod paths;
 mod startup;
 mod tray;
@@ -394,6 +395,7 @@ pub fn run() -> i32 {
             engine_restart,
             ui_mark,
             video::pick_video,
+            models::pick_model,
             look::look_image,
             files::strip_image,
             files::pick_files,

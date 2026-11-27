@@ -62,7 +62,7 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error', 'job.probed',
-           'catalog.changed', 'catalog.strip_ready' )
+           'catalog.changed', 'catalog.strip_ready', 'models.state', 'models.progress' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -268,6 +268,7 @@ class Server:
         self.stopping = False
         self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
         self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
+        self.models = None            # betautils_serve_models.Installer, made by the first models.install
         self._after_reply = []
 
     @property
@@ -286,6 +287,11 @@ class Server:
         """Stop the job queue, if one was made: on shutdown, end of input or a signal."""
         if self.jobs is not None:
             self.jobs.stop()
+
+    def stop_models( self ):
+        """Stop the model installer, if one was made; a download in progress keeps its partial file."""
+        if self.models is not None:
+            self.models.stop()
 
     def stop_catalog( self ):
         """Close the catalog, if one was opened, after the job queue has stopped."""
@@ -458,6 +464,11 @@ from betautils_serve_strip import HANDLERS as _STRIP_HANDLERS   # noqa: E402
 for _name, _handler in _STRIP_HANDLERS.items():
     register( _name, _handler )
 
+# models.list, install, cancel, import, remove, use
+from betautils_serve_models import HANDLERS as _MODELS_HANDLERS   # noqa: E402
+for _name, _handler in _MODELS_HANDLERS.items():
+    register( _name, _handler )
+
 
 # --- Entry --------------------------------------------------------------------
 
@@ -522,6 +533,10 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_jobs()
         except BaseException:
             logger.error( "the job queue did not stop cleanly", exc_info=True )
+        try:
+            server.stop_models()
+        except BaseException:
+            logger.error( "the model installer did not stop cleanly", exc_info=True )
         try:
             server.stop_catalog()
         except BaseException:

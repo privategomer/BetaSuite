@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/models.use.schema.json",
+  "title": "models.use",
+  "description": "Change the settings to use an installed model: its backend and variant, clearing a model_path set by hand. gpu: true also sets gpu_enabled to 1 in the same write (the recommended model on a machine with a usable GPU). Answers as config.set; model.not_installed when the model is not installed, config.busy while a job holds the queue.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gpu": {
+          "type": "boolean"
+        },
+        "dry_run": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "moves",
+        "may_move",
+        "written",
+        "dry_run"
+      ],
+      "properties": {
+        "moves": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detection",
+              "censor",
+              "encode"
+            ]
+          }
+        },
+        "may_move": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detection",
+              "censor",
+              "encode"
+            ]
+          }
+        },
+        "written": {
+          "type": "boolean"
+        },
+        "dry_run": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

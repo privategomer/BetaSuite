@@ -4,14 +4,15 @@ segmenters/rf_detr_seg.py - Roboflow RF-DETR-Seg person masks, run as ONNX.
 The second person backend beside YOLO11-seg (segmenters/yolo11_seg.py),
 to the same contract: one flat list of person dicts per batch. RF-DETR
 is a COCO instance segmentation transformer. Roboflow publishes the
-rfdetr code and every RF-DETR-Seg size under Apache-2.0. BetaSuite does
-not redistribute the weights, and this backend does not import the
-rfdetr package.
+rfdetr code and every RF-DETR-Seg size under Apache-2.0. The project
+hosts the .onnx exports (and the .pth files they came from) under those
+terms, and this backend does not import the rfdetr package.
 
 It runs through onnxruntime like every detector backend, so the runtime
-environment gains no PyTorch. tools/setup/fetch_models.py exports the
-.onnx files once, in the same throwaway environment as YOLO11, from
-Roboflow's .pth releases pinned by sha256.
+environment gains no PyTorch. tools/release/export_models.py exports the
+.onnx files, in the same kind of throwaway environment as YOLO11, from
+Roboflow's .pth releases pinned by sha256; setup and the app download the
+hosted exports.
 
 MODEL OUTPUTS (exported with a dynamic batch; the picture size is fixed)
 -----------------------------------------------------------------------
@@ -52,6 +53,7 @@ import cv2
 import numpy as np
 
 import betautils_detector as bu_detector
+import betautils_models as bu_models
 
 
 def _rule( rule_id, text ):
@@ -71,7 +73,7 @@ VARIANTS = {
 # Roboflow also publishes large, xlarge and 2xlarge (504, 624, 768 px), all
 # Apache-2.0. Left out: on real footage large found no more people than
 # small, with about the same outline quality, at 1.9x small's time on a GPU,
-# and every size here is another ~260 MB that setup downloads and exports.
+# and every size here is another ~260 MB to host and download.
 
 DEFAULT_VARIANT = 'small'
 DEFAULT_MIN_PROB = 0.35
@@ -139,6 +141,7 @@ def identity( config ):
     return {
         'model_variant': resolved['model_variant'],
         'model_path':    resolved['model_path'],
+        'model_sha256':  bu_models.file_identity( resolved['model_path'] ),
         'min_prob':      round( float( resolved['min_prob'] ), 6 ),
     }
 

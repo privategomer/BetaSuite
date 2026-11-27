@@ -257,9 +257,21 @@ class TestDetectionKeySensitivity( unittest.TestCase ):
         self.assertEqual( before, self._key() )
 
     def test_retinanet_has_no_detection_affecting_tunables( self ):
-        # Score filtering and NMS live inside that export's graph, so
-        # there is nothing outside size/fps/min_prob to key on.
-        self.assertEqual( bu_detector.get_detection_identity( 'retinanet_v2' ), {} )
+        # Score filtering and NMS live inside that export's graph, so no
+        # setting outside size/fps/min_prob is keyed. The model file's own
+        # hash (model_sha256) is not a setting and may be keyed.
+        identity = bu_detector.get_detection_identity( 'retinanet_v2' )
+        self.assertLessEqual( set( identity ), { 'model_sha256' } )
+        block = betaconfig.detector_backend.setdefault( 'retinanet_v2', {} )
+        saved = dict( block )
+        try:
+            block.update( nms_iou=0.1, candidate_floor=0.9, model_variant='640m' )
+            bu_config.invalidate_config_caches()
+            self.assertEqual( bu_detector.get_detection_identity( 'retinanet_v2' ), identity )
+        finally:
+            block.clear()
+            block.update( saved )
+            bu_config.invalidate_config_caches()
 
 
 class TestCensorKeySensitivity( unittest.TestCase ):

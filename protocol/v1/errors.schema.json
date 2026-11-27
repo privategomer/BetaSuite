@@ -42,6 +42,13 @@
     { "$ref": "#/$defs/file.failed" },
     { "$ref": "#/$defs/disk.full" },
     { "$ref": "#/$defs/model.load_failed" },
+    { "$ref": "#/$defs/model.unknown" },
+    { "$ref": "#/$defs/model.hash_mismatch" },
+    { "$ref": "#/$defs/model.download_failed" },
+    { "$ref": "#/$defs/model.unknown_file" },
+    { "$ref": "#/$defs/model.in_use" },
+    { "$ref": "#/$defs/model.busy" },
+    { "$ref": "#/$defs/model.not_installed" },
     { "$ref": "#/$defs/catalog.unavailable" },
     { "$ref": "#/$defs/catalog.too_new" },
     { "$ref": "#/$defs/catalog.no_such_item" },
@@ -565,6 +572,90 @@
           "type": "object",
           "required": [ "exception_type" ],
           "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.unknown": {
+      "description": "No model in the catalog has this id. model is the id asked for.",
+      "properties": {
+        "code": { "const": "model.unknown" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.hash_mismatch": {
+      "description": "The downloaded or imported file is not the one the catalog pins (its SHA-256 differs, or it is too long). It was deleted; nothing was installed.",
+      "properties": {
+        "code": { "const": "model.hash_mismatch" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.download_failed": {
+      "description": "The model could not be downloaded from any mirror. reason: network (no connection, or it was lost; what arrived is kept and the next install resumes), http (a server refused or answered the wrong range), not_a_model (a web page came back instead of the file).",
+      "properties": {
+        "code": { "const": "model.download_failed" },
+        "params": {
+          "type": "object",
+          "required": ["model", "reason"],
+          "properties": {"model": {"type": "string"}, "reason": {"enum": ["network", "http", "not_a_model"]}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.unknown_file": {
+      "description": "The chosen file is not any model in the catalog (its SHA-256 matches none). Nothing was installed.",
+      "properties": {
+        "code": { "const": "model.unknown_file" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.in_use": {
+      "description": "The current settings use this model, so it was not removed. Switch to another model first.",
+      "properties": {
+        "code": { "const": "model.in_use" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.busy": {
+      "description": "The model is downloading or queued to, so it was not removed. Cancel the download first.",
+      "properties": {
+        "code": { "const": "model.busy" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.not_installed": {
+      "description": "The model is not installed, so the settings were not changed to use it.",
+      "properties": {
+        "code": { "const": "model.not_installed" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
           "additionalProperties": false
         }
       }

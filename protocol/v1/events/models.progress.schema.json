@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/models.progress.schema.json",
+  "title": "models.progress",
+  "description": "Bytes of a model's file on disk so far, of total. A few a second per download; the last one of a finished download has bytes equal to total.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id",
+        "bytes",
+        "total"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
