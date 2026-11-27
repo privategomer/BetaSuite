@@ -107,6 +107,7 @@ EXAMPLE_PARAMS = {
     'storage.not_cleanable':        { 'category': 'outputs', 'policy': 'kept' },
     'storage.needs_confirm':        { 'category': 'detections', 'policy': 'costly' },
     'storage.busy':                 { 'category': 'detections' },
+    'storage.trash_failed':         { 'category': 'transcodes' },
 }
 
 

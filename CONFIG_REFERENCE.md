@@ -470,6 +470,17 @@ every layout computes the same keys and reuses the same caches.
 This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
 `images`, betaconst's folders, and the tools' own output folders.
 
+### `storage_delete_permanently`
+
+What clearing in the Storage view does with the files. `False` (the
+default) moves them to the system trash: the freedesktop Trash on Linux
+(the home trash, or the disk's own `.Trash-<uid>` for a folder on another
+disk), the Recycle Bin on Windows, `~/.Trash` on macOS. A cleared kind can
+then be put back from the file manager. A move that would need a copy
+across disks is refused rather than done, and nothing is then deleted
+instead: the Storage view says so, and this setting is the way to remove
+it for good. `True` removes the files outright. Moves no cache key.
+
 ### `cache_dir`
 
 Moves the cache, the large kind, to another folder (an absolute path).

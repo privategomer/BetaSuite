@@ -132,6 +132,7 @@ ERRORS = {
     'storage.not_cleanable':        ( 'category', 'policy' ),
     'storage.needs_confirm':        ( 'category', 'policy' ),
     'storage.busy':                 ( 'category', ),
+    'storage.trash_failed':         ( 'category', ),
 }
 
 # Values of the 'reason' parameter.

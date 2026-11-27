@@ -67,7 +67,8 @@
     { "$ref": "#/$defs/perf.optimize_running" },
     { "$ref": "#/$defs/perf.machine_busy" },
     { "$ref": "#/$defs/perf.no_proposal" },
-    { "$ref": "#/$defs/optimize.failed" }
+    { "$ref": "#/$defs/optimize.failed" },
+    { "$ref": "#/$defs/storage.trash_failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -878,6 +879,18 @@
           "type": "object",
           "required": [ "exit_code" ],
           "properties": { "exit_code": { "type": [ "integer", "null" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.trash_failed": {
+      "description": "The system trash could not take this kind (on a disk with no trash, or a move that would need a copy across disks). Nothing of it was removed for good; storage_delete_permanently removes it instead.",
+      "properties": {
+        "code": { "const": "storage.trash_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
           "additionalProperties": false
         }
       }

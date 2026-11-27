@@ -8,6 +8,7 @@
   "example-local-config",
   "toolsbenchtune_machinesh",
   "where-data-lives-betasuite_data_root",
+  "storage_delete_permanently",
   "cache_dir",
   "detector-backend",
   "selected",
@@ -382,6 +383,7 @@
   "shot_cut_threshold",
   "stats_enabled",
   "stats_path",
+  "storage_delete_permanently",
   "structure_scan_workers",
   "type_default_shapes.bar",
   "video_censor_fps",
@@ -3503,6 +3505,21 @@
     "scope": "global",
     "screen": "resources",
     "tip": "setting.cache_dir.tip",
+    "when": []
+   },
+   {
+    "help": "storage_delete_permanently",
+    "kind": "bool",
+    "label": "setting.storage_delete_permanently.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "storage_delete_permanently",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.storage_delete_permanently.tip",
     "when": []
    },
    {

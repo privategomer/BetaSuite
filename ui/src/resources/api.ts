@@ -150,7 +150,8 @@ export const cancelOptimize = async () => await engineRequest( 'perf.optimize_ca
 export const applyOptimize = async () => await engineRequest( 'perf.optimize_apply' ) as { applied: readonly string[] };
 export const storageUsage = async () => await engineRequest( 'storage.usage' ) as StorageUsage;
 export const cleanStorage = async ( categories: readonly string[], confirm: boolean ) =>
-  await engineRequest( 'storage.clean', { categories, confirm } ) as { freed: readonly { id: string; bytes: number; files: number }[] };
+  await engineRequest( 'storage.clean', { categories, confirm } ) as
+    { freed: readonly { id: string; bytes: number; files: number }[]; trashed: boolean };
 export const pendingChanges = async () => await engineRequest( 'config.pending' ) as { pending: readonly PendingChange[] };
 export const discardPending = async ( id?: string ) =>
   await engineRequest( 'config.pending_discard', id === undefined ? {} : { id } ) as { discarded: number };

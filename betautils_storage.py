@@ -23,8 +23,10 @@ much it uses, and what removing it costs:
              Models are removed on the Models page; outputs are the
              user's to move or delete
 
-storage.clean removes only safe, costly and resume categories, and only
-when asked by name. costly and resume need confirm: true, so a client
+storage.clean clears only safe, costly and resume categories, and only
+when asked by name. Clearing moves them to the system trash
+(betautils_trash), so it can be undone from the file manager; the
+advanced setting storage_delete_permanently removes them for good instead. costly and resume need confirm: true, so a client
 cannot clear hours of work by accident. While a job holds the queue,
 every category the running pipeline writes is refused (storage.busy).
 
@@ -70,7 +72,18 @@ def _cache( *parts ):
 
 
 def _is_partial_output( name ):
-    return '.video.' in name or '.tmp.' in name
+    """
+    A file an unfinished render leaves beside its output: <output name>.video.*
+    (the intermediate, its chunks and their temps) or <output name>.tmp.<ext>,
+    where <output name> parses as a real output name with its three keys.
+    A finished output whose source name holds '.video.' does not match.
+    """
+    import betautils_cache_paths as bu_cache
+    for marker in ( '.video.', '.tmp.' ):
+        at = name.rfind( marker )
+        if at > 0 and bu_cache.parse_video_output_basename( name[:at] ) is not None:
+            return True
+    return False
 
 
 def _is_model_leftover( name ):
@@ -109,7 +122,8 @@ def categories( previous_cache=None, shared_download_cache=None ):
         Category( 'run_keys', 'cache', KEPT, [ betaconst.run_key_dir, betaconst.file_hash_cache_path ] ),
     ]
     if previous_cache:
-        found.append( Category( 'previous_cache', 'cache', SAFE, [ previous_cache ] ) )
+        # It holds detections, slow to get back, and was a folder the user chose: ask first.
+        found.append( Category( 'previous_cache', 'cache', COSTLY, [ previous_cache ] ) )
     if shared_download_cache:
         found.append( Category( 'shared_download_cache', 'cache', SHARED, [ shared_download_cache ] ) )
     return found
@@ -159,20 +173,31 @@ def usage( cats ):
     return rows
 
 
-def _remove( path, match ):
-    """Remove what path holds that match() accepts; ( bytes freed, files removed )."""
+def _permanently( path ):
+    if os.path.isdir( path ) and not os.path.islink( path ):
+        shutil.rmtree( path )
+    else:
+        os.remove( path )
+
+
+def _remove( path, match, discard ):
+    """
+    Clear what path holds that match() accepts, with discard( path ) (the
+    trash, or permanent removal); ( bytes freed, files cleared ). A folder
+    with no match goes whole, in one step.
+    """
     freed = removed = 0
     if not os.path.lexists( path ):
         return 0, 0
     if os.path.isfile( path ) or os.path.islink( path ):
         if match is None or match( os.path.basename( path ) ):
             size = os.lstat( path ).st_size
-            os.remove( path )
+            discard( path )
             return size, 1
         return 0, 0
     if match is None:
         size, files = measure( path )
-        shutil.rmtree( path )
+        discard( path )
         return size, files
     for root, _dirs, files in os.walk( path ):
         for name in files:
@@ -181,9 +206,9 @@ def _remove( path, match ):
             full = os.path.join( root, name )
             try:
                 size = os.lstat( full ).st_size
-                os.remove( full )
             except OSError:
                 continue
+            discard( full )
             freed += size
             removed += 1
     return freed, removed
@@ -197,16 +222,19 @@ class StorageError( Exception ):
         self.params = params
 
 
-def clean( cats, ids, confirm=False, busy=False ):
+def clean( cats, ids, confirm=False, busy=False, permanent=False, trash=None ):
     """
-    Remove the named categories. Returns [ { id, bytes, files } ] freed.
+    Clear the named categories: to the system trash (betautils_trash), or
+    removed for good when permanent (storage_delete_permanently). Returns
+    [ { id, bytes, files } ].
 
     Raises StorageError:
       storage.unknown_category   an id no category has
       storage.not_cleanable      a shared or kept category
       storage.needs_confirm      a costly or resume category without confirm
       storage.busy               a category the running pipeline writes, while a job runs
-    Nothing is removed unless every named category may be.
+      storage.trash_failed       the trash could not take it (nothing of it is removed for good)
+    Nothing is cleared unless every named category may be.
     """
     by_id = { cat.id: cat for cat in cats }
     chosen = []
@@ -221,12 +249,25 @@ def clean( cats, ids, confirm=False, busy=False ):
         if busy and cat.id in WRITTEN_BY_RUNS:
             raise StorageError( 'storage.busy', { 'category': category_id } )
         chosen.append( cat )
+    if permanent:
+        discard = _permanently
+    else:
+        if trash is None:
+            import betautils_trash as bu_trash
+            trash = bu_trash.trash
+        discard = trash
     freed = []
     for cat in chosen:
         size = files = 0
-        for path in cat.paths:
-            got_size, got_files = _remove( path, cat.match )
-            size += got_size
-            files += got_files
+        try:
+            for path in cat.paths:
+                got_size, got_files = _remove( path, cat.match, discard )
+                size += got_size
+                files += got_files
+        except Exception as err:
+            import betautils_trash as bu_trash
+            if not permanent and isinstance( err, ( bu_trash.TrashError, OSError ) ):
+                raise StorageError( 'storage.trash_failed', { 'category': cat.id } )
+            raise
         freed.append( { 'id': cat.id, 'bytes': size, 'files': files } )
     return freed

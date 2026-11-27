@@ -17,10 +17,15 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import betautils_storage as bu_storage
 
 from tests import protocol_schemas as schemas
+
+
+# An output name as renders write it: stem, source hash, sizes, fps, the three keys.
+OUT = 'clip-0123456789abcdef-640-10-d1a2b3c-c4d5e6f-e7a8b'
 
 
 def _write( path, size=10 ):
@@ -46,9 +51,9 @@ class _Tree( unittest.TestCase ):
         _write( os.path.join( self.dirs['detections'], 'a', 'one.json' ), 100 )
         _write( os.path.join( self.dirs['detections'], 'b', 'two.json' ), 50 )
         _write( os.path.join( self.dirs['transcodes'], 't.mkv' ), 30 )
-        _write( os.path.join( self.dirs['outputs'], 'clip-d1-c2-e3.mp4' ), 400 )
-        _write( os.path.join( self.dirs['outputs'], 'clip-d1-c2-e3.video.part0001.mkv' ), 70 )
-        _write( os.path.join( self.dirs['outputs'], 'clip-d1-c2-e3.tmp.mp4' ), 5 )
+        _write( os.path.join( self.dirs['outputs'], OUT + '.mp4' ), 400 )
+        _write( os.path.join( self.dirs['outputs'], OUT + '.video.part0001.mkv' ), 70 )
+        _write( os.path.join( self.dirs['outputs'], OUT + '.tmp.mp4' ), 5 )
         _write( os.path.join( self.dirs['models'], '640m.onnx' ), 900 )
         _write( os.path.join( self.dirs['models'], '320n.onnx.part' ), 20 )
         _write( os.path.join( self.dirs['models'], 'old.onnx.bad' ), 25 )
@@ -70,6 +75,12 @@ class _Tree( unittest.TestCase ):
             C( 'shared_download_cache', 'cache', bu_storage.SHARED, [ self.dirs['shared'] ] ),
             C( 'missing', 'cache', bu_storage.SAFE, [ os.path.join( r, 'nowhere' ) ] ),
         ]
+
+    def clean( self, ids, **kw ):
+        """clean() that never reaches the real trash: permanent unless a test passes its own trash."""
+        if 'trash' not in kw:
+            kw.setdefault( 'permanent', True )
+        return bu_storage.clean( self.cats, ids, **kw )
 
     def sizes( self ):
         return { row['id']: ( row['bytes'], row['files'] ) for row in bu_storage.usage( self.cats ) }
@@ -104,7 +115,7 @@ class TestUsage( _Tree ):
         except OSError:
             self.skipTest( 'symlinks not allowed here' )
         self.assertEqual( self.sizes()['transcodes'], ( 30, 1 ) )
-        bu_storage.clean( self.cats, [ 'transcodes' ] )
+        self.clean( [ 'transcodes' ] )
         self.assertTrue( os.path.exists( os.path.join( outside, 'big.bin' ) ) )
 
     def test_real_categories_list( self ):
@@ -126,50 +137,81 @@ class TestUsage( _Tree ):
 class TestClean( _Tree ):
 
     def test_safe_category_is_removed( self ):
-        freed = bu_storage.clean( self.cats, [ 'transcodes', 'model_leftovers' ] )
+        freed = self.clean( [ 'transcodes', 'model_leftovers' ] )
         self.assertEqual( freed, [ { 'id': 'transcodes', 'bytes': 30, 'files': 1 },
                                    { 'id': 'model_leftovers', 'bytes': 45, 'files': 2 } ] )
         self.assertFalse( os.path.exists( self.dirs['transcodes'] ) )
         self.assertTrue( os.path.exists( os.path.join( self.dirs['models'], '640m.onnx' ) ) )
 
     def test_unfinished_renders_leave_finished_outputs( self ):
-        bu_storage.clean( self.cats, [ 'unfinished_renders' ], confirm=True )
-        self.assertEqual( os.listdir( self.dirs['outputs'] ), [ 'clip-d1-c2-e3.mp4' ] )
+        self.clean( [ 'unfinished_renders' ], confirm=True )
+        self.assertEqual( os.listdir( self.dirs['outputs'] ), [ OUT + '.mp4' ] )
 
     def test_costly_and_resume_need_confirm( self ):
         for category in ( 'detections', 'unfinished_renders' ):
             with self.assertRaises( bu_storage.StorageError ) as caught:
-                bu_storage.clean( self.cats, [ category ] )
+                self.clean( [ category ] )
             self.assertEqual( caught.exception.code, 'storage.needs_confirm' )
         self.assertEqual( self.sizes()['detections'], ( 150, 2 ) )
-        bu_storage.clean( self.cats, [ 'detections' ], confirm=True )
+        self.clean( [ 'detections' ], confirm=True )
         self.assertEqual( self.sizes()['detections'], ( 0, 0 ) )
 
     def test_kept_and_shared_are_never_removed( self ):
         for category in ( 'outputs', 'models', 'logs', 'shared_download_cache' ):
             with self.assertRaises( bu_storage.StorageError ) as caught:
-                bu_storage.clean( self.cats, [ category ], confirm=True )
+                self.clean( [ category ], confirm=True )
             self.assertEqual( caught.exception.code, 'storage.not_cleanable' )
         self.assertEqual( self.sizes()['shared_download_cache'], ( 800, 1 ) )
 
     def test_refused_while_a_job_writes_it( self ):
         with self.assertRaises( bu_storage.StorageError ) as caught:
-            bu_storage.clean( self.cats, [ 'detections' ], confirm=True, busy=True )
+            self.clean( [ 'detections' ], confirm=True, busy=True )
         self.assertEqual( caught.exception.code, 'storage.busy' )
-        bu_storage.clean( self.cats, [ 'model_leftovers' ], busy=True )   # not written by runs
+        self.clean( [ 'model_leftovers' ], busy=True )   # not written by runs
 
     def test_nothing_removed_when_any_is_refused( self ):
         with self.assertRaises( bu_storage.StorageError ):
-            bu_storage.clean( self.cats, [ 'transcodes', 'outputs' ] )
+            self.clean( [ 'transcodes', 'outputs' ] )
         self.assertEqual( self.sizes()['transcodes'], ( 30, 1 ) )
 
     def test_unknown_category( self ):
         with self.assertRaises( bu_storage.StorageError ) as caught:
-            bu_storage.clean( self.cats, [ 'everything' ] )
+            self.clean( [ 'everything' ] )
         self.assertEqual( caught.exception.code, 'storage.unknown_category' )
 
+    def test_clearing_goes_to_the_trash_by_default( self ):
+        trashed = []
+        freed = self.clean( [ 'transcodes', 'model_leftovers' ], trash=trashed.append )
+        self.assertEqual( [ row['bytes'] for row in freed ], [ 30, 45 ] )
+        self.assertEqual( sorted( os.path.basename( path ) for path in trashed ),
+                          [ '320n.onnx.part', 'old.onnx.bad', 'transcode' ] )
+        self.assertTrue( os.path.exists( self.dirs['transcodes'] ), 'the trash took it, nothing was deleted here' )
+
+    def test_a_trash_that_refuses_removes_nothing_for_good( self ):
+        import betautils_trash as bu_trash
+
+        def refuse( path ):
+            raise bu_trash.TrashError( 'other_disk' )
+        with self.assertRaises( bu_storage.StorageError ) as caught:
+            self.clean( [ 'transcodes' ], trash=refuse )
+        self.assertEqual( ( caught.exception.code, caught.exception.params ), ( 'storage.trash_failed', { 'category': 'transcodes' } ) )
+        self.assertEqual( self.sizes()['transcodes'], ( 30, 1 ) )
+
+    def test_a_finished_output_named_like_a_part_is_kept( self ):
+        finished = 'trip.video.part1-0123456789abcdef-640-10-dabc123-cdef456-e1a2b.mp4'
+        _write( os.path.join( self.dirs['outputs'], finished ), 300 )
+        unfinished = 'trip.video.part1-0123456789abcdef-640-10-dabc123-cdef456-e1a2b.video.part0001.mkv'
+        _write( os.path.join( self.dirs['outputs'], unfinished ), 20 )
+        self.assertFalse( bu_storage._is_partial_output( finished ) )
+        self.assertTrue( bu_storage._is_partial_output( unfinished ) )
+        self.assertTrue( bu_storage._is_partial_output( finished[:-4] + '.tmp.mp4' ) )
+        self.assertFalse( bu_storage._is_partial_output( 'holiday.tmp.notes.txt' ) )
+        self.clean( [ 'unfinished_renders' ], confirm=True )
+        self.assertTrue( os.path.exists( os.path.join( self.dirs['outputs'], finished ) ) )
+        self.assertFalse( os.path.exists( os.path.join( self.dirs['outputs'], unfinished ) ) )
+
     def test_missing_folder_frees_nothing( self ):
-        self.assertEqual( bu_storage.clean( self.cats, [ 'missing' ] ), [ { 'id': 'missing', 'bytes': 0, 'files': 0 } ] )
+        self.assertEqual( self.clean( [ 'missing' ] ), [ { 'id': 'missing', 'bytes': 0, 'files': 0 } ] )
 
 
 class _Server:
@@ -206,8 +248,15 @@ class TestServe( _Tree ):
 
     def test_clean_and_its_errors( self ):
         import betautils_protocol as bu_proto
-        self.assertEqual( self.serve.storage_clean( _Server(), { 'categories': [ 'transcodes' ] } ),
-                          { 'freed': [ { 'id': 'transcodes', 'bytes': 30, 'files': 1 } ] } )
+        with mock.patch( 'betaconfig.storage_delete_permanently', True ):
+            self.assertEqual( self.serve.storage_clean( _Server(), { 'categories': [ 'transcodes' ] } ),
+                              { 'freed': [ { 'id': 'transcodes', 'bytes': 30, 'files': 1 } ], 'trashed': False } )
+        trashed = []
+        with mock.patch( 'betaconfig.storage_delete_permanently', False ), \
+             mock.patch( 'betautils_trash.trash', side_effect=trashed.append ):
+            answer = self.serve.storage_clean( _Server(), { 'categories': [ 'model_leftovers' ] } )
+        self.assertTrue( answer['trashed'] )
+        self.assertEqual( len( trashed ), 2 )
         cases = ( ( { 'categories': [ 'detections' ] }, False, 'storage.needs_confirm' ),
                   ( { 'categories': [ 'outputs' ], 'confirm': True }, False, 'storage.not_cleanable' ),
                   ( { 'categories': [ 'detections' ], 'confirm': True }, True, 'storage.busy' ),
@@ -232,6 +281,20 @@ class TestServe( _Tree ):
         shutil.rmtree( old )
         self.assertIsNone( self.serve.previous_cache(), 'a folder deleted by hand is no longer listed' )
 
+    def test_a_cache_set_by_the_variable_is_never_a_move( self ):
+        from unittest import mock
+        old = os.path.join( self.root, 'old-cache' )
+        os.makedirs( old )
+        self.serve.note_cache_folder( old )
+        with mock.patch( 'betautils_paths.cache_source', return_value='variable' ), \
+             mock.patch( 'betautils_paths.kind_dir', return_value=os.path.join( self.root, 'scratch-cache' ) ):
+            self.assertIsNone( self.serve.note_cache_folder() )
+        self.assertIsNone( self.serve.previous_cache() )
+
+    def test_previous_cache_asks_first( self ):
+        policies = { cat.id: cat.policy for cat in bu_storage.categories( previous_cache='/x' ) }
+        self.assertEqual( policies['previous_cache'], bu_storage.COSTLY )
+
     def test_a_cache_moved_inside_the_old_one_is_not_listed( self ):
         old = os.path.join( self.root, 'cache' )
         os.makedirs( os.path.join( old, 'inner' ) )
@@ -253,7 +316,7 @@ class TestSchemas( _Tree ):
             'categories': bu_storage.usage( self.cats ), 'disks': bu_hardware.disks( { 'cache': self.root } ),
             'cache_source': 'setting', 'busy': True } )
         schemas.validate_command_result( 'storage.clean',
-                                         { 'freed': bu_storage.clean( self.cats, [ 'transcodes' ] ) } )
+                                         { 'freed': self.clean( [ 'transcodes' ] ), 'trashed': False } )
         schemas.validate_command_data( 'storage.clean', { 'categories': [ 'detections' ], 'confirm': True } )
 
 

@@ -75,5 +75,6 @@
  "error.perf.optimize_running": "Optimize is measuring this computer. Wait for it to finish, or stop it.",
  "error.perf.machine_busy": "This computer is busy right now, so measurements would be off. Close other programs, or run anyway.",
  "error.perf.no_proposal": "There is nothing to apply yet. Run Optimize first.",
- "error.optimize.failed": "Optimize stopped with an error. The log has details."
+ "error.optimize.failed": "Optimize stopped with an error. The log has details.",
+ "error.storage.trash_failed": "These files could not go to the trash, so nothing was removed. To remove them anyway, turn on \"Delete for good when clearing storage\" in the settings."
 }

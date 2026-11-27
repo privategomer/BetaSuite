@@ -814,6 +814,8 @@ _ENTRIES = [
     S( 'stats_enabled', 'bool', 'stats_enabled', 'stats', cli='--stats', probe=False ),
     S( 'cache_dir', 'path', 'cache_dir', 'cache_dir', nullable=True,
        none_means="the operating system's cache folder", probe='/elsewhere/betasuite-cache' ),
+    S( 'storage_delete_permanently', 'bool', 'storage_delete_permanently', 'storage_delete_permanently',
+       probe=True ),
     S( 'stats_path', 'path', 'stats_path', 'stats', nullable=True,
        none_means='no stats file', probe='../output/stats/other.jsonl' ),
 
@@ -908,6 +910,7 @@ SCREEN_RULES = (
     # Resources: how hard the computer works, never what comes out.
     ( 'gpu_enabled', SCREEN_RESOURCES ),
     ( 'cache_dir', SCREEN_RESOURCES ),
+    ( 'storage_delete_permanently', SCREEN_RESOURCES ),
     ( 'cuda_device_id', SCREEN_RESOURCES ),
     ( '*nn_batch_size', SCREEN_RESOURCES ),
     ( 'person_backend.*.batch_size', SCREEN_RESOURCES ),
