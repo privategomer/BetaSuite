@@ -67,40 +67,25 @@ TRIPLE_BOX_PASSES = 3
 
 def censor_scale_for_image_box( image, feature_w, feature_h ):
     """
-    Multiplier applied to a blur/pixel style's 'strength'.
+    Multiplier for a blur or pixel style's strength.
 
-    Per betaconfig.censor_scale_strategy:
+    Chosen by betaconfig.censor_scale_strategy:
+        'feature'  the feature's shorter side / 100, so a censor looks
+                   equally strong on a small and a large feature
+        'image'    the frame's longer side / 1000, so strength follows
+                   the resolution of the whole picture
+        anything else (including 'none')  1, the style's strength as is
 
-      'feature'  (recommended) min(feature_w, feature_h) / 100
-          Scales with the censored thing's own size, so the same
-          strength reads as similarly strong whether the subject is
-          close to camera or far away.
-      'image'    max(img_h, img_w) / 1000
-          Scales with the frame instead, so strength is constant
-          relative to the picture rather than the subject.
-      'none'     1
-          strength is used as a raw pixel count.
+    Callers pass a track's stable reference size, not the live box:
+    a box jitters a little every frame, and strength recomputed from it
+    makes the blur visibly pulse.
 
-    An unrecognised strategy returns 1 rather than None. The earlier
-    version fell off the end of the function and returned None, which
-    became `strength * None` and a TypeError deep inside a render chunk.
+    Args:
+        image: The frame, read only for its size under 'image'.
+        feature_w, feature_h: The reference size of the censored feature.
 
-    THE SIZE PASSED IN MUST BE STABLE ACROSS A TRACK'S FRAMES
-    ---------------------------------------------------------
-    Under 'feature' the multiplier is min(w, h)/100, so the blur kernel
-    and the pixel block size are recomputed from whatever box size this
-    frame happens to have. A tracked box jitters: measured on 640m,
-    exposed_vulva's smoothed frame-to-frame jump has a median of 7.6px
-    and a p90 of 40.8px. At strength 54 an 18px wobble moves the blur
-    kernel by 10px, frame after frame - and a kernel that changes every
-    frame changes the visible amount of blur every frame.
-
-    That is what reads as "the blur flickers". It is not the style
-    switching; it is one style whose strength is being recomputed from a
-    moving measurement. Callers therefore pass the TRACK's stable
-    reference size (see censor_image) rather than the live box, so a
-    continuous censor keeps a constant kernel while its position and
-    extent still follow the subject.
+    Returns:
+        The multiplier. Never None, even for an unknown strategy.
     """
     strategy = getattr( betaconfig, 'censor_scale_strategy', 'feature' )
     if strategy == 'feature':
@@ -314,29 +299,28 @@ def clear_mask_cache():
 
 def apply_masked_region( image, x, y, w, h, censored_region, shape, feather=0 ):
     """
-    Composite an already-censored region back into image.
+    Composite an already-censored region into the frame through its shape.
+
+    A plain box with no feather is a straight overwrite, the cheap path
+    most styles take. Any other shape or a feather blends through the
+    cached alpha plane, so the censor fades into the original pixels.
 
     Args:
-        image: The frame to composite into. Mutated in place and
-            returned, for chaining.
-        x, y: Top-left of the region in image pixel coordinates.
-        w, h: Region size in pixels.
-        censored_region: An HxWx3 array of the finished censored pixels.
-        shape: 'box', 'circle' or 'ellipse'.
-        feather: 0-1 soft-edge amount.
+        image: The frame. Mutated in place and returned.
+        x, y, w, h: Where the region goes, in image pixel coordinates.
+        censored_region: An h x w x 3 array, the censored pixels.
+        shape: 'box' | 'circle' | 'ellipse'.
+        feather: Edge softness passed to the mask; 0 for a hard edge.
 
     Returns:
         image.
     """
     if shape == 'box' and not feather:
-        # The common fast path: a plain rectangular overwrite needs no
-        # mask at all.
         image[ y:y+h, x:x+w ] = censored_region
         return image
-
     alpha = _alpha_for( shape, w, h, feather )
-    original_region = image[ y:y+h, x:x+w ].astype( np.float32 )
-    blended = alpha*censored_region.astype( np.float32 ) + ( 1 - alpha )*original_region
+    original = image[ y:y+h, x:x+w ].astype( np.float32 )
+    blended = alpha * censored_region.astype( np.float32 ) + ( 1 - alpha ) * original
     image[ y:y+h, x:x+w ] = blended.astype( image.dtype )
     return image
 
@@ -347,23 +331,23 @@ def apply_masked_region( image, x, y, w, h, censored_region, shape, feather=0 ):
 
 def pixelate_block_grid( region, w, h, factor ):
     """
-    Square-grid pixelation: downsample to a coarse grid, then upsample
-    nearest-neighbour so each cell renders as one flat block.
+    Square-grid pixelation, used by both the 'square' and 'mosaic' patterns.
 
-    What most tools call either "pixelation" or "mosaic" - the same
-    technique under two names, which is why both patterns route here.
+    Shrinks the region to one cell per `factor` source pixels (linear
+    interpolation averages each cell) and enlarges it back with nearest
+    neighbour, so every cell becomes one flat block.
 
     Args:
-        region: HxWx3 region to pixelate.
-        w, h: region's size.
-        factor: Block size in source pixels. Larger means chunkier.
+        region: The h x w x 3 pixels to pixelate.
+        w, h: The region's size.
+        factor: About how many source pixels one block spans.
 
     Returns:
-        An HxWx3 array the same size as region.
+        A new h x w x 3 array.
     """
-    downsampled_w = max( 1, math.ceil( w/factor ) )
-    downsampled_h = max( 1, math.ceil( h/factor ) )
-    small = cv2.resize( region, ( downsampled_w, downsampled_h ), interpolation=cv2.INTER_LINEAR )
+    grid_w = max( 1, math.ceil( w / factor ) )
+    grid_h = max( 1, math.ceil( h / factor ) )
+    small = cv2.resize( region, ( grid_w, grid_h ), interpolation=cv2.INTER_LINEAR )
     return cv2.resize( small, ( w, h ), interpolation=cv2.INTER_NEAREST )
 
 
@@ -1085,53 +1069,102 @@ def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_see
 # Debug overlay and watermark
 # ---------------------------------------------------------------------------
 
+# Magenta: a colour no real censor style defaults to, so an unstyled
+# debug box is obvious.
+_DEBUG_DEFAULT_RGB = ( 255, 0, 255 )
+_DEBUG_FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def _outlined_text( image, text, origin, scale, colour, thickness ):
+    """Text with a dark outline under it, readable on any background."""
+    cv2.putText( image, text, origin, _DEBUG_FONT, scale, ( 0, 0, 0 ), thickness + 2, cv2.LINE_AA )
+    cv2.putText( image, text, origin, _DEBUG_FONT, scale, colour, thickness, cv2.LINE_AA )
+
+
 def debug_image( image, box ):
     """
-    Draw a labelled debug rectangle for one box instead of censoring it.
+    Draw a box as a labelled outline instead of censoring it.
 
-    Active when betaconfig.debug_mode's bit 0 is set. Useful for
-    eyeballing detection quality without touching items_to_censor.
+    The 'debug' style, so detections can be eyeballed: the box's
+    rectangle in the style's colour, and beside it its corners, label,
+    score, time span and any annotation a tool attached as 'debug_note'.
 
     Args:
-        image: The frame to draw on. Mutated in place and returned.
-        box: The box being visualised.
+        image: The frame. Made C-contiguous (OpenCV draws only on
+            contiguous arrays), drawn on and returned.
+        box: The box to draw.
 
     Returns:
-        image.
+        The drawn frame, same shape as the input.
     """
-    x, y, w, h = box['x'], box['y'], box['w'], box['h']
-    color_bgr = tuple( reversed( box['censor_style'].get( 'color', ( 255, 0, 255 ) ) ) )
     image = np.ascontiguousarray( image )
-    cv2.rectangle( image, ( x, y ), ( x+w, y+h ), color_bgr, 3 )
-    cv2.putText( image, '(%d,%d)'%(x, y),     ( x+10, y+20 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
-    cv2.putText( image, '(%d,%d)'%(x+w, y+h), ( x+10, y+40 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
-    cv2.putText( image, box['label'],         ( x+10, y+60 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
-    cv2.putText( image, '%.2f %.1f %.1f'%( box['score'], box['start'], box['end'] ),
-                 ( x+10, y+80 ), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
+    style = box.get( 'censor_style' ) or {}
+    red, green, blue = style.get( 'color' ) or _DEBUG_DEFAULT_RGB
+    # Styles hold RGB; OpenCV draws BGR.
+    colour = ( int( blue ), int( green ), int( red ) )
+    x, y = int( box['x'] ), int( box['y'] )
+    w, h = int( box['w'] ), int( box['h'] )
+    cv2.rectangle( image, ( x, y ), ( x + w, y + h ), colour, 2 )
+
+    # Corners along the top edge, the label in the middle with a tool's
+    # note directly under it (where the eye goes first), and the score
+    # and time span along the bottom edge.
+    scale = 0.5
+    text_x = x + 5
+    middle_y = y + h // 2
+    _outlined_text( image, '(%d,%d)-(%d,%d)' % ( x, y, x + w, y + h ), ( text_x, y + 15 ),
+                    scale, colour, 1 )
+    _outlined_text( image, str( box.get( 'label', '' ) ), ( text_x, middle_y ), scale, colour, 1 )
     if box.get( 'debug_note' ):
-        # A tool's own annotation, e.g. which suppression rule made the difference.
-        cv2.putText( image, str( box['debug_note'] ), ( x+10, y+100 ),
-                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1 )
+        _outlined_text( image, str( box['debug_note'] ), ( text_x, middle_y + 20 ), scale, colour, 1 )
+    _outlined_text( image, 'score %.2f  t %.2f-%.2f' % ( float( box.get( 'score', 0 ) ),
+                                                         float( box.get( 'start', 0 ) ),
+                                                         float( box.get( 'end', 0 ) ) ),
+                    ( text_x, y + h - 6 ), scale, colour, 1 )
     return image
 
 
 def watermark_image( image ):
-    """Draw the BetaSuite watermark, if betaconfig enables it."""
+    """
+    Credit BetaSuite in a corner of the frame, when enabled.
+
+    Off (betaconfig.enable_betasuite_watermark false, the default), the
+    same object comes back untouched, so render paths pay nothing for it.
+    On, a short credit is drawn bottom left, scaled with the frame so it
+    stays legible on large frames.
+
+    Args:
+        image: The frame.
+
+    Returns:
+        The frame, watermarked or as given.
+    """
     if not getattr( betaconfig, 'enable_betasuite_watermark', False ):
         return image
     image = np.ascontiguousarray( image )
-    h, w = image.shape[:2]
-    text_scale = max( min( w/750, h/750 ), 1 )
-    cv2.putText( image, 'Censored with betasuite.net', ( 20, math.ceil( 20*text_scale ) ),
-                 cv2.FONT_HERSHEY_PLAIN, text_scale, ( 0, 0, 255 ), math.floor( text_scale ) )
+    img_h, img_w = image.shape[:2]
+    # 1.0 up to about 1000 pixels on the longer side, then proportional.
+    factor = max( 1.0, max( img_h, img_w ) / 1000 )
+    scale = 0.6 * factor
+    thickness = max( 1, int( round( 1.5 * factor ) ) )
+    margin = int( round( 10 * factor ) )
+    _outlined_text( image, 'censored with BetaSuite', ( margin, img_h - margin ),
+                    scale, ( 255, 255, 255 ), thickness )
     return image
 
 
 def annotate_image_shape( image ):
-    """Draw image.shape as text in the corner. Debugging aid."""
+    """
+    Write the frame's array shape in its top-left corner (a debug aid).
+
+    Args:
+        image: The frame. Made C-contiguous, drawn on and returned.
+
+    Returns:
+        The annotated frame.
+    """
     image = np.ascontiguousarray( image )
-    cv2.putText( image, str( image.shape ), ( 20, 20 ),
-                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, ( 0, 0, 255 ), 2 )
+    _outlined_text( image, str( image.shape ), ( 5, 20 ), 0.5, ( 255, 255, 255 ), 1 )
     return image
 
 
@@ -1139,42 +1172,33 @@ def annotate_image_shape( image ):
 # Raw detection -> censorable box
 # ---------------------------------------------------------------------------
 
-def compute_safe_geometry( raw_x, raw_y, raw_w, raw_h, vid_w, vid_h,
-                           x_area_safety, y_area_safety ):
+def compute_safe_geometry( raw_x, raw_y, raw_w, raw_h, vid_w, vid_h, x_area_safety, y_area_safety ):
     """
-    Pad a raw box by the given area-safety fractions and clamp it to the
-    frame.
+    Pad a raw box by its area safety and clamp it into the frame.
 
-    Split out of process_raw_box so betautils_track can re-run the
-    identical arithmetic with a STYLE's own area safety once a track's
-    style is resolved, rather than being stuck with the item default.
+    Each safety is a fraction of the box's own size added across that
+    axis, half on each side; a negative safety shrinks the box.
+
+    The start is clamped inside the frame BEFORE the width and height
+    are worked out. A box starting past the frame edge would otherwise
+    get a size computed from a negative remainder, and the empty slice
+    that makes crashes a blur deep inside a render.
 
     Args:
-        raw_x, raw_y, raw_w, raw_h: The unpadded box, in pixels.
+        raw_x, raw_y, raw_w, raw_h: The detection, in pixels.
         vid_w, vid_h: Frame size, in pixels.
-        x_area_safety: Fractional horizontal padding. Negative shrinks.
-        y_area_safety: Fractional vertical padding. Negative shrinks.
+        x_area_safety, y_area_safety: Fractional padding per axis.
 
     Returns:
-        A (safe_x, safe_y, safe_w, safe_h) tuple, always inside the
-        frame, always at least 1x1.
-
-    Note:
-        The START coordinate is clamped BEFORE width and height are
-        computed. A raw model box can land past the frame edge (a
-        detection straddling into the black padding the preprocessor
-        adds, scaled back up by a large picture size). Without that
-        clamp, safe_x could reach or exceed vid_w; the w/h clamp still
-        forces w >= 1, but image[y:y+h, x:x+w] with x >= vid_w returns an
-        EMPTY array rather than raising, which is what crashed
-        cv2.GaussianBlur with "!_src.empty()" deep inside a render chunk.
+        (safe_x, safe_y, safe_w, safe_h), ints, inside the frame and at
+        least 1 x 1.
     """
-    safe_x = math.floor( max( 0, raw_x - raw_w*x_area_safety/2 ) )
-    safe_y = math.floor( max( 0, raw_y - raw_h*y_area_safety/2 ) )
-    safe_x = min( safe_x, max( 0, vid_w-1 ) )
-    safe_y = min( safe_y, max( 0, vid_h-1 ) )
-    safe_w = max( 1, math.ceil( min( vid_w-safe_x, raw_w*( 1+x_area_safety ) ) ) )
-    safe_h = max( 1, math.ceil( min( vid_h-safe_y, raw_h*( 1+y_area_safety ) ) ) )
+    safe_x = math.floor( max( 0, raw_x - raw_w * x_area_safety / 2 ) )
+    safe_y = math.floor( max( 0, raw_y - raw_h * y_area_safety / 2 ) )
+    safe_x = min( safe_x, max( 0, vid_w - 1 ) )
+    safe_y = min( safe_y, max( 0, vid_h - 1 ) )
+    safe_w = max( 1, math.ceil( min( vid_w - safe_x, raw_w * ( 1 + x_area_safety ) ) ) )
+    safe_h = max( 1, math.ceil( min( vid_h - safe_y, raw_h * ( 1 + y_area_safety ) ) ) )
     return safe_x, safe_y, safe_w, safe_h
 
 
@@ -1262,14 +1286,18 @@ def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None, rng=None ):
 # ---------------------------------------------------------------------------
 
 def rectangles_intersect( box1, box2 ):
-    """Whether two axis-aligned boxes overlap. Touching edges count."""
-    if box1['x']+box1['w'] < box2['x']:
+    """
+    Whether two axis-aligned boxes overlap. Touching edges count.
+
+    Args:
+        box1, box2: Dicts with 'x', 'y', 'w', 'h'.
+
+    Returns:
+        True unless one lies strictly to one side of the other.
+    """
+    if box1['x'] + box1['w'] < box2['x'] or box2['x'] + box2['w'] < box1['x']:
         return False
-    if box1['y']+box1['h'] < box2['y']:
-        return False
-    if box1['x'] > box2['x']+box2['w']:
-        return False
-    if box1['y'] > box2['y']+box2['h']:
+    if box1['y'] + box1['h'] < box2['y'] or box2['y'] + box2['h'] < box1['y']:
         return False
     return True
 
@@ -1462,43 +1490,53 @@ def censor_image( image, box ):
     raise ValueError( "Unknown censor_style type %r"%(style_type,) )
 
 
-def censor_img_for_boxes( image, boxes ):
+def _style_pieces( boxes ):
     """
-    Render every box onto one frame.
+    Sort a copy of the boxes and split it into same-label, same-style runs.
 
-    Groups same-label / same-style boxes into pieces, merges each piece
-    per its overlap strategy, draws the results, then watermarks.
-
-    Args:
-        image: The frame to censor.
-        boxes: Boxes to render, each with a resolved censor_style and
-            censor_shape. NOT mutated, and not reordered - this runs
-            concurrently across render workers that share one box list.
+    Sorting by label then censor_style_sort puts boxes that may merge next
+    to each other. A box joins the current run when its label and style
+    key match the run's FIRST box. The caller's list is left as it was:
+    render workers share it.
 
     Returns:
-        The censored frame.
+        A list of non-empty lists of boxes.
+    """
+    ordered = sorted( boxes, key=lambda box: ( box['label'], censor_style_sort( box['censor_style'] ) ) )
+    pieces = []
+    for box in ordered:
+        if pieces:
+            first = pieces[-1][0]
+            if ( box['label'] == first['label']
+                 and censor_style_key( box['censor_style'] ) == censor_style_key( first['censor_style'] ) ):
+                pieces[-1].append( box )
+                continue
+        pieces.append( [ box ] )
+    return pieces
+
+
+def censor_img_for_boxes( image, boxes ):
+    """
+    Render every box onto one frame, then watermark it.
+
+    Boxes are grouped into same-label, same-style pieces, each piece is
+    collapsed by its style's overlap strategy, and every resulting box is
+    drawn. Never mutates or reorders `boxes` (see this module's
+    docstring).
+
+    Args:
+        image: The frame. May be mutated in place.
+        boxes: The resolved boxes live on this frame.
+
+    Returns:
+        The censored, watermarked frame.
     """
     if not boxes:
         return watermark_image( image )
-
     img_h, img_w = image.shape[:2]
-    ordered = sorted( boxes, key=lambda box: (
-        box['label'], censor_style_sort( box['censor_style'] ) ) )
-
-    grouped_pieces = []
-    for box in ordered:
-        previous = grouped_pieces[-1][0] if grouped_pieces else None
-        if ( previous is not None
-                and previous['label'] == box['label']
-                and censor_style_key( previous['censor_style'] ) == censor_style_key( box['censor_style'] ) ):
-            grouped_pieces[-1].append( box )
-        else:
-            grouped_pieces.append( [ box ] )
-
-    for piece in grouped_pieces:
-        for collapsed_box in collapse_boxes_for_style( piece, img_w, img_h ):
-            image = censor_image( image, collapsed_box )
-
+    for piece in _style_pieces( boxes ):
+        for box in collapse_boxes_for_style( piece, img_w, img_h ):
+            image = censor_image( image, box )
     return watermark_image( image )
 
 
@@ -1540,20 +1578,15 @@ def _blend_window( out, source, rect, shape, feather ):
 
 
 def _censored_windows( boxes, img_w, img_h ):
-    """Censored (non-show) windows, grouped and merged exactly as normal mode does."""
-    ordered = sorted( boxes, key=lambda box: (
-        box['label'], censor_style_sort( box['censor_style'] ) ) )
-    grouped_pieces = []
-    for box in ordered:
-        previous = grouped_pieces[-1][0] if grouped_pieces else None
-        if ( previous is not None
-                and previous['label'] == box['label']
-                and censor_style_key( previous['censor_style'] ) == censor_style_key( box['censor_style'] ) ):
-            grouped_pieces[-1].append( box )
-        else:
-            grouped_pieces.append( [ box ] )
+    """
+    Reverse mode's censored windows: the boxes grouped and collapsed
+    exactly as censor_img_for_boxes would draw them, without drawing.
+
+    Returns:
+        The collapsed boxes, piece by piece, in one list.
+    """
     windows = []
-    for piece in grouped_pieces:
+    for piece in _style_pieces( boxes ):
         windows.extend( collapse_boxes_for_style( piece, img_w, img_h ) )
     return windows
 
