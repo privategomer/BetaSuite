@@ -163,6 +163,10 @@ class TestEventOrder( JobHarness ):
             'file0:started', 'decision0:structure.profile', 'decision0:output.present', 'file0:skipped',
             'file1:started', 'decision1:source.not_video', 'file1:skipped',
             'state:completed' ] )
+        ended = [ data for data in self.recorder.of( 'job.file' ) if data['state'] == 'skipped' ]
+        # The present output is named, so a client can play it; a file that is not a video has none.
+        self.assertEqual( os.path.basename( ended[0]['output'] ), self.outputs()[0] )
+        self.assertNotIn( 'output', ended[1] )
 
     def test_a_full_disk_stops_the_job_with_its_code( self ):
         for name in ( 'a.mp4', 'b.mp4' ):

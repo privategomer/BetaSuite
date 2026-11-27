@@ -25,9 +25,13 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 log = { version = "0.4", features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 # Native file dialogs, used from Rust only; the page gets no dialog permission.
 tauri-plugin-dialog = "2"
+# A second start focuses the running app and exits before any webview or engine.
+tauri-plugin-single-instance = "2"
+# The queue-finished notice while the window is hidden; used from Rust only.
+tauri-plugin-notification = "2"
 
 # WebKitGTK's security manager, to let the app's page load local video.
 # Same major as the copy wry uses.

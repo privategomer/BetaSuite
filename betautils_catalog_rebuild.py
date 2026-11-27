@@ -32,7 +32,7 @@ OLD_SUFFIX = '.pre-rebuild.bak'
 
 _RUN_COLUMNS = ( 'hash', 'program', 'job', 'path', 'started_at', 'ended_at', 'outcome', 'reason', 'output',
                  'detection_key', 'censor_key', 'encode_key', 'profile', 'rule', 'rule_params', 'sample_fps',
-                 'preview', 'error_type', 'stage' )
+                 'preview', 'error_type', 'stage', 'timing' )
 
 
 class Carried:
@@ -227,7 +227,7 @@ def _carry( store, index, carried, clock ):
                 continue
             db.execute( 'INSERT INTO runs ( %s ) VALUES ( %s )'%( ', '.join( _RUN_COLUMNS ),
                                                                  ', '.join( '?' for _ in _RUN_COLUMNS ) ),
-                        tuple( run[column] for column in _RUN_COLUMNS ) )
+                        tuple( run.get( column ) for column in _RUN_COLUMNS ) )
             runs += 1
     _settle_from_runs( store, index, carried )
     return { 'carried_pins': pins, 'carried_runs': runs, 'carried_missing': missing }

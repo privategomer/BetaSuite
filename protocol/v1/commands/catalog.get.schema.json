@@ -33,7 +33,8 @@
         "added_at",
         "locations",
         "output_files",
-        "history"
+        "history",
+        "censors"
       ],
       "properties": {
         "item": {
@@ -299,6 +300,30 @@
                   "string",
                   "null"
                 ]
+              }
+            }
+          }
+        },
+        "censors": {
+          "type": "array",
+          "description": "The labels the item's present outputs hid, each with the kinds of look used on it (blur, pixel, bar, sticker, ...), read from each output's censor key record. Empty when no present output has a readable record.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "looks"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "looks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }

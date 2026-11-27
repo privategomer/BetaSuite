@@ -6,6 +6,7 @@
 
 mod cli;
 mod engine;
+mod files;
 #[cfg(target_os = "linux")]
 mod linux;
 mod logging;
@@ -13,6 +14,7 @@ mod look;
 mod models;
 mod paths;
 mod startup;
+mod tray;
 mod unsaved;
 mod video;
 
@@ -52,12 +54,14 @@ struct StartupInfo {
     locale: Option<String>,
     /// The `--theme` option: "light", "dark", or None to follow the system.
     theme: Option<String>,
-    /// The `--view` option: "player", "all-settings", or None for the player.
+    /// The `--view` option: "library", "player", "all-settings", ..., or None for the library.
     view: Option<String>,
     /// The `--search` option: All Settings' starting search text.
     search: Option<String>,
     /// The `--help-topic` option: a help section to open at start.
     help_topic: Option<String>,
+    /// The `--measure-scrub` option.
+    measure_scrub: bool,
     /// The `--open` video, already allowed, so the page's first render can
     /// start it; or why it could not be opened.
     open: Option<video::PlayableVideo>,
@@ -175,11 +179,16 @@ fn set_unsaved(unsaved: tauri::State<'_, unsaved::Unsaved>, held: bool) {
 /// Closes the window after the page has asked about unapplied changes.
 #[tauri::command]
 fn close_window(app: tauri::AppHandle) {
+    confirm_close(&app);
+    log::info!("page confirmed the close");
+    close(&app);
+}
+
+/// The next close request goes through without asking the page.
+pub(crate) fn confirm_close(app: &tauri::AppHandle) {
     app.state::<CloseConfirmed>()
         .0
         .store(true, Ordering::SeqCst);
-    log::info!("page confirmed the close");
-    close(&app);
 }
 
 /// Closing the window lets it close at once and shuts the engine down
@@ -329,6 +338,7 @@ pub fn run() -> i32 {
         view: options.view.clone(),
         search: options.search.clone(),
         help_topic: options.help_topic.clone(),
+        measure_scrub: options.measure_scrub,
         open: None,
         open_error: None,
     };
@@ -345,7 +355,18 @@ pub fn run() -> i32 {
         .manage(CloseConfirmed(AtomicBool::new(false)))
         .manage(unsaved::Unsaved::new())
         .manage(startup_timing)
+        .manage(tray::Tray::default())
+        // First, so a second start exits here: before its webview (which
+        // would share this one's profile) or its engine exists.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            log::info!(
+                "a second start ({} argument(s)) brought this window back",
+                args.len().saturating_sub(1)
+            );
+            tray::bring_back(app, "second start");
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(move |app| setup(app, transcript, startup, open))
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -376,6 +397,15 @@ pub fn run() -> i32 {
             video::pick_video,
             models::pick_model,
             look::look_image,
+            files::strip_image,
+            files::pick_files,
+            files::pick_folder,
+            files::save_as,
+            files::open_video,
+            tray::tray_setup,
+            tray::tray_status,
+            tray::hide_to_tray,
+            tray::notify,
             set_unsaved,
             close_window
         ])

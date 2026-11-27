@@ -47,6 +47,8 @@ class RunRecord:
       preview      True for a preview slice
       error_type, stage                        a failure's Python type and stage
       stats        the stats row, for a processed file
+      timing       how long its detection and render took, and on what
+                   (betautils_estimate.timing_for), for a processed file
       failure      the failure row, for a failed one
       moved_to     where move_completed_sources put the source after
     """
@@ -70,6 +72,7 @@ class RunRecord:
         self.error_type = None
         self.stage = None
         self.stats = None
+        self.timing = None
         self.failure = None
         self.moved_to = None
         self._clock = clock

@@ -19,12 +19,14 @@ export interface StartupInfo {
   locale: string | null;
   // light or dark from --theme; null follows the system.
   theme: 'light' | 'dark' | null;
-  // The view from --view; null opens on the player.
-  view: 'player' | 'what-to-hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all-settings' | null;
+  // The view from --view; null opens on the library (the player with --open).
+  view: 'library' | 'player' | 'what-to-hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all-settings' | null;
   // All Settings' starting search text, from --search.
   search: string | null;
   // A help section to open at start, from --help-topic.
   help_topic: string | null;
+  // --measure-scrub: drag across the --open video once its strip is ready, and log it.
+  measure_scrub: boolean;
   // The --open video, already allowed, or why it could not be opened.
   open: PlayableVideo | null;
   open_error: { code: string; params: Readonly<Record<string, unknown>> } | null;

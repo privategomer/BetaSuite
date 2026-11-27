@@ -120,6 +120,7 @@ ERRORS = {
     'catalog.item_busy':            ( 'item', 'job' ),
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
+    'catalog.no_such_file':         (),
     # perf.* and Optimize
     'perf.busy':                    ( 'job', ),
     'perf.optimize_running':        (),
