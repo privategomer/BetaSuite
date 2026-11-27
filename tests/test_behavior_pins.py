@@ -1,6 +1,7 @@
 """
 test_behavior_pins.py - the exact output of the censor drawing, hashing
-and RetinaNet adapter helpers is pinned.
+and RetinaNet adapter helpers, debug mode's label table and betastare's
+per-file path is pinned.
 
 Each case builds a seeded synthetic input, runs one function and reduces
 its output to a digest (the sha256 of an image's shape, dtype and bytes,
@@ -27,6 +28,7 @@ import numpy as np
 
 import betaconfig
 import betautils_censor as bu_censor
+import betautils_config as bu_config
 import betautils_hash as bu_hash
 import betautils_render as bu_render
 from detectors import retinanet_v2
@@ -183,7 +185,81 @@ def _cases():
             return _digest_value( { 'raw': raw, 'calls': session.calls } )
         cases[ 'retinanet.detect_raw_boxes/batch%d' % batch_size ] = detect
 
+    def debug_parts():
+        with mock.patch.object( betaconfig, 'debug_mode', 1 ), \
+             mock.patch.object( betaconfig, 'items_to_censor', [ 'exposed_breast' ] ):
+            bu_config.invalidate_config_caches()
+            try:
+                return _digest_value( bu_config.get_parts_to_blur() )
+            finally:
+                bu_config.invalidate_config_caches()
+    cases[ 'get_parts_to_blur/debug_mode' ] = debug_parts
+
+    for sizes in ( [ 320 ], [ 320, 640 ] ):
+        cases[ 'betastare._process_one_file/%s' % '-'.join( str( s ) for s in sizes ) ] = (
+            lambda sizes=sizes: _stare_one_file( sizes ) )
+
     return cases
+
+
+class _StubDetector:
+    """Answers one fixed detection per size, and counts calls."""
+
+    def __init__( self ):
+        self.calls = []
+
+    def raw_boxes_for_img( self, image, size, session, t ):
+        self.calls.append( ( list( image.shape ), size, t ) )
+        return [ { 'x': 20.0 + size % 7, 'y': 15.0, 'w': 60.0, 'h': 50.0, 'class_id': 'exposed_breast',
+                   'score': 0.91, 't': t, 'size': size } ]
+
+
+def _stare_one_file( sizes ):
+    """
+    betastare's whole per-file path, twice (a cold run, then one served
+    from its detection cache), on a synthetic image with a stub detector:
+    the output name, the output bytes as read back, the cached detections,
+    the detector calls and the log lines with their timings masked.
+    """
+    import random
+    import re
+    import betastare
+    random.seed( 7 )   # a look with several styles picks one at random
+    with tempfile.TemporaryDirectory() as tmp:
+        root, out, cache = ( os.path.join( tmp, name ) for name in ( 'in', 'out', 'cache' ) )
+        for folder in ( root, out, cache ):
+            os.makedirs( folder )
+        import cv2
+        cv2.imwrite( os.path.join( root, 'photo.png' ), _image( 90, 120, 3 ) )
+        detector = _StubDetector()
+        logger = mock.Mock()
+
+        def cache_path( image_hash, size, min_prob, backend ):
+            return os.path.join( cache, '%s-%s-%s-%s.json.gz' % ( image_hash, size, min_prob, backend ) )
+
+        with mock.patch.object( betastare.bu_detector, 'get_detector', return_value=detector ), \
+             mock.patch.object( betastare.bu_detector, 'get_picture_sizes', return_value=sizes ), \
+             mock.patch.object( betastare.bu_cache, 'pic_hash_path_for', side_effect=cache_path ), \
+             mock.patch.object( betaconfig, 'items_to_censor', [ 'exposed_breast' ] ):
+            bu_config.invalidate_config_caches()
+            try:
+                betastare._process_one_file( root, 'photo.png', out, 1, 2, None, logger )
+                first = sorted( os.listdir( out ) )
+                written = cv2.imread( os.path.join( out, first[ 0 ] ), cv2.IMREAD_UNCHANGED )
+                for name in first:
+                    os.remove( os.path.join( out, name ) )
+                betastare._process_one_file( root, 'photo.png', out, 2, 2, None, logger )
+                betastare._process_one_file( root, 'photo.png', out, 2, 2, None, logger )
+                cached = { name: bu_hash.read_json( os.path.join( cache, name ) ) for name in sorted( os.listdir( cache ) ) }
+                with open( os.path.join( root, 'notes.txt' ), 'w' ) as handle:
+                    handle.write( 'not an image' )
+                betastare._process_one_file( root, 'notes.txt', out, 2, 2, None, logger )
+            finally:
+                bu_config.invalidate_config_caches()
+        lines = [ ( call[ 0 ], re.sub( r'\d+\.\d{3}s', '#s', str( call[ 1 ][ 0 ] ) ) )
+                  for call in logger.method_calls ]
+        return _digest_value( { 'outputs': first, 'image': _digest_image( written ), 'cached': cached,
+                                'calls': detector.calls, 'log': lines } )
 
 
 def _record():
