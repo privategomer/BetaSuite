@@ -82,7 +82,14 @@ export function categoryName( category: Category ): string {
   return t( msgKey( 'storage.category.', category.id ) );
 }
 
+// What clearing a category costs. Slow-to-get-back kinds each say how
+// they come back; the rest share their policy's sentence.
+const OWN_COST = new Set( [ 'detections', 'shot_cuts', 'benchmarks' ] );
+
 export function policyText( category: Category ): string {
+  if ( category.policy === 'costly' && OWN_COST.has( category.id ) ) {
+    return t( msgKey( 'storage.cost.', category.id ) );
+  }
   return t( msgKey( 'storage.policy.', category.policy ) );
 }
 

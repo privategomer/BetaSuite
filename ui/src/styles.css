@@ -1177,6 +1177,12 @@ button.danger {
 
 .perf-view,
 .storage-view {
+  overflow-y: auto;
+  gap: 0.75rem;
+}
+
+.perf-view > *,
+.storage-view > * {
   max-inline-size: 60rem;
 }
 
