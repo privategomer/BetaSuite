@@ -115,21 +115,20 @@ def _run_directory():
 
 def _videos_to_process():
     """
-    Every candidate file under the uncensored tree, with its mirrored
-    destination folder, exactly as betatv.main walks them.
+    Every file under betaconst.video_path_uncensored, walked as betatv
+    walks it: ( folder, name, output_folder ) triples, names sorted
+    within each folder. No folders are created.
 
-    No extension filter, for the same reason betatv has none:
-    process_one_video already returns 'skipped' for anything it cannot
-    decode, and a hand-maintained extension list here would be a second
-    source of truth that quietly disagrees with the real one.
+    No extension filter: betatv has none either, it skips what it cannot
+    decode, and a second extension list here would disagree with it.
     """
-    found = []
-    for root, _dirs, file_names in os.walk( betaconst.video_path_uncensored ):
-        censored_folder = root.replace(
-            betaconst.video_path_uncensored, betaconst.video_path_censored, 1 )
-        for fname in sorted( file_names ):
-            found.append( ( root, fname, censored_folder ) )
-    return found
+    videos = []
+    for root, _dirs, names in os.walk( betaconst.video_path_uncensored ):
+        output_folder = root.replace( betaconst.video_path_uncensored,
+                                      betaconst.video_path_censored, 1 )
+        for name in sorted( names ):
+            videos.append( ( root, name, output_folder ) )
+    return videos
 
 
 def _pin_blur_style( labels, method, strength ):
