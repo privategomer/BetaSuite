@@ -786,8 +786,6 @@ _ENTRIES = [
        minimum=1, probe=2 ),
 
     # --- input handling ---
-    S( 'input_delete_probability', 'number', 'input_delete_probability', 'input_delete_probability',
-       minimum=0, maximum=1, probe=0.5 ),
     S( 'move_completed_sources', 'bool', 'move_completed_sources', 'move_completed_sources',
        level=SIMPLE, probe=True ),
 
@@ -933,7 +931,6 @@ SCREEN_RULES = (
 ) + tuple( ( 'default_' + field, SCREEN_WHAT_TO_HIDE ) for field in _DEFAULT_LOOK ) + (
     # The library: where videos come from and go, and their profile.
     ( 'move_completed_sources', SCREEN_LIBRARY ),
-    ( 'input_delete_probability', SCREEN_LIBRARY ),
     ( 'catalog_scan_interval_seconds', SCREEN_LIBRARY ),
     ( 'profile_by_path_pattern', SCREEN_LIBRARY ),
     ( 'profile_by_source_dir.*', SCREEN_LIBRARY ),

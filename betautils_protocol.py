@@ -92,7 +92,6 @@ ERRORS = {
     'job.unknown':                  ( 'job', ),
     'job.bad_state':                ( 'job', 'state' ),
     'job.no_such_file':             ( 'index', ),
-    'job.unsafe_setting':           ( 'path', ),
     'job.nothing_to_render':        (),
     # preview.look
     'preview.unknown_art':          ( 'style', 'item' ),

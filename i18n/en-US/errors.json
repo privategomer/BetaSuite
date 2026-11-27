@@ -30,7 +30,6 @@
  "error.job.no_such_file": "File {index, number} of the job could not be found, so the job was not started.",
  "error.job.nothing_to_render": "Nothing is chosen to hide, so the job would change nothing. Choose what to hide first.",
  "error.job.unknown": "That job is no longer known to the engine.",
- "error.job.unsafe_setting": "The job was not started because of the setting {path}: the app will not run with it unattended.",
  "error.model.busy": "This model is downloading. Cancel the download before removing it.",
  "error.model.download_failed": "{reason, select, network {The download stopped because the connection was lost or not available. Install again to continue where it stopped.} http {The download server refused the request. Try again later.} other {The download returned a web page instead of the model file. Try again later, or use a file you already have.}}",
  "error.model.hash_mismatch": "The file for this model was not the right one, so it was deleted and nothing was installed. Try again.",

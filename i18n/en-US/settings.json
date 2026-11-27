@@ -98,8 +98,6 @@
  "setting.governor_battery_low_pct.tip": "Battery charge, in percent, below which only one render worker runs.",
  "setting.governor_detection_pace_max.label": "Most detection time spent yielding",
  "setting.governor_detection_pace_max.tip": "The largest share of a file's detection time that yielding to other programs may add.",
- "setting.input_delete_probability.label": "Delete sources",
- "setting.input_delete_probability.tip": "Chance that a finished source file is deleted. 0 never deletes.",
  "setting.interpolation_enabled.label": "Fill short gaps",
  "setting.interpolation_enabled.tip": "Keep a box in place through short gaps between detections.",
  "setting.interpolation_max_gap.label": "Longest gap filled",

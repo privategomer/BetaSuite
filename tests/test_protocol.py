@@ -70,7 +70,6 @@ EXAMPLE_PARAMS = {
     'job.unknown':                  { 'job': '3f2a' },
     'job.bad_state':                { 'job': '3f2a', 'state': 'completed' },
     'job.no_such_file':             { 'index': 2 },
-    'job.unsafe_setting':           { 'path': 'input_delete_probability' },
     'job.nothing_to_render':        {},
     'preview.unknown_art':          { 'style': 'flat', 'item': 'tile.exposed_vulva.female' },
     'preview.bad_image':            {},

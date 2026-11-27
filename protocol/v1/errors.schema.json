@@ -34,7 +34,6 @@
     { "$ref": "#/$defs/job.unknown" },
     { "$ref": "#/$defs/job.bad_state" },
     { "$ref": "#/$defs/job.no_such_file" },
-    { "$ref": "#/$defs/job.unsafe_setting" },
     { "$ref": "#/$defs/job.nothing_to_render" },
     { "$ref": "#/$defs/preview.unknown_art" },
     { "$ref": "#/$defs/preview.bad_image" },
@@ -512,18 +511,6 @@
           "type": "object",
           "required": [ "index" ],
           "properties": { "index": { "type": "integer", "minimum": 0 } },
-          "additionalProperties": false
-        }
-      }
-    },
-    "job.unsafe_setting": {
-      "description": "The settings this job would run with include one the engine will not run unattended. path names it: input_delete_probability above 0 deletes sources, which the command line asks about first.",
-      "properties": {
-        "code": { "const": "job.unsafe_setting" },
-        "params": {
-          "type": "object",
-          "required": [ "path" ],
-          "properties": { "path": { "type": "string" } },
           "additionalProperties": false
         }
       }

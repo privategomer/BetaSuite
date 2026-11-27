@@ -237,7 +237,7 @@ class TestRestored( _Kept ):
 
     def test_a_restored_job_checked_at_resume_against_todays_settings( self ):
         self.restart( [ { 'job': 'old', 'files': [ self.files['a.mp4'] ],
-                          'overrides': { 'input_delete_probability': 0.5 }, 'next_index': 0, 'counts': {} } ] )
-        self.refused( 'job.resume', { 'job': 'old' }, 'job.unsafe_setting' )
+                          'overrides': { 'items_to_censor': [] }, 'next_index': 0, 'counts': {} } ] )
+        self.refused( 'job.resume', { 'job': 'old' }, 'job.nothing_to_render' )
         self.assertEqual( self.ok( 'job.list' )['jobs'][0]['state'], 'paused', "still held" )
         self.assertEqual( self.lock_calls, [] )

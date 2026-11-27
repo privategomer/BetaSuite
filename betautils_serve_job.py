@@ -808,8 +808,7 @@ def start_checks( overrides ):
     """
     Raise the ProtocolError that keeps a job with these overrides from
     starting, checked as betatv.py checks a run: config.invalid,
-    job.unsafe_setting (input_delete_probability above 0: the engine
-    cannot ask first, as the command line does), job.nothing_to_render.
+    job.nothing_to_render.
     Changes the live config for a moment, so it runs only while no job
     reads it.
     """
@@ -817,15 +816,12 @@ def start_checks( overrides ):
     import betautils_config as bu_config
 
     def extra( module ):
-        return { 'delete': getattr( module, 'input_delete_probability', 0 ),
-                 'nothing': bu_config.nothing_to_render_reason() is not None }
+        return { 'nothing': bu_config.nothing_to_render_reason() is not None }
 
     store = bu_serve_config.store()
     evaluation = store.evaluate( store.text(), overrides, extra=extra )
     if not evaluation.ok:
         raise bu_serve_config._invalid( evaluation.errors )
-    if evaluation.extra['delete']:
-        raise bu_proto.ProtocolError( 'job.unsafe_setting', { 'path': 'input_delete_probability' } )
     if evaluation.extra['nothing']:
         raise bu_proto.ProtocolError( 'job.nothing_to_render', {} )
 

@@ -286,9 +286,6 @@ class TestSubmit( _QueueTest ):
                                         'config.unknown_key' )['path'], 'encode_crff' )
         self.refused( 'job.submit', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'encode_crf': 'x' } },
                       'config.invalid' )
-        self.assertEqual( self.refused( 'job.submit', { 'files': [ self.files['a.mp4'] ],
-                                                        'overrides': { 'input_delete_probability': 0.5 } },
-                                        'job.unsafe_setting' ), { 'path': 'input_delete_probability' } )
         self.refused( 'job.submit', { 'files': [ self.files['a.mp4'] ], 'overrides': { 'items_to_censor': [] } },
                       'job.nothing_to_render' )
         self.assertFalse( self.server.jobs.busy )
