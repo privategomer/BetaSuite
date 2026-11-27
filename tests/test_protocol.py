@@ -96,6 +96,18 @@ EXAMPLE_PARAMS = {
     'catalog.missing':              { 'item': '0123456789abcdef' },
     'catalog.thumbnail_failed':     { 'item': '0123456789abcdef', 'reason': 'not_video' },
     'catalog.no_such_file':         {},
+    # perf.* and Optimize
+    'perf.busy':                    { 'job': '3f2a' },
+    'perf.optimize_running':        {},
+    'perf.machine_busy':            {},
+    'perf.no_proposal':             {},
+    'optimize.failed':              { 'exit_code': 1 },
+    # storage.*
+    'storage.unknown_category':     { 'category': 'everything' },
+    'storage.not_cleanable':        { 'category': 'outputs', 'policy': 'kept' },
+    'storage.needs_confirm':        { 'category': 'detections', 'policy': 'costly' },
+    'storage.busy':                 { 'category': 'detections' },
+    'storage.trash_failed':         { 'category': 'transcodes' },
 }
 
 

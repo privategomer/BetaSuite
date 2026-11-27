@@ -227,6 +227,18 @@ if [ "$USE_UV" = 1 ] && ! ensure_uv; then
     USE_UV=0
 fi
 
+# uv keeps its downloads in the app's own cache folder, not the shared
+# ~/.cache/uv, so the Storage view can list them and delete them safely.
+# A UV_CACHE_DIR set by hand is kept. where.py is stdlib only.
+if [ "$USE_UV" = 1 ] && [ -z "${UV_CACHE_DIR:-}" ]; then
+    if app_cache="$(python3 "$REPO_DIR/tools/lib/where.py" cache 2>>"$HARNESS_LOG_FILE")" && [ -n "$app_cache" ]; then
+        export UV_CACHE_DIR="$app_cache/setup-downloads"
+        log_info "uv downloads go to $UV_CACHE_DIR (the Storage view can delete them)"
+    else
+        log_warn "could not find the app's cache folder; uv uses its own default download cache"
+    fi
+fi
+
 existing="$(venv_python_version)"
 if [ -n "$existing" ] && [ "$existing" != "$PY_VERSION" ]; then
     if ask_yes_no ".venv uses Python $existing, not $PY_VERSION. Delete and recreate it?" y; then

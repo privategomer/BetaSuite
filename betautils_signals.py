@@ -182,6 +182,17 @@ def stop_reason():
         return _reason if _interrupt_event.is_set() else None
 
 
+def wait( seconds ):
+    """
+    Sleep up to `seconds`, waking at once for a stop, then check(). For
+    the governor's short detection yields: a pause or cancel is never
+    held up by one.
+    """
+    if seconds > 0:
+        _interrupt_event.wait( seconds )
+    check()
+
+
 def check():
     """
     Raise Interrupted if a stop has been requested.

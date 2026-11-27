@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/storage.usage.schema.json",
+  "title": "storage.usage",
+  "description": "What the app's files use on disk, by category: detections, shot_cuts, transcodes, look_previews, thumbnails, download_cache (the setup's own downloads), unfinished_renders, model_leftovers (partial and set-aside model files), models, outputs, catalog, logs, stats, benchmarks, run_keys (with the file hashes), and when present previous_cache (a cache folder used before cache_dir moved it; costly, since it holds detections) and shared_download_cache (uv's shared default, left by an older setup). policy says what removing it costs: safe (made again when needed, quickly), costly (slow to get back: detections and shot cuts are made again when needed, slowly; benchmarks are never made again, only Optimize measures again), resume (unfinished work redone), shared and kept (listed only). disks is free space per kind of folder as hw.detect gives it; cache_source says where the cache folder comes from (variable: BETASUITE_CACHE_DIR, setting: cache_dir, default); busy is true while a job holds the queue. No paths.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "categories",
+        "disks",
+        "cache_source",
+        "busy"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "policy",
+              "bytes",
+              "files"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "config",
+                  "data",
+                  "cache",
+                  "state",
+                  "inputs",
+                  "outputs"
+                ]
+              },
+              "policy": {
+                "enum": [
+                  "safe",
+                  "costly",
+                  "resume",
+                  "shared",
+                  "kept"
+                ]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "disks": {
+          "$ref": "https://betasuite.invalid/protocol/v1/commands/hw.detect.schema.json#/$defs/result/properties/disks"
+        },
+        "cache_source": {
+          "enum": [
+            "variable",
+            "setting",
+            "default"
+          ]
+        },
+        "busy": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

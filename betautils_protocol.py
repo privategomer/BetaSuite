@@ -121,6 +121,18 @@ ERRORS = {
     'catalog.missing':              ( 'item', ),
     'catalog.thumbnail_failed':     ( 'item', 'reason' ),
     'catalog.no_such_file':         (),
+    # perf.* and Optimize
+    'perf.busy':                    ( 'job', ),
+    'perf.optimize_running':        (),
+    'perf.machine_busy':            (),
+    'perf.no_proposal':             (),
+    'optimize.failed':              ( 'exit_code', ),
+    # storage.*
+    'storage.unknown_category':     ( 'category', ),
+    'storage.not_cleanable':        ( 'category', 'policy' ),
+    'storage.needs_confirm':        ( 'category', 'policy' ),
+    'storage.busy':                 ( 'category', ),
+    'storage.trash_failed':         ( 'category', ),
 }
 
 # Values of the 'reason' parameter.

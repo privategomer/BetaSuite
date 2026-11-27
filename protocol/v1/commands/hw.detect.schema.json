@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/hw.detect.schema.json",
+  "title": "hw.detect",
+  "description": "This machine as the engine sees it: OS, CPU, memory, the NVIDIA GPU (nvidia-smi) and whether onnxruntime can use it (cuda_usable needs both), whether it has a battery, and free space on the disk of each kind of folder (volume numbers the distinct file systems; no paths). safe_settings are the settings these facts settle without measuring, where the value in effect differs, each with a reason code: hw.gpu_usable, hw.gpu_not_usable. Settings that could change detections, such as the batch size, are left to perf.optimize. Unknown values are null.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "os",
+        "cpu",
+        "memory",
+        "gpu",
+        "cuda_usable",
+        "providers",
+        "battery",
+        "disks",
+        "safe_settings"
+      ],
+      "properties": {
+        "os": {
+          "type": "object",
+          "required": [
+            "platform",
+            "release"
+          ],
+          "properties": {
+            "platform": {
+              "type": "string"
+            },
+            "release": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "required": [
+            "model",
+            "threads"
+          ],
+          "properties": {
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "threads": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "total_mb",
+            "available_mb",
+            "swap_mb"
+          ],
+          "properties": {
+            "total_mb": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "available_mb": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "swap_mb": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "gpu": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "name",
+            "driver",
+            "vram_mb"
+          ],
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "driver": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vram_mb": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "cuda_usable": {
+          "type": "boolean"
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "battery": {
+          "type": "boolean"
+        },
+        "disks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "volume",
+              "free_bytes",
+              "total_bytes"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "config",
+                  "data",
+                  "cache",
+                  "state",
+                  "inputs",
+                  "outputs"
+                ]
+              },
+              "volume": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "free_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "safe_settings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "setting",
+              "value",
+              "current",
+              "code",
+              "params"
+            ],
+            "properties": {
+              "setting": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {},
+              "current": {},
+              "code": {
+                "enum": [
+                  "hw.gpu_usable",
+                  "hw.gpu_not_usable"
+                ]
+              },
+              "params": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

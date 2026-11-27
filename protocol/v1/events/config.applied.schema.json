@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/config.applied.schema.json",
+  "title": "config.applied",
+  "description": "A settings change made while jobs ran has been written: a waiting one (its id) or one from job.restart_with_changes (id null). moves and may_move as config.set says them.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id",
+        "moves",
+        "may_move"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "moves": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detection",
+              "censor",
+              "encode"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "may_move": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detection",
+              "censor",
+              "encode"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

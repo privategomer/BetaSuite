@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/governor.override_clear.schema.json",
+  "title": "governor.override_clear",
+  "description": "End the override: the governor decides again. Answers like governor.get.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "allOf": [
+        {
+          "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/data"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "history"
+      ],
+      "properties": {
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json#/$defs/decision"
+          }
+        }
+      }
+    }
+  }
+}

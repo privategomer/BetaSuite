@@ -8,6 +8,8 @@
   "example-local-config",
   "toolsbenchtune_machinesh",
   "where-data-lives-betasuite_data_root",
+  "storage_delete_permanently",
+  "cache_dir",
   "detector-backend",
   "selected",
   "model_variant-nudenet_v3-per-backend",
@@ -109,6 +111,7 @@
   "ffmpegs-own-output",
   "debug_mode",
   "hardware",
+  "the-resource-governor",
   "betavision-screen-capture",
   "miscellaneous",
   "art_style",
@@ -135,6 +138,7 @@
   "blur_approximation_min_kernel",
   "blur_edge_margin",
   "blur_fast_approximation",
+  "cache_dir",
   "catalog_scan_interval_seconds",
   "censor_overlap_strategy.bar",
   "censor_overlap_strategy.blur",
@@ -307,6 +311,13 @@
   "ffmpeg_retry_backoff_seconds",
   "force_structure_profile",
   "global_min_prob",
+  "governor.battery_low_pct",
+  "governor.busy_cpu_pct",
+  "governor.detection_pace_max",
+  "governor.enabled",
+  "governor.memory_pressure_pct",
+  "governor.memory_severe_pct",
+  "governor.user_idle_seconds",
   "gpu_enabled",
   "input_delete_probability",
   "item_overrides.covered_vulva.censor_shape",
@@ -372,6 +383,7 @@
   "shot_cut_threshold",
   "stats_enabled",
   "stats_path",
+  "storage_delete_permanently",
   "structure_scan_workers",
   "type_default_shapes.bar",
   "video_censor_fps",
@@ -1345,6 +1357,155 @@
     "scope": "global",
     "screen": "resources",
     "tip": "setting.structure_scan_workers.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "bool",
+    "label": "setting.governor_enabled.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "governor.enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_memory_pressure_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.memory_pressure_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_memory_pressure_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_memory_severe_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.memory_severe_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_memory_severe_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_busy_cpu_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.busy_cpu_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_busy_cpu_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_user_idle_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.user_idle_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_user_idle_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_battery_low_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.battery_low_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_battery_low_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_detection_pace_max.label",
+    "level": "advanced",
+    "maximum": 0.5,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.detection_pace_max",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_detection_pace_max.tip",
     "when": []
    },
    {
@@ -3327,6 +3488,38 @@
     "scope": "global",
     "screen": "other",
     "tip": "setting.stats_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "cache_dir",
+    "kind": "path",
+    "label": "setting.cache_dir.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "none": "setting.cache_dir.none",
+    "nullable": true,
+    "path": "cache_dir",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.cache_dir.tip",
+    "when": []
+   },
+   {
+    "help": "storage_delete_permanently",
+    "kind": "bool",
+    "label": "setting.storage_delete_permanently.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "storage_delete_permanently",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.storage_delete_permanently.tip",
     "when": []
    },
    {

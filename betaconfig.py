@@ -303,6 +303,18 @@ cuda_device_id = 0
 detection_prefetch_frames = 0   # frames decoded ahead of the model; 0 = off
 structure_scan_workers = 0      # betabench structure-scan; 0 = auto (one per core, at most 4)
 
+# The resource governor: slows a run when the computer is busy, short on
+# memory or on battery. Never changes what a run produces.
+governor = {
+    'enabled': True,
+    'memory_pressure_pct': 10,    # Linux memory stall share (some avg10) that counts as pressure
+    'memory_severe_pct': 40,      # ...and as severe (one render worker)
+    'busy_cpu_pct': 67,           # other programs' CPU use, percent of all cores
+    'user_idle_seconds': 60,      # Windows: input more recent than this is an active user
+    'battery_low_pct': 20,
+    'detection_pace_max': 0.10,   # most detection time per file spent yielding
+}
+
 # Frames per second of video that get detection and tracking.
 video_censor_fps = 10
 
@@ -500,6 +512,11 @@ blur_edge_margin = True   # blur reads real pixels around the box, so it holds s
 
 input_delete_probability = 0
 move_completed_sources = False   # move each finished source to ../resources/source/completed/<its folder>/
+
+# --- Where the cache lives ----------------------------------------------
+
+cache_dir = None   # an absolute folder for the cache; None = the OS cache folder. Read at start
+storage_delete_permanently = False   # the Storage view clears to the system trash; True removes for good
 
 # --- Library catalog ----------------------------------------------------
 

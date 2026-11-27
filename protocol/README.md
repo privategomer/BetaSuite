@@ -53,6 +53,18 @@ Settings must not change while a job runs. While any job is queued, running or p
 
 ## Jobs
 
+### Settings changed while jobs run
+
+Settings stay as they were while a job holds the queue, because a run reads them as it goes (`config.busy`). The app offers three ways to keep the change instead of losing it:
+
+| Way | Command |
+|---|---|
+| after the jobs | `config.set` or `config.reset` with `when: "after_jobs"`. The change is checked now and kept in the state folder (`pending_config.json`), so a restart keeps it, then written when the queue is idle or at the next engine start. `config.pending` lists what waits; `config.pending_discard` drops one (`id`) or all |
+| pause, apply, go on | `job.restart_with_changes` with `mode: "resume"`: the running job pauses at its next safe point, the change is written, and it resumes. The file in progress keeps its checkpoints where its keys did not move |
+| start again with it | `mode: "requeue"`: every job is cancelled, the change is written, and each job's remaining files are queued again with its own overrides |
+
+`config.applied` says when a change made this way is written. `config.pending_failed` says it was not, with the error `config.set` would have given (the config changed under it).
+
 A job is a list of files run one after another through the same pipeline as `betatv.py`, with settings overrides for that job only. The command line runs everything in its input folder as one job, through the same code.
 
 | command | does |
@@ -145,6 +157,98 @@ The catalog of models is data (`assets/models/catalog.json`): each file's pinned
 |---|---|
 | `models.state` | `queued`, `downloading`, `installed`, `stopped`, `failed` (with an error `code` and `params`), `removed` |
 | `models.progress` | bytes on disk so far, of total; a few a second, the last one complete |
+
+## Resources
+
+| Command | Does |
+|---|---|
+| `hw.detect` | this machine: OS, CPU, memory, the NVIDIA GPU and whether onnxruntime can use it, whether it has a battery, free space on the disk of each kind of folder; and `safe_settings`, the settings these facts settle without measuring |
+| `resources.watch` | `on: true` starts `resource.sample` events and answers the latest sample; `on: false` stops them |
+
+| Event | Says |
+|---|---|
+| `resource.sample` | about once a second while watched: memory pressure and free memory, on battery and how full, CPU busy split into this engine (with its ffmpeg children) and everything else, input idle time (Windows), GPU use and memory, the engine's memory, free space for cache and outputs. May be dropped; the next one replaces it |
+
+| Command | Does |
+|---|---|
+| `governor.get` | the governor's decision now and its recent changes |
+| `governor.override` | "run at full speed anyway": `scope` `run` (this run) or `session` (until the engine stops); `memory_guard: false` also releases the memory guard |
+| `governor.override_clear` | end the override |
+| `governor.enable` | the on/off switch (`governor.enabled`), live; `saved` says whether the setting was written `now` or will be `after_jobs` |
+
+| Event | Says |
+|---|---|
+| `governor.change` | the decision changed: the render worker cap (null: as planned), priority, detection pace, the reasons as codes with params, whether the memory guard holds, the override in force, and `active` (a run is attached). Outside a run, while `resources.watch` is on, the governor still follows the machine, so the decision says what a run would meet now. `memory_start_cap` (optional) is set while a render runs on fewer workers than the processor allows because memory was short when it started: `workers`, `wanted` and `available_mb`; this cap is the render's own and no override lifts it. An event is also sent when such a render starts or ends. Never dropped |
+
+Reason codes: `governor.full`, `governor.off`, `governor.override`, `governor.memory`, `governor.memory_severe`, `governor.busy`, `governor.user_active`, `governor.battery`, `governor.battery_low`. The policy and its settings are in CONFIG_REFERENCE.md, "The resource governor". A decision changes when and how fast work happens, never what is computed: the render's chunks and encoder threads stay as planned, and a chunk already running finishes as it started. The command line runs under the same governor and logs each change.
+
+The sampler runs only while the UI watches or a job runs, and costs well under a millisecond a second on Linux (it reads only this engine's own processes, through the kernel's children lists). The GPU is read by one long-lived nvidia-smi printing a line a second, never by starting a process each time. On battery follows the mains supply where there is one: a laptop held at a charge limit reports its battery as discharging while plugged in.
+
+Detection reads `/proc` and `/sys` on Linux and the Win32 API on Windows, and runs nvidia-smi once; no model is loaded. Disks are numbered by file system (`volume`), so kinds of folder on one disk share a number, and no path is sent. A safe setting is only one that cannot change what is detected: today `gpu_enabled`, which moves the same model between providers (`hw.gpu_usable`, `hw.gpu_not_usable`). The batch size is left to Optimize, which checks the detections.
+
+## Performance evidence
+
+| Command | Does |
+|---|---|
+| `perf.evidence` | what past runs on this machine measured at the settings in use (speed per resolution band), how often memory capped the render, and nudges, each with a one-click action |
+| `perf.rebuild` | empty the performance index and import the stats log again |
+
+**The index.** The stats log is the record of every processed file. The performance index (`perf.sqlite`, beside the stats log) is an index of it:
+- The first time the index is opened, it imports the whole log once, so past runs count from the first day.
+- After that, every run adds its own row as it finishes. Nothing is read back from the logs.
+
+**Which runs count.** A run counts for this machine when its hardware fingerprint matches. Older rows have no fingerprint; they count when their execution providers match what a run would use now, so CUDA and CPU runs are never pooled.
+
+**What the speeds leave out.** Speeds come from full runs at the same model and batch size. Left out are previews, runs the governor slowed for more than a twentieth of their time, and, for detection speed, runs that read cached detections.
+
+**Nudges:**
+- `perf.gpu_off`: a usable GPU is off.
+- `perf.memory_capped`: the memory cap set the render workers in at least 30% of recent renders.
+- `perf.not_optimized` and `perf.settings_changed`: no optimization yet, or the settings changed since the last one.
+- `perf.slower_than_usual`: the last three runs were well below this machine's usual speed.
+
+A run measures only the settings it used; Optimize measures the others.
+
+### Optimize for this PC
+
+| Command | Does |
+|---|---|
+| `perf.optimize` | measure the settings that set this machine's speed and propose values, changing nothing; answers the plan |
+| `perf.optimize_cancel` | stop it; nothing is proposed or applied |
+| `perf.optimize_apply` | write the last finished proposal to the local config, as `config.set` does |
+
+| Event | Says |
+|---|---|
+| `perf.optimize_progress` | `running` (each stage as it ends), then `finished` with the proposal, `failed` (`optimize.failed`, the exit code) or `cancelled`. Never dropped |
+
+**How it runs.** Optimize runs `tools/bench/tune_machine.py` in a child process and follows the `results.json` it writes after each stage. It never reads the log. The measurements go to the benchmarks folder (`optimize-<time>`).
+
+**Shortened by evidence.** The evidence from past runs decides how much to measure:
+- Where past runs at the settings in use are steady, detect, prefetch and render try only values next to the ones in use.
+- When memory has been capping the render, the render's full spread is measured.
+- The encode stage is skipped when an earlier optimization on this machine measured the same encoder.
+- The scan stage never runs: it tunes the bench tool only.
+
+`full: true` measures every stage a run uses, and `stages` limits it to some stages (a nudge's action). Each proposal still needs tune_machine's own checks: a gain above the measurement noise, and identical detections for a batch size.
+
+**When it may run.** It is refused while a job holds the queue (`perf.busy`), while another one runs (`perf.optimize_running`), and when the machine is busy (`perf.machine_busy`, the same check as `tune_machine.sh`) unless `force: true`. While it measures, `job.submit` answers `perf.optimize_running`.
+
+## Storage
+
+| Command | Does |
+|---|---|
+| `storage.usage` | what the app's files use, by category, with what removing each costs; free space per kind of folder; where the cache folder comes from |
+| `storage.clean` | remove named categories |
+
+Each category has a policy:
+- `safe`: made again when needed, quickly. Look previews, thumbnails, transcodes, partial or set-aside model files, the setup's own download cache, and a previous cache folder.
+- `costly`: slow to get back. Detections and shot cuts are made again when needed, but slowly. Benchmark results (Optimize's and the bench tools' measurements) are never made again; only running Optimize measures again.
+- `resume`: unfinished renders, whose parts are rendered again.
+- `shared` and `kept`: listed only. Outputs, models, the catalog, logs, stats, run keys, and a download cache in uv's shared default place, which other tools may use.
+
+`storage.clean` refuses `shared` and `kept` categories (`storage.not_cleanable`). It needs `confirm: true` for `costly` and `resume` ones (`storage.needs_confirm`), and while a job holds the queue it refuses anything the pipeline writes (`storage.busy`). It removes nothing unless every named category may be removed. No paths are sent.
+
+The cache folder comes from `BETASUITE_CACHE_DIR`, else the `cache_dir` setting, else the operating system's cache folder (`cache_source`: `variable`, `setting`, `default`). The folder is found when the engine starts. When it has moved, the old folder is listed as `previous_cache` until it is deleted. Setup keeps its downloads in `setup-downloads` inside the cache folder.
 
 ## Files
 

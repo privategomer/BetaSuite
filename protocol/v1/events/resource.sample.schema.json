@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/resource.sample.schema.json",
+  "title": "resource.sample",
+  "description": "What the machine is doing, about once a second while resources.watch is on. memory_pressure is Linux's share of the last 10 s that some task waited for memory (/proc/pressure/memory some avg10); on_battery follows the mains supply where there is one. cpu_percent is all cores together, split into this engine with its child processes (own) and everything else (other). input_idle_seconds is Windows only. Disk free is for the cache and output folders. Unknown values are null. May be dropped under load, like job.progress: the next one replaces it.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "time",
+        "memory_pressure",
+        "memory_available_mb",
+        "memory_total_mb",
+        "on_battery",
+        "battery_percent",
+        "cpu_percent",
+        "other_cpu_percent",
+        "own_cpu_percent",
+        "input_idle_seconds",
+        "gpu_percent",
+        "vram_used_mb",
+        "vram_total_mb",
+        "own_rss_mb",
+        "cache_free_bytes",
+        "outputs_free_bytes"
+      ],
+      "properties": {
+        "time": {
+          "type": "number"
+        },
+        "memory_pressure": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "memory_available_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "memory_total_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "on_battery": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "battery_percent": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "cpu_percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "other_cpu_percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "own_cpu_percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "input_idle_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "gpu_percent": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "vram_used_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "vram_total_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "own_rss_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cache_free_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "outputs_free_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

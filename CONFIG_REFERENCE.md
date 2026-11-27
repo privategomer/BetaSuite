@@ -470,6 +470,30 @@ every layout computes the same keys and reuses the same caches.
 This covers `log_path`, `stats_path`, `model_path`, sticker `dir` and
 `images`, betaconst's folders, and the tools' own output folders.
 
+### `storage_delete_permanently`
+
+What clearing in the Storage view does with the files. `False` (the
+default) moves them to the system trash: the freedesktop Trash on Linux
+(the home trash, or the disk's own `.Trash-<uid>` for a folder on another
+disk), the Recycle Bin on Windows, `~/.Trash` on macOS. A cleared kind can
+then be put back from the file manager. A move that would need a copy
+across disks is refused rather than done, and nothing is then deleted
+instead: the Storage view says so, and this setting is the way to remove
+it for good. `True` removes the files outright. Moves no cache key.
+
+### `cache_dir`
+
+Moves the cache, the large kind, to another folder (an absolute path).
+`None` keeps the operating system's cache folder. Set from the app's
+Storage view or with `tools/setup/local_config.py`. `BETASUITE_CACHE_DIR`
+wins over it, and under `BETASUITE_DATA_ROOT` the 1.x tree's cache is
+used whatever it says. The folders are found when a program starts, so
+a change takes effect at the next start; the folder the app used before
+is then listed in the Storage view as the previous cache folder, to
+delete or keep, and is never moved for you. The setup scripts' own
+download cache (`setup-downloads`) lives in the cache folder too. Moves
+no cache key: detections found in either folder are the same.
+
 ---
 
 ## Detector backend
@@ -4285,6 +4309,70 @@ them to the hardware section of `betaconfig_local.py`.
 None of them is in a cache key. They change how fast a run goes; GPU
 and CPU inference can differ in the last digits of a score, and
 detections cached on one are reused on the other.
+
+---
+
+## The resource governor
+
+`governor` slows a run when the computer needs it and speeds it back up
+when it does not. It changes when and how fast work happens, never what
+is detected or rendered, so none of its settings is in a cache key.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `governor.enabled` | `True` | `False` runs at full speed always, except the memory guard: under severe memory pressure one render worker still runs (see the override below) |
+| `governor.memory_pressure_pct` | `10` | Linux's memory stall share (`/proc/pressure/memory`, `some avg10`) at which render workers are cut, one at a time. Free memory under `render_memory_reserve_mb` counts too, on every system |
+| `governor.memory_severe_pct` | `40` | The stall share at which only one render worker runs (the memory guard). Free memory under half the reserve counts too |
+| `governor.busy_cpu_pct` | `67` | Other programs' processor use, in percent of all cores, at which the run lowers its priority and paces detection. This engine and its ffmpeg children are never counted, nor, when the desktop app runs the engine, the app itself (its window and web view). High on purpose: a desktop at rest can show a fifth of the processor in use, and pacing costs time |
+| `governor.user_idle_seconds` | `60` | Windows: key or mouse input more recent than this means someone is using the computer. Linux cannot see input under Wayland and uses `busy_cpu_pct` instead |
+| `governor.battery_low_pct` | `20` | On battery: half the render workers; under this charge, one |
+| `governor.detection_pace_max` | `0.10` | The most a file's detection may be slowed by yielding, as a share of its detection time |
+
+What each signal does, cheapest first:
+
+- **Other programs busy, or someone using the computer:** work started
+  from then on runs at a lower priority, which only costs time when
+  another program wants the processor, and detection yields briefly
+  after each batch. Workers are not cut.
+- **Memory pressure:** render workers drop by one every few seconds,
+  down to one, and climb back the same way once it has passed.
+- **Severe memory pressure:** one render worker (the memory guard).
+- **On battery:** half the workers, a lower priority, and a longer
+  detection yield. Under `battery_low_pct`, one worker.
+
+A condition must last a moment before it acts (memory 2 s, a busy
+computer 5 s) and be gone longer before it lets go, so the run does not
+flap. Detection's yields are short: each is at most 50 ms, and all of
+them together are capped at `detection_pace_max` of the file's detection
+time. They are counted in the file's stats row.
+
+Each stats row says what the governor did to that file:
+`governor_throttled_seconds` (time under any throttle),
+`governor_paced_seconds` (detection's yields), `governor_reasons` (the
+codes that acted) and `governor_fewest_workers` (the lowest render
+worker cap, or null when none applied). Speed evidence can leave
+throttled runs out or account for them.
+
+How it acts on a run: each render chunk starts on a fresh thread, and
+the governor decides as it starts how many may run at once and at what
+priority; a chunk already running is never stopped or slowed, and chunk
+boundaries and encoder threads are the render's own, so the output is
+the same whatever it decides. Linux lets a program lower a thread's
+priority but never raise it back, so only these short-lived chunk
+threads and the ffmpeg each starts are ever lowered. Detection runs on
+the job's own thread, so there a lower priority becomes the short yields
+above.
+
+"Run at full speed anyway" (`governor.override`) undoes every throttle
+except the memory guard, for this run or until the app closes. Running
+out of memory gets a run stopped by the operating system, which costs
+more than any slowdown, so the guard stays unless the override also says
+`memory_guard: false` (in the app, "Also ignore low memory", with a
+warning).
+
+The defaults are starting points: the thresholds for memory were checked
+on the hardware named in the milestone evidence, by a run under induced
+memory pressure.
 
 ---
 

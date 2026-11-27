@@ -20,7 +20,7 @@ export interface StartupInfo {
   // light or dark from --theme; null follows the system.
   theme: 'light' | 'dark' | null;
   // The view from --view; null opens on the library (the player with --open).
-  view: 'library' | 'player' | 'what-to-hide' | 'models' | 'settings' | 'all-settings' | null;
+  view: 'library' | 'player' | 'what-to-hide' | 'models' | 'performance' | 'storage' | 'settings' | 'all-settings' | null;
   // All Settings' starting search text, from --search.
   search: string | null;
   // A help section to open at start, from --help-topic.

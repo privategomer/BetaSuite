@@ -62,7 +62,8 @@ ALWAYS_ALLOWED = ( 'hello', 'shutdown' )
 
 # Events the engine can send.
 EVENTS = ( bu_proto.REJECTED_EVENT, 'job.state', 'job.file', 'job.progress', 'job.decision', 'job.error', 'job.probed',
-           'catalog.changed', 'catalog.strip_ready', 'models.state', 'models.progress' )
+           'catalog.changed', 'catalog.strip_ready', 'models.state', 'models.progress', 'resource.sample',
+           'governor.change', 'perf.optimize_progress', 'config.applied', 'config.pending_failed' )
 
 # The longest piece of a message the trace log shows.
 _PREVIEW_BYTES = 2048
@@ -269,6 +270,10 @@ class Server:
         self.jobs = None              # betautils_serve_job.JobQueue, made by the first job command
         self.catalog = None           # betautils_serve_catalog.ServedCatalog, opened by the first catalog command
         self.models = None            # betautils_serve_models.Installer, made by the first models.install
+        self.resources = None         # betautils_serve_resources.Resources, made by the first user of the sampler
+        self.governor = None          # betautils_governor_run.Runtime, made by the first job or governor command
+        self.optimizer = None         # betautils_optimize.Optimizer, made by the first perf.optimize
+        self.pending = None           # betautils_serve_changes.Pending, made when first needed
         self._after_reply = []
 
     @property
@@ -292,6 +297,16 @@ class Server:
         """Stop the model installer, if one was made; a download in progress keeps its partial file."""
         if self.models is not None:
             self.models.stop()
+
+    def stop_optimizer( self ):
+        """Stop an optimization in progress: its measurements are thrown away, nothing is applied."""
+        if self.optimizer is not None and self.optimizer.cancel():
+            self.optimizer.wait( 10 )
+
+    def stop_resources( self ):
+        """Stop the resource sampler, if it runs."""
+        if self.resources is not None:
+            self.resources.stop()
 
     def stop_catalog( self ):
         """Close the catalog, if one was opened, after the job queue has stopped."""
@@ -407,6 +422,15 @@ def _hello( server, data ):
         raise bu_proto.ProtocolError( 'protocol.unsupported_version',
                                       { 'got': offered, 'supported': list( bu_proto.SUPPORTED_VERSIONS ) } )
     server.protocol = version
+    # Settings changes an earlier engine left waiting for its jobs: written
+    # once this answer is out, with nothing running yet.
+    def apply_left_waiting():
+        try:
+            import betautils_serve_changes as bu_changes
+            bu_changes.apply_at_start( server )
+        except Exception:
+            server._logger.error( "the settings changes left waiting could not be written", exc_info=True )
+    server.after_reply( apply_left_waiting )
     server._logger.info( "hello from %s %s, protocol %d"%(
         str( client.get( 'name', '?' ) )[:64], str( client.get( 'version', '?' ) )[:64], version ) )
     return {
@@ -467,6 +491,26 @@ for _name, _handler in _STRIP_HANDLERS.items():
 # models.list, install, cancel, import, remove, use
 from betautils_serve_models import HANDLERS as _MODELS_HANDLERS   # noqa: E402
 for _name, _handler in _MODELS_HANDLERS.items():
+    register( _name, _handler )
+
+# hw.detect, resources.watch, governor.get, override, override_clear, enable
+from betautils_serve_resources import HANDLERS as _RESOURCE_HANDLERS   # noqa: E402
+for _name, _handler in _RESOURCE_HANDLERS.items():
+    register( _name, _handler )
+
+# config.pending, config.pending_discard, job.restart_with_changes
+from betautils_serve_changes import HANDLERS as _CHANGES_HANDLERS   # noqa: E402
+for _name, _handler in _CHANGES_HANDLERS.items():
+    register( _name, _handler )
+
+# perf.evidence, perf.rebuild, perf.optimize, perf.optimize_cancel, perf.optimize_apply
+from betautils_serve_perf import HANDLERS as _PERF_HANDLERS   # noqa: E402
+for _name, _handler in _PERF_HANDLERS.items():
+    register( _name, _handler )
+
+# storage.usage, storage.clean
+from betautils_serve_storage import HANDLERS as _STORAGE_HANDLERS   # noqa: E402
+for _name, _handler in _STORAGE_HANDLERS.items():
     register( _name, _handler )
 
 
@@ -537,6 +581,14 @@ def run( log_path=None, log_level=None, console_level=None, commands=None ):
             server.stop_models()
         except BaseException:
             logger.error( "the model installer did not stop cleanly", exc_info=True )
+        try:
+            server.stop_optimizer()
+        except BaseException:
+            logger.error( "the optimization did not stop cleanly", exc_info=True )
+        try:
+            server.stop_resources()
+        except BaseException:
+            logger.error( "the resource sampler did not stop cleanly", exc_info=True )
         try:
             server.stop_catalog()
         except BaseException:

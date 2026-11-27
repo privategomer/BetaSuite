@@ -8,7 +8,7 @@ before it starts if the machine looks busy, and asks before writing
 anything. Directly:
 
     python tools/bench/tune_machine.py preflight
-    python tools/bench/tune_machine.py measure --out-dir DIR [--video PATH] [--skip encode scan]
+    python tools/bench/tune_machine.py measure --out-dir DIR [--video PATH] [--skip encode scan] [--narrow detect prefetch render]
 
 STAGES (each one logged, timed, and skipped with a warning if it fails)
     inventory   CPU, memory, GPU and driver, ffmpeg's hardware encoders,
@@ -284,9 +284,19 @@ def auto_render_workers( cpu_count ):
     return max( 1, min( ( cpu_count or 1 ) // 2 or 1, 8 ) )
 
 
-def render_worker_counts( cpu_count, nvenc_sessions=None ):
-    """Worker counts worth timing: a spread up to the core count, within NVENC's session limit."""
-    counts = { 1, 2, 4, 6, 8, 10, 12, 16, auto_render_workers( cpu_count ) }
+def render_worker_counts( cpu_count, nvenc_sessions=None, narrow=False, current=None ):
+    """
+    Worker counts worth timing: a spread up to the core count, within
+    NVENC's session limit. narrow: only the count in use (current, else
+    auto's) and two either side, for a machine whose runs already show
+    the settings steady (the app's Optimize, from its evidence).
+    """
+    if narrow:
+        middle = int( current or auto_render_workers( cpu_count ) )
+        counts = { middle - 2, middle, middle + 2 }
+    else:
+        counts = { 1, 2, 4, 6, 8, 10, 12, 16, auto_render_workers( cpu_count ) }
+    counts = { n for n in counts if n >= 1 }
     counts = [ n for n in sorted( counts ) if n <= max( 1, cpu_count or 1 ) ]
     if nvenc_sessions is not None:
         counts = [ n for n in counts if n <= max( 1, nvenc_sessions ) ]
@@ -311,11 +321,23 @@ def _rate( milliseconds ):
     return 1.0 / max( milliseconds, 1e-9 )
 
 
-def batch_sizes_to_try( current ):
-    return sorted( { 1, 2, 4, 8, 16, int( current or 1 ) } )
+def _narrow( args, stage ):
+    """Whether --narrow names this stage."""
+    return stage in ( getattr( args, 'narrow', None ) or () )
 
 
-def prefetch_depths_to_try( batch, current ):
+def batch_sizes_to_try( current, narrow=False ):
+    """narrow: half, the same and double the batch in use."""
+    current = int( current or 1 )
+    if narrow:
+        return sorted( { max( 1, current // 2 ), current, current * 2 } )
+    return sorted( { 1, 2, 4, 8, 16, current } )
+
+
+def prefetch_depths_to_try( batch, current, narrow=False ):
+    """narrow: off, the depth in use and one batch ahead."""
+    if narrow:
+        return sorted( { 0, batch, int( current or 0 ) } )
     return sorted( { 0, batch, 2 * batch, 4 * batch, int( current or 0 ) } )
 
 
@@ -334,19 +356,15 @@ def stage_inventory( context, logger ):
     import betautils_local as bu_local
     import betabench
 
+    # The engine's hardware detection (hw.detect) reads the same facts.
+    cpu_model, memory, _battery = bu_hardware.platform_facts( sys.platform, '/proc', '/sys' )
     result = { 'platform': platform.platform(), 'python': platform.python_version(),
                'cpu_count': os.cpu_count() }
-    try:
-        with open( '/proc/cpuinfo', 'r', encoding='ascii', errors='replace' ) as handle:
-            for line in handle:
-                if line.startswith( 'model name' ):
-                    result['cpu_model'] = line.split( ':', 1 )[1].strip()
-                    break
-    except OSError:
-        pass
-    result['memory_total_mb'] = _status_meminfo_mb( 'MemTotal' )
-    result['memory_available_mb'] = _status_meminfo_mb( 'MemAvailable' )
-    result['swap_total_mb'] = _status_meminfo_mb( 'SwapTotal' )
+    if cpu_model:
+        result['cpu_model'] = cpu_model
+    result['memory_total_mb'] = memory.get( 'MemTotal' )
+    result['memory_available_mb'] = memory.get( 'MemAvailable' )
+    result['swap_total_mb'] = memory.get( 'SwapTotal' )
     result['gpu'] = nvidia_smi( [ 'name', 'driver_version', 'memory.total', 'memory.used',
                                   'utilization.gpu', 'encoder.stats.sessionCount' ] )
     code, text = _run_quiet( [ 'ffmpeg', '-hide_banner', '-version' ] )
@@ -403,17 +421,6 @@ def stage_inventory( context, logger ):
         betaconfig.gpu_enabled = value
         logger.info( "gpu_enabled: proposing %d (%s); the stages below run with it"%( value, reason ) )
     return result
-
-
-def _status_meminfo_mb( field ):
-    try:
-        with open( '/proc/meminfo', 'r', encoding='ascii' ) as handle:
-            for line in handle:
-                if line.startswith( field + ':' ):
-                    return int( line.split()[1] ) // 1024
-    except ( OSError, ValueError, IndexError ):
-        return None
-    return None
 
 
 def _video_info( path ):
@@ -487,7 +494,7 @@ def stage_detect( context, logger ):
 
     rows = []
     reference = None
-    for batch in batch_sizes_to_try( context['batch_now'] ):
+    for batch in batch_sizes_to_try( context['batch_now'], narrow=_narrow( context['args'], 'detect' ) ):
         ms_per_frame, boxes = timed( batch )
         labels = _labels( boxes )
         reference = labels if reference is None else reference
@@ -563,7 +570,7 @@ def _detect_pass( context, depth, seconds ):
 def stage_prefetch( context, logger ):
     seconds = context['args'].prefetch_seconds
     batch = context.get( 'batch_best' ) or context['batch_now']
-    depths = prefetch_depths_to_try( batch, context['prefetch_now'] )
+    depths = prefetch_depths_to_try( batch, context['prefetch_now'], narrow=_narrow( context['args'], 'prefetch' ) )
     logger.info( "prefetch: the detection loop over %gs of video at batch %d, frames decoded ahead: %s"%(
         seconds, batch, depths ) )
     _detect_pass( context, 0, min( seconds, 5 ) )   # warm the page cache and the model
@@ -621,7 +628,8 @@ def stage_render( context, logger ):
             sessions, '' if not reason else ' (%s)'%( reason, ) ) )
         if sessions == 0:
             raise RuntimeError( "the configured encoder %s cannot open a session"%( candidate['codec'], ) )
-    counts = render_worker_counts( cpu_count, sessions )
+    counts = render_worker_counts( cpu_count, sessions, narrow=_narrow( args, 'render' ),
+                                   current=getattr( context['betaconfig'], 'render_workers', 0 ) or None )
     reserve_mb = getattr( context['betaconfig'], 'render_memory_reserve_mb', 2048 )
     logger.info( "render: %s, %dx%d (%.2f MP), %s:%s:%s, %gs of video per worker, worker counts %s"%(
         os.path.basename( video['path'] ), width, height, megapixels, candidate['codec'],
@@ -917,6 +925,8 @@ def build_parser():
     measure.add_argument( '--out-dir', required=True )
     measure.add_argument( '--video', help='the video to measure on (default: the one with the most pixels)' )
     measure.add_argument( '--skip', nargs='*', choices=STAGES, default=[] )
+    measure.add_argument( '--narrow', nargs='*', choices=( 'detect', 'prefetch', 'render' ), default=[],
+                          help='in these stages, try only values next to the ones in use' )
     measure.add_argument( '--console-level', default='info',
                           choices=( 'trace', 'debug', 'info', 'warn', 'error' ) )
     measure.add_argument( '--detect-frames', type=int, default=48 )

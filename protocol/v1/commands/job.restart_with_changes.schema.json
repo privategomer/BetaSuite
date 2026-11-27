@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.restart_with_changes.schema.json",
+  "title": "job.restart_with_changes",
+  "description": "Make a settings change now, while jobs run, by restarting the work around it. The change (values to set, resets to clear) is checked first, as config.set would. mode resume: the running job pauses at its next safe point, the change is written, and it resumes; the file in progress keeps its checkpoints where its keys did not move. mode requeue: every job is cancelled, the change is written, and each job's remaining files are queued again with its own overrides. Answers at once with the jobs it touched; config.applied says when the change is in. With no job, the change is written at once.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "resume",
+            "requeue"
+          ]
+        },
+        "values": {
+          "type": "object"
+        },
+        "resets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "mode",
+        "jobs"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "resume",
+            "requeue"
+          ]
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

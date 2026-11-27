@@ -46,13 +46,13 @@ import signal
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 
 import betaconfig
 import betautils_cache_paths as bu_cache
 import betautils_censor as bu_censor
+import betautils_governor_run as bu_gov_run
 import betautils_hash as bu_hash
 import betautils_log as bu_log
 import betautils_signals as bu_signals
@@ -1181,7 +1181,8 @@ def render_one_chunk( plan, source, boxes, preset, encoder_threads, max_retries,
             command = _chunk_encode_command(
                 tmp_path, source.width, source.height, source.vid_fps, preset, encoder_threads )
             logger.trace( "render chunk %d command: %s"%(plan.index, ' '.join( command )) )
-            process = subprocess.Popen( command, stdin=subprocess.PIPE, stderr=subprocess.PIPE )
+            process = subprocess.Popen( command, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        **bu_gov_run.child_popen_kwargs() )
             captured_stderr = FfmpegStderr( process.stderr )
 
             live_boxes = list( base_live )
@@ -1479,6 +1480,67 @@ def mux_audio( intermediate_path, original_path, final_path, max_retries,
 # Orchestration
 # ---------------------------------------------------------------------------
 
+def run_chunks( plans, render_plan, worker_count, logger=None, runtime=None, wanted=None, available_mb=None ):
+    """
+    render_plan( plan ) for every plan, at most worker_count at once, in
+    plan order. Returns their results in plan order.
+
+    Each chunk runs on a new thread, and the resource governor decides
+    as each one starts: its gate can hold the next chunk back (fewer
+    workers under memory pressure or on battery, never fewer than one,
+    so the render never stalls), and the chunk thread, with the ffmpeg
+    it starts, runs at the priority the governor says. A chunk already
+    running is never stopped or slowed, so its output is the same
+    whatever the governor decides. A stop (betautils_signals) raised by
+    any chunk, or while waiting, starts no more chunks, waits for the
+    running ones and is raised again here, as the pool's map did.
+    wanted and available_mb: when memory planned fewer workers than the
+    processor allows, how many it allows and the free memory seen, so the
+    governor can say why the render runs narrower.
+    """
+    runtime = runtime or bu_gov_run.active()
+    gate = runtime.render_started( worker_count, wanted=wanted, available_mb=available_mb )
+    results = [ 0 ] * len( plans )
+    stops = []
+    threads = []
+
+    def run( index, plan ):
+        try:
+            bu_gov_run.set_thread_priority( runtime.decision().priority )
+            results[index] = render_plan( plan )
+        except BaseException as err:   # a stop; render_plan keeps every other failure itself
+            stops.append( err )
+        finally:
+            gate.release()
+
+    try:
+        for index, plan in enumerate( plans ):
+            if stops:
+                break
+            try:
+                gate.acquire( should_stop=bu_signals.check )
+            except bu_signals.Interrupted as err:
+                stops.append( err )
+                break
+            try:
+                bu_signals.check()
+            except bu_signals.Interrupted as err:
+                gate.release()
+                stops.append( err )
+                break
+            thread = threading.Thread( target=run, args=( index, plan ), name='betarender-%d'%( index, ),
+                                       daemon=True )
+            threads.append( thread )
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        runtime.render_ended()
+    if stops:
+        raise stops[0]
+    return results
+
+
 def render_video( source, boxes, intermediate_path, final_path, preset,
                   preview_mode_enabled, preview_window_unlimited,
                   preview_offset_seconds, preview_max_seconds, logger=None, reverse=None ):
@@ -1568,12 +1630,11 @@ def render_video( source, boxes, intermediate_path, final_path, preset,
                         failures.append( err )
                     return 0
 
-            if worker_count == 1:
-                results = [ render_plan( plan ) for plan in outstanding ]
-            else:
-                with ThreadPoolExecutor( max_workers=worker_count,
-                                         thread_name_prefix='betarender' ) as pool:
-                    results = list( pool.map( render_plan, outstanding ) )
+            by_cpu = resolve_worker_count( max( 1, len( outstanding ) ) )
+            results = run_chunks( outstanding, render_plan, worker_count, logger,
+                                  wanted=by_cpu if by_cpu > worker_count else None,
+                                  available_mb=( round( memory_available / 2**20 )
+                                                 if memory_available is not None else None ) )
             frames_written = sum( results )
             progress.finish( "%d chunk(s)"%(len( outstanding )) )
 

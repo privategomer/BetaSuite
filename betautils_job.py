@@ -255,9 +255,12 @@ class Runner:
             goes to; None for the stats and failure logs only.
         types: The betautils_catalog_types.RunTypes with the library's
             pins and folder rules; None for the engine's ladder alone.
+        governor: The betautils_governor_run.Runtime that paces the job
+            while it runs; None runs at full speed always.
     """
 
-    def __init__( self, logger, emit=None, pipeline=None, load_session=None, recorder=None, types=None ):
+    def __init__( self, logger, emit=None, pipeline=None, load_session=None, recorder=None, types=None,
+                  governor=None ):
         if pipeline is None:
             import betatv as pipeline
         self.logger = logger
@@ -266,6 +269,7 @@ class Runner:
         self._load_session = load_session
         self.recorder = recorder
         self.types = types
+        self.governor = governor
 
     # --- state and events ---
 
@@ -322,9 +326,9 @@ class Runner:
             if job.overrides:
                 import betautils_config_store as bu_store
                 with bu_store.overrides_applied( job.overrides ):
-                    self._run_files( job )
+                    self._governed_files( job )
             else:
-                self._run_files( job )
+                self._governed_files( job )
         except JobStopped as stop:
             self.stop( job, stop.code, stop.params,
                        job.current.index if job.current is not None and stop.code == 'disk.full' else None )
@@ -352,6 +356,12 @@ class Runner:
             job.current = None
             self.set_state( job, COMPLETED )
         return job.state
+
+    def _governed_files( self, job ):
+        """_run_files with the governor attached, reading the settings the job runs with."""
+        import betautils_governor_run as bu_gov_run
+        with bu_gov_run.attached( self.governor, betaconfig ):
+            self._run_files( job )
 
     def _session( self ):
         if self._load_session is not None:
@@ -391,6 +401,9 @@ class Runner:
                 self.send( 'job.file', { 'job': job.id, 'file': index, 'state': 'started' } )
                 previous_sink = bu_log.set_progress_sink(
                     reporter.progress if self._emit is not None else None )
+                governor = self.governor
+                if governor is not None:
+                    governor.start_file()
                 try:
                     outcome = pipeline.process_one_video(
                         folder, fname, entry.censored_folder, index, total, session,
@@ -398,6 +411,8 @@ class Runner:
                         logger, reporter=reporter )
                 finally:
                     bu_log.set_progress_sink( previous_sink )
+                    if governor is not None:
+                        governor.end_file()
                 if outcome == 'out_of_space':
                     job.counts['failed'] += 1
                     self.send( 'job.file', { 'job': job.id, 'file': index, 'state': 'failed' } )

@@ -583,6 +583,21 @@ _ENTRIES = [
        minimum=0, probe=8 ),
     S( 'structure_scan_workers', 'int', 'structure_scan_workers', 'hardware', minimum=0, probe=2 ),
 
+    # --- the resource governor ---
+    S( 'governor.enabled', 'bool', 'governor_enabled', 'the-resource-governor', level=SIMPLE, probe=False ),
+    S( 'governor.memory_pressure_pct', 'number', 'governor_memory_pressure_pct', 'the-resource-governor',
+       minimum=0, maximum=100, min_open=True, probe=20 ),
+    S( 'governor.memory_severe_pct', 'number', 'governor_memory_severe_pct', 'the-resource-governor',
+       minimum=0, maximum=100, min_open=True, probe=60 ),
+    S( 'governor.busy_cpu_pct', 'number', 'governor_busy_cpu_pct', 'the-resource-governor',
+       minimum=0, maximum=100, min_open=True, probe=50 ),
+    S( 'governor.user_idle_seconds', 'number', 'governor_user_idle_seconds', 'the-resource-governor',
+       minimum=0, probe=120 ),
+    S( 'governor.battery_low_pct', 'number', 'governor_battery_low_pct', 'the-resource-governor',
+       minimum=0, maximum=100, probe=10 ),
+    S( 'governor.detection_pace_max', 'number', 'governor_detection_pace_max', 'the-resource-governor',
+       minimum=0, maximum=0.5, probe=0.05 ),
+
     # --- detection sampling and confidence ---
     S( 'video_censor_fps', 'number', 'video_censor_fps', 'video_censor_fps', minimum=0, min_open=True,
        moves=( DETECTION, ), cli='--video-censor-fps', probe=12 ),
@@ -797,6 +812,10 @@ _ENTRIES = [
     S( 'console_palette', 'choice', 'console_palette', 'logging-and-stats', choices=palette_names,
        probe='monochrome' ),
     S( 'stats_enabled', 'bool', 'stats_enabled', 'stats', cli='--stats', probe=False ),
+    S( 'cache_dir', 'path', 'cache_dir', 'cache_dir', nullable=True,
+       none_means="the operating system's cache folder", probe='/elsewhere/betasuite-cache' ),
+    S( 'storage_delete_permanently', 'bool', 'storage_delete_permanently', 'storage_delete_permanently',
+       probe=True ),
     S( 'stats_path', 'path', 'stats_path', 'stats', nullable=True,
        none_means='no stats file', probe='../output/stats/other.jsonl' ),
 
@@ -890,6 +909,8 @@ SCREEN_RULES = (
     ( 'person_backend.selected', SCREEN_MODELS ),
     # Resources: how hard the computer works, never what comes out.
     ( 'gpu_enabled', SCREEN_RESOURCES ),
+    ( 'cache_dir', SCREEN_RESOURCES ),
+    ( 'storage_delete_permanently', SCREEN_RESOURCES ),
     ( 'cuda_device_id', SCREEN_RESOURCES ),
     ( '*nn_batch_size', SCREEN_RESOURCES ),
     ( 'person_backend.*.batch_size', SCREEN_RESOURCES ),
@@ -898,6 +919,7 @@ SCREEN_RULES = (
     ( 'render_memory_reserve_mb', SCREEN_RESOURCES ),
     ( 'render_worker_mb_per_megapixel', SCREEN_RESOURCES ),
     ( 'structure_scan_workers', SCREEN_RESOURCES ),
+    ( 'governor.*', SCREEN_RESOURCES ),
     ( 'detection_prefetch_frames', SCREEN_RESOURCES ),
     # Reverse mode, with the person model it uses.
     ( 'reverse.*', SCREEN_REVERSE ),
@@ -966,6 +988,13 @@ REQUIRES_RULES = (
     # betautils_censor.py: the approximation, and so its threshold, is
     # skipped when off and whenever a blur edge margin is in use.
     ( 'blur_approximation_min_kernel', ( ( 'blur_fast_approximation', ON ), ( 'blur_edge_margin', OFF ) ) ),
+    # betautils_governor.py: with enabled off the decision is made before any threshold is read.
+    ( 'governor.memory_pressure_pct', ( ( 'governor.enabled', ON ), ) ),
+    ( 'governor.memory_severe_pct', ( ( 'governor.enabled', ON ), ) ),
+    ( 'governor.busy_cpu_pct', ( ( 'governor.enabled', ON ), ) ),
+    ( 'governor.user_idle_seconds', ( ( 'governor.enabled', ON ), ) ),
+    ( 'governor.battery_low_pct', ( ( 'governor.enabled', ON ), ) ),
+    ( 'governor.detection_pace_max', ( ( 'governor.enabled', ON ), ) ),
     # betautils_detector.py: the device id goes to the CUDA provider only.
     ( 'cuda_device_id', ( ( 'gpu_enabled', ON ), ) ),
     # betautils_render.py: no motion index is built when interpolation is off.

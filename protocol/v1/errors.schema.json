@@ -58,7 +58,17 @@
     { "$ref": "#/$defs/catalog.item_busy" },
     { "$ref": "#/$defs/catalog.missing" },
     { "$ref": "#/$defs/catalog.thumbnail_failed" },
-    { "$ref": "#/$defs/catalog.no_such_file" }
+    { "$ref": "#/$defs/catalog.no_such_file" },
+    { "$ref": "#/$defs/storage.unknown_category" },
+    { "$ref": "#/$defs/storage.not_cleanable" },
+    { "$ref": "#/$defs/storage.needs_confirm" },
+    { "$ref": "#/$defs/storage.busy" },
+    { "$ref": "#/$defs/perf.busy" },
+    { "$ref": "#/$defs/perf.optimize_running" },
+    { "$ref": "#/$defs/perf.machine_busy" },
+    { "$ref": "#/$defs/perf.no_proposal" },
+    { "$ref": "#/$defs/optimize.failed" },
+    { "$ref": "#/$defs/storage.trash_failed" }
   ],
   "$defs": {
     "reason": { "enum": [ "missing", "type", "value" ] },
@@ -776,6 +786,111 @@
           "type": "object",
           "required": [],
           "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.unknown_category": {
+      "description": "No such kind of file in the Storage view.",
+      "properties": {
+        "code": { "const": "storage.unknown_category" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.not_cleanable": {
+      "description": "This kind is listed only: outputs, models in use, the catalog, settings, logs and stats are never removed here, and a download cache other tools share is never touched.",
+      "properties": {
+        "code": { "const": "storage.not_cleanable" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.needs_confirm": {
+      "description": "Removing this costs work to redo (detections, shot cuts, unfinished renders), so the request must say confirm: true.",
+      "properties": {
+        "code": { "const": "storage.needs_confirm" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.busy": {
+      "description": "A running job writes this kind of file; try again when the queue is idle.",
+      "properties": {
+        "code": { "const": "storage.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.busy": {
+      "description": "A job holds the queue; Optimize measures the machine alone, so it waits for the jobs.",
+      "properties": {
+        "code": { "const": "perf.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.optimize_running": {
+      "description": "An optimization is measuring the machine; another one, or a job, waits for it.",
+      "properties": {
+        "code": { "const": "perf.optimize_running" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.machine_busy": {
+      "description": "The machine is busy (load, GPU use or a command-line run), so measurements would be skewed. force: true runs anyway.",
+      "properties": {
+        "code": { "const": "perf.machine_busy" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.no_proposal": {
+      "description": "There is no finished optimization to apply.",
+      "properties": {
+        "code": { "const": "perf.no_proposal" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "optimize.failed": {
+      "description": "The measurements stopped with an error; the log in its benchmarks folder has details.",
+      "properties": {
+        "code": { "const": "optimize.failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exit_code" ],
+          "properties": { "exit_code": { "type": [ "integer", "null" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.trash_failed": {
+      "description": "The system trash could not take this kind (on a disk with no trash, or a move that would need a copy across disks). Nothing of it was removed for good; storage_delete_permanently removes it instead.",
+      "properties": {
+        "code": { "const": "storage.trash_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
           "additionalProperties": false
         }
       }

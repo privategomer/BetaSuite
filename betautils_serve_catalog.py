@@ -231,10 +231,12 @@ class _ServerHistorySink:
 
 
 def job_recorder_for( server ):
-    """Each job file's record: the stats and failure logs, then the catalog's history."""
+    """Each job file's record: the stats and failure logs, the catalog's history, the performance index."""
     import betautils_run_record as bu_run_record
+    import betautils_serve_perf as bu_serve_perf
     return bu_run_record.RunRecorder(
-        [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink(), _ServerHistorySink( server ) ],
+        [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink(), _ServerHistorySink( server ),
+          bu_serve_perf.sink() ],
         program='engine', logger=server._logger )
 
 
