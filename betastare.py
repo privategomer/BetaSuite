@@ -186,8 +186,10 @@ def _process_one_file( root, fname, censored_folder, file_index, total_files, se
 
         img_h, img_w = image.shape[:2]
         # The last 16 hex characters of the pixels' MD5. Output names and
-        # caches depend on this exact value.
-        image_hash = hashlib.md5( image.tobytes() ).hexdigest()[16:32]
+        # caches depend on this exact value. Hashed through the array's own
+        # buffer (imread gives a contiguous one): tobytes() would copy the
+        # whole decoded photo first, about 72 MB at 24 megapixels.
+        image_hash = hashlib.md5( memoryview( image ) ).hexdigest()[16:32]
         output_path = _censored_output_path( censored_folder, stem, suffix, image_hash )
         hashed_at = time.perf_counter()
 
