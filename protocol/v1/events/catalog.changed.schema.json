@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/catalog.changed.schema.json",
+  "title": "catalog.changed",
+  "description": "Items in the catalog changed: added, found again, moved, missing, offline, a status, a pin, an output. items lists their ids; all instead means anything may have changed (another process wrote the catalog, or more than 1000 items changed at once), so a client lists again. reasons says what caused it: scan, job, pin, external. Coalesced to a few a second, never dropped.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "reasons"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "maxItems": 1000
+        },
+        "all": {
+          "const": true
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "scan",
+              "job",
+              "pin",
+              "external"
+            ]
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "items"
+          ]
+        },
+        {
+          "required": [
+            "all"
+          ]
+        }
+      ]
+    }
+  }
+}

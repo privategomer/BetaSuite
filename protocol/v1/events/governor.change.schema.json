@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/governor.change.schema.json",
+  "title": "governor.change",
+  "description": "The resource governor's decision changed. worker_cap is the most render chunks running at once (null: as many as the render planned, planned); priority applies to work started from now on; pace is the share of each detection batch's time yielded after it (each yield at most 50 ms, a file's yields together at most governor.detection_pace_max of its detection time). reasons say why, the first being the main one: governor.full (nothing to slow for), governor.off (governor.enabled is off), governor.override (run at full speed anyway; params scope and memory_guard), governor.memory and governor.memory_severe (params pressure, available_mb; either may be null), governor.busy (other_cpu), governor.user_active (idle_seconds), governor.battery and governor.battery_low (percent). guard is true when the memory guard holds the cap at one worker: the ordinary override leaves it in force, an override with memory_guard false releases it. Also sent when a render starts or ends with memory_start_cap set. Never dropped. active is true while a run is attached; outside a run (the Performance page watching) the decision says what a run would meet now.",
+  "$defs": {
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/decision"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "planned",
+        "running",
+        "enabled",
+        "active",
+        "time"
+      ],
+      "properties": {
+        "planned": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "running": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "time": {
+          "type": "number"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "memory_start_cap": {
+          "description": "Set while a render runs narrower than the processor allows because memory was short when it started (the render's own check, fixed for its length; no override lifts it): workers it runs, wanted (what the processor allows) and available_mb (free memory it saw, null if unknown). null otherwise. Optional.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "workers",
+            "wanted",
+            "available_mb"
+          ],
+          "properties": {
+            "workers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "wanted": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "available_mb": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "worker_cap",
+        "priority",
+        "pace",
+        "reasons",
+        "guard",
+        "override",
+        "throttled"
+      ],
+      "properties": {
+        "worker_cap": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "priority": {
+          "enum": [
+            "normal",
+            "low"
+          ]
+        },
+        "pace": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reason"
+          }
+        },
+        "guard": {
+          "type": "boolean"
+        },
+        "override": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/override"
+            }
+          ]
+        },
+        "throttled": {
+          "type": "boolean"
+        },
+        "time": {
+          "type": "number"
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "required": [
+        "code",
+        "params"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "governor.full",
+            "governor.off",
+            "governor.override",
+            "governor.memory",
+            "governor.memory_severe",
+            "governor.busy",
+            "governor.user_active",
+            "governor.battery",
+            "governor.battery_low"
+          ]
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    },
+    "override": {
+      "type": "object",
+      "required": [
+        "scope",
+        "memory_guard"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "run",
+            "session"
+          ]
+        },
+        "memory_guard": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

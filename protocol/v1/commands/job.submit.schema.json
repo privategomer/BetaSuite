@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.submit.schema.json",
+  "title": "job.submit",
+  "description": "Queue a job: the chosen files, run one after another through the same pipeline as the command line, with overrides set over the settings for this job only (dotted paths, as in config.get). Jobs run one at a time in the order submitted. The result comes before the job's first event; position counts the jobs ahead of it, 0 when it starts now. A file under the input folder writes its output to the same place under the output folder, any other file to the output folder itself. Refused with job.no_such_file, config.unknown_key, config.not_settable, run.locked (another run holds the library), engine.stopping, and, when no job is queued or running, config.invalid or job.nothing_to_render; a job submitted behind another is checked when it starts, and one that fails then stops with that code.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "files"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An absolute path to an existing file."
+          }
+        },
+        "overrides": {
+          "type": "object"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "job",
+        "position"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

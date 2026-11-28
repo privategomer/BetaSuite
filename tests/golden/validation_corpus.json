@@ -1,0 +1,6592 @@
+{
+ "blur_approximation_min_kernel = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "blur_approximation_min_kernel = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "blur_approximation_min_kernel = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "blur_edge_margin = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "blur_fast_approximation = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "censor_overlap_strategy.bar = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.bar = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.blur = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.blur = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.debug = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.debug = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.pixel = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.pixel = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.sticker = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_overlap_strategy.sticker = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_scale_strategy = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "censor_scale_strategy = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "console_color = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "console_color = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "console_level = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "console_level = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "console_palette = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "console_palette = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cross_size_dedup.enabled = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cross_size_dedup.iou_threshold = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cross_size_dedup.iou_threshold = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cross_size_dedup.iou_threshold = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cuda_device_id = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cuda_device_id = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "cuda_device_id = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "debug_mode = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "debug_mode = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "debug_mode = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_censor_shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_style.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_style.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_style.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_style.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_censor_style.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_censor_style.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_censor_style.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_confirm_score = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_confirm_score = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_geometry_action.max = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "default_geometry_action.max = 123": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "default_geometry_action.min = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "default_geometry_action.min = 123": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "default_interpolation_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_max_area_fraction = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_max_area_fraction = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_max_aspect_ratio = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_max_aspect_ratio = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_area_fraction = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_area_fraction = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_aspect_ratio = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_aspect_ratio = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_prob_continue = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_prob_continue = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_track_hits = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_track_hits = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_min_track_hits = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_age = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_age = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_age = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_distance = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_distance = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_max_distance = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_tiebreak_margin = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_tiebreak_margin = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_paired_style_tiebreak_margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_position_smoothing = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_position_smoothing = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_position_smoothing = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_profile_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_size_smoothing = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_size_smoothing = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "default_style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "default_time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detection_checkpoint_frames = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detection_checkpoint_frames = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detection_checkpoint_frames = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detection_prefetch_frames = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detection_prefetch_frames = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detection_prefetch_frames = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.defaults.nn_batch_size = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.defaults.nn_batch_size = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.defaults.nn_batch_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.candidate_floor = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.candidate_floor = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.candidate_floor = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.from = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.from = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.min_prob = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.min_prob = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.label = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.label = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.min_prob = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.min_prob = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.overlap = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_promotion.exposed_vulva.0.requires.0.overlap = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.0.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_breast.1.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression.exposed_vulva.0.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression_refused = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.class_suppression_refused = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.height_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.interpolation_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.interpolation_max_gap = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.match_distance_multiplier = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.match_distance_multiplier = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_track_hits = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_track_hits = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_track_hits = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.paired_style = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.position_smoothing = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.position_smoothing = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.position_smoothing = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.track_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.track_max_gap = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.width_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.covered_vulva.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.confirm_score = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.confirm_score = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.confirm_score = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.height_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.match_distance_multiplier = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.match_distance_multiplier = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_track_hits = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_track_hits = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_track_hits = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style_max_age = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style_max_age = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style_max_age = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.position_smoothing = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.position_smoothing = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.position_smoothing = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.width_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_breast.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.confirm_score = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.confirm_score = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.confirm_score = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.height_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.match_distance_multiplier = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.match_distance_multiplier = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_track_hits = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_track_hits = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_track_hits = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.paired_style = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.position_smoothing = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.position_smoothing = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.position_smoothing = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.width_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.item_overrides.exposed_vulva.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.model_variant = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.model_variant = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nms_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nms_iou = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nms_iou = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nms_mode = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nms_mode = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nn_batch_size = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nn_batch_size = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.nn_batch_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.default = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.default = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.match_on = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.match_on = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.paired_style_max_age = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.paired_style_max_age = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.paired_style_max_age = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.compilation.manual_only = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.min_track_hits = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.min_track_hits = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.min_track_hits = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.min_track_hits = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.min_track_hits = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.min_track_hits = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.paired_style_max_age = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.paired_style_max_age = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.paired_style_max_age = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.min_track_hits = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.min_track_hits = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.min_track_hits = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.min_short_shot_fraction = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.min_short_shot_fraction = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.min_short_shot_fraction = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.video_censor_fps = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.video_censor_fps = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.quick_cut.video_censor_fps = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.match_distance_multiplier = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.match_distance_multiplier = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.match_distance_multiplier = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.match_distance_multiplier = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_age = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_age = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_age = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_distance = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_distance = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_distance = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_tiebreak_margin = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_tiebreak_margin = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_tiebreak_margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.match_distance_multiplier = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.match_distance_multiplier = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.style_min_dwell_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.style_min_dwell_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.style_min_dwell_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.nudenet_v3.profiles.variants.split_screen.manual_only = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.0.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.1.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.2.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.3.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.4.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.5.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_breast.6.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.0.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.1.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.2.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.margin = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.margin = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.margin = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.min_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.min_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.min_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.suppressed_by = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.class_suppression.exposed_vulva.3.suppressed_by = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.height_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.interpolation_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.interpolation_max_gap = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_track_hits = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_track_hits = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_track_hits = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.paired_style = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.track_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.track_max_gap = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.width_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_breast.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.height_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.interpolation_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.interpolation_max_gap = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.interpolation_max_gap = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.match_distance_multiplier = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.match_distance_multiplier = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.match_distance_multiplier = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_track_hits = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_track_hits = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_track_hits = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.paired_style = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.time_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.time_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.time_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.track_max_gap = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.track_max_gap = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.track_max_gap = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.width_area_safety = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.item_overrides.exposed_vulva.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.nn_batch_size = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.nn_batch_size = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.nn_batch_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.picture_sizes = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.picture_sizes = 123": {
+  "fires": false,
+  "named": false,
+  "raises": "TypeError"
+ },
+ "detector_backend.retinanet_v2.profiles.default = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.default = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.match_on = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.match_on = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.compilation.manual_only = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.min_short_shot_fraction = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.min_short_shot_fraction = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.min_short_shot_fraction = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.video_censor_fps = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.video_censor_fps = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.quick_cut.video_censor_fps = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.scene = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.scene = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.retinanet_v2.profiles.variants.split_screen.manual_only = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.selected = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "detector_backend.selected = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "enable_betasuite_watermark = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "encode_crf = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "encode_crf = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "encode_crf = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "encode_preset = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "encode_preset = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "encode_video_codec = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "encode_video_codec = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "ffmpeg_max_retries = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "ffmpeg_max_retries = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "ffmpeg_max_retries = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "ffmpeg_retry_backoff_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "ffmpeg_retry_backoff_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "ffmpeg_retry_backoff_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "force_structure_profile = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "force_structure_profile = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "global_min_prob = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "global_min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "global_min_prob = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "gpu_enabled = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "gpu_enabled = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "gpu_enabled = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.0.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.1.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.covered_vulva.censor_style.2.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.0.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.1.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.10.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.11.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.12.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.13.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.14.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.15.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.16.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.17.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.color = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.color = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.merge = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.merge = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.thickness = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.thickness = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.thickness = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.18.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.color = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.color = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.merge = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.merge = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.thickness = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.thickness = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.thickness = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.19.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.2.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.color = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.color = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.merge = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.merge = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.thickness = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.thickness = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.thickness = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.20.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.3.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.4.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.5.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.6.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.7.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.8.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.pattern = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.pattern = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_breast.censor_style.9.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_shape = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_shape = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.0.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.1.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.2.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.feather = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.feather = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.feather = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.height_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.height_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.height_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.weight = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.weight = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.weight = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.width_area_safety = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.width_area_safety = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "item_overrides.exposed_vulva.censor_style.3.width_area_safety = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "items_to_censor = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "items_to_censor = 123": {
+  "fires": false,
+  "named": false,
+  "raises": "TypeError"
+ },
+ "log_level = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "log_level = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "log_path = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "log_path = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "logging_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "move_completed_sources = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.batch_size = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.batch_size = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.batch_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.min_prob = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.model_variant = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.rf_detr_seg.model_variant = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.selected = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.selected = 123": {
+  "fires": true,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.batch_size = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.batch_size = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.batch_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.min_prob = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.min_prob = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.min_prob = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.model_variant = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.model_variant = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.nms_iou = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.nms_iou = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.nms_iou = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.picture_size = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.picture_size = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "person_backend.yolo11_seg.picture_size = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_encode_preset = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_encode_preset = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_max_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_max_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_max_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_mode_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_random_slice = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_start_seconds = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "preview_start_seconds = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "profile_by_path_pattern = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_path_pattern = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.compilation = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.compilation = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.quick-cut = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.quick-cut = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.scene = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.scene = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.split-screen = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "profile_by_source_dir.split-screen = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_chunk_container = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_chunk_container = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_chunk_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_chunk_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_chunk_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "render_decode_threads = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_decode_threads = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_memory_reserve_mb = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_memory_reserve_mb = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_memory_reserve_mb = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "render_motion_collapse_max_growth = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_collapse_max_growth = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_collapse_max_growth = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "render_motion_interpolation = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_max_span_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_max_span_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_size_window_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_size_window_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_motion_size_window_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "render_verify_frame_counts = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_worker_mb_per_megapixel = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_worker_mb_per_megapixel = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_worker_mb_per_megapixel = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "render_workers = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_workers = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "render_workers = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.censor.labels = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.censor.labels = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.censor.overrides = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.censor.overrides = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.empty_frame = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.empty_frame = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.enabled = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.fade_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.fade_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.fade_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.frame_style.dim = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.dim = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.dim = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.method = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.method = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.strength = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.strength = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.frame_style.strength = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.frame_style.type = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.frame_style.type = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.enabled = 'yes'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.evidence_min_prob = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.evidence_min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.evidence_min_prob = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.female_labels = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.female_labels = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.male_labels = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.male_labels = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.shrink = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.shrink = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.shrink = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_iou = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_iou = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_iou = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_max_gap_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_max_gap_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.person_windows.track_max_gap_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.trigger.hold_seconds = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.hold_seconds = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.hold_seconds = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "reverse.trigger.labels = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.labels = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.min_prob = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.min_prob = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.trigger.min_prob = 1000000000": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.windows = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "reverse.windows = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_keep = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_keep = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_max_span = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_max_span = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_window = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_window = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "shot_cut_burst_window = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "shot_cut_detection_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "shot_cut_threshold = 'x'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "shot_cut_threshold = -1": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "shot_cut_threshold = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "stats_enabled = 'yes'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "stats_path = 'zz_not_a_choice'": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "stats_path = 123": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "structure_scan_workers = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "structure_scan_workers = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "structure_scan_workers = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ },
+ "type_default_shapes.bar = 'zz_not_a_choice'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "type_default_shapes.bar = 123": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "video_censor_fps = 'x'": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "video_censor_fps = -1": {
+  "fires": true,
+  "named": true,
+  "raises": null
+ },
+ "video_censor_fps = 1000000000": {
+  "fires": false,
+  "named": false,
+  "raises": null
+ }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/resources.watch.schema.json",
+  "title": "resources.watch",
+  "description": "on: true starts resource.sample events and answers the latest sample; on: false stops them. The sampler runs only while the UI watches or a job runs.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "on"
+      ],
+      "properties": {
+        "on": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "watching",
+        "sample"
+      ],
+      "properties": {
+        "watching": {
+          "type": "boolean"
+        },
+        "sample": {
+          "oneOf": [
+            {
+              "$ref": "https://betasuite.invalid/protocol/v1/events/resource.sample.schema.json#/$defs/data"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

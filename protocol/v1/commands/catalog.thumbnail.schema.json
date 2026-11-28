@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.thumbnail.schema.json",
+  "title": "catalog.thumbnail",
+  "description": "An item's thumbnail, as base64 image data. of 'source' (default): the blurred thumbnail, shrunk to 24 pixels on its long side and blurred, the only image of a source the engine ever writes to disk (cached, cached true when it was there); with reveal, the clear frame instead, at 320 pixels as JPEG, decoded again for this answer and written nowhere. of 'output': the item's censored output, stored like any thumbnail. catalog.missing when no file of it can be read, catalog.thumbnail_failed when no frame can be made.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reveal": {
+          "type": "boolean"
+        },
+        "of": {
+          "enum": [
+            "source",
+            "output"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "mime",
+        "data",
+        "width",
+        "height",
+        "cached"
+      ],
+      "properties": {
+        "mime": {
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        },
+        "data": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cached": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

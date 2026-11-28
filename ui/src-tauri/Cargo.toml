@@ -1,0 +1,49 @@
+[package]
+name = "betasuite"
+# The release version is the repository's VERSION file (build.rs); this
+# field stays a placeholder so releases bump one file.
+version = "0.0.0"
+description = "BetaSuite desktop app"
+license = "AGPL-3.0-or-later"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+name = "betasuite_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "betasuite"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+log = { version = "0.4", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+# Native file dialogs, used from Rust only; the page gets no dialog permission.
+tauri-plugin-dialog = "2"
+# A second start focuses the running app and exits before any webview or engine.
+tauri-plugin-single-instance = "2"
+# The queue-finished notice while the window is hidden; used from Rust only.
+tauri-plugin-notification = "2"
+# Decodes the app icon PNGs for the window and tray. Already in the build
+# through tray-icon and muda; the same version, named directly.
+png = "0.18"
+
+# WebKitGTK's security manager, to let the app's page load local video.
+# Same major as the copy wry uses.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

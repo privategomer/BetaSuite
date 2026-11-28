@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.resume.schema.json",
+  "title": "job.resume",
+  "description": "Run the paused job again. The file it paused in restarts from its checkpoints; files it finished are not run again. job.bad_state for a job that is not paused. A restored job (job.list: restored) joins the queue behind the waiting ones and continues from the file it had reached; when the queue was idle it is checked and takes the run lock as a new job does, so it is refused as job.submit is (config.invalid, job.nothing_to_render, run.locked, engine.stopping).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "job",
+        "state"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "paused",
+            "completed",
+            "cancelled",
+            "stopped"
+          ]
+        }
+      }
+    }
+  }
+}

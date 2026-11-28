@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/protocol.rejected.schema.json",
+  "title": "protocol.rejected",
+  "description": "A line the engine read but could not take as a command, and whose id it could not read, so no result will answer it. line numbers every line the engine has read since it started, from 1, blank and oversized lines included; the client knows what it wrote on that line. A command whose id was readable is answered with an error result instead.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [ "line", "error" ],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "error": { "$ref": "../errors.schema.json" }
+      }
+    }
+  }
+}

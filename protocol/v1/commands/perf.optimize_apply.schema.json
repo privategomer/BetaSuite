@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/perf.optimize_apply.schema.json",
+  "title": "perf.optimize_apply",
+  "description": "Write the last finished optimization's proposal to the local config, as config.set does, and record it as applied. perf.no_proposal when none has finished; config.busy while a job holds the queue. Answers like config.set, plus applied (the settings written).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "moves",
+        "may_move",
+        "written",
+        "dry_run",
+        "applied"
+      ],
+      "properties": {
+        "moves": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "may_move": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "written": {
+          "type": "boolean"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "applied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

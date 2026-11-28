@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.get.schema.json",
+  "title": "config.get",
+  "description": "Every setting's current value, its default (betaconfig.py's, absent when betaconfig.py has none) and where the value came from: default, local (the local config) or run (an override in this request). layers lists, lowest first, each layer that sets the value. paths limits the answer to settings at or under those dotted paths. overrides are per-run values, applied for this answer only and never written; one that would fail validation answers config.invalid, a path that is no setting config.unknown_key. labels: true adds every label as a run resolves it: whether it is rendered or a reverse window, and for each per-label key its value, the settings path it comes from (or builtin), the chain of every place the key is set, lowest precedence first, with the one in effect marked and why each other does not apply, and off when a per-label flag turns its effect off.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "paths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "overrides": { "type": "object" },
+        "labels": { "type": "boolean" }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "required": [ "source" ],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "value": {},
+        "wins": { "const": true },
+        "profile": { "type": "string" },
+        "inactive": { "enum": [ "backend_not_selected", "variant_not_selected", "not_backend_tunable",
+                                "look_key_in_window", "reverse_off", "not_a_window", "is_a_window",
+                                "per_profile" ] }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": [ "value", "source", "chain" ],
+      "properties": {
+        "value": {},
+        "source": { "type": "string", "minLength": 1 },
+        "chain": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/layer" } },
+        "off": { "type": "string" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [ "settings" ],
+      "properties": {
+        "settings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "path", "value", "source", "changed", "layers" ],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "value": {},
+              "default": {},
+              "source": { "enum": [ "default", "local", "run" ] },
+              "changed": { "type": "boolean" },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [ "layer", "value" ],
+                  "properties": { "layer": { "enum": [ "default", "local", "run" ] }, "value": {} }
+                }
+              }
+            }
+          }
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "label", "rendered", "window", "fields" ],
+            "properties": {
+              "label": { "type": "string" },
+              "rendered": { "type": "boolean" },
+              "window": { "type": "boolean" },
+              "available": { "type": "boolean", "description": "Whether the selected detector backend can report this label at all" },
+              "unavailable": {
+                "description": "Why not, when available is false",
+                "type": "object",
+                "required": [ "code", "params" ],
+                "properties": {
+                  "code": { "type": "string", "minLength": 1 },
+                  "params": { "type": "object" }
+                }
+              },
+              "fields": { "type": "object", "additionalProperties": { "$ref": "#/$defs/field" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/config.set.schema.json",
+  "title": "config.set",
+  "description": "Set settings in the local config, the file the command-line tools read too. The change is checked as a run would check it and written only if it passes; with dry_run it is checked and nothing is written. moves names the cache keys the change moves (detection: re-detect, censor: re-render, encode: re-encode), worked out from the keys themselves. may_move names the keys it can move for some files only, by changing which structure profile (and so which sample rate) or which preview slice a file gets. A value inside one that is set whole (a censor style, a rule list) answers config.not_settable; a change that would fail validation config.invalid, listing each problem. when: after_jobs, while a job holds the queue, checks the change now and keeps it to be written when the queue is idle (answer: when after_jobs, written false, and the waiting change's id; config.applied or config.pending_failed says how it went); with nothing running it is written at once (when now).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [ "values" ],
+      "properties": {
+        "values": { "type": "object", "minProperties": 1 },
+        "dry_run": { "type": "boolean" },
+        "when": { "enum": [ "now", "after_jobs" ] }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [ "moves", "may_move", "written", "dry_run" ],
+      "properties": {
+        "moves": { "type": "array", "items": { "enum": [ "detection", "censor", "encode" ] }, "uniqueItems": true },
+        "may_move": { "type": "array", "items": { "enum": [ "detection", "censor", "encode" ] }, "uniqueItems": true },
+        "written": { "type": "boolean" },
+        "dry_run": { "type": "boolean" },
+        "when": { "enum": [ "now", "after_jobs" ] },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

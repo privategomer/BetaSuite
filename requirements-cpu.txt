@@ -1,0 +1,3 @@
+# CPU-only install. Never install alongside requirements-gpu.txt.
+-r requirements.txt
+onnxruntime>=1.21,<1.27

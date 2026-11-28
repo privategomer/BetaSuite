@@ -1,0 +1,1119 @@
+"""
+betatv.py - Entry point for censoring video files.
+
+Walks betaconst.video_path_uncensored recursively and, for every video
+found, detects and tracks the configured body parts, renders a censored
+copy in resumable chunks, muxes the original audio back in, and writes
+the result into the mirrored directory structure under
+betaconst.video_path_censored.
+
+    main()
+      -> _startup()                       CLI args, config validation,
+                                          signal handler, logging
+      -> for each file found by os.walk:
+          -> process_one_video()
+              -> bu_video.open_video_source()        decode + fallbacks
+              -> _resolve_preview_slice()            where to start/stop
+              -> _build_paths()                      cache and output names
+                                                     (an existing, valid
+                                                     output here ends the
+                                                     file before any
+                                                     scanning work)
+              -> bu_video.shot_cuts_for_source()     cached scene cuts
+              -> detect_boxes_for_video()            per size, cached,
+                                                     checkpointed
+              -> bu_track.prepare_boxes_for_render() dedup -> geometry
+                                                     filter -> suppression
+                                                     -> tracking
+              -> bu_render.render_video()            parallel chunks,
+                                                     concat, audio mux
+
+This module is deliberately thin. The work lives in modules that the
+tuning and analysis tools can import directly:
+
+    betautils_video     decoding, frame sampling, shot cuts
+    betautils_track     dedup, filtering, suppression, tracking
+    betautils_censor    turning a box into pixels
+    betautils_render    chunked, parallel rendering and muxing
+    betautils_cache_paths   every cache path, output name and cache key
+
+Previously, tracking and suppression lived here, which is why
+tools/tuning/replay_tune.py had to read this file's source text and exec
+the two function bodies out of it to be sure it was testing the real
+code.
+"""
+
+import errno
+import os
+import shutil
+import time
+
+import betaconst
+import betaconfig
+
+import betautils_cache_paths as bu_cache
+import betautils_cli as bu_cli
+import betautils_config as bu_config
+import betautils_detector as bu_detector
+import betautils_estimate as bu_estimate
+import betautils_governor_run as bu_gov_run
+import betautils_hash as bu_hash
+import betautils_job as bu_job
+import betautils_local as bu_local
+import betautils_log as bu_log
+import betautils_person as bu_person
+import betautils_render as bu_render
+import betautils_reverse as bu_reverse
+import betautils_run_record as bu_run_record
+import betautils_runlock as bu_runlock
+import betautils_signals as bu_signals
+import betautils_track as bu_track
+import betautils_video as bu_video
+import betautils_version as bu_version
+
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
+
+def _startup():
+    """
+    Parse CLI flags, apply them over betaconfig, validate, and prepare
+    the process.
+
+    Fail-fast by design: validate_config() exits before any real work if
+    the configuration is wrong, rather than surfacing a KeyError an hour
+    into a render.
+
+    Returns:
+        The shared logger.
+
+    Side effects:
+        Mutates betaconfig with CLI overrides, may SystemExit(1) on a
+        bad config, and installs the cooperative SIGINT handler.
+    """
+    parser = bu_cli.build_arg_parser( "BetaTV: censor videos",
+                                      include_preview=True, include_logging=True )
+    args = parser.parse_args()
+    bu_cli.apply_cli_overrides( betaconfig, args )
+
+    logger = bu_log.get_logger()
+    bu_signals.install_handler( logger )
+    bu_log.log_data_layout( logger )
+    logger.info( "videos: put them in %s; results go to %s"%(
+        betaconst.video_path_uncensored, betaconst.video_path_censored ) )
+
+    bu_config.validate_config()
+    bu_config.exit_if_nothing_to_render( logger )
+    return logger
+
+
+def _resolve_active_encode_preset():
+    """The x264 preset this run should use: preview's, or the real one."""
+    if getattr( betaconfig, 'preview_mode_enabled', False ):
+        return getattr( betaconfig, 'preview_encode_preset', 'ultrafast' )
+    return getattr( betaconfig, 'encode_preset', 'fast' )
+
+
+def _log_run_banner( logger ):
+    """
+    Log what this run is actually configured to do, once, up front.
+
+    Everything here is something that has caused real confusion after
+    the fact: which backend and variant ran, at which detection sizes,
+    and whether the run was a preview slice rather than the real thing.
+    """
+    backend = bu_detector.selected_backend_name()
+    variant = bu_detector.selected_variant_name( backend )
+    logger.info( "BetaTV %s starting: backend=%s%s picture_sizes=%s video_censor_fps=%s "
+                 "nn_batch_size=%s global_min_prob=%s"%(
+        bu_version.get_version(),
+        backend,
+        ' variant=%s'%(variant) if variant else '',
+        bu_detector.get_picture_sizes( backend ),
+        betaconfig.video_censor_fps,
+        bu_detector.get_nn_batch_size( backend ),
+        getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ) ) )
+
+    if bu_reverse.enabled():
+        reverse = bu_reverse.settings()
+        logger.info( "REVERSE MODE: frame style %s while triggered (labels %s above min_prob %s, "
+                     "hold %ss, and wherever a censored box is on screen; fade %ss, empty frames %s); "
+                     "windows (uncensored) %s; censored with their own styles %s."%(
+            reverse['frame_style'], sorted( bu_reverse.trigger_labels() ),
+            reverse['trigger']['min_prob'], reverse['trigger']['hold_seconds'],
+            reverse['fade_seconds'], reverse['empty_frame'], bu_reverse.window_labels(),
+            bu_reverse.censor_labels() ) )
+        if bu_reverse.person_windows_enabled():
+            logger.info( "REVERSE MODE: male bodies windowed from person masks (%s %s); male "
+                         "evidence %s, female evidence %s, at min_prob %s"%(
+                bu_person.selected_backend_name(), bu_person.resolve_config().get( 'model_variant' ),
+                reverse['person_windows']['male_labels'], reverse['person_windows']['female_labels'],
+                reverse['person_windows']['evidence_min_prob'] ) )
+        for label in bu_reverse.rendered_labels():
+            logger.debug( "reverse %s %s resolves to: %s"%(
+                'window' if bu_reverse.window_entry( label ) is not None else 'censored label',
+                label, bu_config.get_label_settings( label ) ) )
+
+    if getattr( betaconfig, 'preview_mode_enabled', False ):
+        preview_max_seconds = getattr( betaconfig, 'preview_max_seconds', 20 )
+        explicit_start = getattr( betaconfig, 'preview_start_seconds', None )
+        random_slice = getattr( betaconfig, 'preview_random_slice', False )
+        window = ( "a %.0fs slice"%(preview_max_seconds)
+                   if ( explicit_start is not None or random_slice )
+                   else "the first %.0fs"%(preview_max_seconds) )
+        logger.warning( "PREVIEW MODE: only %s of each video will be processed, at the '%s' "
+                        "encode preset. Turn preview_mode_enabled off for real runs."%(
+            window, getattr( betaconfig, 'preview_encode_preset', 'ultrafast' ) ) )
+
+
+# ---------------------------------------------------------------------------
+# Per-file setup
+# ---------------------------------------------------------------------------
+
+def _resolve_preview_slice( fname, source, preview_mode_enabled, preview_max_seconds, logger ):
+    """
+    Where in this specific video a preview render starts and stops.
+
+    The chosen offset is applied as a direct seek, never an ffmpeg trim,
+    so nothing before the start point is decoded.
+
+    Decided per file rather than per run, because preview_start_seconds
+    is one fixed setting applied across a directory that can hold videos
+    of very different lengths.
+
+    Args:
+        fname: Filename, for log messages.
+        source: A betautils_video.VideoSource.
+        preview_mode_enabled: Whether preview mode is on.
+        preview_max_seconds: Preview window length.
+        logger: The shared logger.
+
+    Returns:
+        A (preview_offset_seconds, preview_window_unlimited) pair.
+        preview_window_unlimited is True when preview_start_seconds is
+        past the end of THIS video, in which case this one file is
+        processed in full rather than clamped to a slice the user never
+        asked for. Every other file in the run still gets its slice.
+    """
+    explicit_start = getattr( betaconfig, 'preview_start_seconds', None )
+    random_slice = getattr( betaconfig, 'preview_random_slice', False )
+    offset, unlimited = bu_video.resolve_preview_slice(
+        source.vid_fps, source.num_frames, preview_mode_enabled,
+        preview_max_seconds, explicit_start, random_slice )
+
+    if not preview_mode_enabled:
+        return offset, unlimited
+
+    duration = source.num_frames / source.vid_fps if source.vid_fps else 0.0
+    if unlimited:
+        logger.warning( "preview_start_seconds=%.1fs is past the end of %s (%.1fs long) - "
+                        "processing the whole file instead of a slice."%(
+            explicit_start, fname, duration ) )
+    elif explicit_start is not None and offset != explicit_start:
+        logger.warning( "preview_start_seconds=%.1fs would leave less than the requested %.1fs "
+                        "on %s (%.1fs long) - using %.1fs so the full sample fits."%(
+            explicit_start, preview_max_seconds, fname, duration, offset ) )
+    elif explicit_start is not None or random_slice:
+        pin = ( "" if explicit_start is not None
+                else " [pin this slice with preview_start_seconds = %.2f]"%(offset) )
+        logger.info( "preview slice for %s: %.1fs starting at %.1fs of %.1fs%s"%(
+            fname, preview_max_seconds, offset, duration, pin ) )
+    return offset, unlimited
+
+
+def _build_paths( censored_folder, stem, file_hash, picture_sizes,
+                  preview_mode_enabled, preview_offset_seconds, preview_seconds,
+                  duration_seconds, sample_fps=None, output_label='', catalog_profile=None ):
+    """
+    Every path this file needs, from the one module that owns naming.
+
+    Returns:
+        A dict with 'final', 'intermediate', 'preview_suffix',
+        'detection_key', 'censor_key' and 'encode_key'.
+
+    Note:
+        All three keys are in the output filename, so two runs that
+        differ in ANY setting that changes the bytes on disk get
+        different names. Previously only a narrow "censor hash" was
+        embedded, deliberately excluding every tracking setting, so
+        re-running with a changed track_max_gap silently overwrote the
+        previous output and left nothing to compare.
+    """
+    sample_fps = sample_fps or betaconfig.video_censor_fps
+    preview_suffix = bu_cache.preview_cache_suffix(
+        preview_mode_enabled, preview_offset_seconds, preview_seconds, duration_seconds )
+    detection_key = bu_cache.detection_key( fps=sample_fps )
+    censor_key = bu_cache.censor_key( catalog_profile=catalog_profile )
+    encode_key = bu_cache.encode_key( preview_mode_enabled )
+    container = getattr( betaconfig, 'render_chunk_container', 'mkv' )
+
+    final_path, intermediate_path = bu_cache.video_output_paths(
+        censored_folder, stem, file_hash, picture_sizes, sample_fps,
+        detection_key, censor_key, encode_key, preview_suffix, container,
+        output_label, bu_cache.output_mode_marker() )
+
+    return {
+        'final': final_path,
+        'intermediate': intermediate_path,
+        'preview_suffix': preview_suffix,
+        'detection_key': detection_key,
+        'censor_key': censor_key,
+        'encode_key': encode_key,
+        'sample_fps': sample_fps,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Detection
+# ---------------------------------------------------------------------------
+
+def detect_boxes_for_size( source, fname, size, session, file_hash, preview_suffix,
+                           preview_offset_seconds, preview_max_seconds, logger,
+                           sample_fps=None ):
+    """
+    Raw detections for one video at one detection size.
+
+    Served from cache when a completed one exists, resumed from a
+    checkpoint when a previous run was interrupted partway, and
+    otherwise produced by sampling the video at
+    betaconfig.video_censor_fps and running the model.
+
+    Frames are fetched by betautils_video.iter_sampled_frames, which
+    decodes sequentially and skips unwanted frames with grab(). The
+    earlier loop seeked once per sample, which on a long-GOP stream cost
+    roughly 40x more per sampled frame.
+
+    Args:
+        source: A betautils_video.VideoSource.
+        fname: Filename, for log messages.
+        size: The detection size.
+        session: The detector's opaque session handle.
+        file_hash: Content hash of the source video.
+        preview_suffix: Cache-key suffix for this preview slice.
+        preview_offset_seconds: Where sampling starts.
+        preview_max_seconds: Preview window length, or None for the
+            whole file.
+        logger: The shared logger.
+
+    Returns:
+        A list of raw box dicts.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    sample_fps = sample_fps or betaconfig.video_censor_fps
+    global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    cache_path = bu_cache.box_hash_path_for(
+        file_hash, size, sample_fps, global_min_prob,
+        backend_name, preview_suffix )
+
+    if os.path.exists( cache_path ):
+        try:
+            cached = bu_hash.read_json( cache_path )
+            logger.info( "size %d: %d cached detection(s) for %s"%(size, len( cached ), fname) )
+            return cached
+        except Exception as err:
+            logger.warning( "corrupt detection cache %s (%s), regenerating"%(cache_path, err) )
+            try:
+                os.remove( cache_path )
+            except OSError:
+                pass
+
+    checkpoint = bu_hash.read_checkpoint( cache_path )
+    if checkpoint:
+        raw_boxes = list( checkpoint['boxes'] )
+        start_sample_index = checkpoint['next_frame']
+        logger.info( "size %d: resuming from checkpoint at sample %d (%d box(es) so far)"%(
+            size, start_sample_index, len( raw_boxes ) ) )
+    else:
+        raw_boxes = []
+        start_sample_index = 0
+
+    detector = bu_detector.get_detector( backend_name )
+    batch_size = max( 1, bu_detector.get_nn_batch_size( backend_name ) )
+    checkpoint_interval = getattr( betaconfig, 'detection_checkpoint_frames', 500 )
+
+    frame_buffer = []
+    time_buffer = []
+    last_checkpoint_sample = start_sample_index
+
+    total_samples = None
+    if source.vid_fps:
+        span_seconds = ( preview_max_seconds if preview_max_seconds is not None
+                         else source.num_frames / source.vid_fps - preview_offset_seconds )
+        total_samples = max( 1, int( span_seconds * sample_fps ) )
+
+    def flush():
+        """Run the model over whatever is buffered, and clear the buffer."""
+        if not frame_buffer:
+            return []
+        detections = detector.raw_boxes_for_imgs( frame_buffer, size, session, time_buffer )
+        frame_buffer.clear()
+        time_buffer.clear()
+        return detections
+
+    capture = source.open_capture()
+    sample_index = start_sample_index
+    # Samples before this index are in raw_boxes or the buffer. A stop
+    # raised at the top of an iteration leaves that iteration's frame
+    # undetected, so the checkpoint resumes here, not at sample_index + 1,
+    # which once skipped one sample's detections on every resumed run.
+    accounted = start_sample_index
+    next_t = bu_video.sample_time( start_sample_index, preview_offset_seconds,
+                                   sample_fps )
+    # Decoded on a second thread while the model runs; closed before the
+    # capture is released (see betautils_video.Prefetched).
+    frames = bu_video.prefetched( bu_video.iter_sampled_frames(
+                                      capture, source.vid_fps, sample_fps,
+                                      offset_seconds=preview_offset_seconds,
+                                      num_frames=source.num_frames,
+                                      max_seconds=preview_max_seconds,
+                                      start_sample_index=start_sample_index ),
+                                  getattr( betaconfig, 'detection_prefetch_frames', 0 ) )
+    try:
+        with bu_log.ProgressReporter( "detect %d"%(size), total=total_samples ) as progress:
+            for sample_index, timestamp, frame in frames:
+                bu_signals.check()
+
+                frame_buffer.append( frame )
+                time_buffer.append( timestamp )
+                accounted = sample_index + 1
+                if len( frame_buffer ) >= batch_size:
+                    batch_started = time.perf_counter()
+                    raw_boxes.extend( flush() )
+                    # The governor's yield, short and capped; counted in the stats row.
+                    bu_gov_run.active().pace( time.perf_counter() - batch_started )
+
+                progress.update( sample_index + 1 )
+                next_t = bu_video.sample_time( sample_index + 1, preview_offset_seconds,
+                                               sample_fps )
+
+                # Only checkpoint with an empty buffer, so raw_boxes is
+                # always consistent with "everything up to this sample is
+                # accounted for".
+                if ( not frame_buffer and checkpoint_interval > 0
+                        and sample_index + 1 - last_checkpoint_sample >= checkpoint_interval ):
+                    bu_hash.write_checkpoint( raw_boxes, sample_index + 1, next_t, cache_path )
+                    last_checkpoint_sample = sample_index + 1
+
+            raw_boxes.extend( flush() )  # any partial batch at the end
+    except bu_signals.Interrupted:
+        raw_boxes.extend( flush() )
+        bu_hash.write_checkpoint( raw_boxes, accounted,
+                                  bu_video.sample_time( accounted, preview_offset_seconds, sample_fps ),
+                                  cache_path )
+        logger.info( "size %d: checkpointed %d detection(s) at sample %d before stopping"%(
+            size, len( raw_boxes ), accounted ) )
+        raise
+    finally:
+        frames.close()
+        capture.release()
+
+    bu_hash.write_json( raw_boxes, cache_path )
+    bu_hash.clear_checkpoint( cache_path )
+    logger.info( "size %d: %d detection(s) for %s"%(size, len( raw_boxes ), fname) )
+    return raw_boxes
+
+
+def detection_cache_state( file_hash, picture_sizes, sample_fps, preview_suffix ):
+    """
+    Whether this file's detections come from cache before they are run:
+    'cached' (every size), 'partial' (some size cached or checkpointed),
+    or 'fresh'. Only a fresh detection's time says how fast the model is.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    global_min_prob = getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob )
+    paths = [ bu_cache.box_hash_path_for( file_hash, size, sample_fps, global_min_prob, backend_name, preview_suffix )
+              for size in picture_sizes ]
+    if paths and all( os.path.exists( path ) for path in paths ):
+        return bu_estimate.CACHED
+    if any( os.path.exists( path ) or bu_hash.has_checkpoint( path ) for path in paths ):
+        return bu_estimate.PARTIAL
+    return bu_estimate.FRESH
+
+
+def detect_boxes_for_video( source, fname, session, file_hash, picture_sizes,
+                            preview_suffix, preview_offset_seconds, preview_max_seconds,
+                            logger, sample_fps=None ):
+    """
+    Raw detections across every configured detection size, flattened.
+
+    Args:
+        source: A betautils_video.VideoSource.
+        fname: Filename, for log messages.
+        session: The detector's opaque session handle.
+        file_hash: Content hash of the source video.
+        picture_sizes: Sizes to run, resolved for the active backend.
+        preview_suffix: Cache-key suffix for this preview slice.
+        preview_offset_seconds: Where sampling starts.
+        preview_max_seconds: Preview window length, or None.
+        logger: The shared logger.
+
+    Returns:
+        One flat list of raw box dicts across every size.
+    """
+    all_raw_boxes = []
+    for size in picture_sizes:
+        all_raw_boxes.extend( detect_boxes_for_size(
+            source, fname, size, session, file_hash, preview_suffix,
+            preview_offset_seconds, preview_max_seconds, logger, sample_fps ) )
+    return all_raw_boxes
+
+
+def _describe_structure( signals ):
+    """
+    The measured structure as a short log phrase, naming the signal the
+    profiles match on rather than whichever one is handy: printing a cut
+    rate beside a profile chosen by short-shot share reads as the reason
+    for the choice when it had nothing to do with it.
+    """
+    if signals is None or not signals.is_measured:
+        return "no shot-cut scan"
+    match_on = bu_detector.get_profiles().get( 'match_on', 'cuts_per_min' )
+    if match_on == 'short_shot_fraction':
+        measured = "%.1f%% of runtime in short shots"%( 100.0 * signals.short_shot_fraction, )
+    else:
+        measured = "%.1f cuts/min"%( signals.cuts_per_min, )
+    return "%s, %d cut(s) over %.0fs scanned"%(
+        measured, signals.cut_count, signals.scanned_seconds )
+
+
+def _report_declared_against_measured( fname, profile_name, profile_reason, sample_fps,
+                                       signals, logger, reporter=bu_job.NULL_REPORTER ):
+    """
+    After a declared profile's background scan: what measurement says.
+
+    A WARNING only in the direction that costs detections: the footage
+    measures as a profile that samples more densely than the declared
+    one. Everything else is information. A split_screen folder measuring
+    as scene is expected (split_screen is manual_only because no timing
+    signal can see it); a compilation folder whose file measures as
+    quick_cut is running at half the sample rate its cutting asks for.
+    """
+    measured_name, measured_reason = bu_detector.measured_profile_selection(
+        signals.cuts_per_min, short_shot_fraction=signals.short_shot_fraction )
+    measured_fps = bu_detector.get_profile_sample_fps( measured_name )
+    if measured_name and measured_name != profile_name and measured_fps > sample_fps:
+        reporter.decision( 'structure.declared_sparser', profile=profile_name, sample_fps=sample_fps,
+                           measured_profile=measured_name, measured_sample_fps=measured_fps )
+        logger.warning( "%s: %s chose %s at %s fps, but the footage measures as %s (%s) "
+                        "at %s fps. Fewer samples means fewer detections on the shortest "
+                        "shots; check the folder this file sits in."%(
+            fname, profile_reason, profile_name, sample_fps, measured_name,
+            _describe_structure( signals ), measured_fps ) )
+        return
+    logger.info( "shot structure for %s: %s; measurement alone would choose %s via %s"%(
+        fname, _describe_structure( signals ), measured_name, measured_reason ) )
+
+
+# ---------------------------------------------------------------------------
+# Per-file orchestration
+# ---------------------------------------------------------------------------
+
+def process_one_video( root, fname, censored_folder, file_index, total_files, session,
+                       preview_mode_enabled, preview_max_seconds, active_encode_preset,
+                       logger, output_label='', reporter=None ):
+    """
+    Detect, track, render and mux one video.
+
+    Args:
+        root: Directory fname was found in.
+        fname: Filename being processed.
+        censored_folder: Destination directory, mirroring root's
+            position under betaconst.video_path_censored.
+        file_index: 0-based index within this directory, for progress.
+        total_files: File count in this directory, for progress.
+        session: The detector's opaque session handle.
+        preview_mode_enabled: Whether preview mode is on.
+        preview_max_seconds: Preview window length.
+        active_encode_preset: x264 preset for this run.
+        logger: The shared logger.
+        output_label: Cosmetic tail for the OUTPUT filename only, so a
+            sweep that renders one source under many settings produces
+            names a person can read. Never reaches a cache path.
+        reporter: A betautils_job.FileReporter for the job's events
+            (decisions, errors, the output paths), or None.
+
+    Returns:
+        'processed', 'skipped', 'failed', or 'out_of_space' for a failure
+        because a disk filled (see is_out_of_space).
+
+    Raises:
+        betautils_signals.Interrupted: the user asked to stop. Deliberately
+            NOT caught here - `except Exception` below gives the run its
+            one-bad-file-is-not-fatal behaviour, and an interrupt must
+            pass straight through it. Previously this caught
+            BaseException, so Ctrl-C was reported as a failed file and
+            the run simply moved on to the next one.
+    """
+    reporter = reporter or bu_job.NULL_REPORTER
+    uncensored_path = os.path.join( root, fname )
+    stem, _suffix = os.path.splitext( fname )
+    label = "%d/%d"%(file_index+1, total_files)
+    # What happened to this file, for the stats and failure logs and the
+    # catalog's history (betautils_run_record).
+    recorder = reporter.recorder or bu_run_record.log_recorder( logger=logger )
+    run = recorder.start( uncensored_path, job=reporter.job_id )
+    run.preview = bool( preview_mode_enabled )
+
+    try:
+        file_hash = bu_hash.md5_for_file( uncensored_path, 16 )
+    except OSError as err:
+        logger.debug( "skipping %s (%s): %s"%(label, fname, err) )
+        reporter.decision( 'source.unreadable', exception_type=type( err ).__name__ )
+        recorder.record( run.end( 'skipped', 'source.unreadable' ) )
+        return 'skipped'
+    run.hash = file_hash
+
+    try:
+        source = bu_video.open_video_source( uncensored_path, file_hash, logger )
+    except bu_video.VideoOpenError as err:
+        logger.info( "skipping %s (not a decodable video): %s"%(label, fname) )
+        logger.debug( "  %s"%(err) )
+        reporter.decision( 'source.not_video' )
+        recorder.record( run.end( 'skipped', 'source.not_video' ) )
+        return 'skipped'
+
+    started_at = time.perf_counter()
+    person_pass = None
+    background_scan = None
+    try:
+        preview_offset_seconds, preview_window_unlimited = _resolve_preview_slice(
+            fname, source, preview_mode_enabled, preview_max_seconds, logger )
+        effective_preview_seconds = ( preview_max_seconds
+                                      if preview_mode_enabled and not preview_window_unlimited
+                                      else None )
+        duration_seconds = ( source.num_frames / source.vid_fps ) if source.vid_fps else None
+        preview_suffix = bu_video.preview_suffix_for_slice(
+            source.vid_fps, source.num_frames, preview_mode_enabled, preview_max_seconds,
+            preview_offset_seconds, preview_window_unlimited )
+
+        picture_sizes = bu_detector.get_picture_sizes()
+
+        # A randomised preview slice is a request for a NEW sample. Its
+        # offset is written into the filename at one-decimal precision,
+        # so a fresh draw can land on an existing file's name; skipping
+        # it would report a slice that was never rendered.
+        random_preview_slice = (
+            preview_mode_enabled
+            and getattr( betaconfig, 'preview_start_seconds', None ) is None
+            and getattr( betaconfig, 'preview_random_slice', False ) )
+
+        def already_done( candidate_paths ):
+            """
+            An existing, decodable output at this path IS what this run
+            would produce: the name carries all three cache keys, the
+            sample rate and the preview slice. Probing rather than
+            stat-ing means a truncated output from an interrupted run is
+            rebuilt instead of accepted as finished.
+            """
+            return ( not random_preview_slice
+                     and os.path.exists( candidate_paths['final'] )
+                     and bu_video.probe_video_ok( candidate_paths['final'] ) )
+
+        source_path = os.path.join( root, fname )
+        shot_cut_args = (
+            source, file_hash, betaconfig.video_censor_fps,
+            getattr( betaconfig, 'shot_cut_threshold', 0.5 ),
+            preview_offset_seconds, effective_preview_seconds, preview_suffix )
+        shot_cut_kwargs = {
+            'enabled': getattr( betaconfig, 'shot_cut_detection_enabled', True ),
+            'logger': logger,
+        }
+        scanned_seconds = bu_detector.scanned_window_seconds(
+            duration_seconds, preview_offset_seconds, effective_preview_seconds )
+
+        # A declared profile (--profile, a path pattern, a source folder)
+        # fixes the sample rate before anything is scanned, so the output
+        # name is known now and a finished file skips at zero cost. When
+        # no profile changes the sample rate the same holds for every
+        # file. Otherwise the name depends on the measured profile, which
+        # needs the scan first; it is cached, so a repeat run still skips
+        # without detecting.
+        # The library's pin for this file, and its watched folder's rule,
+        # come through the reporter (betautils_catalog_types); without a
+        # catalog the engine's own ladder decides, as it always has.
+        declared = ( reporter.types.declared( source_path, file_hash ) if reporter.types is not None
+                     else bu_detector.declared_profile_selection( source_path ) )
+        # What the catalog chose (a pin, a watched folder's rule) is keyed;
+        # what the config chose is keyed through the config.
+        catalog_profile = ( declared[0] if declared is not None and getattr( declared[1], 'from_catalog', False )
+                            else None )
+        paths = None
+        if declared is not None or len( bu_detector.profile_sample_rates() ) == 1:
+            early_fps = ( bu_detector.get_profile_sample_fps( declared[0] )
+                          if declared is not None else None )
+            paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, early_fps,
+                                  output_label=output_label, catalog_profile=catalog_profile )
+            reporter.output_paths( paths )
+            if already_done( paths ):
+                logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                reporter.decision( 'output.present', output=paths['final'] )
+                source.release()
+                run.set_paths( paths )
+                if declared is not None:
+                    run.set_profile( *declared )
+                _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger )
+                return 'skipped'
+
+        logger.info( "processing %s: %s"%(label, fname) )
+        if source.transcoded:
+            logger.info( "  decoding via transcoded copy: %s"%(source.decode_path) )
+            reporter.decision( 'source.transcoded' )
+
+        # The scan always runs at the GLOBAL rate, never a profile's: the
+        # profile is chosen FROM this scan, so letting the profile set the
+        # scan rate would be circular. Cut timestamps are times, not
+        # sample indices, so they stay valid at whatever rate detection
+        # then runs.
+        if declared is not None:
+            profile_name, profile_reason = declared
+            background_scan = bu_video.BackgroundShotCutScan( *shot_cut_args, **shot_cut_kwargs )
+            shot_cut_times = None
+            signals = None
+        else:
+            shot_cut_times = bu_video.shot_cuts_for_source( *shot_cut_args, **shot_cut_kwargs )
+            # Rate and shares are over the window SCANNED, never the
+            # spread of cuts or detections; see scanned_window_seconds.
+            signals = bu_detector.structure_signals( shot_cut_times, scanned_seconds )
+            profile_name, profile_reason = bu_detector.profile_selection(
+                signals.cuts_per_min, source_path=source_path,
+                short_shot_fraction=signals.short_shot_fraction )
+        sample_fps = bu_detector.get_profile_sample_fps( profile_name )
+        if profile_name:
+            # Name the rule that decided, not only the measurement. A
+            # folder key that matches no folder on disk looks configured
+            # while quietly falling through to measurement, and without
+            # this the log gives no way to tell the two apart.
+            logger.info( "structure profile: %s via %s (%s), sampling at %s fps"%(
+                profile_name, profile_reason,
+                ( _describe_structure( signals ) if signals is not None
+                  else "shot-cut scan running alongside detection" ),
+                sample_fps ) )
+        reporter.decision( 'structure.profile', profile=profile_name,
+                           rule=getattr( profile_reason, 'code', 'unknown' ), sample_fps=sample_fps,
+                           **getattr( profile_reason, 'params', {} ) )
+
+        if paths is None or paths['sample_fps'] != sample_fps:
+            paths = _build_paths( censored_folder, stem, file_hash, picture_sizes,
+                                  preview_mode_enabled, preview_offset_seconds,
+                                  effective_preview_seconds, duration_seconds, sample_fps,
+                                  output_label=output_label, catalog_profile=catalog_profile )
+            reporter.output_paths( paths )
+            if already_done( paths ):
+                logger.info( "skipping %s (output already present and valid): %s"%(label, fname) )
+                reporter.decision( 'output.present', output=paths['final'] )
+                source.release()
+                run.set_paths( paths )
+                run.set_profile( profile_name, profile_reason )
+                _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger )
+                return 'skipped'
+
+        # Reverse mode's person masks: same frames as detection, in a
+        # thread alongside it, so its decode and model time overlap.
+        if bu_reverse.person_windows_enabled():
+            person_pass = bu_person.BackgroundPersonPass(
+                source, fname, file_hash, paths['preview_suffix'], preview_offset_seconds,
+                effective_preview_seconds, logger, sample_fps )
+
+        detect_cache = detection_cache_state( file_hash, picture_sizes, sample_fps, paths['preview_suffix'] )
+        raw_boxes = detect_boxes_for_video(
+            source, fname, session, file_hash, picture_sizes, paths['preview_suffix'],
+            preview_offset_seconds, effective_preview_seconds, logger, sample_fps )
+
+        if background_scan is not None:
+            shot_cut_times = background_scan.result()
+            signals = bu_detector.structure_signals( shot_cut_times, scanned_seconds )
+            _report_declared_against_measured(
+                fname, profile_name, profile_reason, sample_fps, signals, logger, reporter )
+
+        boxes, track_stats = bu_track.prepare_boxes_for_render(
+            raw_boxes, source.width, source.height,
+            bu_video.absolute_cut_times( shot_cut_times, preview_offset_seconds ),
+            logger=logger, profile_name=profile_name, sample_fps=sample_fps, style_seed=file_hash )
+        track_stats['structure_profile'] = profile_name
+        track_stats['cuts_per_min'] = ( round( signals.cuts_per_min, 2 )
+                                        if signals.cuts_per_min is not None else None )
+        track_stats['median_shot_seconds'] = ( round( signals.median_shot_seconds, 3 )
+                                               if signals.median_shot_seconds is not None else None )
+        track_stats['short_shot_fraction'] = ( round( signals.short_shot_fraction, 4 )
+                                              if signals.short_shot_fraction is not None else None )
+
+        reverse = None
+        if bu_reverse.enabled():
+            trigger_times = bu_track.trigger_detection_times(
+                raw_boxes, source.width, source.height )
+            reverse = bu_reverse.render_plan_for_detections( trigger_times, sample_fps, boxes )
+            triggered_seconds = reverse.timeline.triggered_seconds()
+            censored_spans = len( bu_reverse.censored_box_spans( boxes ) )
+            track_stats['reverse_trigger_detections'] = len( trigger_times )
+            track_stats['reverse_censored_boxes'] = censored_spans
+            track_stats['reverse_trigger_intervals'] = len( reverse.timeline.intervals )
+            track_stats['reverse_triggered_seconds'] = round( triggered_seconds, 2 )
+            logger.info( "reverse: trigger on for %.1fs in %d interval(s) from %d detection(s) and %d "
+                         "censored box(es)%s"%(
+                triggered_seconds, len( reverse.timeline.intervals ), len( trigger_times ),
+                censored_spans, ' (empty frames obscured too)' if reverse.timeline.always_on else '' ) )
+            if person_pass is not None:
+                sample_times, people = person_pass.result()
+                reverse.window_masks = bu_person.window_masks_for_video(
+                    sample_times, people, raw_boxes, source.width, source.height, sample_fps )
+                windowed = reverse.window_masks.windowed_samples()
+                track_stats['reverse_person_masks'] = len( people )
+                track_stats['reverse_male_person_samples'] = windowed
+                logger.info( "reverse: %d person mask(s) over %d sample(s); male bodies windowed in "
+                             "%d sample(s)"%( len( people ), len( sample_times ), windowed ) )
+
+        detection_finished_at = time.perf_counter()
+
+        render_stats = bu_render.render_video(
+            source, boxes, paths['intermediate'], paths['final'], active_encode_preset,
+            preview_mode_enabled, preview_window_unlimited,
+            preview_offset_seconds, preview_max_seconds, logger, reverse=reverse )
+
+        finished_at = time.perf_counter()
+
+        detection_seconds = detection_finished_at - started_at
+        encode_seconds = finished_at - detection_finished_at
+        logger.info( "done %s: %s  detect=%.1fs render=%.1fs total=%.1fs  "
+                     "raw=%d rendered=%d interpolated=%d"%(
+            label, fname, detection_seconds, encode_seconds, finished_at - started_at,
+            track_stats.get( 'raw_detections', 0 ), track_stats.get( 'rendered_boxes', 0 ),
+            track_stats.get( 'interpolated', 0 ) ) )
+
+        run.set_paths( paths )
+        run.set_profile( profile_name, profile_reason )
+        run.stats = _stats_record(
+            fname, paths, preview_mode_enabled, preview_offset_seconds,
+            detection_seconds, encode_seconds, finished_at - started_at,
+            picture_sizes, session, source, track_stats, render_stats )
+        run.timing = bu_estimate.timing_for(
+            detection_seconds, encode_seconds, finished_at - started_at, detect_cache, scanned_seconds,
+            sample_fps, picture_sizes, source.width, source.height, source.vid_fps, bu_estimate.identity() )
+        recorder.record( run.end( 'processed' ) )
+        if person_pass is not None:
+            person_pass.stop()
+        source.release()
+        if not preview_mode_enabled:
+            moved_to = move_completed_source( uncensored_path, logger )
+            if moved_to is not None:
+                recorder.moved( run, moved_to )
+        return 'processed'
+
+    except bu_signals.Interrupted:
+        # A scan running alongside detection sees the same stop; wait for
+        # it, so nothing of this file is still working once the stop is
+        # reported (the engine pauses and resumes in one process).
+        if background_scan is not None:
+            background_scan.wait()
+        raise
+    except Exception as err:
+        return _failed( label, fname, preview_mode_enabled, source, err, started_at, logger,
+                        reporter, recorder, run )
+    finally:
+        # On a failure or Ctrl-C, the person pass checkpoints before the
+        # run moves on or exits; after a normal finish this returns at once.
+        if person_pass is not None:
+            person_pass.stop()
+        source.release()
+
+
+def _failed( label, fname, preview_mode_enabled, source, err, started_at, logger,
+             reporter=bu_job.NULL_REPORTER, recorder=None, run=None ):
+    """Log and record one file's failure; its outcome."""
+    logger.warning( "failed %s: %s (%r)"%(label, fname, err) )
+    logger.debug( "failure detail", exc_info=True )
+    if recorder is None:
+        recorder = bu_run_record.log_recorder( logger=logger )
+        run = recorder.start( fname )
+    out_of_space = is_out_of_space( err )
+    # Recording the failure must never turn one bad file into a
+    # stopped run, so a problem building the record is logged here.
+    try:
+        # A stats row that could not be written (a full disk) is not tried again.
+        run.stats = None
+        run.failure = _failure_record( fname, preview_mode_enabled, source, err,
+                                       time.perf_counter() - started_at )
+        run.error_type = type( err ).__name__
+        run.stage = reporter.stage
+        recorder.record( run.end( 'out_of_space' if out_of_space else 'failed',
+                                  'disk.full' if out_of_space else 'file.failed' ) )
+    except Exception as record_err:
+        logger.warning( "could not record the failure of %s: %r"%( fname, record_err ) )
+    if out_of_space:
+        return 'out_of_space'        # the job reports disk.full and stops
+    reporter.error( 'file.failed', exception_type=type( err ).__name__, stage=reporter.stage )
+    return 'failed'
+
+
+def _record_skip_and_move( recorder, run, uncensored_path, preview_mode_enabled, logger ):
+    """A file skipped because its output is there: recorded, then moved if asked."""
+    recorder.record( run.end( 'skipped', 'output.present' ) )
+    if not preview_mode_enabled:
+        moved_to = move_completed_source( uncensored_path, logger )
+        if moved_to is not None:
+            recorder.moved( run, moved_to )
+
+
+def completed_source_path( uncensored_path ):
+    """
+    Where a finished source goes: the same folder under
+    betaconst.video_path_completed as it had under video_path_uncensored,
+    so its profile folder keeps meaning the same profile. None when the
+    file is not under video_path_uncensored.
+    """
+    root = os.path.abspath( betaconst.video_path_uncensored )
+    path = os.path.abspath( uncensored_path )
+    relative = os.path.relpath( path, root )
+    if relative.startswith( os.pardir + os.sep ) or relative == os.pardir or os.path.isabs( relative ):
+        return None
+    return os.path.join( betaconst.video_path_completed, relative )
+
+
+def move_completed_source( uncensored_path, logger ):
+    """
+    Move a finished source out of the queue, when move_completed_sources
+    is on.
+
+    Only after a valid output exists: called after a render and its stats
+    row, or when a run skips a file whose output is already there. A
+    failed file stays in the queue, so the next run retries it; moving
+    finished files by hand once carried two unfinished ones along, and
+    no run saw them again. An existing file at the target is never
+    replaced: the source stays where it is and a warning says why.
+    """
+    if not getattr( betaconfig, 'move_completed_sources', False ):
+        return None
+    if not os.path.exists( uncensored_path ):
+        return None                      # gone since the run started
+    target = completed_source_path( uncensored_path )
+    if target is None:
+        logger.debug( "not moving %s: not under %s"%( uncensored_path, betaconst.video_path_uncensored ) )
+        return None
+    if os.path.exists( target ):
+        logger.warning( "not moving %s to %s: a file is already there"%( uncensored_path, target ) )
+        return None
+    try:
+        os.makedirs( os.path.dirname( target ), exist_ok=True )
+        shutil.move( uncensored_path, target )
+    except OSError as err:
+        logger.warning( "could not move %s to %s: %s"%( uncensored_path, target, err ) )
+        return None
+    logger.info( "moved finished source to %s"%( target, ) )
+    return target
+
+
+# ffmpeg reports a full disk in its own words, inside a RenderError.
+_OUT_OF_SPACE_TEXT = 'No space left on device'
+
+
+def is_out_of_space( err ):
+    """
+    Whether a failure was a full disk, anywhere in its cause chain.
+
+    One file failing is that file's problem, and the run goes on. A full
+    disk is every remaining file's problem: on one large run the disk
+    filled and the next nine files each failed within seconds, two
+    minutes of the queue spent producing nothing but failure records.
+    An OSError carries ENOSPC; a RenderError carries ffmpeg's message.
+    """
+    seen = set()
+    while err is not None and id( err ) not in seen:
+        seen.add( id( err ) )
+        if isinstance( err, OSError ) and err.errno == errno.ENOSPC:
+            return True
+        if _OUT_OF_SPACE_TEXT in str( err ):
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
+def _free_space_note( folder ):
+    """'N GB free in <folder>', or '' when it cannot be read."""
+    try:
+        free = shutil.disk_usage( folder ).free
+    except OSError:
+        return ''
+    return "%.1f GB free in %s"%( free / 1e9, folder )
+
+
+def _failure_record( fname, preview_mode_enabled, source, err, elapsed_seconds ):
+    """
+    The JSON-Lines failures row for one file that did not finish.
+
+    Only what is known however early the failure came: the file, the
+    reason exactly as the warning logged it, and the run identity
+    summarize_run groups by. Detection keys and track stats may not
+    exist yet, so they are not here.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    return {
+        'file': fname,
+        'error': repr( err ),
+        'preview_mode': preview_mode_enabled,
+        'elapsed_seconds': round( elapsed_seconds, 3 ),
+        'betasuite_version': bu_version.get_version(),
+        'detector_backend': backend_name,
+        'detector_variant': bu_detector.selected_variant_name( backend_name ),
+        'video_width': source.width,
+        'video_height': source.height,
+        'video_fps': round( source.vid_fps, 4 ) if source.vid_fps else None,
+    }
+
+
+def _stats_record( fname, paths, preview_mode_enabled, preview_offset_seconds,
+                   detection_seconds, encode_seconds, total_seconds,
+                   picture_sizes, session, source, track_stats, render_stats ):
+    """
+    Build the JSON-Lines stats row for one processed file.
+
+    Everything recorded here exists because it has, at some point, been
+    the thing needed to explain a result after the fact: which backend
+    and variant ran, at which sizes and batch size, on which execution
+    provider (so a slow run can be attributed to a silent CPU fallback),
+    and which cache keys the output filename carries.
+    """
+    backend_name = bu_detector.selected_backend_name()
+    record = {
+        'file': fname,
+        'output': os.path.basename( paths['final'] ),
+        'preview_mode': preview_mode_enabled,
+        'preview_offset_seconds': round( preview_offset_seconds, 3 ) if preview_mode_enabled else None,
+        'detection_seconds': round( detection_seconds, 3 ),
+        'encode_seconds': round( encode_seconds, 3 ),
+        'total_seconds': round( total_seconds, 3 ),
+        # Run identity - what produced these numbers.
+        'betasuite_version': bu_version.get_version(),
+        'detector_backend': backend_name,
+        'detector_variant': bu_detector.selected_variant_name( backend_name ),
+        'execution_providers': bu_detector.session_provider_summary( session ),
+        'picture_sizes': list( picture_sizes ),
+        'video_censor_fps': paths.get( 'sample_fps',
+                                       getattr( betaconfig, 'video_censor_fps', None ) ),
+        'nn_batch_size': bu_detector.get_nn_batch_size( backend_name ),
+        'global_min_prob': getattr( betaconfig, 'global_min_prob', betaconst.global_min_prob ),
+        'detection_key': paths['detection_key'],
+        'censor_key': paths['censor_key'],
+        'encode_key': paths['encode_key'],
+        # Which settings came from this person's betaconfig_local.py, so
+        # two machines' rows that differ say why. The values themselves
+        # are in the fields above and in the keys.
+        'local_overrides': bu_local.LOADED.overridden_names() if bu_local.LOADED is not None else [],
+        'transcoded_source': source.transcoded,
+        'video_width': source.width,
+        'video_height': source.height,
+        'video_fps': round( source.vid_fps, 4 ) if source.vid_fps else None,
+        'video_frames': int( source.num_frames ),
+    }
+    record.update( { 'track_%s'%(key): value for key, value in track_stats.items() } )
+    record.update( { 'render_%s'%(key): value for key, value in render_stats.items() } )
+    # What the resource governor did to this file: time spent under a
+    # throttle, detection's yields, why, and the fewest render workers.
+    record.update( bu_gov_run.active().file_stats() )
+
+    # Flat aliases for the field names the analysis tools have always
+    # read (summarize_tune_sweep.py, batch_ab_test.py). Cheap to keep,
+    # and renaming them would break every historical stats file those
+    # tools can still be pointed at.
+    record['label_counts'] = track_stats.get( 'label_counts', {} )
+    record['interpolated_boxes'] = track_stats.get( 'interpolated', 0 )
+    record['suppression_counts'] = {
+        rule: entry['total'] if isinstance( entry, dict ) else entry
+        for rule, entry in track_stats.get( 'suppression_counts', {} ).items() }
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def job_files( logger ):
+    """
+    Every file under betaconst.video_path_uncensored, in run order.
+
+    Walks the tree top-down, names sorted within each folder. The output
+    tree mirrors the input, empty folders included, so each folder's
+    output folder is created here even when it holds no files.
+
+    Args:
+        logger: Where each folder's scan line goes.
+
+    Returns:
+        A list of bu_job.JobFile( path, output_folder ).
+    """
+    files = []
+    for root, _dirs, names in os.walk( betaconst.video_path_uncensored ):
+        output_folder = root.replace( betaconst.video_path_uncensored,
+                                      betaconst.video_path_censored, 1 )
+        os.makedirs( output_folder, exist_ok=True )
+        logger.info( "scanning %s (%d file(s))"%( root, len( names ) ) )
+        for name in sorted( names ):
+            files.append( bu_job.JobFile( os.path.join( root, name ), output_folder ) )
+    return files
+
+
+def main():
+    """
+    Censor everything in betaconst.video_path_uncensored, as one job
+    (betautils_job), the same path the engine's job.submit takes.
+
+    Returns:
+        A process exit code: 0 for a clean finish, 1 for a run stopped
+        by a full disk, 3 when another run holds the library's run lock
+        (betautils_runlock), 130 for a user interrupt (the conventional
+        128 + SIGINT).
+    """
+    logger = _startup()
+    try:
+        run_lock = bu_runlock.acquire_library( 'betatv', logger=logger )
+    except bu_runlock.RunLocked as locked:
+        logger.error( locked.message() )
+        return bu_runlock.EXIT_LOCKED
+
+    exit_code = 0
+    run_started_at = time.perf_counter()
+    job = None
+    # The library catalog keeps each file's run in its history, as the
+    # app's jobs do; a catalog that cannot be opened never stops the run.
+    import betautils_catalog_history as bu_history
+    catalog = bu_history.CliHistory.open( logger )
+    sinks = [ bu_run_record.StatsLogSink(), bu_run_record.FailureLogSink() ]
+    if catalog is not None:
+        sinks.append( catalog.sink )
+    # The performance index (betautils_perf), best effort like the catalog.
+    import betautils_serve_perf as bu_serve_perf
+    sinks.append( bu_serve_perf.sink() )
+    recorder = bu_run_record.RunRecorder( sinks, program='betatv', logger=logger )
+    # The resource governor paces the command line as it does the app's
+    # jobs; it logs each decision, and governor.enabled turns it off.
+    import betautils_serve_resources as bu_serve_resources
+    governor = bu_gov_run.Runtime( resources=bu_serve_resources.Resources( lambda _name, _data: None, logger ),
+                                   logger=logger )
+    try:
+        job = bu_job.Job( 'cli', job_files( logger ) )
+        state = bu_job.Runner( logger, recorder=recorder,
+                               types=catalog.run_types() if catalog is not None else None,
+                               governor=governor ).run( job )
+        if state == bu_job.STOPPED and job.code == 'disk.full':
+            exit_code = 1
+    except bu_signals.Interrupted:
+        logger.warning( "run stopped by user after %s"%(
+            bu_log.format_duration( time.perf_counter() - run_started_at ) ) )
+        exit_code = 130
+    finally:
+        # However the run ends, the lock goes back, so the next run does
+        # not report it left behind.
+        run_lock.release()
+        if catalog is not None:
+            catalog.close()
+
+    counts = job.counts if job is not None else { 'processed': 0, 'skipped': 0, 'failed': 0 }
+    logger.info( "run finished in %s: %d processed, %d skipped, %d failed"%(
+        bu_log.format_duration( time.perf_counter() - run_started_at ),
+        counts['processed'], counts['skipped'], counts['failed'] ) )
+    return exit_code
+
+
+if __name__ == '__main__':
+    raise SystemExit( main() )

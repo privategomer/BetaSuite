@@ -1,0 +1,26 @@
+[
+  {
+    "name": "nudenet_v3 breast<-covered_breast, loose (min_iou 0.05, anchored to the one real confirmed data point: median IoU 0.036 for this pair on nudenet_v3 vs 0.475 for retinanet_v2 on the same footage - see CONFIG_REFERENCE.md's 'class_suppression is per-backend' section). No margin set - pure IoU gate, since nudenet_v3 has no confidence-score-delta data behind a margin yet (see derive_suppression_rules.py's docstring). This is the LOOSEST end worth testing: at retinanet_v2's own min_iou=0.55 this rule would essentially never fire for nudenet_v3, so 0.05 is deliberately far below that to actually catch nudenet_v3's real, much-tighter overlap geometry.",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast", "min_iou": 0.05 }
+    ] }
+  },
+  {
+    "name": "nudenet_v3 breast<-covered_breast, moderate (min_iou 0.10 - still well below retinanet_v2's 0.55, but tighter than the loose variant so fewer real exposed_breast detections risk getting suppressed by a coincidentally-overlapping covered_breast box)",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast", "min_iou": 0.10 }
+    ] }
+  },
+  {
+    "name": "nudenet_v3 breast<-covered_breast, strict (min_iou 0.20 - upper end worth testing before this starts approaching 'basically never fires', same failure mode retinanet_v2's threshold has on nudenet_v3 data)",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast", "min_iou": 0.20 }
+    ] }
+  },
+  {
+    "name": "nudenet_v3 breast<-covered_breast, disabled (min_iou 1.0 - a de-facto off switch, i.e. the current shipped {} behavior for this pair - baseline for comparison so the loose/moderate/strict variants above can be judged against 'no suppression at all', not just against each other)",
+    "class_suppression": { "exposed_breast": [
+        { "suppressed_by": "covered_breast", "min_iou": 1.0 }
+    ] }
+  }
+]

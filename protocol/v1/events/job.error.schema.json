@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/events/job.error.schema.json",
+  "title": "job.error",
+  "description": "Something went wrong in a job: file.failed for one file (the job goes on), or, just before a job.state 'stopped', the code that stopped it. code and params are an error from errors.schema.json. file is the file's index when the error is about one.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job",
+        "code",
+        "params"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

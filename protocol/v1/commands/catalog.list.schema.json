@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.list.schema.json",
+  "title": "catalog.list",
+  "description": "A page of the library: the items with at least one location, filtered and sorted. filter: status, availability and type are lists (type holds profile names, or 'auto' for items without a pin); output keeps items whose censored outputs are present (at least one on disk), missing (every one made was deleted or lost) or none (never made); duplicates true keeps items present at two or more paths; pinned; folder, a watched folder's id. sort: name (default), added_at, size or status, ascending unless descending. total counts the items the filter keeps; pending the files waiting to be hashed; reclaimable_bytes what removing every extra copy would free, over the whole library. status says what happened (done: a run finished, whether or not its output is still there); outputs and outputs_missing count the censored outputs found and lost. A file named as an output, in an output folder or a watched one, is an output, never a source. An item's type says which video type a run gives it and why (when: declared before the run by a pin or a rule, last_run as measured on its last run, at_run when the scan will decide).",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "new",
+                  "queued",
+                  "processing",
+                  "done",
+                  "failed"
+                ]
+              }
+            },
+            "availability": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "present",
+                  "missing",
+                  "offline"
+                ]
+              }
+            },
+            "type": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "output": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "present",
+                  "missing",
+                  "none"
+                ]
+              }
+            },
+            "duplicates": {
+              "type": "boolean"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "folder": {
+              "type": "integer"
+            },
+            "censored": {
+              "type": "object",
+              "description": "Items with a present output that hid every label in labels and used every kind of look in looks (on those labels, or on any label when labels is not given). An output whose censor key record cannot be read matches no censor filter.",
+              "properties": {
+                "labels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "looks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "sort": {
+          "enum": [
+            "name",
+            "added_at",
+            "size",
+            "status"
+          ]
+        },
+        "descending": {
+          "type": "boolean"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "items",
+        "total",
+        "pending",
+        "reclaimable_bytes"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "item",
+              "name",
+              "kind",
+              "size",
+              "status",
+              "availability",
+              "copies",
+              "pin",
+              "type",
+              "outputs",
+              "outputs_missing",
+              "added_at",
+              "censors"
+            ],
+            "properties": {
+              "item": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{16}$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "video"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "new",
+                  "queued",
+                  "processing",
+                  "done",
+                  "failed"
+                ]
+              },
+              "availability": {
+                "enum": [
+                  "present",
+                  "missing",
+                  "offline"
+                ]
+              },
+              "copies": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "object",
+                "required": [
+                  "profile",
+                  "rule",
+                  "params",
+                  "when"
+                ],
+                "properties": {
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "rule": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "params": {
+                    "type": "object"
+                  },
+                  "when": {
+                    "enum": [
+                      "declared",
+                      "last_run",
+                      "at_run"
+                    ]
+                  }
+                }
+              },
+              "outputs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "outputs_missing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "added_at": {
+                "type": "number"
+              },
+              "censors": {
+                "type": "array",
+                "description": "The labels the item's present outputs hid, each with the kinds of look used on it (blur, pixel, bar, sticker, ...), read from each output's censor key record. Empty when no present output has a readable record.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "looks"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "looks": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxItems": 500
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reclaimable_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

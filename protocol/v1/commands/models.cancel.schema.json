@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/models.cancel.schema.json",
+  "title": "models.cancel",
+  "description": "Stop a model's download, or take it off the queue. What arrived is kept, so installing again resumes. cancelled is false when it was neither queued nor downloading.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "cancelled"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cancelled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

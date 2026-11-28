@@ -1,0 +1,354 @@
+# setup.ps1 - one-shot BetaSuite environment setup for Windows.
+# Double-click setup.cmd, or run: powershell -ExecutionPolicy Bypass -File setup.ps1
+# Safe to re-run: every step checks before it acts. See SETUP.md.
+# In a git checkout it first offers to switch to the latest release tag.
+
+[CmdletBinding()]
+param(
+    [switch]$Gpu,
+    [switch]$Cpu,
+    [string]$Python = '',
+    [switch]$Tests,
+    [switch]$NoTests,
+    [string]$PersonBackends = '',  # comma separated; '' lets fetch_models.py ask
+    [switch]$Yes,
+    [switch]$NoReleaseCheck,       # stay on the current branch/commit (development)
+    [ValidateSet('trace','debug','info','warn','error')]
+    [string]$LogLevel = 'info',
+    [switch]$Help
+)
+
+if ($Help) {
+    @'
+Usage: setup.cmd [options]   (or: powershell -ExecutionPolicy Bypass -File setup.ps1 [options])
+
+  -Gpu | -Cpu            CUDA build or CPU build (default: ask; GPU suggested when nvidia-smi finds one)
+  -Python VERSION        Python version (default: from .python-version)
+  -Tests | -NoTests      run the unit tests at the end (default: ask, no)
+  -PersonBackends LIST   person models to install for reverse mode, comma separated:
+                         yolo11_seg, rf_detr_seg, all or none (default: ask, yolo11_seg)
+  -NoReleaseCheck        stay on the current branch or commit instead of offering to switch to the latest release
+  -Yes                   accept the default answer to every prompt
+  -LogLevel LEVEL        console level: trace|debug|info|warn|error (default info); setup.log gets everything
+'@ | Write-Host
+    exit 0
+}
+
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+$RepoDir = $PSScriptRoot
+Set-Location $RepoDir
+$LogFile = Join-Path $RepoDir 'setup.log'
+$VenvDir = Join-Path $RepoDir '.venv'
+$VenvPy = Join-Path $VenvDir 'Scripts\python.exe'
+$MinDriverMajor = 528
+if (-not $Python) {
+    $pin = Join-Path $RepoDir '.python-version'
+    $Python = if (Test-Path $pin) { (Get-Content $pin -Raw).Trim() } else { '3.12' }
+}
+
+# ---------------------------------------------------------------- logging
+$LevelRank = @{ trace = 0; debug = 1; info = 2; warn = 3; error = 4 }
+function Write-Log([string]$Level, [string]$Message) {
+    $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level.ToUpper(), $Message
+    Add-Content -Path $LogFile -Value $line -Encoding UTF8
+    if ($LevelRank[$Level] -ge $LevelRank[$LogLevel]) {
+        $color = @{ trace = 'DarkGray'; debug = 'Gray'; info = 'White'; warn = 'Yellow'; error = 'Red' }[$Level]
+        Write-Host $line -ForegroundColor $color
+    }
+}
+function Stop-Setup([string]$Message) {
+    Write-Log error $Message
+    Write-Log error "setup stopped. full log: $LogFile"
+    exit 1
+}
+
+# Runs a native command with all of its output appended to the log only.
+function Invoke-Logged([string]$Description, [string]$Exe, [string[]]$Arguments) {
+    Write-Log info "=== starting: $Description ==="
+    Write-Log debug "command: $Exe $($Arguments -join ' ')"
+    Add-Content -Path $LogFile -Value "----- begin output: $Description -----" -Encoding UTF8
+    $start = Get-Date
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Exe @Arguments 2>&1 | ForEach-Object { "$_" } | Add-Content -Path $LogFile -Encoding UTF8
+        $code = $LASTEXITCODE
+    } catch {
+        Add-Content -Path $LogFile -Value "$_" -Encoding UTF8
+        $code = 1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    $secs = [int]((Get-Date) - $start).TotalSeconds
+    Add-Content -Path $LogFile -Value "----- end output: $Description (exit $code) -----" -Encoding UTF8
+    if ($code -eq 0) { Write-Log info "=== finished: $Description (${secs}s) ===" }
+    else { Write-Log error "=== failed: $Description (exit $code, ${secs}s) - see $LogFile ===" }
+    return ($code -eq 0)
+}
+
+function Ask-YesNo([string]$Prompt, [bool]$Default) {
+    $d = if ($Default) { 'y' } else { 'n' }
+    if ($Yes -or -not [Environment]::UserInteractive) {
+        Write-Log info "auto-answer '$d': $Prompt"
+        return $Default
+    }
+    $hint = if ($Default) { 'Y/n' } else { 'y/N' }
+    Write-Log debug "AWAITING INPUT: $Prompt"
+    $reply = Read-Host "$Prompt [$hint]"
+    if (-not $reply) { $reply = $d }
+    Write-Log debug "input received: $reply"
+    return ($reply -match '^(y|yes)$')
+}
+
+# Runs git for its output only and never stops setup; callers read
+# $LASTEXITCODE. Windows PowerShell 5.1 (what setup.cmd starts) turns each
+# redirected stderr line of a native command into an error record, and the
+# script's 'Stop' preference makes the first one end setup. `git describe
+# --exact-match` writes one whenever HEAD isn't on a tag, so a fresh clone of
+# main died in the release check. Reproduced on PowerShell 7 with
+# $PSNativeCommandUseErrorActionPreference; not yet run on 5.1 itself.
+# Invoke-Logged avoids the same thing the same way.
+function Get-GitOutput([string[]]$Arguments) {
+    $ErrorActionPreference = 'Continue'
+    & git -C $RepoDir @Arguments 2>$null
+}
+
+function Update-SessionPath {
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+# ---------------------------------------------------------------- release
+# Offer to move a git checkout onto the newest vX.Y.Z tag, then restart setup
+# from that release's own copy of this script. BETASUITE_RELEASE_CHECKED stops
+# the restarted copy (possibly an older release's) from asking again.
+$BoundAtStart = $PSBoundParameters
+function Invoke-ReleaseCheck {
+    if ($NoReleaseCheck -or $env:BETASUITE_RELEASE_CHECKED -eq '1') { Write-Log debug 'release check skipped'; return }
+    if (-not (Test-Path (Join-Path $RepoDir '.git')) -or -not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Log debug 'not a git checkout; using the files as they are'; return
+    }
+    if (-not (Invoke-Logged 'fetch release tags' 'git' @('-C', $RepoDir, 'fetch', '--tags', '--quiet'))) {
+        Write-Log warn 'could not fetch tags; checking against the tags already here'
+    }
+    $latest = Get-GitOutput @('tag', '--list', 'v[0-9]*', '--sort=-v:refname') |
+        Where-Object { $_ -notmatch '-' } | Select-Object -First 1
+    if (-not $latest) { Write-Log warn 'no release tags found; installing the current checkout'; return }
+    $headTag = Get-GitOutput @('describe', '--tags', '--exact-match', 'HEAD')
+    if ($LASTEXITCODE -ne 0) { $headTag = $null }
+    if ($headTag -eq $latest) { Write-Log info "on the latest release, $latest"; return }
+    $here = Get-GitOutput @('rev-parse', '--abbrev-ref', 'HEAD')
+    if ($here -eq 'HEAD') { $here = if ($headTag) { $headTag } else { 'commit ' + (Get-GitOutput @('rev-parse', '--short', 'HEAD')) } }
+    $ahead = [int](Get-GitOutput @('rev-list', '--count', "$latest..HEAD"))
+    if (Get-GitOutput @('status', '--porcelain', '--untracked-files=no')) {
+        Write-Log warn "latest release is $latest, but $here has uncommitted changes; staying on $here"; return
+    }
+    if ($ahead -gt 0) {
+        $null = Get-GitOutput @('merge-base', '--is-ancestor', $latest, 'HEAD')
+        if ($LASTEXITCODE -eq 0) { Write-Log info "$here is $ahead commit(s) past $latest (changes not released yet)" }
+    }
+    if (-not (Ask-YesNo "Latest release is $latest; this checkout is on $here. Switch to $latest?" $true)) {
+        Write-Log info "staying on $here"; return
+    }
+    if (-not (Invoke-Logged "check out $latest" 'git' @('-C', $RepoDir, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', $latest))) {
+        Stop-Setup "could not check out $latest"
+    }
+    Write-Log info "switched to $latest; restarting setup from that release"
+    $env:BETASUITE_RELEASE_CHECKED = '1'
+    $passArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $RepoDir 'setup.ps1'))
+    foreach ($kv in $BoundAtStart.GetEnumerator()) {
+        if ($kv.Value -is [System.Management.Automation.SwitchParameter]) { if ($kv.Value) { $passArgs += "-$($kv.Key)" } }
+        else { $passArgs += @("-$($kv.Key)", "$($kv.Value)") }
+    }
+    # Pass the release's exit code on as-is. Under 'Stop', a PowerShell that
+    # treats native exit codes as errors would throw on a failed release run
+    # instead of returning its code.
+    $ErrorActionPreference = 'Continue'
+    & (Get-Process -Id $PID).Path @passArgs
+    exit $LASTEXITCODE
+}
+Invoke-ReleaseCheck
+$env:BETASUITE_RELEASE_CHECKED = '1'
+
+# ---------------------------------------------------------------- preflight
+Write-Log info "BetaSuite setup starting in $RepoDir (log: $LogFile)"
+$versionFile = Join-Path $RepoDir 'VERSION'
+$version = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { 'unknown' }
+$described = if (Get-Command git -ErrorAction SilentlyContinue) { Get-GitOutput @('describe', '--tags', '--always', '--dirty') }
+if (-not $described) { $described = 'not a git checkout' }
+Write-Log info "version: $version ($described)"
+Write-Log info ("platform: Windows {0} {1}, PowerShell {2}" -f [Environment]::OSVersion.Version, $env:PROCESSOR_ARCHITECTURE, $PSVersionTable.PSVersion)
+
+$HaveGpu = $false
+if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+    $gpus = & nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null
+    if ($LASTEXITCODE -eq 0 -and $gpus) {
+        $HaveGpu = $true
+        foreach ($g in @($gpus)) { Write-Log info "GPU: $g" }
+        $major = [int](($gpus | Select-Object -First 1).Split(',')[1].Trim().Split('.')[0])
+        if ($major -lt $MinDriverMajor) {
+            Write-Log warn "NVIDIA driver $major is older than $MinDriverMajor; CUDA 12 needs $MinDriverMajor+. Update the driver or use -Cpu."
+        }
+    }
+}
+if (-not $HaveGpu) { Write-Log info 'no working nvidia-smi found; GPU build not suggested' }
+
+if ($Gpu -and $Cpu) { Stop-Setup 'pass -Gpu or -Cpu, not both' }
+if ($Gpu) { $Mode = 'gpu' } elseif ($Cpu) { $Mode = 'cpu' }
+else { $Mode = if (Ask-YesNo "Install the NVIDIA GPU (CUDA) build? 'n' installs the CPU build" $HaveGpu) { 'gpu' } else { 'cpu' } }
+if ($Mode -eq 'gpu' -and -not $HaveGpu) { Write-Log warn 'GPU build requested but no NVIDIA GPU detected; it will fall back to CPU at runtime' }
+Write-Log info "install mode: $Mode, python $Python"
+
+$HaveWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
+
+# ---------------------------------------------------------------- ffmpeg
+if ((Get-Command ffmpeg -ErrorAction SilentlyContinue) -and (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+    Write-Log info ("ffmpeg found: " + (& ffmpeg -version 2>$null | Select-Object -First 1))
+} elseif (Ask-YesNo 'ffmpeg/ffprobe not found on PATH. Install with winget (Gyan.FFmpeg)?' $true) {
+    if (-not $HaveWinget) { Stop-Setup 'winget is not available. Install ffmpeg by hand (see SETUP.md) and re-run.' }
+    if (-not (Invoke-Logged 'install ffmpeg' 'winget' @('install','--id','Gyan.FFmpeg','-e','--accept-source-agreements','--accept-package-agreements'))) {
+        Stop-Setup 'ffmpeg install failed'
+    }
+    Update-SessionPath
+    if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+        Write-Log warn 'ffmpeg installed but not on PATH in this window yet; open a new terminal before running BetaSuite'
+    }
+} else {
+    Write-Log warn 'continuing without ffmpeg; betatv.py cannot render until it is installed'
+}
+
+# ---------------------------------------------------------------- uv
+function Find-Uv {
+    $cmd = Get-Command uv -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($p in @("$env:USERPROFILE\.local\bin\uv.exe", "$env:USERPROFILE\.cargo\bin\uv.exe")) {
+        if (Test-Path $p) { return $p }
+    }
+    return $null
+}
+$Uv = Find-Uv
+if (-not $Uv) {
+    if (-not (Ask-YesNo 'uv (Python installer and venv tool from astral.sh) is not installed. Install it?' $true)) {
+        Stop-Setup 'uv is required by setup.ps1. Install it, or follow the manual steps in SETUP.md.'
+    }
+    $ok = Invoke-Logged 'install uv' 'powershell' @('-NoProfile','-ExecutionPolicy','Bypass','-Command','irm https://astral.sh/uv/install.ps1 | iex')
+    Update-SessionPath
+    $Uv = Find-Uv
+    if (-not $ok -or -not $Uv) { Stop-Setup 'uv install failed' }
+}
+Write-Log info "uv: $Uv"
+
+# uv keeps its downloads in the app's own cache folder, not uv's shared
+# default, so the Storage view can list them and delete them safely. A
+# UV_CACHE_DIR set by hand is kept. Python may not exist yet, so the
+# folder is worked out here as betautils_paths does it.
+if (-not $env:UV_CACHE_DIR) {
+    if ($env:BETASUITE_DATA_ROOT) { $AppCache = Join-Path $env:BETASUITE_DATA_ROOT 'output\cache' }
+    elseif ($env:BETASUITE_CACHE_DIR) { $AppCache = $env:BETASUITE_CACHE_DIR }
+    else { $AppCache = Join-Path $env:LOCALAPPDATA 'BetaSuite\cache' }
+    $env:UV_CACHE_DIR = Join-Path $AppCache 'setup-downloads'
+    Write-Log info "uv downloads go to $env:UV_CACHE_DIR (the Storage view can delete them)"
+}
+
+# ---------------------------------------------------------------- python + venv
+$existing = $null
+if (Test-Path $VenvPy) {
+    $existing = (& $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null)
+}
+if ($existing -and $existing -ne $Python) {
+    if (Ask-YesNo ".venv uses Python $existing, not $Python. Delete and recreate it?" $true) {
+        Remove-Item -Recurse -Force $VenvDir
+        Write-Log info 'removed old .venv'
+        $existing = $null
+    } else {
+        Write-Log warn "keeping .venv on Python $existing"
+    }
+}
+if ($existing) {
+    Write-Log info "reusing .venv (Python $existing)"
+} else {
+    if (-not (Invoke-Logged "uv python install $Python" $Uv @('python','install',$Python))) { Stop-Setup "could not install Python $Python" }
+    if (-not (Invoke-Logged 'create .venv' $Uv @('venv','--python',$Python,$VenvDir))) { Stop-Setup 'could not create .venv' }
+}
+
+# onnxruntime and onnxruntime-gpu share one import directory: switching
+# flavours must remove both first or the survivor ends up half-deleted.
+$other = if ($Mode -eq 'gpu') { 'onnxruntime' } else { 'onnxruntime-gpu' }
+& $VenvPy -c "import importlib.metadata as m, sys; m.version(sys.argv[1])" $other 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Log info "switching onnxruntime flavour: removing $other and any existing onnxruntime"
+    Invoke-Logged 'uninstall onnxruntime packages' $Uv @('pip','uninstall','--python',$VenvPy,'onnxruntime','onnxruntime-gpu') | Out-Null
+}
+
+if (-not (Invoke-Logged "install requirements-$Mode.txt" $Uv @('pip','install','--python',$VenvPy,'-r',"requirements-$Mode.txt"))) {
+    Stop-Setup 'package install failed'
+}
+
+# ---------------------------------------------------------------- folders
+# The 1.x tree under BETASUITE_DATA_ROOT, else the OS folders by kind.
+# tools\lib\where.py asks betautils_paths, so setup and the app agree.
+$Rels = @('resources/model','resources/uncensored_vids','resources/uncensored_pics','resources/source',
+          'resources/stickers/breasts','resources/stickers/vulva','output/logs','output/censored_vids')
+$Folders = @(& $VenvPy (Join-Path $RepoDir 'tools\lib\where.py') @Rels)
+if ($LASTEXITCODE -ne 0 -or $Folders.Count -ne $Rels.Count) {
+    Stop-Setup 'a data folder variable (BETASUITE_DATA_ROOT, BETASUITE_CACHE_DIR, BETASUITE_INPUT_DIR, BETASUITE_OUTPUT_DIR) is not usable'
+}
+foreach ($full in $Folders) {
+    if (-not (Test-Path -LiteralPath $full)) {
+        New-Item -ItemType Directory -Path $full -Force | Out-Null
+        Write-Log info "created $full"
+    }
+}
+$InputVids = $Folders[1]
+$OutputVids = $Folders[7]
+
+# ---------------------------------------------------------------- models
+# Downloads the project's hosted models, each checked against its pinned
+# hash: 320n always, and the person models (YOLO11-seg, RF-DETR-Seg) for the
+# person backends chosen (fetch_models.py asks; default yolo11_seg). It
+# checks whatever is there and moves a file that is not the pinned one aside.
+$fetchArgs = @('tools\setup\fetch_models.py', '--log-level', $LogLevel, '--log-file', $LogFile)
+if ($PersonBackends) { $fetchArgs += @('--person-backends', $PersonBackends) }
+if ($Yes -or -not [Environment]::UserInteractive) { $fetchArgs += '--yes' }
+& $VenvPy @fetchArgs
+if ($LASTEXITCODE -ne 0) { Write-Log warn 'model check reported a problem; see the messages above' }
+
+# ---------------------------------------------------------------- local config
+# Your own settings live in betaconfig_local.py (ignored by git), not
+# betaconfig.py. Creates it if missing and matches gpu_enabled to this install.
+$wantFlag = if ($Mode -eq 'gpu') { '1' } else { '0' }
+$localArgs = @('tools\setup\local_config.py', '--log-level', $LogLevel, '--log-file', $LogFile, 'setup', '--gpu-enabled', $wantFlag)
+if ($Yes) { $localArgs += '--yes' }
+& $VenvPy @localArgs
+if ($LASTEXITCODE -ne 0) { Write-Log warn 'local config step reported a problem; see the messages above' }
+
+# ---------------------------------------------------------------- verify
+Write-Log info '=== verifying environment ==='
+& $VenvPy 'tools\setup\verify_env.py' "--$Mode" '--log-level' $LogLevel '--log-file' $LogFile
+$verifyStatus = $LASTEXITCODE
+
+$runTests = if ($Tests) { $true } elseif ($NoTests) { $false } else { Ask-YesNo 'Run the unit tests now (a minute or two)?' $false }
+if ($runTests) {
+    if (-not (Invoke-Logged 'unit tests' $VenvPy @('-m','unittest','discover','-s','tests','-t','.','-p','test_*.py'))) {
+        Write-Log warn "some tests failed; see $LogFile"
+    }
+}
+
+# ---------------------------------------------------------------- done
+if ($verifyStatus -ne 0) { Write-Log error "setup finished with problems (see FAIL lines above and $LogFile)" }
+else { Write-Log info 'setup complete' }
+Write-Host @"
+
+Next steps:
+  .venv\Scripts\Activate.ps1          # PowerShell, once per terminal (cmd: .venv\Scripts\activate.bat)
+  # put videos in $InputVids
+  # results land in $OutputVids (python tools\lib\where.py lists every folder)
+  python betatv.py --preview on --preview-seconds 20
+
+A script cannot activate a venv in the window that launched it, so the
+activate line above is yours to run. Alternatively call .venv\Scripts\python.exe directly.
+"@
+exit $verifyStatus

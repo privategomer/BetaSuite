@@ -1,0 +1,6870 @@
+{
+ "anchors": [
+  "betasuite-configuration-reference",
+  "how-to-read-this-document",
+  "one-caution-about-every-number-in-this-file",
+  "the-three-cache-keys",
+  "local-config-your-own-settings",
+  "example-local-config",
+  "toolsbenchtune_machinesh",
+  "where-data-lives-betasuite_data_root",
+  "storage_delete_permanently",
+  "cache_dir",
+  "detector-backend",
+  "selected",
+  "model_variant-nudenet_v3-per-backend",
+  "nn_batch_size-per-backend-with-a-shared-default",
+  "candidate_floor-nudenet_v3-per-backend",
+  "nms_iou-nudenet_v3-per-backend",
+  "nms_mode-nudenet_v3-per-backend",
+  "picture_sizes-per-backend",
+  "detection-sampling",
+  "video_censor_fps",
+  "detection_prefetch_frames",
+  "global_min_prob",
+  "confidence-and-the-three-gates",
+  "default_min_prob-and-per-label-min_prob-per-backend",
+  "min_prob_continue-per-label-per-backend-score-hysteresis",
+  "geometry-sanity-filter",
+  "geometry_action-what-a-violation-does",
+  "measuring-a-bound-before-you-trust-it",
+  "class-suppression",
+  "pairs-never-proposed-built-in-and-class_suppression_refused",
+  "class-promotion",
+  "covered_vulva-and-penetrative-content",
+  "cross-size-dedup",
+  "tracking-and-smoothing",
+  "default_position_smoothing-per-label-position_smoothing",
+  "position-and-size-smoothing",
+  "default_size_smoothing-per-label-size_smoothing",
+  "two-different-symptoms-two-different-knobs",
+  "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+  "track_max_gap-per-label-per-backend",
+  "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+  "match_distance_multiplier-per-label-per-backend",
+  "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+  "track-confirmation",
+  "default_min_track_hits-per-label-min_track_hits",
+  "default_confirm_score-per-label-confirm_score",
+  "shot-cut-detection",
+  "shot_cut_detection_enabled-and-shot_cut_threshold",
+  "structure-profiles",
+  "why-the-signal-is-a-duration-share-and-not-a-median-shot-length",
+  "split-screen-layouts",
+  "interpolating-vulva-dropouts-within-a-scene",
+  "the-source-folder-convention",
+  "sorting-the-files-betabench-structure",
+  "forcing-a-profile---profile-name",
+  "manual_only",
+  "censor-styles",
+  "common-keys",
+  "feather",
+  "type-blur",
+  "method-triple_box-a-cheaper-near-gaussian",
+  "is-triple_box-redundant-now",
+  "blur_edge_margin",
+  "would-a-weaker-blur-flicker-less",
+  "the-clamp-is-measured-against-the-tracks-reference-size",
+  "reverse-mode",
+  "layers-bottom-to-top",
+  "settings",
+  "person-windows-whole-male-bodies",
+  "what-each-kind-inherits",
+  "when-the-trigger-fires",
+  "error-economics",
+  "cost",
+  "limitations",
+  "person-segmentation",
+  "render-time-motion-interpolation",
+  "the-flicker-that-no-blur-setting-could-fix",
+  "render_motion_interpolation",
+  "render_motion_max_span_seconds",
+  "render_motion_collapse_max_growth",
+  "render_motion_size_window_seconds",
+  "why-these-are-in-the-censor-key",
+  "type-pixel",
+  "type-bar",
+  "type-sticker",
+  "censor_overlap_strategy",
+  "censor_scale_strategy",
+  "blur_fast_approximation-and-blur_approximation_min_kernel",
+  "area-safety-and-time-safety",
+  "default_area_safety-width_area_safety-height_area_safety",
+  "default_time_safety-per-label-time_safety",
+  "rendering-and-encoding",
+  "render_workers",
+  "render_worker_mb_per_megapixel",
+  "render_memory_reserve_mb",
+  "render_decode_threads",
+  "render_chunk_seconds",
+  "render_verify_frame_counts",
+  "encode_video_codec-encode_crf-encode_preset-render_chunk_container",
+  "detection_checkpoint_frames",
+  "ffmpeg_max_retries-ffmpeg_retry_backoff_seconds",
+  "move_completed_sources",
+  "library-catalog",
+  "catalog_scan_interval_seconds",
+  "preview-mode",
+  "logging-and-stats",
+  "stats",
+  "ffmpegs-own-output",
+  "debug_mode",
+  "hardware",
+  "the-resource-governor",
+  "miscellaneous",
+  "art_style",
+  "app_icon",
+  "tray_icon_shown",
+  "the-settings-registry",
+  "why-the-shipped-values-are-what-they-are",
+  "retinanet_v2-class_suppressionexposed_breast",
+  "retinanet_v2-class_suppressionexposed_vulva",
+  "retinanet_v2-item_overrides",
+  "style-weights-and-how-often-a-style-actually-appears",
+  "retinanet_v2-styles",
+  "per-variant-overrides",
+  "a-note-on-the-first-live-tuning-run",
+  "nudenet_v3-track_max_gap-doubled",
+  "nudenet_v3-fully-data-derived-at-640m",
+  "nudenet_v3-the-second-pass-superseded-above",
+  "run-level-speedups-measured-and-dropped",
+  "re-deriving-values-from-your-own-footage",
+  "reading-structure-and-what-profiles-would-need"
+ ],
+ "paths": [
+  "app_icon",
+  "art_style",
+  "blur_approximation_min_kernel",
+  "blur_edge_margin",
+  "blur_fast_approximation",
+  "cache_dir",
+  "catalog_scan_interval_seconds",
+  "censor_overlap_strategy.bar",
+  "censor_overlap_strategy.blur",
+  "censor_overlap_strategy.debug",
+  "censor_overlap_strategy.pixel",
+  "censor_overlap_strategy.sticker",
+  "censor_scale_strategy",
+  "console_color",
+  "console_level",
+  "console_palette",
+  "cross_size_dedup.enabled",
+  "cross_size_dedup.iou_threshold",
+  "cuda_device_id",
+  "debug_mode",
+  "default_area_safety",
+  "default_censor_shape",
+  "default_censor_style",
+  "default_confirm_score",
+  "default_geometry_action",
+  "default_interpolation_enabled",
+  "default_interpolation_max_gap",
+  "default_max_area_fraction",
+  "default_max_aspect_ratio",
+  "default_min_area_fraction",
+  "default_min_aspect_ratio",
+  "default_min_prob",
+  "default_min_prob_continue",
+  "default_min_track_hits",
+  "default_paired_style_max_age",
+  "default_paired_style_max_distance",
+  "default_paired_style_tiebreak_margin",
+  "default_position_smoothing",
+  "default_profile_enabled",
+  "default_size_smoothing",
+  "default_style_min_dwell_seconds",
+  "default_time_safety",
+  "detection_checkpoint_frames",
+  "detection_prefetch_frames",
+  "detector_backend.defaults.nn_batch_size",
+  "detector_backend.nudenet_v3.candidate_floor",
+  "detector_backend.nudenet_v3.class_promotion",
+  "detector_backend.nudenet_v3.class_suppression",
+  "detector_backend.nudenet_v3.class_suppression_refused",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.height_area_safety",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.match_distance_multiplier",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_prob",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.min_track_hits",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.paired_style",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.position_smoothing",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.time_safety",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.covered_vulva.width_area_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.confirm_score",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.height_area_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.match_distance_multiplier",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_prob",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.min_track_hits",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.paired_style_max_age",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.position_smoothing",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.time_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.exposed_breast.width_area_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.confirm_score",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.height_area_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.match_distance_multiplier",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_prob",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.min_track_hits",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.paired_style",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.position_smoothing",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.time_safety",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.item_overrides.exposed_vulva.width_area_safety",
+  "detector_backend.nudenet_v3.model_variant",
+  "detector_backend.nudenet_v3.nms_iou",
+  "detector_backend.nudenet_v3.nms_mode",
+  "detector_backend.nudenet_v3.nn_batch_size",
+  "detector_backend.nudenet_v3.profiles.default",
+  "detector_backend.nudenet_v3.profiles.match_on",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.covered_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.paired_style_max_age",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.compilation.manual_only",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.min_track_hits",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.time_safety",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.covered_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.min_track_hits",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.paired_style_max_age",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.time_safety",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.min_track_hits",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.time_safety",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.min_short_shot_fraction",
+  "detector_backend.nudenet_v3.profiles.variants.quick_cut.video_censor_fps",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.covered_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.scene.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.match_distance_multiplier",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.covered_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.match_distance_multiplier",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_age",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_max_distance",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.paired_style_tiebreak_margin",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.match_distance_multiplier",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.style_min_dwell_seconds",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.nudenet_v3.profiles.variants.split_screen.manual_only",
+  "detector_backend.retinanet_v2.class_suppression",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.height_area_safety",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.interpolation_max_gap",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_prob",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.min_track_hits",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.paired_style",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.time_safety",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.track_max_gap",
+  "detector_backend.retinanet_v2.item_overrides.exposed_breast.width_area_safety",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.height_area_safety",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.interpolation_max_gap",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.match_distance_multiplier",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_prob",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.min_track_hits",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.paired_style",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.time_safety",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.track_max_gap",
+  "detector_backend.retinanet_v2.item_overrides.exposed_vulva.width_area_safety",
+  "detector_backend.retinanet_v2.nn_batch_size",
+  "detector_backend.retinanet_v2.picture_sizes",
+  "detector_backend.retinanet_v2.profiles.default",
+  "detector_backend.retinanet_v2.profiles.match_on",
+  "detector_backend.retinanet_v2.profiles.variants.compilation.manual_only",
+  "detector_backend.retinanet_v2.profiles.variants.quick_cut.min_short_shot_fraction",
+  "detector_backend.retinanet_v2.profiles.variants.quick_cut.video_censor_fps",
+  "detector_backend.retinanet_v2.profiles.variants.split_screen.manual_only",
+  "detector_backend.selected",
+  "enable_betasuite_watermark",
+  "encode_crf",
+  "encode_preset",
+  "encode_video_codec",
+  "ffmpeg_max_retries",
+  "ffmpeg_retry_backoff_seconds",
+  "force_structure_profile",
+  "global_min_prob",
+  "governor.battery_low_pct",
+  "governor.busy_cpu_pct",
+  "governor.detection_pace_max",
+  "governor.enabled",
+  "governor.memory_pressure_pct",
+  "governor.memory_severe_pct",
+  "governor.user_idle_seconds",
+  "gpu_enabled",
+  "item_overrides.covered_vulva.censor_shape",
+  "item_overrides.covered_vulva.censor_style",
+  "item_overrides.exposed_breast.censor_shape",
+  "item_overrides.exposed_breast.censor_style",
+  "item_overrides.exposed_vulva.censor_shape",
+  "item_overrides.exposed_vulva.censor_style",
+  "items_to_censor",
+  "log_level",
+  "log_path",
+  "logging_enabled",
+  "move_completed_sources",
+  "person_backend.rf_detr_seg.batch_size",
+  "person_backend.rf_detr_seg.min_prob",
+  "person_backend.rf_detr_seg.model_variant",
+  "person_backend.selected",
+  "person_backend.yolo11_seg.batch_size",
+  "person_backend.yolo11_seg.min_prob",
+  "person_backend.yolo11_seg.model_variant",
+  "person_backend.yolo11_seg.nms_iou",
+  "person_backend.yolo11_seg.picture_size",
+  "preview_encode_preset",
+  "preview_max_seconds",
+  "preview_mode_enabled",
+  "preview_random_slice",
+  "preview_start_seconds",
+  "profile_by_path_pattern",
+  "profile_by_source_dir.compilation",
+  "profile_by_source_dir.quick-cut",
+  "profile_by_source_dir.scene",
+  "profile_by_source_dir.split-screen",
+  "render_chunk_container",
+  "render_chunk_seconds",
+  "render_decode_threads",
+  "render_memory_reserve_mb",
+  "render_motion_collapse_max_growth",
+  "render_motion_interpolation",
+  "render_motion_max_span_seconds",
+  "render_motion_size_window_seconds",
+  "render_verify_frame_counts",
+  "render_worker_mb_per_megapixel",
+  "render_workers",
+  "reverse.censor.labels",
+  "reverse.empty_frame",
+  "reverse.enabled",
+  "reverse.fade_seconds",
+  "reverse.frame_style",
+  "reverse.person_windows.enabled",
+  "reverse.person_windows.evidence_min_prob",
+  "reverse.person_windows.female_labels",
+  "reverse.person_windows.male_labels",
+  "reverse.person_windows.shrink",
+  "reverse.person_windows.track_iou",
+  "reverse.person_windows.track_max_gap_seconds",
+  "reverse.trigger.hold_seconds",
+  "reverse.trigger.labels",
+  "reverse.trigger.min_prob",
+  "shot_cut_burst_keep",
+  "shot_cut_burst_max_span",
+  "shot_cut_burst_window",
+  "shot_cut_detection_enabled",
+  "shot_cut_threshold",
+  "stats_enabled",
+  "stats_path",
+  "storage_delete_permanently",
+  "structure_scan_workers",
+  "tray_icon_shown",
+  "type_default_shapes.bar",
+  "video_censor_fps"
+ ],
+ "schema": {
+  "backends": {
+   "nudenet_v3": {
+    "labels": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ]
+   },
+   "retinanet_v2": {
+    "labels": [
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ]
+   }
+  },
+  "catalog": "i18n/en-US/settings.json",
+  "conditions": [
+   "backend_selected",
+   "cut_bursts_on",
+   "inherited_by_backend",
+   "label_rendered",
+   "model_variant_selected",
+   "person_backend_selected",
+   "person_windows_on",
+   "preview_off",
+   "preview_on",
+   "reverse_on"
+  ],
+  "geometry_actions": [
+   "drop",
+   "clamp",
+   "flag"
+  ],
+  "help": "CONFIG_REFERENCE.md",
+  "labels": [
+   {
+    "id": "face_femme",
+    "part": "face",
+    "sex": "female",
+    "state": "none",
+    "view": "front"
+   },
+   {
+    "id": "face_masc",
+    "part": "face",
+    "sex": "male",
+    "state": "none",
+    "view": "front"
+   },
+   {
+    "id": "exposed_breast",
+    "part": "breast",
+    "sex": "female",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_breast",
+    "part": "breast",
+    "sex": "female",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_chest",
+    "part": "chest",
+    "sex": "male",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "exposed_armpits",
+    "part": "armpits",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_armpits",
+    "part": "armpits",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_belly",
+    "part": "belly",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_belly",
+    "part": "belly",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_vulva",
+    "part": "genitals",
+    "sex": "female",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "exposed_penis",
+    "part": "genitals",
+    "sex": "male",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_vulva",
+    "part": "genitals",
+    "sex": "female",
+    "state": "covered",
+    "view": "front"
+   },
+   {
+    "id": "exposed_buttocks",
+    "part": "buttocks",
+    "sex": "any",
+    "state": "exposed",
+    "view": "back"
+   },
+   {
+    "id": "covered_buttocks",
+    "part": "buttocks",
+    "sex": "any",
+    "state": "covered",
+    "view": "back"
+   },
+   {
+    "id": "exposed_anus",
+    "part": "anus",
+    "sex": "any",
+    "state": "exposed",
+    "view": "back"
+   },
+   {
+    "id": "covered_anus",
+    "part": "anus",
+    "sex": "any",
+    "state": "covered",
+    "view": "back"
+   },
+   {
+    "id": "exposed_feet",
+    "part": "feet",
+    "sex": "any",
+    "state": "exposed",
+    "view": "front"
+   },
+   {
+    "id": "covered_feet",
+    "part": "feet",
+    "sex": "any",
+    "state": "covered",
+    "view": "front"
+   }
+  ],
+  "placeholders": {
+   "<backend>": [
+    "nudenet_v3",
+    "retinanet_v2"
+   ],
+   "<label>": [
+    "covered_anus",
+    "covered_armpits",
+    "covered_belly",
+    "covered_breast",
+    "covered_buttocks",
+    "covered_feet",
+    "covered_vulva",
+    "exposed_anus",
+    "exposed_armpits",
+    "exposed_belly",
+    "exposed_breast",
+    "exposed_buttocks",
+    "exposed_chest",
+    "exposed_feet",
+    "exposed_penis",
+    "exposed_vulva",
+    "face_femme",
+    "face_masc"
+   ],
+   "<model_variant>": [
+    "320n",
+    "640m"
+   ],
+   "<person_backend>": [
+    "rf_detr_seg",
+    "yolo11_seg"
+   ],
+   "<style_type>": [
+    "bar",
+    "blur",
+    "debug",
+    "pixel",
+    "sticker"
+   ]
+  },
+  "presets": [
+   {
+    "id": "blur",
+    "name_key": "look.preset.blur",
+    "style": {
+     "method": "triple_box",
+     "strength": 65,
+     "type": "blur"
+    },
+    "version": 1
+   },
+   {
+    "id": "pixelate",
+    "name_key": "look.preset.pixelate",
+    "style": {
+     "pattern": "square",
+     "strength": 20,
+     "type": "pixel"
+    },
+    "version": 1
+   },
+   {
+    "id": "bars",
+    "name_key": "look.preset.bars",
+    "style": {
+     "color": [
+      0,
+      0,
+      0
+     ],
+     "thickness": 1.0,
+     "type": "bar"
+    },
+    "version": 1
+   },
+   {
+    "id": "mixed",
+    "name_key": "look.preset.mixed",
+    "style": [
+     {
+      "method": "triple_box",
+      "strength": 65,
+      "type": "blur",
+      "weight": 1
+     },
+     {
+      "pattern": "square",
+      "strength": 20,
+      "type": "pixel",
+      "weight": 1
+     },
+     {
+      "color": [
+       0,
+       0,
+       0
+      ],
+      "thickness": 1.0,
+      "type": "bar",
+      "weight": 1
+     }
+    ],
+    "version": 1
+   }
+  ],
+  "rules": {
+   "promotion": {
+    "duplicate_iou": {
+     "kind": "number",
+     "label": "setting.rule_duplicate_iou.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_duplicate_iou.tip"
+    },
+    "from": {
+     "choices": [
+      "covered_anus",
+      "covered_armpits",
+      "covered_belly",
+      "covered_breast",
+      "covered_buttocks",
+      "covered_feet",
+      "covered_vulva",
+      "exposed_anus",
+      "exposed_armpits",
+      "exposed_belly",
+      "exposed_breast",
+      "exposed_buttocks",
+      "exposed_chest",
+      "exposed_feet",
+      "exposed_penis",
+      "exposed_vulva",
+      "face_femme",
+      "face_masc"
+     ],
+     "kind": "choice",
+     "label": "setting.rule_promote_from.label",
+     "tip": "setting.rule_promote_from.tip"
+    },
+    "min_prob": {
+     "kind": "number",
+     "label": "setting.rule_min_prob.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_min_prob.tip"
+    },
+    "requires": {
+     "kind": "promotion_requirements",
+     "label": "setting.rule_requires.label",
+     "tip": "setting.rule_requires.tip"
+    },
+    "requires_mode": {
+     "choices": [
+      "all",
+      "any"
+     ],
+     "kind": "choice",
+     "label": "setting.rule_requires_mode.label",
+     "tip": "setting.rule_requires_mode.tip"
+    }
+   },
+   "promotion_requirement": {
+    "label": {
+     "choices": [
+      "covered_anus",
+      "covered_armpits",
+      "covered_belly",
+      "covered_breast",
+      "covered_buttocks",
+      "covered_feet",
+      "covered_vulva",
+      "exposed_anus",
+      "exposed_armpits",
+      "exposed_belly",
+      "exposed_breast",
+      "exposed_buttocks",
+      "exposed_chest",
+      "exposed_feet",
+      "exposed_penis",
+      "exposed_vulva",
+      "face_femme",
+      "face_masc"
+     ],
+     "kind": "choice",
+     "label": "setting.rule_requires_label.label",
+     "tip": "setting.rule_requires_label.tip"
+    },
+    "min_iou": {
+     "kind": "number",
+     "label": "setting.rule_min_iou.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_min_iou.tip"
+    },
+    "min_prob": {
+     "kind": "number",
+     "label": "setting.rule_min_prob.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_min_prob.tip"
+    },
+    "min_source_overlap": {
+     "kind": "number",
+     "label": "setting.rule_min_source_overlap.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_min_source_overlap.tip"
+    },
+    "overlap": {
+     "choices": [
+      "anywhere"
+     ],
+     "kind": "choice",
+     "label": "setting.rule_overlap.label",
+     "tip": "setting.rule_overlap.tip"
+    }
+   },
+   "suppression": {
+    "margin": {
+     "kind": "number",
+     "label": "setting.rule_margin.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_margin.tip"
+    },
+    "min_iou": {
+     "kind": "number",
+     "label": "setting.rule_min_iou.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.rule_min_iou.tip"
+    },
+    "suppressed_by": {
+     "choices": [
+      "covered_anus",
+      "covered_armpits",
+      "covered_belly",
+      "covered_breast",
+      "covered_buttocks",
+      "covered_feet",
+      "covered_vulva",
+      "exposed_anus",
+      "exposed_armpits",
+      "exposed_belly",
+      "exposed_breast",
+      "exposed_buttocks",
+      "exposed_chest",
+      "exposed_feet",
+      "exposed_penis",
+      "exposed_vulva",
+      "face_femme",
+      "face_masc"
+     ],
+     "kind": "choice",
+     "label": "setting.rule_suppressed_by.label",
+     "tip": "setting.rule_suppressed_by.tip"
+    }
+   }
+  },
+  "screens": [
+   "run",
+   "what_to_hide",
+   "models",
+   "library",
+   "reverse",
+   "resources",
+   "other"
+  ],
+  "settings": [
+   {
+    "choices": [
+     "nudenet_v3",
+     "retinanet_v2"
+    ],
+    "help": "selected",
+    "kind": "choice",
+    "label": "setting.detector_backend.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor",
+     "detection"
+    ],
+    "path": "detector_backend.selected",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "models",
+    "tip": "setting.detector_backend.tip",
+    "when": []
+   },
+   {
+    "help": "nn_batch_size-per-backend-with-a-shared-default",
+    "kind": "int",
+    "label": "setting.nn_batch_size.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 1,
+    "moves": [],
+    "path": "detector_backend.defaults.nn_batch_size",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "resources",
+    "tip": "setting.nn_batch_size.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "320n",
+     "640m"
+    ],
+    "help": "model_variant-nudenet_v3-per-backend",
+    "kind": "choice",
+    "label": "setting.model_variant.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor",
+     "detection"
+    ],
+    "path": "detector_backend.defaults.model_variant",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "models",
+    "tip": "setting.model_variant.tip",
+    "when": [
+     "inherited_by_backend"
+    ]
+   },
+   {
+    "help": "picture_sizes-per-backend",
+    "kind": "sizes",
+    "label": "setting.picture_sizes.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.defaults.picture_sizes",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.picture_sizes.tip",
+    "when": [
+     "inherited_by_backend"
+    ]
+   },
+   {
+    "help": "nn_batch_size-per-backend-with-a-shared-default",
+    "kind": "int",
+    "label": "setting.nn_batch_size.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 1,
+    "moves": [],
+    "path": "detector_backend.<backend>.nn_batch_size",
+    "per_run": true,
+    "requires": [],
+    "scope": "backend",
+    "screen": "resources",
+    "tip": "setting.nn_batch_size.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "320n",
+     "640m"
+    ],
+    "help": "model_variant-nudenet_v3-per-backend",
+    "kind": "choice",
+    "label": "setting.model_variant.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor",
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.model_variant",
+    "per_run": true,
+    "requires": [],
+    "scope": "backend",
+    "screen": "models",
+    "tip": "setting.model_variant.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "model_variant-nudenet_v3-per-backend",
+    "kind": "path",
+    "label": "setting.model_path.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.model_path",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "models",
+    "tip": "setting.model_path.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "picture_sizes-per-backend",
+    "kind": "int",
+    "label": "setting.native_size.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 32,
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.native_size",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "models",
+    "tip": "setting.native_size.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "candidate_floor-nudenet_v3-per-backend",
+    "kind": "number",
+    "label": "setting.candidate_floor.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.candidate_floor",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.candidate_floor.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "nms_iou-nudenet_v3-per-backend",
+    "kind": "number",
+    "label": "setting.nms_iou.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.nms_iou",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.nms_iou.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "choices": [
+     "agnostic",
+     "per_class"
+    ],
+    "help": "nms_mode-nudenet_v3-per-backend",
+    "kind": "choice",
+    "label": "setting.nms_mode.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.nudenet_v3.nms_mode",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.nms_mode.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "picture_sizes-per-backend",
+    "kind": "sizes",
+    "label": "setting.picture_sizes.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "detection"
+    ],
+    "path": "detector_backend.<backend>.picture_sizes",
+    "per_run": true,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.picture_sizes.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "class-promotion",
+    "kind": "promotion_rules",
+    "label": "setting.class_promotion.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.class_promotion",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.class_promotion.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "class-suppression",
+    "kind": "suppression_rules",
+    "label": "setting.class_suppression.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.class_suppression",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.class_suppression.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "pairs-never-proposed-built-in-and-class_suppression_refused",
+    "kind": "refused_pairs",
+    "label": "setting.class_suppression_refused.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "detector_backend.<backend>.class_suppression_refused",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.class_suppression_refused.tip",
+    "when": []
+   },
+   {
+    "help": "structure-profiles",
+    "kind": "string",
+    "label": "setting.profile_default.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.default",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.profile_default.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "choices": [
+     "cuts_per_min",
+     "short_shot_fraction"
+    ],
+    "help": "why-the-signal-is-a-duration-share-and-not-a-median-shot-length",
+    "kind": "choice",
+    "label": "setting.profile_match_on.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.match_on",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend",
+    "screen": "other",
+    "tip": "setting.profile_match_on.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "why-the-signal-is-a-duration-share-and-not-a-median-shot-length",
+    "kind": "number",
+    "label": "setting.profile_min_short_shot_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [
+     "detection"
+    ],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.min_short_shot_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile",
+    "screen": "other",
+    "tip": "setting.profile_min_short_shot_fraction.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "why-the-signal-is-a-duration-share-and-not-a-median-shot-length",
+    "kind": "number",
+    "label": "setting.profile_min_cuts_per_min.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.min_cuts_per_min",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile",
+    "screen": "other",
+    "tip": "setting.profile_min_cuts_per_min.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "structure-profiles",
+    "kind": "number",
+    "label": "setting.profile_video_censor_fps.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor",
+     "detection"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.video_censor_fps",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile",
+    "screen": "other",
+    "tip": "setting.profile_video_censor_fps.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "manual_only",
+    "kind": "bool",
+    "label": "setting.profile_manual_only.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.manual_only",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile",
+    "screen": "other",
+    "tip": "setting.profile_manual_only.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "choices": [
+     0,
+     1
+    ],
+    "help": "hardware",
+    "kind": "choice",
+    "label": "setting.gpu_enabled.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "gpu_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.gpu_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "hardware",
+    "kind": "int",
+    "label": "setting.cuda_device_id.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "cuda_device_id",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "gpu_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.cuda_device_id.tip",
+    "when": []
+   },
+   {
+    "help": "detection_prefetch_frames",
+    "kind": "int",
+    "label": "setting.detection_prefetch_frames.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "detection_prefetch_frames",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.detection_prefetch_frames.tip",
+    "when": []
+   },
+   {
+    "help": "hardware",
+    "kind": "int",
+    "label": "setting.structure_scan_workers.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "structure_scan_workers",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.structure_scan_workers.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "bool",
+    "label": "setting.governor_enabled.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "governor.enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_memory_pressure_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.memory_pressure_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_memory_pressure_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_memory_severe_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.memory_severe_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_memory_severe_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_busy_cpu_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.busy_cpu_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_busy_cpu_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_user_idle_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.user_idle_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_user_idle_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_battery_low_pct.label",
+    "level": "advanced",
+    "maximum": 100,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.battery_low_pct",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_battery_low_pct.tip",
+    "when": []
+   },
+   {
+    "help": "the-resource-governor",
+    "kind": "number",
+    "label": "setting.governor_detection_pace_max.label",
+    "level": "advanced",
+    "maximum": 0.5,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "governor.detection_pace_max",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "governor.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.governor_detection_pace_max.tip",
+    "when": []
+   },
+   {
+    "help": "video_censor_fps",
+    "kind": "number",
+    "label": "setting.video_censor_fps.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "detection"
+    ],
+    "path": "video_censor_fps",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.video_censor_fps.tip",
+    "when": []
+   },
+   {
+    "help": "global_min_prob",
+    "kind": "number",
+    "label": "setting.global_min_prob.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "detection"
+    ],
+    "path": "global_min_prob",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.global_min_prob.tip",
+    "when": []
+   },
+   {
+    "help": "cross-size-dedup",
+    "kind": "bool",
+    "label": "setting.cross_size_dedup_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "cross_size_dedup.enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.cross_size_dedup_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "cross-size-dedup",
+    "kind": "number",
+    "label": "setting.cross_size_dedup_iou.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "cross_size_dedup.iou_threshold",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "cross_size_dedup.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.cross_size_dedup_iou.tip",
+    "when": []
+   },
+   {
+    "help": "shot_cut_detection_enabled-and-shot_cut_threshold",
+    "kind": "bool",
+    "label": "setting.shot_cut_detection_enabled.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "shot_cut_detection_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.shot_cut_detection_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "shot_cut_detection_enabled-and-shot_cut_threshold",
+    "kind": "number",
+    "label": "setting.shot_cut_threshold.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [
+     "detection"
+    ],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "shot_cut_threshold",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "shot_cut_detection_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.shot_cut_threshold.tip",
+    "when": []
+   },
+   {
+    "help": "shot-cut-detection",
+    "kind": "number",
+    "label": "setting.shot_cut_burst_window.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "shot_cut_burst_window",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "shot_cut_detection_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.shot_cut_burst_window.tip",
+    "when": []
+   },
+   {
+    "help": "shot-cut-detection",
+    "kind": "number",
+    "label": "setting.shot_cut_burst_max_span.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.shot_cut_burst_max_span.none",
+    "nullable": true,
+    "path": "shot_cut_burst_max_span",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "shot_cut_detection_enabled",
+      "test": "on"
+     },
+     {
+      "path": "shot_cut_burst_window",
+      "test": "above_zero"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.shot_cut_burst_max_span.tip",
+    "when": [
+     "cut_bursts_on"
+    ]
+   },
+   {
+    "choices": [
+     "first",
+     "last"
+    ],
+    "help": "shot-cut-detection",
+    "kind": "choice",
+    "label": "setting.shot_cut_burst_keep.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "shot_cut_burst_keep",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "shot_cut_detection_enabled",
+      "test": "on"
+     },
+     {
+      "path": "shot_cut_burst_window",
+      "test": "above_zero"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.shot_cut_burst_keep.tip",
+    "when": [
+     "cut_bursts_on"
+    ]
+   },
+   {
+    "help": "detection_checkpoint_frames",
+    "kind": "int",
+    "label": "setting.detection_checkpoint_frames.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "detection_checkpoint_frames",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.detection_checkpoint_frames.tip",
+    "when": []
+   },
+   {
+    "help": "render_chunk_seconds",
+    "kind": "number",
+    "label": "setting.render_chunk_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "render_chunk_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.render_chunk_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "render_workers",
+    "kind": "int",
+    "label": "setting.render_workers.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "render_workers",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.render_workers.tip",
+    "when": []
+   },
+   {
+    "help": "render_decode_threads",
+    "kind": "int",
+    "label": "setting.render_decode_threads.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "none": "setting.render_decode_threads.none",
+    "nullable": true,
+    "path": "render_decode_threads",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.render_decode_threads.tip",
+    "when": []
+   },
+   {
+    "help": "render_worker_mb_per_megapixel",
+    "kind": "number",
+    "label": "setting.render_worker_mb_per_megapixel.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "none": "setting.render_worker_mb_per_megapixel.none",
+    "nullable": true,
+    "path": "render_worker_mb_per_megapixel",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.render_worker_mb_per_megapixel.tip",
+    "when": []
+   },
+   {
+    "help": "render_memory_reserve_mb",
+    "kind": "number",
+    "label": "setting.render_memory_reserve_mb.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "render_memory_reserve_mb",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.render_memory_reserve_mb.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "mkv",
+     "mp4"
+    ],
+    "help": "encode_video_codec-encode_crf-encode_preset-render_chunk_container",
+    "kind": "choice",
+    "label": "setting.render_chunk_container.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "encode"
+    ],
+    "path": "render_chunk_container",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.render_chunk_container.tip",
+    "when": []
+   },
+   {
+    "help": "render_verify_frame_counts",
+    "kind": "bool",
+    "label": "setting.render_verify_frame_counts.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "render_verify_frame_counts",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.render_verify_frame_counts.tip",
+    "when": []
+   },
+   {
+    "help": "render_motion_interpolation",
+    "kind": "bool",
+    "label": "setting.render_motion_interpolation.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "render_motion_interpolation",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.render_motion_interpolation.tip",
+    "when": []
+   },
+   {
+    "help": "render_motion_max_span_seconds",
+    "kind": "number",
+    "label": "setting.render_motion_max_span_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.render_motion_max_span_seconds.none",
+    "nullable": true,
+    "path": "render_motion_max_span_seconds",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "render_motion_interpolation",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.render_motion_max_span_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "render_motion_collapse_max_growth",
+    "kind": "number",
+    "label": "setting.render_motion_collapse_max_growth.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "render_motion_collapse_max_growth",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "render_motion_interpolation",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.render_motion_collapse_max_growth.tip",
+    "when": []
+   },
+   {
+    "help": "render_motion_size_window_seconds",
+    "kind": "number",
+    "label": "setting.render_motion_size_window_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.render_motion_size_window_seconds.none",
+    "nullable": true,
+    "path": "render_motion_size_window_seconds",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "render_motion_interpolation",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.render_motion_size_window_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "ffmpeg_max_retries-ffmpeg_retry_backoff_seconds",
+    "kind": "int",
+    "label": "setting.ffmpeg_max_retries.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "ffmpeg_max_retries",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.ffmpeg_max_retries.tip",
+    "when": []
+   },
+   {
+    "help": "ffmpeg_max_retries-ffmpeg_retry_backoff_seconds",
+    "kind": "number",
+    "label": "setting.ffmpeg_retry_backoff_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "ffmpeg_retry_backoff_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.ffmpeg_retry_backoff_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "encode_video_codec-encode_crf-encode_preset-render_chunk_container",
+    "kind": "string",
+    "label": "setting.encode_video_codec.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "encode"
+    ],
+    "path": "encode_video_codec",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.encode_video_codec.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "fast",
+     "faster",
+     "medium",
+     "slow",
+     "slower",
+     "superfast",
+     "ultrafast",
+     "veryfast",
+     "veryslow"
+    ],
+    "help": "encode_video_codec-encode_crf-encode_preset-render_chunk_container",
+    "kind": "choice",
+    "label": "setting.encode_preset.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "encode"
+    ],
+    "path": "encode_preset",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "preview_mode_enabled",
+      "test": "off"
+     }
+    ],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.encode_preset.tip",
+    "when": [
+     "preview_off"
+    ]
+   },
+   {
+    "help": "encode_video_codec-encode_crf-encode_preset-render_chunk_container",
+    "kind": "int",
+    "label": "setting.encode_crf.label",
+    "level": "simple",
+    "maximum": 51,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "encode"
+    ],
+    "path": "encode_crf",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.encode_crf.tip",
+    "when": []
+   },
+   {
+    "help": "the-source-folder-convention",
+    "kind": "string",
+    "label": "setting.profile_by_source_dir.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "path": "profile_by_source_dir.<folder>",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "library",
+    "tip": "setting.profile_by_source_dir.tip",
+    "when": []
+   },
+   {
+    "help": "the-source-folder-convention",
+    "kind": "profile_map",
+    "label": "setting.profile_by_path_pattern.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.profile_by_path_pattern.none",
+    "nullable": true,
+    "path": "profile_by_path_pattern",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "library",
+    "tip": "setting.profile_by_path_pattern.tip",
+    "when": []
+   },
+   {
+    "help": "forcing-a-profile---profile-name",
+    "kind": "string",
+    "label": "setting.force_structure_profile.label",
+    "level": "advanced",
+    "may_move": [
+     "detection"
+    ],
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.force_structure_profile.none",
+    "nullable": true,
+    "path": "force_structure_profile",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.force_structure_profile.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ],
+    "help": "censor-styles",
+    "kind": "labels",
+    "label": "setting.items_to_censor.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "items_to_censor",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.items_to_censor.tip",
+    "when": []
+   },
+   {
+    "help": "censor-styles",
+    "kind": "censor_style",
+    "label": "setting.censor_style.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "item_overrides.<label>.censor_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "label",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_style.tip",
+    "when": [
+     "label_rendered"
+    ]
+   },
+   {
+    "choices": [
+     "box",
+     "circle",
+     "ellipse"
+    ],
+    "help": "common-keys",
+    "kind": "choice",
+    "label": "setting.censor_shape.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "item_overrides.<label>.censor_shape",
+    "per_run": false,
+    "requires": [],
+    "scope": "label",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_shape.tip",
+    "when": [
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "censor-styles",
+    "kind": "censor_style",
+    "label": "setting.censor_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_censor_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_style.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "box",
+     "circle",
+     "ellipse"
+    ],
+    "help": "common-keys",
+    "kind": "choice",
+    "label": "setting.censor_shape.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_censor_shape",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_shape.tip",
+    "when": []
+   },
+   {
+    "help": "structure-profiles",
+    "kind": "bool",
+    "label": "setting.profile_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor",
+     "detection"
+    ],
+    "path": "default_profile_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.profile_enabled.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "box",
+     "circle",
+     "ellipse"
+    ],
+    "help": "common-keys",
+    "kind": "choice",
+    "label": "setting.type_default_shapes.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "type_default_shapes.<style_type>",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.type_default_shapes.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "none",
+     "single-pass",
+     "span"
+    ],
+    "help": "censor_overlap_strategy",
+    "kind": "choice",
+    "label": "setting.censor_overlap_strategy.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "censor_overlap_strategy.<style_type>",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_overlap_strategy.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "feature",
+     "image",
+     "none"
+    ],
+    "help": "censor_scale_strategy",
+    "kind": "choice",
+    "label": "setting.censor_scale_strategy.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "censor_scale_strategy",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.censor_scale_strategy.tip",
+    "when": []
+   },
+   {
+    "help": "blur_fast_approximation-and-blur_approximation_min_kernel",
+    "kind": "bool",
+    "label": "setting.blur_fast_approximation.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "blur_fast_approximation",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.blur_fast_approximation.tip",
+    "when": []
+   },
+   {
+    "help": "blur_fast_approximation-and-blur_approximation_min_kernel",
+    "kind": "int",
+    "label": "setting.blur_approximation_min_kernel.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 3,
+    "moves": [
+     "censor"
+    ],
+    "odd": true,
+    "path": "blur_approximation_min_kernel",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "blur_fast_approximation",
+      "test": "on"
+     },
+     {
+      "path": "blur_edge_margin",
+      "test": "off"
+     }
+    ],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.blur_approximation_min_kernel.tip",
+    "when": []
+   },
+   {
+    "help": "blur_edge_margin",
+    "kind": "bool",
+    "label": "setting.blur_edge_margin.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "blur_edge_margin",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.blur_edge_margin.tip",
+    "when": []
+   },
+   {
+    "help": "reverse-mode",
+    "kind": "bool",
+    "label": "setting.reverse_enabled.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.enabled",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "settings",
+    "kind": "frame_style",
+    "label": "setting.reverse_frame_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.frame_style",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_frame_style.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "obscure",
+     "passthrough"
+    ],
+    "help": "settings",
+    "kind": "choice",
+    "label": "setting.reverse_empty_frame.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.empty_frame",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_empty_frame.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "settings",
+    "kind": "number",
+    "label": "setting.reverse_fade_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.fade_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_fade_seconds.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ],
+    "help": "when-the-trigger-fires",
+    "kind": "labels",
+    "label": "setting.reverse_trigger_labels.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.reverse_trigger_labels.none",
+    "nullable": true,
+    "path": "reverse.trigger.labels",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_trigger_labels.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "when-the-trigger-fires",
+    "kind": "number",
+    "label": "setting.reverse_trigger_min_prob.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.trigger.min_prob",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_trigger_min_prob.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "when-the-trigger-fires",
+    "kind": "number",
+    "label": "setting.reverse_trigger_hold_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.trigger.hold_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_trigger_hold_seconds.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ],
+    "help": "what-each-kind-inherits",
+    "kind": "labels",
+    "label": "setting.reverse_censor_labels.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.reverse_censor_labels.none",
+    "nullable": true,
+    "path": "reverse.censor.labels",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.reverse_censor_labels.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "what-each-kind-inherits",
+    "kind": "censor_style",
+    "label": "setting.censor_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.censor_style",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.censor_style.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "box",
+     "circle",
+     "ellipse"
+    ],
+    "help": "what-each-kind-inherits",
+    "kind": "choice",
+    "label": "setting.censor_shape.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.censor_shape",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.censor_shape.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "what-each-kind-inherits",
+    "kind": "window_style",
+    "label": "setting.reverse_window_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.censor_style",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.reverse_window_style.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "box",
+     "circle",
+     "ellipse"
+    ],
+    "help": "what-each-kind-inherits",
+    "kind": "choice",
+    "label": "setting.censor_shape.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.censor_shape",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.censor_shape.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "person-windows-whole-male-bodies",
+    "kind": "bool",
+    "label": "setting.person_windows_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.enabled",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_enabled.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ],
+    "help": "person-windows-whole-male-bodies",
+    "kind": "labels",
+    "label": "setting.person_windows_male_labels.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.male_labels",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_male_labels.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "covered_anus",
+     "covered_armpits",
+     "covered_belly",
+     "covered_breast",
+     "covered_buttocks",
+     "covered_feet",
+     "covered_vulva",
+     "exposed_anus",
+     "exposed_armpits",
+     "exposed_belly",
+     "exposed_breast",
+     "exposed_buttocks",
+     "exposed_chest",
+     "exposed_feet",
+     "exposed_penis",
+     "exposed_vulva",
+     "face_femme",
+     "face_masc"
+    ],
+    "help": "person-windows-whole-male-bodies",
+    "kind": "labels",
+    "label": "setting.person_windows_female_labels.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.female_labels",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_female_labels.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "person-windows-whole-male-bodies",
+    "kind": "number",
+    "label": "setting.person_windows_evidence_min_prob.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.evidence_min_prob",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_evidence_min_prob.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "person-windows-whole-male-bodies",
+    "kind": "number",
+    "label": "setting.person_windows_track_iou.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.track_iou",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_track_iou.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "person-windows-whole-male-bodies",
+    "kind": "number",
+    "label": "setting.person_windows_track_max_gap_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.track_max_gap_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_track_max_gap_seconds.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "person-windows-whole-male-bodies",
+    "kind": "number",
+    "label": "setting.person_windows_shrink.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 0.5,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.person_windows.shrink",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "reverse",
+    "tip": "setting.person_windows_shrink.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "choices": [
+     "rf_detr_seg",
+     "yolo11_seg"
+    ],
+    "help": "person-segmentation",
+    "kind": "choice",
+    "label": "setting.person_backend.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.selected",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "models",
+    "tip": "setting.person_backend.tip",
+    "when": [
+     "person_windows_on"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "string",
+    "label": "setting.person_model_variant.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.<person_backend>.model_variant",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "models",
+    "tip": "setting.person_model_variant.tip",
+    "when": [
+     "person_windows_on",
+     "person_backend_selected"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "path",
+    "label": "setting.person_model_path.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.<person_backend>.model_path",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "models",
+    "tip": "setting.person_model_path.tip",
+    "when": [
+     "person_windows_on",
+     "person_backend_selected"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "int",
+    "label": "setting.person_picture_size.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 32,
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.yolo11_seg.picture_size",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "reverse",
+    "tip": "setting.person_picture_size.tip",
+    "when": [
+     "person_windows_on",
+     "person_backend_selected"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "number",
+    "label": "setting.person_min_prob.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.<person_backend>.min_prob",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "reverse",
+    "tip": "setting.person_min_prob.tip",
+    "when": [
+     "person_windows_on",
+     "person_backend_selected"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "number",
+    "label": "setting.person_nms_iou.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "person_backend.yolo11_seg.nms_iou",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "reverse",
+    "tip": "setting.person_nms_iou.tip",
+    "when": [
+     "person_windows_on",
+     "person_backend_selected"
+    ]
+   },
+   {
+    "help": "person-segmentation",
+    "kind": "int",
+    "label": "setting.person_batch_size.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 1,
+    "moves": [],
+    "path": "person_backend.<person_backend>.batch_size",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     },
+     {
+      "path": "reverse.person_windows.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "person_backend",
+    "screen": "resources",
+    "tip": "setting.person_batch_size.tip",
+    "when": []
+   },
+   {
+    "help": "move_completed_sources",
+    "kind": "bool",
+    "label": "setting.move_completed_sources.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "move_completed_sources",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "library",
+    "tip": "setting.move_completed_sources.tip",
+    "when": []
+   },
+   {
+    "help": "catalog_scan_interval_seconds",
+    "kind": "int",
+    "label": "setting.catalog_scan_interval_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [],
+    "path": "catalog_scan_interval_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "library",
+    "tip": "setting.catalog_scan_interval_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "preview-mode",
+    "kind": "bool",
+    "label": "setting.preview_mode_enabled.label",
+    "level": "simple",
+    "may_move": [
+     "censor",
+     "detection"
+    ],
+    "moves": [
+     "encode"
+    ],
+    "path": "preview_mode_enabled",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.preview_mode_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "preview-mode",
+    "kind": "number",
+    "label": "setting.preview_max_seconds.label",
+    "level": "simple",
+    "may_move": [
+     "censor",
+     "detection"
+    ],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [],
+    "path": "preview_max_seconds",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "preview_mode_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.preview_max_seconds.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "fast",
+     "faster",
+     "medium",
+     "slow",
+     "slower",
+     "superfast",
+     "ultrafast",
+     "veryfast",
+     "veryslow"
+    ],
+    "help": "preview-mode",
+    "kind": "choice",
+    "label": "setting.preview_encode_preset.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "encode"
+    ],
+    "path": "preview_encode_preset",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "preview_mode_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.preview_encode_preset.tip",
+    "when": [
+     "preview_on"
+    ]
+   },
+   {
+    "help": "preview-mode",
+    "kind": "number",
+    "label": "setting.preview_start_seconds.label",
+    "level": "advanced",
+    "may_move": [
+     "censor",
+     "detection"
+    ],
+    "minimum": 0,
+    "moves": [],
+    "none": "setting.preview_start_seconds.none",
+    "nullable": true,
+    "path": "preview_start_seconds",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "preview_mode_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.preview_start_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "preview-mode",
+    "kind": "bool",
+    "label": "setting.preview_random_slice.label",
+    "level": "advanced",
+    "may_move": [
+     "censor",
+     "detection"
+    ],
+    "moves": [],
+    "path": "preview_random_slice",
+    "per_run": true,
+    "requires": [
+     {
+      "path": "preview_mode_enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.preview_random_slice.tip",
+    "when": []
+   },
+   {
+    "help": "logging-and-stats",
+    "kind": "bool",
+    "label": "setting.logging_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "logging_enabled",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.logging_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "logging-and-stats",
+    "kind": "path",
+    "label": "setting.log_path.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "none": "setting.log_path.none",
+    "nullable": true,
+    "path": "log_path",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.log_path.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "debug",
+     "error",
+     "info",
+     "trace",
+     "warn"
+    ],
+    "help": "logging-and-stats",
+    "kind": "choice",
+    "label": "setting.log_level.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "log_level",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.log_level.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "debug",
+     "error",
+     "info",
+     "trace",
+     "warn"
+    ],
+    "help": "logging-and-stats",
+    "kind": "choice",
+    "label": "setting.console_level.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "console_level",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.console_level.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "auto",
+     "always",
+     "never"
+    ],
+    "help": "logging-and-stats",
+    "kind": "choice",
+    "label": "setting.console_color.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "console_color",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.console_color.tip",
+    "when": []
+   },
+   {
+    "choices": [
+     "standard",
+     "deuteranopia",
+     "monochrome",
+     "protanopia"
+    ],
+    "help": "logging-and-stats",
+    "kind": "choice",
+    "label": "setting.console_palette.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "console_palette",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.console_palette.tip",
+    "when": []
+   },
+   {
+    "help": "stats",
+    "kind": "bool",
+    "label": "setting.stats_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "stats_enabled",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.stats_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "cache_dir",
+    "kind": "path",
+    "label": "setting.cache_dir.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "none": "setting.cache_dir.none",
+    "nullable": true,
+    "path": "cache_dir",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.cache_dir.tip",
+    "when": []
+   },
+   {
+    "help": "storage_delete_permanently",
+    "kind": "bool",
+    "label": "setting.storage_delete_permanently.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "storage_delete_permanently",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "resources",
+    "tip": "setting.storage_delete_permanently.tip",
+    "when": []
+   },
+   {
+    "help": "stats",
+    "kind": "path",
+    "label": "setting.stats_path.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "none": "setting.stats_path.none",
+    "nullable": true,
+    "path": "stats_path",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.stats_path.tip",
+    "when": []
+   },
+   {
+    "help": "debug_mode",
+    "kind": "int",
+    "label": "setting.debug_mode.label",
+    "level": "advanced",
+    "maximum": 3,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "debug_mode",
+    "per_run": true,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.debug_mode.tip",
+    "when": []
+   },
+   {
+    "help": "miscellaneous",
+    "kind": "bool",
+    "label": "setting.enable_betasuite_watermark.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "enable_betasuite_watermark",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "run",
+    "tip": "setting.enable_betasuite_watermark.tip",
+    "when": []
+   },
+   {
+    "app_only": true,
+    "choices": [
+     "angular",
+     "cel",
+     "flat",
+     "ink"
+    ],
+    "help": "art_style",
+    "kind": "choice",
+    "label": "setting.art_style.label",
+    "level": "simple",
+    "may_move": [],
+    "moves": [],
+    "path": "art_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.art_style.tip",
+    "when": []
+   },
+   {
+    "app_only": true,
+    "choices": [
+     "censored_play",
+     "bars_shield",
+     "focus_blur",
+     "pixel_play",
+     "pixel_b"
+    ],
+    "help": "app_icon",
+    "kind": "choice",
+    "label": "setting.app_icon.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "app_icon",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.app_icon.tip",
+    "when": []
+   },
+   {
+    "app_only": true,
+    "help": "tray_icon_shown",
+    "kind": "bool",
+    "label": "setting.tray_icon_shown.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [],
+    "path": "tray_icon_shown",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.tray_icon_shown.tip",
+    "when": []
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_min_prob",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.min_prob.tip",
+    "when": []
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "default_min_prob_continue",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.min_prob_continue.tip",
+    "when": []
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.area_safety.tip",
+    "when": []
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_time_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.time_safety.tip",
+    "when": []
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_position_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.position_smoothing.tip",
+    "when": []
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "default_size_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.size_smoothing.tip",
+    "when": []
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": []
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_interpolation_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": []
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_interpolation_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": []
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_min_track_hits",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.min_track_hits.tip",
+    "when": []
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "default_confirm_score",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.confirm_score.tip",
+    "when": []
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_paired_style_max_distance",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": []
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": []
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "default_paired_style_max_age",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "what_to_hide",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": []
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "default_min_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": []
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "default_max_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": []
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "default_min_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": []
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "default_max_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": []
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "default_geometry_action",
+    "per_run": false,
+    "requires": [],
+    "scope": "global",
+    "screen": "other",
+    "tip": "setting.geometry_action.tip",
+    "when": []
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.min_prob",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.min_prob.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.min_prob",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.min_prob.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.min_prob",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.min_prob.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.min_prob",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_prob.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_min_prob-and-per-label-min_prob-per-backend",
+    "kind": "number",
+    "label": "setting.min_prob.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.min_prob",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_prob.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.min_prob_continue",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.min_prob_continue.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.min_prob_continue",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.min_prob_continue.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.min_prob_continue",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.min_prob_continue.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.min_prob_continue",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_prob_continue.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "min_prob_continue-per-label-per-backend-score-hysteresis",
+    "kind": "number",
+    "label": "setting.min_prob_continue.label",
+    "level": "advanced",
+    "max_open": true,
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.min_prob_continue.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.min_prob_continue",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_prob_continue.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.width_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.width_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.width_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.width_area_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.width_area_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.height_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.height_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.height_area_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.height_area_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_area_safety-width_area_safety-height_area_safety",
+    "kind": "number",
+    "label": "setting.area_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.height_area_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.time_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.time_safety.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.time_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.time_safety.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.time_safety",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.time_safety.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.time_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.time_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_time_safety-per-label-time_safety",
+    "kind": "number",
+    "label": "setting.time_safety.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.time_safety",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.time_safety.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.position_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.position_smoothing.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.position_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.position_smoothing.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.position_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.position_smoothing.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.position_smoothing",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.position_smoothing.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_position_smoothing-per-label-position_smoothing",
+    "kind": "number",
+    "label": "setting.position_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.position_smoothing",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.position_smoothing.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.size_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.size_smoothing.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.size_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.size_smoothing.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.size_smoothing",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.size_smoothing.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.size_smoothing",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.size_smoothing.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_size_smoothing-per-label-size_smoothing",
+    "kind": "number",
+    "label": "setting.size_smoothing.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.size_smoothing.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.size_smoothing",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.size_smoothing.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_style_min_dwell_seconds-per-label-style_min_dwell_seconds",
+    "kind": "number",
+    "label": "setting.style_min_dwell_seconds.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.style_min_dwell_seconds",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.style_min_dwell_seconds.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.interpolation_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.interpolation_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.interpolation_enabled",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.interpolation_enabled",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "bool",
+    "label": "setting.interpolation_enabled.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.interpolation_enabled",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.interpolation_enabled.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.interpolation_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.interpolation_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.interpolation_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.interpolation_max_gap",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "interpolation_max_gap-per-label-per-backend-and-default_interpolation_enabled",
+    "kind": "number",
+    "label": "setting.interpolation_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.interpolation_max_gap",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.interpolation_max_gap.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "track_max_gap-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.track_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.track_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.track_max_gap.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "track_max_gap-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.track_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.track_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.track_max_gap.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "track_max_gap-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.track_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.track_max_gap",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.track_max_gap.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "track_max_gap-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.track_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.track_max_gap",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.track_max_gap.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "track_max_gap-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.track_max_gap.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.track_max_gap",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.track_max_gap.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "match_distance_multiplier-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.match_distance_multiplier.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.match_distance_multiplier",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.match_distance_multiplier.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "match_distance_multiplier-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.match_distance_multiplier.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.match_distance_multiplier",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.match_distance_multiplier.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "match_distance_multiplier-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.match_distance_multiplier.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.match_distance_multiplier",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.match_distance_multiplier.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "match_distance_multiplier-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.match_distance_multiplier.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.match_distance_multiplier",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.match_distance_multiplier.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "match_distance_multiplier-per-label-per-backend",
+    "kind": "number",
+    "label": "setting.match_distance_multiplier.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.match_distance_multiplier",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.match_distance_multiplier.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.min_track_hits",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.min_track_hits.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.min_track_hits",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.min_track_hits.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.min_track_hits",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.min_track_hits.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.min_track_hits",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_track_hits.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_min_track_hits-per-label-min_track_hits",
+    "kind": "int",
+    "label": "setting.min_track_hits.label",
+    "level": "advanced",
+    "maximum": 10,
+    "may_move": [],
+    "minimum": 1,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.min_track_hits",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.min_track_hits.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.confirm_score",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.confirm_score.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.confirm_score",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.confirm_score.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.confirm_score",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.confirm_score.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.confirm_score",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.confirm_score.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "default_confirm_score-per-label-confirm_score",
+    "kind": "number",
+    "label": "setting.confirm_score.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.confirm_score.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.confirm_score",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.confirm_score.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "bool",
+    "label": "setting.paired_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.paired_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.paired_style.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "bool",
+    "label": "setting.paired_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.paired_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.paired_style.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "bool",
+    "label": "setting.paired_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.paired_style",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.paired_style.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "bool",
+    "label": "setting.paired_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.paired_style",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "bool",
+    "label": "setting.paired_style.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.paired_style",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.paired_style_max_distance",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.paired_style_max_distance",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.paired_style_max_distance",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.paired_style_max_distance",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_distance.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.paired_style_max_distance",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_max_distance.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_tiebreak_margin.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.paired_style_tiebreak_margin",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_tiebreak_margin.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.paired_style_max_age",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.paired_style_max_age",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.paired_style_max_age",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.paired_style_max_age",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "paired_style-default_paired_style_max_distance-default_paired_style_tiebreak_margin",
+    "kind": "number",
+    "label": "setting.paired_style_max_age.label",
+    "level": "advanced",
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.paired_style_max_age",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.paired_style_max_age.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.min_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.min_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.min_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.min_area_fraction",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.min_area_fraction",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.max_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.max_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.max_area_fraction",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.max_area_fraction",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.area_fraction.label",
+    "level": "advanced",
+    "maximum": 1,
+    "may_move": [],
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.area_fraction.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.max_area_fraction",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.area_fraction.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.min_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.min_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.min_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.min_aspect_ratio",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.min_aspect_ratio",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.item_overrides.<label>.max_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.max_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.max_aspect_ratio",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "reverse.censor.overrides.<label>.max_aspect_ratio",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry-sanity-filter",
+    "kind": "number",
+    "label": "setting.aspect_ratio.label",
+    "level": "advanced",
+    "may_move": [],
+    "min_open": true,
+    "minimum": 0,
+    "moves": [
+     "censor"
+    ],
+    "none": "setting.aspect_ratio.none",
+    "nullable": true,
+    "path": "reverse.windows.<label>.max_aspect_ratio",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.aspect_ratio.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.item_overrides.<label>.geometry_action",
+    "per_run": false,
+    "requires": [],
+    "scope": "backend_label",
+    "screen": "other",
+    "tip": "setting.geometry_action.tip",
+    "when": [
+     "backend_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.nudenet_v3.variants.<model_variant>.item_overrides.<label>.geometry_action",
+    "per_run": false,
+    "requires": [],
+    "scope": "model_variant_label",
+    "screen": "other",
+    "tip": "setting.geometry_action.tip",
+    "when": [
+     "backend_selected",
+     "model_variant_selected",
+     "label_rendered"
+    ]
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "detector_backend.<backend>.profiles.variants.<profile>.item_overrides.<label>.geometry_action",
+    "per_run": false,
+    "requires": [],
+    "scope": "profile_label",
+    "screen": "other",
+    "tip": "setting.geometry_action.tip",
+    "when": [
+     "backend_selected"
+    ]
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.censor.overrides.<label>.geometry_action",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.geometry_action.tip",
+    "when": [
+     "reverse_on"
+    ]
+   },
+   {
+    "help": "geometry_action-what-a-violation-does",
+    "kind": "geometry_action",
+    "label": "setting.geometry_action.label",
+    "level": "advanced",
+    "may_move": [],
+    "moves": [
+     "censor"
+    ],
+    "path": "reverse.windows.<label>.geometry_action",
+    "per_run": false,
+    "requires": [
+     {
+      "path": "reverse.enabled",
+      "test": "on"
+     }
+    ],
+    "scope": "label",
+    "screen": "reverse",
+    "tip": "setting.geometry_action.tip",
+    "when": [
+     "reverse_on"
+    ]
+   }
+  ],
+  "styles": {
+   "common": {
+    "feather": {
+     "kind": "number",
+     "label": "setting.style_feather.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.style_feather.tip"
+    },
+    "height_area_safety": {
+     "kind": "number",
+     "label": "setting.style_area_safety.label",
+     "tip": "setting.style_area_safety.tip"
+    },
+    "merge": {
+     "choices": [
+      "none",
+      "single-pass",
+      "span"
+     ],
+     "kind": "choice",
+     "label": "setting.style_merge.label",
+     "tip": "setting.style_merge.tip"
+    },
+    "shape": {
+     "choices": [
+      "box",
+      "circle",
+      "ellipse"
+     ],
+     "kind": "choice",
+     "label": "setting.style_shape.label",
+     "tip": "setting.style_shape.tip"
+    },
+    "type": {
+     "choices": [
+      "bar",
+      "blur",
+      "debug",
+      "pixel",
+      "sticker"
+     ],
+     "kind": "choice",
+     "label": "setting.style_type.label",
+     "tip": "setting.style_type.tip"
+    },
+    "weight": {
+     "kind": "number",
+     "label": "setting.style_weight.label",
+     "minimum": 0,
+     "tip": "setting.style_weight.tip"
+    },
+    "width_area_safety": {
+     "kind": "number",
+     "label": "setting.style_area_safety.label",
+     "tip": "setting.style_area_safety.tip"
+    }
+   },
+   "frame_extra": {
+    "dim": {
+     "kind": "number",
+     "label": "setting.reverse_frame_dim.label",
+     "maximum": 1,
+     "minimum": 0,
+     "tip": "setting.reverse_frame_dim.tip"
+    }
+   },
+   "types": {
+    "bar": {
+     "color": {
+      "kind": "color",
+      "label": "setting.style_color.label",
+      "tip": "setting.style_color.tip"
+     },
+     "span_extend": {
+      "kind": "number",
+      "label": "setting.style_bar_span_extend.label",
+      "maximum": 1,
+      "minimum": 0,
+      "tip": "setting.style_bar_span_extend.tip"
+     },
+     "thickness": {
+      "kind": "number",
+      "label": "setting.style_bar_thickness.label",
+      "maximum": 3,
+      "min_open": true,
+      "minimum": 0,
+      "tip": "setting.style_bar_thickness.tip"
+     }
+    },
+    "blur": {
+     "method": {
+      "choices": [
+       "box",
+       "gaussian",
+       "triple_box"
+      ],
+      "kind": "choice",
+      "label": "setting.style_blur_method.label",
+      "tip": "setting.style_blur_method.tip"
+     },
+     "strength": {
+      "kind": "number",
+      "label": "setting.style_strength.label",
+      "tip": "setting.style_strength.tip"
+     }
+    },
+    "debug": {
+     "color": {
+      "kind": "color",
+      "label": "setting.style_color.label",
+      "tip": "setting.style_color.tip"
+     }
+    },
+    "pixel": {
+     "pattern": {
+      "choices": [
+       "hex",
+       "mosaic",
+       "square"
+      ],
+      "kind": "choice",
+      "label": "setting.style_pixel_pattern.label",
+      "tip": "setting.style_pixel_pattern.tip"
+     },
+     "strength": {
+      "kind": "number",
+      "label": "setting.style_strength.label",
+      "tip": "setting.style_strength.tip"
+     }
+    },
+    "sticker": {
+     "dir": {
+      "kind": "path",
+      "label": "setting.style_sticker_dir.label",
+      "tip": "setting.style_sticker_dir.tip"
+     },
+     "images": {
+      "kind": "paths",
+      "label": "setting.style_sticker_images.label",
+      "tip": "setting.style_sticker_images.tip"
+     },
+     "scale": {
+      "kind": "number",
+      "label": "setting.style_sticker_scale.label",
+      "tip": "setting.style_sticker_scale.tip"
+     }
+    }
+   }
+  }
+ }
+}

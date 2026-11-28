@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/models.list.schema.json",
+  "title": "models.list",
+  "description": "Every model the app can install, with its state on disk (installed, modified: a different file is at its place, partial: a download stopped partway, absent) or its download state (queued, downloading); which detector and person model the settings use (custom names a model_path outside the catalog); the detector recommended for this machine (640m with a usable NVIDIA GPU, 320n without) and why; and the GPU: usable (onnxruntime has CUDA and nvidia-smi sees a GPU) and enabled (gpu_enabled). The first call after a model file changes reads it once to check its hash.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "models",
+        "in_use",
+        "custom",
+        "recommended",
+        "gpu"
+      ],
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "backend",
+              "variant",
+              "size",
+              "state",
+              "bytes",
+              "license"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "detector",
+                  "person"
+                ]
+              },
+              "backend": {
+                "type": "string",
+                "minLength": 1
+              },
+              "variant": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "state": {
+                "enum": [
+                  "installed",
+                  "modified",
+                  "partial",
+                  "absent",
+                  "queued",
+                  "downloading"
+                ]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "license": {
+                "type": "object",
+                "required": [
+                  "spdx",
+                  "project",
+                  "home"
+                ],
+                "properties": {
+                  "spdx": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "project": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "home": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "in_use": {
+          "type": "object",
+          "required": [
+            "detector",
+            "person"
+          ],
+          "properties": {
+            "detector": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "person": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "custom": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "recommended": {
+          "type": "object",
+          "required": [
+            "detector",
+            "reason"
+          ],
+          "properties": {
+            "detector": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "enum": [
+                "gpu",
+                "cpu"
+              ]
+            }
+          }
+        },
+        "gpu": {
+          "type": "object",
+          "required": [
+            "usable",
+            "enabled",
+            "name"
+          ],
+          "properties": {
+            "usable": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

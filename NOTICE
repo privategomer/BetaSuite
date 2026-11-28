@@ -1,0 +1,53 @@
+BetaSuite fork notices
+
+License
+The changes and additions made in this fork are licensed under the GNU
+Affero General Public License, version 3 or (at your option) any later
+version (AGPL-3.0-or-later). The full text is in LICENSE. This covers the
+code, documentation and artwork in this repository unless a file says
+otherwise.
+
+Earlier releases
+Releases 1.4.0 to 1.5.2 were published under the PolyForm Noncommercial
+License 1.0.0 and stay available under those terms. The same contributions
+are also available under AGPL-3.0-or-later from this version on.
+
+Upstream
+This project began as a fork of BetaSuite 0.2.4 by solarorb93, with
+thanks for the original idea and work:
+https://github.com/solarorb93/BetaSuite
+
+The upstream repository carries no license file, and permission to
+license its code was requested and not answered. Every part of this
+repository that came from it has since been removed or replaced by code
+written independently from descriptions of the required behavior,
+without access to the upstream code. What remains
+in common is what any implementation must share: names that other code
+calls, model tensor names and class order fixed by the model files, and
+library calls and data values the behavior requires.
+
+The repository's history from before that rewrite still contains the
+upstream code. It remains under its author's rights, and the license in
+LICENSE grants nothing for it.
+
+Third-party components
+The project hosts the detection and segmentation models the app downloads,
+as files of a GitHub release (listed with their hashes in
+assets/models/catalog.json). Each keeps its own license, published beside
+it with a NOTICE, and the upstream source each was converted from (the .pt,
+.pth or training checkpoint) is hosted beside it unchanged. They are used
+through onnxruntime; BetaSuite's own environment includes neither PyTorch
+nor the packages the models were trained or exported with.
+
+- NudeNet (https://github.com/notAI-tech/NudeNet). The 320n and 640m
+  detectors, from its v3.4-weights release, are AGPL-3.0 (its license at
+  that tag); its README describes them as based on Ultralytics YOLOv8n and
+  YOLOv8m. The RetinaNet detector, from its v0 release, is GPL-3.0 (its
+  license at that tag), which AGPL-3.0 section 13 allows to be combined
+  with this project.
+- Ultralytics YOLO11-seg (https://github.com/ultralytics/ultralytics):
+  the n, s and m person models, exported to ONNX from the v8.3.0 release
+  weights, are AGPL-3.0.
+- RF-DETR-Seg by Roboflow (https://github.com/roboflow/rf-detr): the nano,
+  small and medium person models, exported to ONNX from the published
+  weights, are Apache-2.0.

@@ -1,0 +1,912 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/errors.schema.json",
+  "title": "error",
+  "description": "The error of a failed result: a code and exactly the parameters that code lists. Never a sentence; the UI owns the wording.",
+  "type": "object",
+  "required": [ "code", "params" ],
+  "properties": {
+    "code": { "type": "string" },
+    "params": { "type": "object" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/protocol.bad_encoding" },
+    { "$ref": "#/$defs/protocol.bad_json" },
+    { "$ref": "#/$defs/protocol.line_too_long" },
+    { "$ref": "#/$defs/protocol.bad_envelope" },
+    { "$ref": "#/$defs/protocol.unsupported_version" },
+    { "$ref": "#/$defs/protocol.hello_required" },
+    { "$ref": "#/$defs/command.unknown" },
+    { "$ref": "#/$defs/command.bad_params" },
+    { "$ref": "#/$defs/engine.internal" },
+    { "$ref": "#/$defs/config.bad_type" },
+    { "$ref": "#/$defs/config.out_of_range" },
+    { "$ref": "#/$defs/config.bad_choice" },
+    { "$ref": "#/$defs/config.rule" },
+    { "$ref": "#/$defs/config.invalid" },
+    { "$ref": "#/$defs/config.unknown_key" },
+    { "$ref": "#/$defs/config.not_settable" },
+    { "$ref": "#/$defs/config.local_off" },
+    { "$ref": "#/$defs/config.local_unparsable" },
+    { "$ref": "#/$defs/config.local_unwritable" },
+    { "$ref": "#/$defs/run.locked" },
+    { "$ref": "#/$defs/config.busy" },
+    { "$ref": "#/$defs/job.unknown" },
+    { "$ref": "#/$defs/job.bad_state" },
+    { "$ref": "#/$defs/job.no_such_file" },
+    { "$ref": "#/$defs/job.nothing_to_render" },
+    { "$ref": "#/$defs/preview.unknown_art" },
+    { "$ref": "#/$defs/preview.bad_image" },
+    { "$ref": "#/$defs/engine.stopping" },
+    { "$ref": "#/$defs/file.failed" },
+    { "$ref": "#/$defs/disk.full" },
+    { "$ref": "#/$defs/model.load_failed" },
+    { "$ref": "#/$defs/model.unknown" },
+    { "$ref": "#/$defs/model.hash_mismatch" },
+    { "$ref": "#/$defs/model.download_failed" },
+    { "$ref": "#/$defs/model.unknown_file" },
+    { "$ref": "#/$defs/model.in_use" },
+    { "$ref": "#/$defs/model.busy" },
+    { "$ref": "#/$defs/model.not_installed" },
+    { "$ref": "#/$defs/catalog.unavailable" },
+    { "$ref": "#/$defs/catalog.too_new" },
+    { "$ref": "#/$defs/catalog.no_such_item" },
+    { "$ref": "#/$defs/catalog.no_such_folder" },
+    { "$ref": "#/$defs/catalog.bad_folder" },
+    { "$ref": "#/$defs/catalog.bad_type" },
+    { "$ref": "#/$defs/catalog.item_busy" },
+    { "$ref": "#/$defs/catalog.missing" },
+    { "$ref": "#/$defs/catalog.thumbnail_failed" },
+    { "$ref": "#/$defs/catalog.no_such_file" },
+    { "$ref": "#/$defs/feedback.not_a_result" },
+    { "$ref": "#/$defs/feedback.no_such_record" },
+    { "$ref": "#/$defs/storage.unknown_category" },
+    { "$ref": "#/$defs/storage.not_cleanable" },
+    { "$ref": "#/$defs/storage.needs_confirm" },
+    { "$ref": "#/$defs/storage.busy" },
+    { "$ref": "#/$defs/perf.busy" },
+    { "$ref": "#/$defs/perf.optimize_running" },
+    { "$ref": "#/$defs/perf.machine_busy" },
+    { "$ref": "#/$defs/perf.no_proposal" },
+    { "$ref": "#/$defs/optimize.failed" },
+    { "$ref": "#/$defs/storage.trash_failed" }
+  ],
+  "$defs": {
+    "reason": { "enum": [ "missing", "type", "value" ] },
+    "protocol.bad_encoding": {
+      "description": "A line was not UTF-8.",
+      "properties": {
+        "code": { "const": "protocol.bad_encoding" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "protocol.bad_json": {
+      "description": "A line was not one JSON value.",
+      "properties": {
+        "code": { "const": "protocol.bad_json" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "protocol.line_too_long": {
+      "description": "A line was longer than limit_bytes (hello reports it) and was discarded.",
+      "properties": {
+        "code": { "const": "protocol.line_too_long" },
+        "params": {
+          "type": "object",
+          "required": [ "limit_bytes", "line_bytes" ],
+          "properties": {
+            "limit_bytes": { "type": "integer", "minimum": 1 },
+            "line_bytes": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.bad_envelope": {
+      "description": "A JSON line was not a well-formed command. field names the envelope field, or 'message' when the line was not an object.",
+      "properties": {
+        "code": { "const": "protocol.bad_envelope" },
+        "params": {
+          "type": "object",
+          "required": [ "field", "reason" ],
+          "properties": {
+            "field": { "enum": [ "message", "v", "kind", "id", "name", "data" ] },
+            "reason": { "$ref": "#/$defs/reason" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.unsupported_version": {
+      "description": "No protocol version in common. got is what the client sent: the envelope's v, or hello's protocol list.",
+      "properties": {
+        "code": { "const": "protocol.unsupported_version" },
+        "params": {
+          "type": "object",
+          "required": [ "got", "supported" ],
+          "properties": {
+            "got": {},
+            "supported": { "type": "array", "items": { "type": "integer" } }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "protocol.hello_required": {
+      "description": "A command other than hello or shutdown came before a successful hello.",
+      "properties": {
+        "code": { "const": "protocol.hello_required" },
+        "params": {
+          "type": "object",
+          "required": [ "name" ],
+          "properties": { "name": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "command.unknown": {
+      "description": "No command by this name. hello lists the ones there are.",
+      "properties": {
+        "code": { "const": "command.unknown" },
+        "params": {
+          "type": "object",
+          "required": [ "name" ],
+          "properties": { "name": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "command.bad_params": {
+      "description": "A command's data was missing a field, or had one of the wrong type or value.",
+      "properties": {
+        "code": { "const": "command.bad_params" },
+        "params": {
+          "type": "object",
+          "required": [ "field", "reason" ],
+          "properties": {
+            "field": { "type": "string" },
+            "reason": { "$ref": "#/$defs/reason" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "engine.internal": {
+      "description": "The engine failed while handling the command and keeps serving. The traceback is in the engine log.",
+      "properties": {
+        "code": { "const": "engine.internal" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type" ],
+          "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.bad_type": {
+      "description": "A value is the wrong kind. path is the dotted setting path; expected is its registry kind (int, number, bool, choice, ...).",
+      "properties": {
+        "code": { "const": "config.bad_type" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "expected" ],
+          "properties": { "path": { "type": "string" }, "expected": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.out_of_range": {
+      "description": "A number is outside its range. minimum or maximum is null where there is no bound; min_open and max_open say that bound itself is excluded; odd says the number must be odd.",
+      "properties": {
+        "code": { "const": "config.out_of_range" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "minimum", "maximum", "min_open", "max_open", "odd" ],
+          "properties": {
+            "path": { "type": "string" },
+            "minimum": { "type": [ "number", "null" ] },
+            "maximum": { "type": [ "number", "null" ] },
+            "min_open": { "type": "boolean" },
+            "max_open": { "type": "boolean" },
+            "odd": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.bad_choice": {
+      "description": "A value is not one of its choices.",
+      "properties": {
+        "code": { "const": "config.bad_choice" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "choices" ],
+          "properties": { "path": { "type": "string" }, "choices": { "type": "array" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.rule": {
+      "description": "A check between values, or of a structure, failed. rule is a stable id (area.what); path is the setting it is about, or empty.",
+      "properties": {
+        "code": { "const": "config.rule" },
+        "params": {
+          "type": "object",
+          "required": [ "rule", "path" ],
+          "properties": {
+            "rule": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+              "enum": [
+                "backend.size_negative",
+                "backend.size_not_multiple_of_32",
+                "backend.size_not_positive",
+                "backend.unknown_variant",
+                "backend_item_overrides.not_a_mapping",
+                "backend_item_overrides.unknown_keys",
+                "backend_item_overrides.unknown_label",
+                "censor_overlap_strategy.missing_type",
+                "class_promotion.anywhere_with_bounds",
+                "class_promotion.from_is_target",
+                "class_promotion.missing_from",
+                "class_promotion.not_a_mapping",
+                "class_promotion.target_not_rendered",
+                "class_promotion.unknown_keys",
+                "class_promotion.unknown_label",
+                "class_suppression.bad_refused_pair",
+                "class_suppression.duplicate_suppressor",
+                "class_suppression.missing_margin",
+                "class_suppression.missing_min_iou",
+                "class_suppression.missing_suppressed_by",
+                "class_suppression.negative_margin",
+                "class_suppression.not_a_mapping",
+                "class_suppression.removed_setting",
+                "class_suppression.unknown_keys",
+                "class_suppression.unknown_label",
+                "config.unclassified",
+                "cross_size_dedup.not_a_mapping",
+                "cross_size_dedup.unknown_keys",
+                "default_censor_style.missing",
+                "detector_backend.not_a_mapping",
+                "detector_backend.unknown_backend",
+                "detector_backend.unknown_sections",
+                "geometry_action.bad_value",
+                "geometry_action.unknown_bounds",
+                "item_overrides.not_a_mapping",
+                "item_overrides.tunable_in_shared_block",
+                "item_overrides.unknown_keys",
+                "item_overrides.unknown_label",
+                "items_to_censor.missing",
+                "label.area_bounds_crossed",
+                "label.aspect_bounds_crossed",
+                "label.hysteresis_below_floor",
+                "label.hysteresis_inverted",
+                "label.track_gap_below_interpolation_gap",
+                "local_config.line_not_applied",
+                "logging.log_path_required",
+                "min_prob.default_below_floor",
+                "min_prob.label_below_floor",
+                "nn_batch_size.removed_setting",
+                "person_backend.model_missing",
+                "person_backend.not_a_mapping",
+                "person_backend.picture_size_not_a_setting",
+                "person_backend.size_not_multiple_of_32",
+                "person_backend.unknown_keys",
+                "person_backend.unknown_variant",
+                "person_windows.below_floor",
+                "person_windows.empty_list",
+                "person_windows.male_and_female",
+                "person_windows.not_a_mapping",
+                "person_windows.unknown_keys",
+                "picture_sizes.duplicates",
+                "picture_sizes.empty",
+                "picture_sizes.not_sizes",
+                "picture_sizes.removed_setting",
+                "profiles.default_unknown",
+                "profiles.forced_unknown_profile",
+                "profiles.not_a_mapping",
+                "profiles.path_pattern_not_string",
+                "profiles.path_pattern_unknown_profile",
+                "profiles.source_dir_absolute",
+                "profiles.source_dir_climbs",
+                "profiles.source_dir_duplicate",
+                "profiles.source_dir_empty_key",
+                "profiles.source_dir_matches_everything",
+                "profiles.source_dir_unknown_profile",
+                "profiles.threshold_for_other_signal",
+                "profiles.unknown_keys",
+                "reverse.not_a_mapping",
+                "reverse.unknown_keys",
+                "reverse_censor.not_a_mapping",
+                "reverse_censor.override_not_censored",
+                "reverse_censor.unknown_keys",
+                "reverse_censor.window_and_censored",
+                "reverse_frame_style.bad_type",
+                "reverse_frame_style.not_a_mapping",
+                "reverse_frame_style.too_slow",
+                "reverse_trigger.below_floor",
+                "reverse_trigger.empty_list",
+                "reverse_trigger.not_a_mapping",
+                "reverse_trigger.unknown_keys",
+                "reverse_window_style.empty_list",
+                "reverse_window_style.not_show",
+                "reverse_window_style.unknown_keys",
+                "reverse_windows.not_a_mapping",
+                "reverse_windows.unknown_keys",
+                "reverse_windows.unknown_label",
+                "stats.stats_path_required",
+                "style.empty_list",
+                "style.missing_type",
+                "style.not_a_mapping",
+                "style.sticker_needs_images",
+                "style.unknown_keys",
+                "style.unknown_type",
+                "type_default_shapes.not_a_mapping",
+                "type_default_shapes.unknown_type",
+                "variant_item_overrides.not_a_mapping",
+                "variant_item_overrides.unknown_keys",
+                "variant_item_overrides.unknown_label",
+                "variant_item_overrides.unknown_variant"
+              ]
+            },
+            "path": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.invalid": {
+      "description": "A change was not made because the result would fail validation. Each problem is a config.bad_type, config.out_of_range, config.bad_choice or config.rule error.",
+      "properties": {
+        "code": { "const": "config.invalid" },
+        "params": {
+          "type": "object",
+          "required": [ "problems" ],
+          "properties": {
+            "problems": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [ "code", "params" ],
+                "oneOf": [
+                  { "$ref": "#/$defs/config.bad_type" },
+                  { "$ref": "#/$defs/config.out_of_range" },
+                  { "$ref": "#/$defs/config.bad_choice" },
+                  { "$ref": "#/$defs/config.rule" }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.unknown_key": {
+      "description": "No setting has this path. suggestion is the closest real path, or null.",
+      "properties": {
+        "code": { "const": "config.unknown_key" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "suggestion" ],
+          "properties": { "path": { "type": "string" }, "suggestion": { "type": [ "string", "null" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.not_settable": {
+      "description": "The path is inside a value that is set whole (a censor style, a rule list); setting is that value's path.",
+      "properties": {
+        "code": { "const": "config.not_settable" },
+        "params": {
+          "type": "object",
+          "required": [ "path", "setting" ],
+          "properties": { "path": { "type": "string" }, "setting": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.local_off": {
+      "description": "The local config is turned off (BETASUITE_LOCAL_CONFIG=none), so nothing can be written.",
+      "properties": {
+        "code": { "const": "config.local_off" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "config.local_unparsable": {
+      "description": "The local config file does not parse, so it cannot be edited safely; nothing was written.",
+      "properties": {
+        "code": { "const": "config.local_unparsable" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "config.local_unwritable": {
+      "description": "The local config file could not be written. reason is the error's name, such as EACCES.",
+      "properties": {
+        "code": { "const": "config.local_unwritable" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "run.locked": {
+      "description": "Another run (the command line or the engine) holds this library's run lock, so this one did not start. A param is null when the holder's record could not be read.",
+      "properties": {
+        "code": { "const": "run.locked" },
+        "params": {
+          "type": "object",
+          "required": [ "program", "pid", "started_at" ],
+          "properties": {
+            "program": { "type": [ "string", "null" ], "description": "betatv, betastare, engine or migrate" },
+            "pid": { "type": [ "integer", "null" ] },
+            "started_at": { "type": [ "number", "null" ], "description": "Epoch seconds." }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.busy": {
+      "description": "A job is queued, running or paused, so the settings were not changed (config.set, config.reset), not checked with overrides (config.get), or no look was drawn (preview.look). job is the job holding the queue.",
+      "properties": {
+        "code": { "const": "config.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "preview.unknown_art": {
+      "description": "preview.look named an art style or item the engine does not have (assets/art/<style>/style.json lists them).",
+      "properties": {
+        "code": { "const": "preview.unknown_art" },
+        "params": {
+          "type": "object",
+          "required": [ "style", "item" ],
+          "properties": { "style": { "type": "string" }, "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "preview.bad_image": {
+      "description": "preview.look could not read the image: missing, unreadable or not an image.",
+      "properties": {
+        "code": { "const": "preview.bad_image" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "job.unknown": {
+      "description": "No job has this id, or it ended long enough ago to be forgotten.",
+      "properties": {
+        "code": { "const": "job.unknown" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.bad_state": {
+      "description": "The job is not in a state this command applies to: pause needs a running job, resume a paused one, cancel one that has not ended. state is the job's state.",
+      "properties": {
+        "code": { "const": "job.bad_state" },
+        "params": {
+          "type": "object",
+          "required": [ "job", "state" ],
+          "properties": { "job": { "type": "string" }, "state": { "enum": [ "queued", "running", "paused", "completed", "cancelled", "stopped" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.no_such_file": {
+      "description": "A chosen file does not exist or is not a file. index is its place in files, from 0.",
+      "properties": {
+        "code": { "const": "job.no_such_file" },
+        "params": {
+          "type": "object",
+          "required": [ "index" ],
+          "properties": { "index": { "type": "integer", "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "job.nothing_to_render": {
+      "description": "The settings this job would run with censor nothing, so it would change no frame.",
+      "properties": {
+        "code": { "const": "job.nothing_to_render" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "engine.stopping": {
+      "description": "The engine is shutting down: a job.submit refused, or the code of a job stopped by the shutdown, with its checkpoints kept.",
+      "properties": {
+        "code": { "const": "engine.stopping" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "file.failed": {
+      "description": "One file of a job failed; the job went on with the next. exception_type is the failure's Python type, never its message. stage is where it was: prepare, detect, persons or render.",
+      "properties": {
+        "code": { "const": "file.failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type", "stage" ],
+          "properties": { "exception_type": { "type": "string" }, "stage": { "enum": [ "prepare", "detect", "persons", "render" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "disk.full": {
+      "description": "A disk filled, so the job, and every job queued after it, stopped. Finished outputs are kept and skipped next time; the file that failed is rebuilt. free_bytes is the space left in the output folder, or null when it could not be read.",
+      "properties": {
+        "code": { "const": "disk.full" },
+        "params": {
+          "type": "object",
+          "required": [ "free_bytes" ],
+          "properties": { "free_bytes": { "type": [ "integer", "null" ], "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.load_failed": {
+      "description": "The detection model did not load, so the job stopped before its first file. exception_type is the failure's Python type.",
+      "properties": {
+        "code": { "const": "model.load_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exception_type" ],
+          "properties": { "exception_type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.unknown": {
+      "description": "No model in the catalog has this id. model is the id asked for.",
+      "properties": {
+        "code": { "const": "model.unknown" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.hash_mismatch": {
+      "description": "The downloaded or imported file is not the one the catalog pins (its SHA-256 differs, or it is too long). It was deleted; nothing was installed.",
+      "properties": {
+        "code": { "const": "model.hash_mismatch" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.download_failed": {
+      "description": "The model could not be downloaded from any mirror. reason: network (no connection, or it was lost; what arrived is kept and the next install resumes), http (a server refused or answered the wrong range), not_a_model (a web page came back instead of the file).",
+      "properties": {
+        "code": { "const": "model.download_failed" },
+        "params": {
+          "type": "object",
+          "required": ["model", "reason"],
+          "properties": {"model": {"type": "string"}, "reason": {"enum": ["network", "http", "not_a_model"]}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.unknown_file": {
+      "description": "The chosen file is not any model in the catalog (its SHA-256 matches none). Nothing was installed.",
+      "properties": {
+        "code": { "const": "model.unknown_file" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.in_use": {
+      "description": "The current settings use this model, so it was not removed. Switch to another model first.",
+      "properties": {
+        "code": { "const": "model.in_use" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.busy": {
+      "description": "The model is downloading or queued to, so it was not removed. Cancel the download first.",
+      "properties": {
+        "code": { "const": "model.busy" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "model.not_installed": {
+      "description": "The model is not installed, so the settings were not changed to use it.",
+      "properties": {
+        "code": { "const": "model.not_installed" },
+        "params": {
+          "type": "object",
+          "required": ["model"],
+          "properties": {"model": {"type": "string"}},
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.unavailable": {
+      "description": "The catalog's database could not be opened. reason: corrupt (the file is not a readable database), busy (another process held it past the wait), not_writable, in_use (the rebuild tool holds it), or error. Nothing was changed.",
+      "properties": {
+        "code": { "const": "catalog.unavailable" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "enum": [ "corrupt", "busy", "not_writable", "in_use", "error" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.too_new": {
+      "description": "The catalog's file was made by a newer version of the app (schema version) than this one reads (supported). It is left untouched.",
+      "properties": {
+        "code": { "const": "catalog.too_new" },
+        "params": {
+          "type": "object",
+          "required": [ "version", "supported" ],
+          "properties": { "version": { "type": "integer", "minimum": 0 }, "supported": { "type": "integer", "minimum": 0 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_item": {
+      "description": "No catalog item has this id (its content hash).",
+      "properties": {
+        "code": { "const": "catalog.no_such_item" },
+        "params": {
+          "type": "object",
+          "required": [ "item" ],
+          "properties": { "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_folder": {
+      "description": "No watched folder has this id.",
+      "properties": {
+        "code": { "const": "catalog.no_such_folder" },
+        "params": {
+          "type": "object",
+          "required": [ "folder" ],
+          "properties": { "folder": { "type": "integer" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.bad_folder": {
+      "description": "The folder cannot be watched. reason: not_found, not_a_folder, or output_folder (it is one of the folders the engine writes outputs to, or inside one).",
+      "properties": {
+        "code": { "const": "catalog.bad_folder" },
+        "params": {
+          "type": "object",
+          "required": [ "reason" ],
+          "properties": { "reason": { "enum": [ "not_found", "not_a_folder", "output_folder" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.bad_type": {
+      "description": "The video type to pin is not one of the structure profiles the selected backend has (type is what was asked for).",
+      "properties": {
+        "code": { "const": "catalog.bad_type" },
+        "params": {
+          "type": "object",
+          "required": [ "type" ],
+          "properties": { "type": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.item_busy": {
+      "description": "A job holds the item (queued, running or paused), so its video type cannot change until that job ends. job is the job's id.",
+      "properties": {
+        "code": { "const": "catalog.item_busy" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "job" ],
+          "properties": { "item": { "type": "string" }, "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.missing": {
+      "description": "The item has no file the engine can read right now (every path is missing or offline), or no censored output on disk when its output's thumbnail was asked for.",
+      "properties": {
+        "code": { "const": "catalog.missing" },
+        "params": {
+          "type": "object",
+          "required": [ "item" ],
+          "properties": { "item": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.thumbnail_failed": {
+      "description": "No thumbnail could be made. reason: not_video (no frame could be decoded) or error (ffmpeg failed or timed out; the engine log has details).",
+      "properties": {
+        "code": { "const": "catalog.thumbnail_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "item", "reason" ],
+          "properties": { "item": { "type": "string" }, "reason": { "enum": [ "not_video", "error" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "catalog.no_such_file": {
+      "description": "catalog.strip was given a path that is not a file.",
+      "properties": {
+        "code": { "const": "catalog.no_such_file" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "feedback.not_a_result": {
+      "description": "The file is not a result the catalog knows (a source, another file, or a result no longer on disk), so feedback cannot be kept for it.",
+      "properties": {
+        "code": { "const": "feedback.not_a_result" },
+        "params": {
+          "type": "object",
+          "required": [],
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    "feedback.no_such_record": {
+      "description": "No feedback mark has this id.",
+      "properties": {
+        "code": { "const": "feedback.no_such_record" },
+        "params": {
+          "type": "object",
+          "required": [ "id" ],
+          "properties": { "id": { "type": "integer" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.unknown_category": {
+      "description": "No such kind of file in the Storage view.",
+      "properties": {
+        "code": { "const": "storage.unknown_category" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.not_cleanable": {
+      "description": "This kind is listed only: outputs, models in use, the catalog, settings, logs and stats are never removed here, and a download cache other tools share is never touched.",
+      "properties": {
+        "code": { "const": "storage.not_cleanable" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.needs_confirm": {
+      "description": "Removing this costs work to redo (detections, shot cuts, unfinished renders), so the request must say confirm: true.",
+      "properties": {
+        "code": { "const": "storage.needs_confirm" },
+        "params": {
+          "type": "object",
+          "required": [ "category", "policy" ],
+          "properties": { "category": { "type": "string" }, "policy": { "enum": [ "safe", "costly", "resume", "shared", "kept" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.busy": {
+      "description": "A running job writes this kind of file; try again when the queue is idle.",
+      "properties": {
+        "code": { "const": "storage.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.busy": {
+      "description": "A job holds the queue; Optimize measures the machine alone, so it waits for the jobs.",
+      "properties": {
+        "code": { "const": "perf.busy" },
+        "params": {
+          "type": "object",
+          "required": [ "job" ],
+          "properties": { "job": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "perf.optimize_running": {
+      "description": "An optimization is measuring the machine; another one, or a job, waits for it.",
+      "properties": {
+        "code": { "const": "perf.optimize_running" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.machine_busy": {
+      "description": "The machine is busy (load, GPU use or a command-line run), so measurements would be skewed. force: true runs anyway.",
+      "properties": {
+        "code": { "const": "perf.machine_busy" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "perf.no_proposal": {
+      "description": "There is no finished optimization to apply.",
+      "properties": {
+        "code": { "const": "perf.no_proposal" },
+        "params": { "type": "object", "required": [], "properties": {}, "additionalProperties": false }
+      }
+    },
+    "optimize.failed": {
+      "description": "The measurements stopped with an error; the log in its benchmarks folder has details.",
+      "properties": {
+        "code": { "const": "optimize.failed" },
+        "params": {
+          "type": "object",
+          "required": [ "exit_code" ],
+          "properties": { "exit_code": { "type": [ "integer", "null" ] } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "storage.trash_failed": {
+      "description": "The system trash could not take this kind (on a disk with no trash, or a move that would need a copy across disks). Nothing of it was removed for good; storage_delete_permanently removes it instead.",
+      "properties": {
+        "code": { "const": "storage.trash_failed" },
+        "params": {
+          "type": "object",
+          "required": [ "category" ],
+          "properties": { "category": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

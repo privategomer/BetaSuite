@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/perf.optimize.schema.json",
+  "title": "perf.optimize",
+  "description": "Optimize for this PC: measure the settings that set its speed (tools/bench/tune_machine.py, in a child process) and propose values, without changing anything. Evidence from past runs shortens it: plan lists every stage with run (false: skipped), narrow (only values next to the ones in use) and why (code): optimize.steady_evidence (past runs at the settings in use are steady), optimize.no_evidence, optimize.memory_capped (memory has been capping the render, so its full spread is measured), optimize.encode_settled (an earlier optimization measured the same encoder), optimize.not_used_by_runs (scan tunes the bench tool only), optimize.always (inventory), optimize.full (full: true). stages limits it to some stages (a nudge's action). video is the file to measure on (default: the source with the most pixels per frame). Refused while a job holds the queue (perf.busy), while another optimization runs (perf.optimize_running), and when the machine is busy (perf.machine_busy) unless force: true. While it runs, job.submit answers perf.optimize_running. Progress and the proposal come as perf.optimize_progress events; perf.optimize_apply writes the proposal.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "full": {
+          "type": "boolean"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "video": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "inventory",
+              "detect",
+              "prefetch",
+              "render",
+              "encode",
+              "scan"
+            ]
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "plan",
+        "narrow"
+      ],
+      "properties": {
+        "plan": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "stage",
+              "run",
+              "narrow",
+              "code"
+            ],
+            "properties": {
+              "stage": {
+                "enum": [
+                  "inventory",
+                  "detect",
+                  "prefetch",
+                  "render",
+                  "encode",
+                  "scan"
+                ]
+              },
+              "run": {
+                "type": "boolean"
+              },
+              "narrow": {
+                "type": "boolean"
+              },
+              "code": {
+                "enum": [
+                  "optimize.full",
+                  "optimize.steady_evidence",
+                  "optimize.no_evidence",
+                  "optimize.memory_capped",
+                  "optimize.encode_settled",
+                  "optimize.not_used_by_runs",
+                  "optimize.always"
+                ]
+              }
+            }
+          }
+        },
+        "narrow": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detect",
+              "prefetch",
+              "render"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

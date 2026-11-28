@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/perf.optimize_cancel.schema.json",
+  "title": "perf.optimize_cancel",
+  "description": "Stop the optimization in progress; nothing is proposed or applied. cancelled is false when none was running.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "cancelled"
+      ],
+      "properties": {
+        "cancelled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

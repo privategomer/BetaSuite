@@ -1,0 +1,30 @@
+# Keeps the GitHub Actions versions and the desktop UI dependencies up to date.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+
+  # The desktop UI's npm packages and Rust crates, monthly, one pull
+  # request per ecosystem.
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: monthly
+    groups:
+      ui-npm:
+        patterns: [ "*" ]
+    commit-message:
+      prefix: ui
+  - package-ecosystem: cargo
+    directory: /ui/src-tauri
+    schedule:
+      interval: monthly
+    groups:
+      ui-cargo:
+        patterns: [ "*" ]
+    commit-message:
+      prefix: ui

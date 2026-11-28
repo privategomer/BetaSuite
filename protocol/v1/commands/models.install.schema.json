@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/models.install.schema.json",
+  "title": "models.install",
+  "description": "Download a model, checked against its pinned SHA-256, resuming a partial download. Returns at once; models.state and models.progress events follow. queued is false when it was already queued or downloading. Downloads run one at a time in the order asked. model.unknown for an unknown id.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "queued"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queued": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

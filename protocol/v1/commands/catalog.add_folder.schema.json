@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/catalog.add_folder.schema.json",
+  "title": "catalog.add_folder",
+  "description": "Watch a folder (an absolute path) and start a pass over it; its files arrive through catalog.changed as they are indexed. With type_from_folder its subfolder names pick the video type, as in a 1.x uncensored_vids tree. Adding a folder already watched only updates its type_from_folder (created false). catalog.bad_folder when it does not exist, is not a folder, or holds outputs.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type_from_folder": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "folder",
+        "created"
+      ],
+      "properties": {
+        "folder": {
+          "type": "object",
+          "required": [
+            "folder",
+            "path",
+            "type_from_folder",
+            "available",
+            "items"
+          ],
+          "properties": {
+            "folder": {
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "type_from_folder": {
+              "type": "boolean"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "created": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

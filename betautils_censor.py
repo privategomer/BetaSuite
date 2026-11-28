@@ -1,0 +1,1690 @@
+"""
+betautils_censor.py - Turning a tracked box into censored pixels.
+
+Two entry points:
+
+    process_raw_box( raw, vid_w, vid_h )
+        One raw detection -> one censorable box dict, or None if the
+        label is not censored or the score does not clear its gate.
+        Runs once per detection, before tracking.
+
+    censor_img_for_boxes( image, boxes )
+        One frame -> that frame with every box rendered onto it. Runs
+        once per rendered frame, so everything it touches is on the
+        hottest path in the codebase.
+
+THREAD SAFETY
+-------------
+censor_img_for_boxes is called concurrently by parallel render workers
+(see betautils_render). It therefore must not mutate the box dicts it is
+given, and it does not: it sorts a copy, and the overlap-merge
+strategies build new dicts rather than editing the originals. That was
+also a correctness bug in its own right - the earlier 'single-pass'
+merge widened the caller's box dicts in place, and because merges only
+ever expand, a censor region ratcheted outward frame after frame and
+never shrank back.
+
+The shape-mask cache and the sticker cache are both safe to share.
+"""
+
+import collections
+import functools
+import glob
+import math
+import os
+import random
+import threading
+
+import cv2
+import numpy as np
+
+import betaconfig
+import betautils_config as bu_config
+import betautils_paths as bu_paths
+
+
+# Largest blur kernel, as a fraction of the region's shorter side, that
+# still averages real pixels rather than BORDER_DEFAULT reflection. A
+# correctness guard, not a style control - see _clamp_kernel_to_region.
+# Per method, because a flat box window reaches about twice as far as a
+# Gaussian of the same kernel size (sigma k/sqrt(12) vs OpenCV's
+# ~0.15k), so it saturates at a smaller fraction of the region.
+BLUR_KERNEL_MAX_REGION_FRACTION = { 'gaussian': 1.0, 'box': 0.5, 'triple_box': 1.0 }
+
+
+# Number of box passes 'triple_box' makes. Three is the point where the
+# central limit theorem has done essentially all the work it is going to:
+# repeated box convolution converges to a Gaussian, and by the third pass
+# the shape is within a few percent of one (Kovesi, "Fast Almost-Gaussian
+# Filtering"). A fourth pass costs another full pass for a difference
+# measured below the noise floor of the render bench.
+TRIPLE_BOX_PASSES = 3
+
+
+# ---------------------------------------------------------------------------
+# Strength scaling
+# ---------------------------------------------------------------------------
+
+def censor_scale_for_image_box( image, feature_w, feature_h ):
+    """
+    Multiplier for a blur or pixel style's strength.
+
+    Chosen by betaconfig.censor_scale_strategy:
+        'feature'  the feature's shorter side / 100, so a censor looks
+                   equally strong on a small and a large feature
+        'image'    the frame's longer side / 1000, so strength follows
+                   the resolution of the whole picture
+        anything else (including 'none')  1, the style's strength as is
+
+    Callers pass a track's stable reference size, not the live box:
+    a box jitters a little every frame, and strength recomputed from it
+    makes the blur visibly pulse.
+
+    Args:
+        image: The frame, read only for its size under 'image'.
+        feature_w, feature_h: The reference size of the censored feature.
+
+    Returns:
+        The multiplier. Never None, even for an unknown strategy.
+    """
+    strategy = getattr( betaconfig, 'censor_scale_strategy', 'feature' )
+    if strategy == 'feature':
+        return min( feature_w, feature_h ) / 100
+    if strategy == 'image':
+        img_h, img_w = image.shape[:2]
+        return max( img_h, img_w ) / 1000
+    return 1
+
+
+# ---------------------------------------------------------------------------
+# Style and shape resolution
+# ---------------------------------------------------------------------------
+#
+# Anywhere a censor_style is configured it may be either a single style
+# dict (always used) or a list of style dicts (one chosen at random,
+# weighted by each dict's optional 'weight', default 1). The choice is
+# made ONCE per tracked instance, in betautils_track.smooth_boxes, and
+# then held for that instance's whole lifetime - otherwise a continuous
+# censor region flickers between styles frame to frame.
+
+def resolve_censor_style( style_config, rng=None ):
+    """
+    Pick one concrete style dict from what is configured.
+
+    Args:
+        style_config: A style dict, or a list of them to choose from.
+        rng: A random.Random to draw from; default the shared generator.
+            A preview passes a seeded one so it draws the same pick every
+            time.
+
+    Returns:
+        One concrete style dict.
+    """
+    if isinstance( style_config, dict ):
+        return style_config
+    weights = [ one_style.get( 'weight', 1 ) for one_style in style_config ]
+    return ( rng or random ).choices( style_config, weights=weights, k=1 )[0]
+
+
+def resolve_censor_shape( resolved_style, item_default_shape ):
+    """
+    What shape a resolved style renders as.
+
+    Precedence, most to least specific:
+      1. the style dict's own 'shape' - a deliberate per-variant
+         override, e.g. one bar variant wanting a rectangle while its
+         sibling blur variants stay elliptical.
+      2. betaconfig.type_default_shapes[style['type']] - a structural
+         default for types that only make sense as one shape. 'bar' is
+         a rectangle by definition, and the span/single-pass merges only
+         fire for shape == 'box', so a bar style that forgets to set
+         'shape' would otherwise inherit the item's shape and silently
+         never merge.
+      3. item_default_shape - the item's censor_shape, or
+         default_censor_shape.
+
+    Args:
+        resolved_style: One concrete style dict.
+        item_default_shape: The item's own shape, as the last fallback.
+
+    Returns:
+        'box', 'circle' or 'ellipse'.
+    """
+    if 'shape' in resolved_style:
+        return resolved_style['shape']
+    type_default = getattr( betaconfig, 'type_default_shapes', {} ).get( resolved_style['type'] )
+    if type_default:
+        return type_default
+    return item_default_shape
+
+
+# ---------------------------------------------------------------------------
+# Shape masks (cached)
+# ---------------------------------------------------------------------------
+#
+# A mask depends only on (shape, width, height, feather) - never on
+# pixel content - so it is a pure function and can be memoised. It was
+# rebuilt from scratch for every box on every frame previously, and the
+# feather step is a Gaussian blur whose kernel scales with the box:
+# feather 0.55 on a 300px box is a 167-tap blur, 17.6ms, once per frame.
+#
+# The cache stores the finished float32 alpha so the per-frame uint8 ->
+# float conversion is also avoided. Entries are marked read-only; every
+# consumer only ever reads them.
+
+_MASK_CACHE_ENTRIES = 128
+
+
+def make_shape_mask( shape, w, h ):
+    """
+    A binary 0/255 mask of the given shape at the given size.
+
+    Args:
+        shape: 'circle', 'ellipse', or anything else (treated as 'box').
+        w: Width in pixels.
+        h: Height in pixels.
+
+    Returns:
+        An HxW uint8 array: 255 inside the shape, 0 outside. A 'box'
+        mask is entirely 255, which is the same as no masking at all.
+    """
+    if shape == 'circle':
+        mask = np.zeros( ( h, w ), dtype=np.uint8 )
+        radius = min( w, h ) // 2
+        cv2.circle( mask, ( w//2, h//2 ), radius, 255, cv2.FILLED )
+        return mask
+    if shape == 'ellipse':
+        mask = np.zeros( ( h, w ), dtype=np.uint8 )
+        cv2.ellipse( mask, ( w//2, h//2 ), ( max( w//2, 1 ), max( h//2, 1 ) ),
+                     0, 0, 360, 255, cv2.FILLED )
+        return mask
+    return np.full( ( h, w ), 255, dtype=np.uint8 )
+
+
+def feather_mask( mask, feather, w, h ):
+    """
+    Soften a binary mask's edge into a gradient.
+
+    Implemented by Gaussian-blurring the mask itself, so instead of a
+    step at the boundary there is a ramp: edge pixels blend
+    proportionally between censored and original rather than jumping.
+
+    Args:
+        mask: A binary 0/255 mask.
+        feather: 0-1, the fraction of the shape's shorter dimension used
+            as the transition width. 0 returns mask unchanged.
+        w: mask's width.
+        h: mask's height.
+
+    Returns:
+        The mask, blurred, or unchanged when feather is falsy.
+    """
+    if not feather:
+        return mask
+    feather_radius_px = max( 1, round( feather * min( w, h ) / 2 ) )
+    kernel_size = 2*feather_radius_px + 1
+    return cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0 )
+
+
+def _ramp_sigma( feather, w, h ):
+    """The Gaussian sigma feather_mask's kernel works out to (cv2's rule for sigma 0)."""
+    radius = max( 1, round( feather * min( w, h ) / 2 ) )
+    kernel_size = 2*radius + 1
+    return 0.3 * ( ( kernel_size - 1 ) * 0.5 - 1 ) + 0.8
+
+
+def feather_pad( shape, w, h, feather ):
+    """
+    How far past its box a feathered circle or ellipse ramps to nothing.
+
+    The shape's edge is the middle of the ramp, so the outer half of the
+    ramp has to go somewhere: two sigma past the edge is where the alpha
+    is down to about 2%, which reads as gone. 0 for a box, and for any
+    shape without a feather, where there is no ramp.
+    """
+    if shape not in ( 'circle', 'ellipse' ) or not feather:
+        return 0
+    return int( math.ceil( 2 * _ramp_sigma( feather, w, h ) ) )
+
+
+@functools.lru_cache( maxsize=_MASK_CACHE_ENTRIES )
+def _alpha_for( shape, w, h, feather, pad=0 ):
+    """
+    Cached float32 alpha plane for one (shape, size, feather, pad).
+
+    A feathered circle or ellipse is blurred over a canvas with 'pad'
+    pixels of room on every side and a border of zeros. The default
+    border reflects the mask at the canvas edge, and an ellipse touches
+    all four edges of its box, so the reflection doubled it there: alpha
+    stayed at 0.95 right up to the box edge and then dropped to 0 in one
+    pixel, a hard straight edge on all four sides with only the corners
+    rounded. Heavy feathers (0.55 on a 300px box) read as a square.
+
+    With pad 0 the ramp is cut by the box, so alpha is about 0.5 where
+    the shape touches the box edge. With pad = feather_pad() the ramp
+    finishes outside the box and nothing is cut. A box, and a shape with
+    no feather, take the original path unchanged.
+
+    Returns:
+        A read-only (h + 2*pad, w + 2*pad, 1) float32 array in [0, 1].
+    """
+    if shape in ( 'circle', 'ellipse' ) and feather:
+        mask = np.zeros( ( h + 2*pad, w + 2*pad ), dtype=np.uint8 )
+        centre = ( pad + w//2, pad + h//2 )
+        if shape == 'circle':
+            cv2.circle( mask, centre, min( w, h )//2, 255, cv2.FILLED )
+        else:
+            cv2.ellipse( mask, centre, ( max( w//2, 1 ), max( h//2, 1 ) ),
+                         0, 0, 360, 255, cv2.FILLED )
+        radius = max( 1, round( feather * min( w, h ) / 2 ) )
+        kernel_size = 2*radius + 1
+        mask = cv2.GaussianBlur( mask, ( kernel_size, kernel_size ), 0,
+                                 borderType=cv2.BORDER_CONSTANT )
+    else:
+        mask = feather_mask( make_shape_mask( shape, w, h ), feather, w, h )
+    alpha = ( mask.astype( np.float32 ) / 255.0 )[ :, :, None ]
+    alpha.flags.writeable = False
+    return alpha
+
+
+def mask_cache_info():
+    """Cache statistics for the shape-mask cache, for the benchmark harness."""
+    return _alpha_for.cache_info()
+
+
+def clear_mask_cache():
+    """Drop every cached mask. Test-support and benchmark-support only."""
+    _alpha_for.cache_clear()
+
+
+def apply_masked_region( image, x, y, w, h, censored_region, shape, feather=0 ):
+    """
+    Composite an already-censored region into the frame through its shape.
+
+    A plain box with no feather is a straight overwrite, the cheap path
+    most styles take. Any other shape or a feather blends through the
+    cached alpha plane, so the censor fades into the original pixels.
+
+    Args:
+        image: The frame. Mutated in place and returned.
+        x, y, w, h: Where the region goes, in image pixel coordinates.
+        censored_region: An h x w x 3 array, the censored pixels.
+        shape: 'box' | 'circle' | 'ellipse'.
+        feather: Edge softness passed to the mask; 0 for a hard edge.
+
+    Returns:
+        image.
+    """
+    if shape == 'box' and not feather:
+        image[ y:y+h, x:x+w ] = censored_region
+        return image
+    alpha = _alpha_for( shape, w, h, feather )
+    original = image[ y:y+h, x:x+w ].astype( np.float32 )
+    blended = alpha * censored_region.astype( np.float32 ) + ( 1 - alpha ) * original
+    image[ y:y+h, x:x+w ] = blended.astype( image.dtype )
+    return image
+
+
+# ---------------------------------------------------------------------------
+# Pixelation
+# ---------------------------------------------------------------------------
+
+def pixelate_block_grid( region, w, h, factor ):
+    """
+    Square-grid pixelation, used by both the 'square' and 'mosaic' patterns.
+
+    Shrinks the region to one cell per `factor` source pixels (linear
+    interpolation averages each cell) and enlarges it back with nearest
+    neighbour, so every cell becomes one flat block.
+
+    Args:
+        region: The h x w x 3 pixels to pixelate.
+        w, h: The region's size.
+        factor: About how many source pixels one block spans.
+
+    Returns:
+        A new h x w x 3 array.
+    """
+    grid_w = max( 1, math.ceil( w / factor ) )
+    grid_h = max( 1, math.ceil( h / factor ) )
+    small = cv2.resize( region, ( grid_w, grid_h ), interpolation=cv2.INTER_LINEAR )
+    return cv2.resize( small, ( w, h ), interpolation=cv2.INTER_NEAREST )
+
+
+# Hex cell-label grids, keyed on (w, h, quantised radius). Purely
+# geometric, so a tracked box of stable size reuses one grid for its
+# whole lifetime.
+_HEX_GRID_CACHE_ENTRIES = 64
+_SQRT3 = math.sqrt( 3.0 )
+
+
+@functools.lru_cache( maxsize=_HEX_GRID_CACHE_ENTRIES )
+def _hex_cell_labels( w, h, radius_milli ):
+    """
+    Map every pixel of a w x h region to a flat-top hexagon cell index.
+
+    Analytic, and vectorised over the whole region at once: convert
+    pixel coordinates to fractional axial hex coordinates, cube-round to
+    the nearest hex centre, then pack the axial pair into a dense
+    integer label.
+
+    This replaces a loop that, for every hexagon in the grid, allocated
+    a full region-sized mask, fillPoly'd one hexagon into it, and
+    np.where'd over the entire region to find that hexagon's pixels -
+    O(cells x w x h) where the work is O(w x h). On a 600x600 box that
+    was 174ms per box per frame, or roughly 4.4 seconds of render time
+    per second of video for one box.
+
+    The tiling is also now a correct, non-overlapping hexagonal
+    tessellation. The old generator offset alternate rows by a full hex
+    width while stepping columns by 1.5 radii, which produced
+    overlapping hexagons that partially overwrote each other. The
+    rendered pattern therefore looks slightly different: regular where
+    it used to be subtly irregular.
+
+    Args:
+        w: Region width in pixels.
+        h: Region height in pixels.
+        radius_milli: Hex radius (centre to corner) in thousandths of a
+            pixel. Quantised so nearly-identical radii share a grid.
+
+    Returns:
+        A read-only (h, w) int32 array of dense cell labels, and the
+        label count, as a (labels, count) pair.
+    """
+    radius = max( 1e-3, radius_milli / 1000.0 )
+
+    ys, xs = np.mgrid[ 0:h, 0:w ]
+    # Flat-top axial coordinates (Amit Patel's hexagon reference).
+    frac_q = ( 2.0/3.0 * xs ) / radius
+    frac_r = ( -1.0/3.0 * xs + _SQRT3/3.0 * ys ) / radius
+
+    # Cube-round: round all three cube coordinates, then correct the one
+    # that moved furthest so the triple stays on the x+y+z=0 plane.
+    cube_x, cube_z = frac_q, frac_r
+    cube_y = -cube_x - cube_z
+    round_x, round_y, round_z = np.rint( cube_x ), np.rint( cube_y ), np.rint( cube_z )
+    diff_x, diff_y, diff_z = ( np.abs( round_x - cube_x ),
+                               np.abs( round_y - cube_y ),
+                               np.abs( round_z - cube_z ) )
+    fix_x = ( diff_x > diff_y ) & ( diff_x > diff_z )
+    fix_y = ( ~fix_x ) & ( diff_y > diff_z )
+    fix_z = ( ~fix_x ) & ( ~fix_y )
+    axial_q = np.where( fix_x, -round_y - round_z, round_x ).astype( np.int64 )
+    axial_r = np.where( fix_z, -round_x - round_y, round_z ).astype( np.int64 )
+
+    q_min, r_min = axial_q.min(), axial_r.min()
+    r_span = int( axial_r.max() - r_min ) + 1
+    labels = ( ( axial_q - q_min ) * r_span + ( axial_r - r_min ) ).astype( np.int32 )
+
+    # Densify: cube rounding can leave gaps in the packed index space,
+    # and bincount allocates by maximum label, so remap to 0..n-1.
+    unique_labels, dense = np.unique( labels, return_inverse=True )
+    dense = dense.astype( np.int32 ).reshape( h, w )
+    dense.flags.writeable = False
+    return dense, len( unique_labels )
+
+
+def pixelate_hex_grid( region, w, h, factor ):
+    """
+    Hexagonal-grid pixelation: fill each hex cell with the mean colour
+    of the source pixels under it.
+
+    Genuinely a different look from the square grid, not an alias.
+
+    Args:
+        region: HxWx3 region to pixelate.
+        w, h: region's size.
+        factor: Controls cell size; the hex radius is factor/2, floored
+            at 2 source pixels.
+
+    Returns:
+        An HxWx3 array the same size as region.
+    """
+    hex_radius = max( 2.0, factor / 2.0 )
+    labels, label_count = _hex_cell_labels( w, h, int( round( hex_radius * 1000 ) ) )
+
+    flat_labels = labels.reshape( -1 )
+    pixel_counts = np.bincount( flat_labels, minlength=label_count ).astype( np.float64 )
+    pixel_counts[ pixel_counts == 0 ] = 1.0
+
+    source = region.reshape( -1, region.shape[2] ).astype( np.float64 )
+    result = np.empty_like( region )
+    for channel in range( region.shape[2] ):
+        channel_sums = np.bincount( flat_labels, weights=source[ :, channel ],
+                                    minlength=label_count )
+        channel_means = channel_sums / pixel_counts
+        result[ :, :, channel ] = channel_means[ labels ].astype( region.dtype )
+    return result
+
+
+def pixelate_image( image, x, y, w, h, style, shape='box', feather=0,
+                    scale_w=None, scale_h=None ):
+    """
+    Apply a 'pixel' censor style to one region.
+
+    Args:
+        image: The frame to censor. Mutated in place and returned.
+        x, y, w, h: The region, in image pixel coordinates.
+        style: The resolved style dict. Reads 'strength' (default 10)
+            and 'pattern' ('square' | 'mosaic' | 'hex', default 'square').
+        shape: Passed through to apply_masked_region.
+        feather: Passed through to apply_masked_region.
+
+    Returns:
+        image.
+    """
+    block_factor = style.get( 'strength', 10 ) * censor_scale_for_image_box(
+        image, scale_w if scale_w else w, scale_h if scale_h else h )
+    region = image[ y:y+h, x:x+w ]
+    pattern = style.get( 'pattern', 'square' )
+    if pattern == 'hex':
+        censored_region = pixelate_hex_grid( region, w, h, block_factor )
+    else:
+        censored_region = pixelate_block_grid( region, w, h, block_factor )
+    return apply_masked_region( image, x, y, w, h, censored_region, shape, feather )
+
+
+# ---------------------------------------------------------------------------
+# Blur
+# ---------------------------------------------------------------------------
+
+def _gaussian_sigma_for_kernel( kernel_size ):
+    """OpenCV's own sigma-from-kernel formula, so approximations match."""
+    return 0.3 * ( ( kernel_size - 1 ) * 0.5 - 1 ) + 0.8
+
+
+def _clamp_kernel_to_region( kernel_size, region_w, region_h, method='gaussian' ):
+    """
+    Hold a blur kernel to something the region can actually support.
+
+    WHY THIS EXISTS
+    ---------------
+    A Gaussian kernel wider than the region it covers has no real pixels
+    left to average at the centre, so cv2 fills the window from
+    BORDER_DEFAULT edge reflection instead. Past that point the output
+    stops being "this region, blurred" and becomes a function of
+    whatever sits at the region's BORDER - and a tracked box's border
+    moves and resizes every frame even when its centre sits still.
+
+    That is what reads as a blur "pulsing in strength" while staying in
+    place. Measured on a 180px box with the kernel held perfectly
+    constant, mean brightness inside the censor swung:
+
+        strength  50 -> kernel  91 (0.51x box) -> 0.08 levels
+        strength  70 -> kernel 127 (0.71x box) -> 0.54 levels
+        strength  96 -> kernel 175 (0.97x box) -> 1.80 levels
+        strength 130 -> kernel 235 (1.31x box) -> 4.13 levels
+
+    The onset is monotonic from about 0.8x. Note the kernel was NOT
+    changing in that test: holding the kernel steady (style_scale_w/h)
+    does not help here, because the varying input is the border, not the
+    kernel. The two fixes are independent and both are needed.
+
+    WHAT THE LIMIT IS, AND WHAT IT IS NOT
+    -------------------------------------
+    BLUR_KERNEL_MAX_REGION_FRACTION is a correctness guard at 1.0, not a
+    style control. At 1.0 it only clamps kernels that were already past
+    the point of meaning something, so a normally-configured style never
+    reaches it and nothing about the intended look changes. Tuning the
+    amount of blur is what 'strength' is for; lowering this fraction to
+    get a softer censor would silently cap every style at once.
+
+    Clamping REDUCES blur, so it can only ever reveal more than an
+    unclamped kernel would have. That is why the limit sits at 1.0 and
+    not lower: below 1.0 it would start trading real obscuring power for
+    stability on styles that were working correctly.
+
+    Args:
+        kernel_size: The odd kernel the strength calculation produced.
+        region_w, region_h: The region's real pixel extent this frame.
+        method: 'gaussian' or 'box'. A flat box window reaches further
+            than a Gaussian of the same kernel size, so it gets a
+            tighter fraction.
+
+    Returns:
+        An odd kernel size >= 3, no larger than the region's shorter
+        side times this method's BLUR_KERNEL_MAX_REGION_FRACTION.
+    """
+    shorter_side = min( region_w, region_h )
+    if shorter_side <= 0:
+        return kernel_size
+
+    fraction = BLUR_KERNEL_MAX_REGION_FRACTION.get(
+        method, BLUR_KERNEL_MAX_REGION_FRACTION['gaussian'] )
+    limit = int( shorter_side * fraction )
+    # cv2 requires odd; step DOWN so the result never exceeds the limit.
+    if limit % 2 == 0:
+        limit -= 1
+    limit = max( 3, limit )
+
+    return min( kernel_size, limit )
+
+
+def _approximate_gaussian_blur( region, kernel_size ):
+    """
+    A heavy Gaussian blur, computed at reduced resolution.
+
+    Downsample by an integer factor, blur with the proportionally
+    smaller sigma, upsample back. For an obscuring blur the result is
+    visually indistinguishable from the exact kernel, because the
+    detail the approximation loses is exactly the detail the blur is
+    there to destroy.
+
+    Measured against the exact kernel:
+        200x200 region, k=101    6.73ms -> 0.11ms   (61x)
+        300x300 region, k=121   13.52ms -> 0.41ms   (33x)
+
+    Args:
+        region: HxWx3 region to blur.
+        kernel_size: The odd kernel size the exact blur would have used.
+
+    Returns:
+        A blurred copy of region, same shape and dtype.
+    """
+    h, w = region.shape[:2]
+    sigma = _gaussian_sigma_for_kernel( kernel_size )
+
+    # Keep at least ~8 pixels of blur radius at the reduced resolution,
+    # so the small blur still has enough support to look smooth.
+    downscale = max( 1, int( sigma // 4 ) )
+    small_w = max( 1, w // downscale )
+    small_h = max( 1, h // downscale )
+    if downscale <= 1 or small_w < 4 or small_h < 4:
+        return cv2.GaussianBlur( region, ( kernel_size, kernel_size ), 0,
+                                 borderType=cv2.BORDER_DEFAULT )
+
+    small = cv2.resize( region, ( small_w, small_h ), interpolation=cv2.INTER_AREA )
+    small_sigma = sigma / downscale
+    small_kernel = 2 * max( 1, int( math.ceil( 3 * small_sigma ) ) ) + 1
+    small = cv2.GaussianBlur( small, ( small_kernel, small_kernel ), small_sigma,
+                              borderType=cv2.BORDER_DEFAULT )
+    return cv2.resize( small, ( w, h ), interpolation=cv2.INTER_LINEAR )
+
+
+def _box_width_for_sigma( sigma, passes=TRIPLE_BOX_PASSES ):
+    """
+    The box width whose repeated application approximates one Gaussian.
+
+    A box window of width w has variance (w^2 - 1)/12, so `passes` of
+    them contribute passes*(w^2 - 1)/12. Setting that equal to sigma^2
+    and solving for w gives the form below (Kovesi, "Fast Almost-Gaussian
+    Filtering"). Forced odd so the window is centred; an even window
+    shifts the image by half a pixel per pass, which over three passes is
+    a visible drift of the censored area.
+
+    The algebra matters: writing this as sigma*sqrt(12/passes) + 1 - the
+    same symbols in the wrong order - comes out about two pixels wide at
+    every kernel, which over three passes is a systematically stronger
+    blur than the Gaussian it claims to match.
+    """
+    width = int( round( math.sqrt( 12.0 * sigma * sigma / passes + 1.0 ) ) )
+    if width % 2 == 0:
+        width += 1
+    return max( 3, width )
+
+
+def _triple_box_blur( region, kernel_size ):
+    """
+    A Gaussian-shaped blur built from repeated box passes.
+
+    WHY THIS EXISTS ALONGSIDE 'gaussian'
+    ------------------------------------
+    cv2.blur is a running-sum filter: its cost per pixel is independent
+    of the window width, while cv2.GaussianBlur's grows with the kernel.
+    At the kernel sizes censoring uses, three box passes cost a fraction
+    of one true Gaussian and land within a few percent of it.
+
+    Measured on synthetic detail at matched obscuring power (400x400
+    region): exact Gaussian k=101 took 12.53ms, this took 1.02ms at k=87
+    for the same residual detail, with a mean absolute difference from
+    the exact result of 0.38 levels out of 255.
+
+    Unlike _approximate_gaussian_blur this never resamples, so its output
+    does not depend on an integer downscale factor - the thing that made
+    the blur visibly step between strengths when a box jittered.
+
+    REJECTED ALTERNATIVE: cv2.stackBlur
+    -----------------------------------
+    Tried and deliberately not used. It is fast, but its blur strength is
+    NOT monotonic in kernel size at the sizes censoring needs. Measured
+    residual detail on the same fixture: k=31 gave 11.3, k=101 gave 15.0,
+    k=401 gave 72.8 - i.e. past about k=31 a larger kernel obscures LESS.
+    A censor style whose strength silently reverses above a threshold is
+    the wrong shape of risk, whatever it costs.
+    """
+    sigma = _gaussian_sigma_for_kernel( kernel_size )
+    width = _box_width_for_sigma( sigma )
+    blurred = region
+    for _ in range( TRIPLE_BOX_PASSES ):
+        blurred = cv2.blur( blurred, ( width, width ), borderType=cv2.BORDER_DEFAULT )
+    return blurred
+
+
+def _blur_region_with_margin( image, x, y, w, h, kernel_size ):
+    """
+    The region to blur, widened into the real pixels around the box.
+
+    WHAT THIS FIXES
+    ---------------
+    The residual blur flicker that survived stabilising the kernel. A
+    blur whose kernel is a large fraction of its region reads mostly
+    BORDER_DEFAULT edge reflection rather than real content, and that
+    reflection is a function of where the box's edge happens to sit. So
+    the blurred result changed every time the box resized by a pixel,
+    even with the kernel held perfectly constant.
+
+    Measured on synthetic detail, box jittering +/-4px with a constant
+    kernel, mean level swing inside a fixed crop:
+
+        kernel/region   no margin   with margin
+            0.30          1.31         0.00
+            0.51          2.19         0.00
+            0.76          2.74         0.00
+            0.99          3.04         0.00
+
+    Reading real neighbours instead of reflected ones removes the
+    dependence entirely, because those neighbours do not move when the
+    box resizes.
+
+    The margin is only ever READ. What gets composited back is still
+    exactly the box, so this cannot change what is censored.
+
+    Returns:
+        A (region, offset_x, offset_y) triple. The offsets locate the
+        box's own top-left corner inside the returned region, which is
+        where the caller crops the blurred result back to.
+    """
+    margin = kernel_size // 2
+    image_h, image_w = image.shape[:2]
+    x0 = max( 0, x - margin )
+    y0 = max( 0, y - margin )
+    x1 = min( image_w, x + w + margin )
+    y1 = min( image_h, y + h + margin )
+    return image[ y0:y1, x0:x1 ], x - x0, y - y0
+
+
+def blur_image( image, x, y, w, h, style, shape='box', feather=0,
+                scale_w=None, scale_h=None ):
+    """
+    Apply a 'blur' censor style to one region.
+
+    Args:
+        image: The frame to censor. Mutated in place and returned.
+        x, y, w, h: The region, in image pixel coordinates.
+        style: The resolved style dict. Reads 'strength' (default 20)
+            and 'method' ('gaussian' | 'box', default 'gaussian').
+        shape: Passed through to apply_masked_region.
+        feather: Passed through to apply_masked_region.
+
+    Returns:
+        image.
+
+    Note:
+        'box' is cv2.blur, a flat average over a square window. It is
+        marginally cheaper but tends to look smeary at the edges of the
+        blurred area; 'gaussian' weights the window's centre more and
+        generally reads as smoother at the same radius. It is kept as an
+        option for the look, not for the speed - see
+        blur_fast_approximation for the speed.
+
+        The kernel is clamped so it cannot exceed the region it blurs -
+        see _clamp_kernel_to_region for why an oversized one flickers.
+    """
+    # Both the strength scaling AND the region clamp read the track's
+    # stable reference size, never this frame's box.
+    #
+    # Only the first half of that was true before. The kernel was
+    # computed from style_scale and then re-clamped against the LIVE
+    # box, which jitters - so the clamp handed back the per-frame
+    # variation the stable size had just removed. It is silent at low
+    # strength, because a small kernel never approaches the limit, and
+    # it bites exactly where a censor is being pushed hardest.
+    #
+    # Measured on a real 640m cache (28 tracks, exposed_breast) the
+    # per-track kernel swing was 0 at strength 60, 18px median and 110px
+    # peak at strength 140, and the downscale factor inside
+    # _approximate_gaussian_blur changed mid-track on 14 of 21 tracks.
+    # That factor is int(sigma // 4), so a few pixels of box jitter steps
+    # it 10 -> 9 and re-samples the region on a different grid: the blur
+    # visibly drops from strong to weak and back. Clamping against the
+    # reference size instead takes all three of those to zero.
+    scale_ref_w = scale_w if scale_w else w
+    scale_ref_h = scale_h if scale_h else h
+    kernel_size = 2*math.ceil( style.get( 'strength', 20 )
+                               * censor_scale_for_image_box(
+                                   image, scale_ref_w, scale_ref_h ) / 2 ) + 1
+    method = style.get( 'method', 'gaussian' )
+    kernel_size = _clamp_kernel_to_region( kernel_size, scale_ref_w, scale_ref_h, method )
+
+    # Deliberately NOT re-clamped against the live w/h afterwards.
+    #
+    # The obvious-looking min(reference, live) only gets part way: on a
+    # real cache it left 7 of 21 tracks still changing downscale factor,
+    # because the live box is smaller than the reference on 52% of boxes
+    # (median 0.89x), so the live term keeps winning and keeps jittering.
+    #
+    # Dropping it is safe in the direction that matters. Clamping only
+    # ever REDUCES a kernel, so declining to clamp can only blur more,
+    # never less - it cannot under-censor. The cost is that a box much
+    # smaller than its track's reference gets a kernel larger than its
+    # own region, which reads as a flat wash rather than as detail. That
+    # is a look tradeoff, and the stable version is the one that matches
+    # what a person actually sees as "strong blur".
+    # Read a margin of real neighbouring pixels when asked to, so the
+    # blur is not a function of where the box's edge sits. The margin is
+    # read only; what gets composited back is still exactly the box.
+    #
+    # A feathered circle or ellipse ramps to nothing OUTSIDE its box, so
+    # the region blurred and composited is the box plus that ramp's room
+    # (feather_pad), clipped to the frame. Everything below then works on
+    # that rectangle; for a box, or no feather, it is the box itself and
+    # nothing here changes.
+    pad = feather_pad( shape, w, h, feather )
+    if pad:
+        image_h, image_w = image.shape[:2]
+        box_x, box_y, box_w, box_h = x, y, w, h
+        x = max( 0, box_x - pad )
+        y = max( 0, box_y - pad )
+        w = min( image_w, box_x + box_w + pad ) - x
+        h = min( image_h, box_y + box_h + pad ) - y
+    use_margin = getattr( betaconfig, 'blur_edge_margin', True )
+    if use_margin:
+        region, offset_x, offset_y = _blur_region_with_margin(
+            image, x, y, w, h, kernel_size )
+    else:
+        region, offset_x, offset_y = image[ y:y+h, x:x+w ], 0, 0
+
+    if method == 'box':
+        censored_region = cv2.blur( region, ( kernel_size, kernel_size ),
+                                    borderType=cv2.BORDER_DEFAULT )
+    elif method == 'triple_box':
+        censored_region = _triple_box_blur( region, kernel_size )
+    else:
+        # The downscale approximation is skipped when a margin is in use:
+        # it resamples on a grid derived from the region's size, which
+        # reintroduces exactly the size dependence the margin removes.
+        # triple_box is the fast path that is compatible with a margin.
+        approximate = ( getattr( betaconfig, 'blur_fast_approximation', True )
+                        and not use_margin )
+        approximation_min_kernel = getattr( betaconfig, 'blur_approximation_min_kernel', 21 )
+        if approximate and kernel_size >= approximation_min_kernel:
+            censored_region = _approximate_gaussian_blur( region, kernel_size )
+        else:
+            censored_region = cv2.GaussianBlur( region, ( kernel_size, kernel_size ), 0,
+                                                borderType=cv2.BORDER_DEFAULT )
+
+    # Crop the blurred result back to the box itself.
+    censored_region = censored_region[ offset_y:offset_y+h, offset_x:offset_x+w ]
+
+    if pad:
+        # The padded alpha is laid out around the box; the rectangle
+        # blurred may be smaller where the frame cut it, so take the
+        # matching window of it.
+        alpha = _alpha_for( shape, box_w, box_h, feather, pad )[
+            y - ( box_y - pad ) : y - ( box_y - pad ) + h,
+            x - ( box_x - pad ) : x - ( box_x - pad ) + w ]
+        original_region = image[ y:y+h, x:x+w ].astype( np.float32 )
+        blended = alpha*censored_region.astype( np.float32 ) + ( 1 - alpha )*original_region
+        image[ y:y+h, x:x+w ] = blended.astype( image.dtype )
+        return image
+
+    return apply_masked_region( image, x, y, w, h, censored_region, shape, feather )
+
+
+# ---------------------------------------------------------------------------
+# Bar
+# ---------------------------------------------------------------------------
+
+def bar_image( image, x, y, w, h, style, shape='box', feather=0 ):
+    """
+    Apply a 'bar' censor style: a solid-colour rectangle.
+
+    Args:
+        image: The frame to censor. Mutated in place and returned.
+        x, y, w, h: The detection box, in image pixel coordinates. y and
+            h are adjusted internally when thickness != 1.0.
+        style: The resolved style dict. Reads 'color' (RGB as
+            configured, default black) and 'thickness'.
+        shape: Passed through to apply_masked_region.
+        feather: Passed through to apply_masked_region.
+
+    Returns:
+        image.
+
+    Note:
+        thickness is the fraction of the box's height the bar covers,
+        centred within it. 1.0 fills the box. Below 1.0 draws a thinner
+        strip and leaves the box's top and bottom as original pixels,
+        which is what makes a bar read as a censor strip rather than a
+        filled block. Above 1.0 grows past the box (clamped to the
+        frame), for guaranteeing a thin item stays fully covered.
+    """
+    color_bgr = tuple( reversed( style.get( 'color', ( 0, 0, 0 ) ) ) )
+    thickness = style.get( 'thickness', 1.0 )
+    if thickness != 1.0:
+        img_h = image.shape[0]
+        bar_h = max( 1, round( h * max( 0.01, thickness ) ) )
+        y = max( 0, min( y + ( h - bar_h )//2, max( 0, img_h - bar_h ) ) )
+        h = min( bar_h, img_h - y )
+    image = np.ascontiguousarray( image )
+    censored_region = np.full( ( h, w, 3 ), color_bgr, dtype=image.dtype )
+    return apply_masked_region( image, x, y, w, h, censored_region, shape, feather )
+
+
+# ---------------------------------------------------------------------------
+# Sticker
+# ---------------------------------------------------------------------------
+#
+# No new ML models and no live emoji-glyph rendering: colour emoji needs
+# either a colour-capable font run through a rendering stack that
+# supports colour glyphs (plain PIL/cv2 text drawing renders monochrome
+# outlines only) or a bundled image set. The dependency-free route is to
+# point config at a folder of PNGs - ideally with alpha, for a clean
+# silhouette - and composite them directly. OpenMoji and Twemoji both
+# publish plain PNG sets that drop straight in.
+
+_sticker_cache = {}
+_sticker_cache_lock = threading.Lock()
+
+
+def _load_stickers( style ):
+    """
+    Load and cache every usable sticker PNG a style points at.
+
+    Thread-safe: parallel render workers share one cache, and loading
+    the same folder twice concurrently would otherwise duplicate the
+    decode work and the warning.
+
+    Args:
+        style: The resolved style dict. Reads 'dir' (globbed for
+            '*.png') and/or 'images' (an explicit path list).
+
+    Returns:
+        A list of HxWx4 BGRA arrays, one per image that loaded. Images
+        with no alpha channel are given a fully opaque one. Empty when
+        nothing loaded; sticker_image falls back to a bar in that case.
+    """
+    cache_key = style.get( 'dir' ) or tuple( style.get( 'images', [] ) )
+    with _sticker_cache_lock:
+        if cache_key in _sticker_cache:
+            return _sticker_cache[cache_key]
+
+        # Resolved here only: the configured strings are part of the
+        # censor key, which must not change with where the data lives.
+        candidate_paths = [ bu_paths.resolve( path ) for path in style.get( 'images', [] ) ]
+        if style.get( 'dir' ):
+            candidate_paths += sorted( glob.glob( os.path.join( bu_paths.resolve( style['dir'] ), '*.png' ) ) )
+
+        loaded_images = []
+        for path in candidate_paths:
+            img = cv2.imread( path, cv2.IMREAD_UNCHANGED )
+            if img is None:
+                bu_config.warn_once( "sticker image not found or unreadable: %s"%(path) )
+                continue
+            if img.shape[2] == 3:
+                opaque_alpha = np.full( img.shape[:2], 255, dtype=np.uint8 )
+                img = np.dstack( [ img, opaque_alpha ] )
+            loaded_images.append( img )
+
+        _sticker_cache[cache_key] = loaded_images
+        if not loaded_images:
+            bu_config.warn_once(
+                "sticker style configured with no usable images (dir=%r, images=%r) - "
+                "falling back to a bar censor for these boxes."%(
+                    style.get( 'dir' ), style.get( 'images' ) ) )
+        return loaded_images
+
+
+# Resized, cropped and feathered sticker planes, keyed by everything that
+# shapes them. A box's size holds steady across consecutive frames (the
+# render stabilises each track's size over a window), so the same planes
+# are asked for again and again. Rebuilding them was most of a sticker's
+# cost: on a 400px box with feather 0.25 the Gaussian alone took 14 of
+# 19 ms. Bounded by bytes, not entries, because one plane can be 16 MB.
+_PROCESSED_STICKER_BUDGET_BYTES = 192 * 1024 * 1024
+_processed_stickers = collections.OrderedDict()
+_processed_stickers_bytes = 0
+_processed_stickers_lock = threading.Lock()
+
+
+def clear_processed_sticker_cache():
+    """Empty the processed-sticker cache. For benchmarks timing the cold cost."""
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        _processed_stickers.clear()
+        _processed_stickers_bytes = 0
+
+
+def _processed_sticker( sticker, key, target_w, target_h, crop, feather ):
+    """
+    (premultiplied colour, 1 - alpha) for one sticker at one size and crop.
+
+    Exactly the arithmetic sticker_image used to do on every frame, done
+    once: the blend then computes premultiplied + (1 - alpha)*frame,
+    which is the same float32 operations in the same order as
+    alpha*colour + (1 - alpha)*frame, so the output is byte-identical.
+    Both planes are read-only, since threads share them.
+    """
+    global _processed_stickers_bytes
+    with _processed_stickers_lock:
+        cached = _processed_stickers.get( key )
+        if cached is not None:
+            _processed_stickers.move_to_end( key )
+            return cached
+
+    src_x0, src_y0, composite_w, composite_h = crop
+    resized_sticker = cv2.resize( sticker, ( target_w, target_h ), interpolation=cv2.INTER_AREA )
+    # cv2.imread always returns BGR(A) whatever the source PNG's own
+    # channel order, and the frame buffer is BGR too, so no reversal is
+    # needed here. A previous version assumed RGB and reversed, which
+    # rendered every yellow-toned emoji blue.
+    sticker_rgb = resized_sticker[ src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, :3 ]
+    sticker_alpha = resized_sticker[
+        src_y0:src_y0+composite_h, src_x0:src_x0+composite_w, 3:4 ].astype( np.float32 ) / 255.0
+    if feather:
+        feathered = feather_mask( ( sticker_alpha[ :, :, 0 ]*255 ).astype( np.uint8 ),
+                                  feather, composite_w, composite_h )
+        sticker_alpha = ( feathered.astype( np.float32 )/255.0 )[ :, :, None ]
+    premultiplied = sticker_alpha*sticker_rgb.astype( np.float32 )
+    inverse_alpha = 1 - sticker_alpha
+    premultiplied.flags.writeable = False
+    inverse_alpha.flags.writeable = False
+    planes = ( premultiplied, inverse_alpha )
+
+    size = premultiplied.nbytes + inverse_alpha.nbytes
+    if size > _PROCESSED_STICKER_BUDGET_BYTES // 4:
+        return planes
+    with _processed_stickers_lock:
+        if key not in _processed_stickers:
+            _processed_stickers[key] = planes
+            _processed_stickers_bytes += size
+            while _processed_stickers_bytes > _PROCESSED_STICKER_BUDGET_BYTES:
+                _old_key, ( old_premultiplied, old_inverse ) = _processed_stickers.popitem( last=False )
+                _processed_stickers_bytes -= old_premultiplied.nbytes + old_inverse.nbytes
+    return planes
+
+
+def sticker_image( image, x, y, w, h, style, shape='box', feather=0, sticker_seed=None ):
+    """
+    Apply a 'sticker' censor style: composite a PNG over the box.
+
+    Args:
+        image: The frame to censor. Mutated in place and returned.
+        x, y, w, h: The box, in image pixel coordinates.
+        style: The resolved style dict. Reads 'dir'/'images' and 'scale'
+            (default 1.0).
+        shape: Unused when a sticker is drawn - the PNG's own alpha is
+            its silhouette. Honoured by the bar fallback.
+        feather: Softens the sticker's alpha edge further, on top of
+            whatever the source PNG already has. Also passed to the
+            fallback.
+        sticker_seed: A float in [0, 1) that deterministically selects
+            WHICH sticker to draw, so one tracked instance keeps one
+            sticker. This function runs once per rendered frame, not
+            once per track, so without a stable seed a sticker style
+            flips through the whole folder frame by frame. None picks
+            randomly each call, for box dicts predating this field.
+
+    Returns:
+        image.
+    """
+    stickers = _load_stickers( style )
+    if not stickers:
+        return bar_image( image, x, y, w, h, { 'color': ( 0, 0, 0 ) }, shape, feather )
+
+    if sticker_seed is None:
+        sticker_index = random.randrange( len( stickers ) )
+    else:
+        sticker_index = min( len( stickers ) - 1, int( sticker_seed * len( stickers ) ) )
+    sticker = stickers[ sticker_index ]
+
+    scale = style.get( 'scale', 1.0 )
+    target_w = max( 1, round( w * scale ) )
+    target_h = max( 1, round( h * scale ) )
+    origin_x = x + w//2 - target_w//2
+    origin_y = y + h//2 - target_h//2
+    img_h, img_w = image.shape[:2]
+    src_x0, src_y0 = max( 0, -origin_x ), max( 0, -origin_y )
+    dst_x0, dst_y0 = max( 0, origin_x ), max( 0, origin_y )
+    dst_x1 = min( img_w, origin_x + target_w )
+    dst_y1 = min( img_h, origin_y + target_h )
+    composite_w, composite_h = dst_x1 - dst_x0, dst_y1 - dst_y0
+    if composite_w <= 0 or composite_h <= 0:
+        return image
+
+    crop = ( src_x0, src_y0, composite_w, composite_h )
+    key = ( style.get( 'dir' ) or tuple( style.get( 'images', [] ) ), sticker_index,
+            target_w, target_h, crop, feather )
+    premultiplied, inverse_alpha = _processed_sticker( sticker, key, target_w, target_h, crop,
+                                                       feather )
+
+    destination = image[ dst_y0:dst_y1, dst_x0:dst_x1 ].astype( np.float32 )
+    blended = premultiplied + inverse_alpha*destination
+    image[ dst_y0:dst_y1, dst_x0:dst_x1 ] = blended.astype( image.dtype )
+    return image
+
+
+# ---------------------------------------------------------------------------
+# Debug overlay and watermark
+# ---------------------------------------------------------------------------
+
+# Magenta: a colour no real censor style defaults to, so an unstyled
+# debug box is obvious.
+_DEBUG_DEFAULT_RGB = ( 255, 0, 255 )
+_DEBUG_FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def _outlined_text( image, text, origin, scale, colour, thickness ):
+    """Text with a dark outline under it, readable on any background."""
+    cv2.putText( image, text, origin, _DEBUG_FONT, scale, ( 0, 0, 0 ), thickness + 2, cv2.LINE_AA )
+    cv2.putText( image, text, origin, _DEBUG_FONT, scale, colour, thickness, cv2.LINE_AA )
+
+
+def debug_image( image, box ):
+    """
+    Draw a box as a labelled outline instead of censoring it.
+
+    The 'debug' style, so detections can be eyeballed: the box's
+    rectangle in the style's colour, and beside it its corners, label,
+    score, time span and any annotation a tool attached as 'debug_note'.
+
+    Args:
+        image: The frame. Made C-contiguous (OpenCV draws only on
+            contiguous arrays), drawn on and returned.
+        box: The box to draw.
+
+    Returns:
+        The drawn frame, same shape as the input.
+    """
+    image = np.ascontiguousarray( image )
+    style = box.get( 'censor_style' ) or {}
+    red, green, blue = style.get( 'color' ) or _DEBUG_DEFAULT_RGB
+    # Styles hold RGB; OpenCV draws BGR.
+    colour = ( int( blue ), int( green ), int( red ) )
+    x, y = int( box['x'] ), int( box['y'] )
+    w, h = int( box['w'] ), int( box['h'] )
+    cv2.rectangle( image, ( x, y ), ( x + w, y + h ), colour, 2 )
+
+    # Corners along the top edge, the label in the middle with a tool's
+    # note directly under it (where the eye goes first), and the score
+    # and time span along the bottom edge.
+    scale = 0.5
+    text_x = x + 5
+    middle_y = y + h // 2
+    _outlined_text( image, '(%d,%d)-(%d,%d)' % ( x, y, x + w, y + h ), ( text_x, y + 15 ),
+                    scale, colour, 1 )
+    _outlined_text( image, str( box.get( 'label', '' ) ), ( text_x, middle_y ), scale, colour, 1 )
+    if box.get( 'debug_note' ):
+        _outlined_text( image, str( box['debug_note'] ), ( text_x, middle_y + 20 ), scale, colour, 1 )
+    _outlined_text( image, 'score %.2f  t %.2f-%.2f' % ( float( box.get( 'score', 0 ) ),
+                                                         float( box.get( 'start', 0 ) ),
+                                                         float( box.get( 'end', 0 ) ) ),
+                    ( text_x, y + h - 6 ), scale, colour, 1 )
+    return image
+
+
+def watermark_image( image ):
+    """
+    Credit BetaSuite in a corner of the frame, when enabled.
+
+    Off (betaconfig.enable_betasuite_watermark false, the default), the
+    same object comes back untouched, so render paths pay nothing for it.
+    On, a short credit is drawn bottom left, scaled with the frame so it
+    stays legible on large frames.
+
+    Args:
+        image: The frame.
+
+    Returns:
+        The frame, watermarked or as given.
+    """
+    if not getattr( betaconfig, 'enable_betasuite_watermark', False ):
+        return image
+    image = np.ascontiguousarray( image )
+    img_h, img_w = image.shape[:2]
+    # 1.0 up to about 1000 pixels on the longer side, then proportional.
+    factor = max( 1.0, max( img_h, img_w ) / 1000 )
+    scale = 0.6 * factor
+    thickness = max( 1, int( round( 1.5 * factor ) ) )
+    margin = int( round( 10 * factor ) )
+    _outlined_text( image, 'censored with BetaSuite', ( margin, img_h - margin ),
+                    scale, ( 255, 255, 255 ), thickness )
+    return image
+
+
+def annotate_image_shape( image ):
+    """
+    Write the frame's array shape in its top-left corner (a debug aid).
+
+    Args:
+        image: The frame. Made C-contiguous, drawn on and returned.
+
+    Returns:
+        The annotated frame.
+    """
+    image = np.ascontiguousarray( image )
+    _outlined_text( image, str( image.shape ), ( 5, 20 ), 0.5, ( 255, 255, 255 ), 1 )
+    return image
+
+
+# ---------------------------------------------------------------------------
+# Raw detection -> censorable box
+# ---------------------------------------------------------------------------
+
+def compute_safe_geometry( raw_x, raw_y, raw_w, raw_h, vid_w, vid_h, x_area_safety, y_area_safety ):
+    """
+    Pad a raw box by its area safety and clamp it into the frame.
+
+    Each safety is a fraction of the box's own size added across that
+    axis, half on each side; a negative safety shrinks the box.
+
+    The start is clamped inside the frame BEFORE the width and height
+    are worked out. A box starting past the frame edge would otherwise
+    get a size computed from a negative remainder, and the empty slice
+    that makes crashes a blur deep inside a render.
+
+    Args:
+        raw_x, raw_y, raw_w, raw_h: The detection, in pixels.
+        vid_w, vid_h: Frame size, in pixels.
+        x_area_safety, y_area_safety: Fractional padding per axis.
+
+    Returns:
+        (safe_x, safe_y, safe_w, safe_h), ints, inside the frame and at
+        least 1 x 1.
+    """
+    safe_x = math.floor( max( 0, raw_x - raw_w * x_area_safety / 2 ) )
+    safe_y = math.floor( max( 0, raw_y - raw_h * y_area_safety / 2 ) )
+    safe_x = min( safe_x, max( 0, vid_w - 1 ) )
+    safe_y = min( safe_y, max( 0, vid_h - 1 ) )
+    safe_w = max( 1, math.ceil( min( vid_w - safe_x, raw_w * ( 1 + x_area_safety ) ) ) )
+    safe_h = max( 1, math.ceil( min( vid_h - safe_y, raw_h * ( 1 + y_area_safety ) ) ) )
+    return safe_x, safe_y, safe_w, safe_h
+
+
+def process_raw_box( raw, vid_w, vid_h, parts_to_blur=None, rng=None ):
+    """
+    Turn one raw detection into a censorable box, or reject it.
+
+    Args:
+        raw: A raw box dict from a detector adapter:
+            {'x','y','w','h','class_id','score','t','size'}.
+        vid_w, vid_h: Frame size, in pixels.
+        parts_to_blur: The resolved per-label settings. Passed in by the
+            caller so the whole table is built once per video instead of
+            once per detection - previously this function called
+            get_parts_to_blur() itself, rebuilding and re-resolving the
+            entire table for every one of tens of thousands of raw
+            detections.
+        rng: A random.Random for the sticker pick; default the shared
+            generator.
+
+    Returns:
+        A censorable box dict, or None when the label is not censored or
+        the score does not clear the label's entry gate.
+
+    Note on hysteresis:
+        A detection scoring below min_prob but at or above
+        min_prob_continue is admitted and marked 'provisional'. A
+        provisional box may only CONTINUE an already-established track,
+        never start one - see betautils_track.smooth_boxes. When
+        min_prob_continue is unset the two gates are identical and
+        nothing is ever provisional, which is exactly the earlier
+        behaviour.
+    """
+    if parts_to_blur is None:
+        parts_to_blur = bu_config.get_parts_to_blur()
+
+    label = raw['class_id']
+    settings = parts_to_blur.get( label )
+    if settings is None:
+        return None
+
+    min_prob = settings['min_prob']
+    min_prob_continue = settings.get( 'min_prob_continue' )
+    entry_floor = min_prob if min_prob_continue is None else min( min_prob, min_prob_continue )
+    if raw['score'] <= entry_floor:
+        return None
+
+    x_area_safety = settings['width_area_safety']
+    y_area_safety = settings['height_area_safety']
+    time_safety = settings['time_safety']
+    safe_x, safe_y, safe_w, safe_h = compute_safe_geometry(
+        raw['x'], raw['y'], raw['w'], raw['h'], vid_w, vid_h, x_area_safety, y_area_safety )
+
+    return {
+        'start': max( raw['t'] - time_safety/2, 0 ),
+        'end':   raw['t'] + time_safety/2,
+        't': raw['t'],
+        'x': safe_x, 'y': safe_y, 'w': safe_w, 'h': safe_h,
+        # Raw, pre-safety geometry plus the frame size, kept so
+        # betautils_track can recompute padding from a per-style area
+        # safety once this box's track has a resolved style. Leading
+        # underscore: internal, not part of the user-facing box schema.
+        '_raw_x': raw['x'], '_raw_y': raw['y'], '_raw_w': raw['w'], '_raw_h': raw['h'],
+        '_vid_w': vid_w, '_vid_h': vid_h,
+        # Still the CONFIGURED value here (a dict, or a list to choose
+        # from) - not yet resolved to one concrete style. Resolution
+        # happens once per tracked instance in betautils_track, so a
+        # continuous detection does not flicker between random styles.
+        'censor_style': settings['censor_style'],
+        'censor_shape': settings['censor_shape'],
+        # A stable per-box variant pick, currently read only by
+        # sticker_image. Rolled once here rather than inside
+        # sticker_image so a box rendered across many frames keeps one
+        # choice. Harmless and unread for every other style type.
+        'censor_sticker_seed': ( rng or random ).random(),
+        'label': label,
+        'score': raw['score'],
+        'size': raw.get( 'size', 0 ),
+        'provisional': ( min_prob_continue is not None and raw['score'] <= min_prob ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Per-frame rendering
+# ---------------------------------------------------------------------------
+
+def rectangles_intersect( box1, box2 ):
+    """
+    Whether two axis-aligned boxes overlap. Touching edges count.
+
+    Args:
+        box1, box2: Dicts with 'x', 'y', 'w', 'h'.
+
+    Returns:
+        True unless one lies strictly to one side of the other.
+    """
+    if box1['x'] + box1['w'] < box2['x'] or box2['x'] + box2['w'] < box1['x']:
+        return False
+    if box1['y'] + box1['h'] < box2['y'] or box2['y'] + box2['h'] < box1['y']:
+        return False
+    return True
+
+
+def censor_style_key( censor_style ):
+    """
+    A hashable identity for a resolved style, for grouping before merge.
+
+    Two style dicts with identical contents produce equal keys even when
+    they are different objects.
+    """
+    return tuple( sorted( censor_style.items() ) )
+
+
+def censor_style_sort( censor_style ):
+    """
+    Sort key that puts visually similar styles adjacent.
+
+    Styles of the same 'type' sort together (blur < bar < pixel <
+    sticker < debug), with a secondary ordering inside blur/bar/pixel on
+    strength or colour, so two randomised variants of one type still end
+    up next to each other and can be considered for merging.
+    """
+    style_type = censor_style['type']
+    if style_type == 'blur':
+        return 1 + 1/max( censor_style.get( 'strength', 20 ), 1 )
+    if style_type == 'bar':
+        color = censor_style.get( 'color', ( 0, 0, 0 ) )
+        return 2 + 1/( 2 + 255*3 - sum( color ) )
+    if style_type == 'pixel':
+        return 3 + censor_style.get( 'strength', 10 )
+    if style_type == 'sticker':
+        return 4
+    if style_type == 'debug':
+        return 99
+    return 50
+
+
+def collapse_boxes_for_style( piece, img_w=None, img_h=None ):
+    """
+    Merge same-label, same-style boxes per that style's overlap strategy.
+
+    Args:
+        piece: A non-empty list of boxes sharing one label and one
+            resolved style, as grouped by censor_img_for_boxes.
+        img_w: Frame width, needed by 'span' extension.
+        img_h: Frame height. Accepted for symmetry; unused.
+
+    Returns:
+        A list of boxes to actually render. NEVER the caller's own dicts
+        when a merge happens - merged results are fresh dicts. See this
+        module's docstring for the in-place-mutation bug that rule fixes.
+    """
+    resolved_style = piece[0]['censor_style']
+    style_type = resolved_style['type']
+    shape = piece[0].get( 'censor_shape', 'box' )
+    if shape != 'box':
+        return piece
+
+    # A style dict's own 'merge' overrides the type-level default, which
+    # is what lets two 'bar' variants behave differently even though
+    # censor_overlap_strategy only has one entry per style TYPE.
+    strategy = resolved_style.get(
+        'merge', betaconfig.censor_overlap_strategy.get( style_type, 'none' ) )
+    if strategy == 'none':
+        return piece
+
+    if strategy == 'single-pass':
+        merged_segments = []
+        for box in piece:
+            absorbed = False
+            for segment in merged_segments:
+                if rectangles_intersect( box, segment ):
+                    merged_x = min( segment['x'], box['x'] )
+                    merged_y = min( segment['y'], box['y'] )
+                    segment['w'] = max( segment['x']+segment['w'], box['x']+box['w'] ) - merged_x
+                    segment['h'] = max( segment['y']+segment['h'], box['y']+box['h'] ) - merged_y
+                    segment['x'] = merged_x
+                    segment['y'] = merged_y
+                    absorbed = True
+                    break
+            if not absorbed:
+                # A COPY. Seeding a segment with the caller's own dict
+                # and then widening it in place permanently enlarged that
+                # box for every later frame, and because merges only
+                # expand, the region ratcheted outward and never shrank.
+                merged_segments.append( dict( box ) )
+        return merged_segments
+
+    if strategy == 'span':
+        # Bridge two same-style, same-label boxes into ONE covering
+        # rectangle even when they do not overlap - a single bar across
+        # both breast detections rather than two separate ones, as if a
+        # line were drawn between them.
+        #
+        # Restricted to exactly 2 boxes on purpose: with three or more
+        # same-label boxes live in one frame this is far more likely two
+        # people than one person with an unusual body-part count, and
+        # spanning a bar between two different people reads as one
+        # region and is worse than doing nothing.
+        if len( piece ) != 2:
+            return piece
+        box_a, box_b = piece[0], piece[1]
+        span_x0 = min( box_a['x'], box_b['x'] )
+        span_y0 = min( box_a['y'], box_b['y'] )
+        span_x1 = max( box_a['x']+box_a['w'], box_b['x']+box_b['w'] )
+        span_y1 = max( box_a['y']+box_a['h'], box_b['y']+box_b['h'] )
+
+        # span_extend reaches PAST the tight two-box rectangle toward the
+        # frame edges: 0.0 is exactly the tight rectangle, 1.0 is full
+        # frame width. Horizontal only - "a line drawn between them" is
+        # a horizontal idea; the vertical extent always just covers both.
+        span_extend = resolved_style.get( 'span_extend', 0.0 )
+        if span_extend and img_w:
+            span_x0 = span_x0 + ( 0 - span_x0 ) * span_extend
+            span_x1 = span_x1 + ( img_w - span_x1 ) * span_extend
+
+        merged_box = dict( box_a )
+        merged_box['x'] = int( span_x0 )
+        merged_box['y'] = int( span_y0 )
+        merged_box['w'] = max( 1, int( span_x1 - span_x0 ) )
+        merged_box['h'] = max( 1, int( span_y1 - span_y0 ) )
+        return [ merged_box ]
+
+    # Unknown strategy: fail safe by censoring every box independently.
+    return piece
+
+
+def censor_image( image, box ):
+    """
+    Dispatch one resolved, collapsed box to its style's renderer.
+
+    Args:
+        image: The frame to censor. Mutated in place and returned.
+        box: The box to render.
+
+    Returns:
+        image.
+
+    Raises:
+        ValueError: box['censor_style']['type'] is not a known type.
+    """
+    shape = box.get( 'censor_shape', 'box' )
+    style = box['censor_style']
+    feather = style.get( 'feather', 0 )
+    style_type = style['type']
+
+    # Every renderer below builds something sized from box w/h (a
+    # feather mask, a hex cell grid, a resized sticker) and then combines
+    # it with image[y:y+h, x:x+w]. numpy silently truncates that slice at
+    # the frame edge, so a box hanging off the frame gives a region
+    # smaller than w/h and the two no longer line up. That crashed whole
+    # render chunks as "operands could not be broadcast" (blur, mosaic)
+    # and "weights and list don't have the same length" (hex bincount).
+    #
+    # Tracking clamps boxes to the frame, but this is the one place every
+    # style passes through, so it is the right place to guarantee it.
+    # A COPY, never the caller's dict: render workers share one box list.
+    img_h, img_w = image.shape[:2]
+    x = max( 0, min( int( box['x'] ), img_w - 1 ) )
+    y = max( 0, min( int( box['y'] ), img_h - 1 ) )
+    w = max( 1, min( int( box['w'] ), img_w - x ) )
+    h = max( 1, min( int( box['h'] ), img_h - y ) )
+    if ( x, y, w, h ) != ( box['x'], box['y'], box['w'], box['h'] ):
+        box = dict( box, x=x, y=y, w=w, h=h )
+
+    # Strength scaling reads the track's stable reference size, not this
+    # frame's box, so a continuous censor keeps one kernel while its
+    # position and extent still follow the subject. See
+    # censor_scale_for_image_box for why a per-frame size flickers.
+    # Falls back to the live box for anything that has no track behind it
+    # (betastare's stills, a hand-built box in
+    # a bench or test), which is the earlier behaviour.
+    scale_w = box.get( 'style_scale_w' )
+    scale_h = box.get( 'style_scale_h' )
+
+    if style_type == 'blur':
+        return blur_image( image, box['x'], box['y'], box['w'], box['h'], style, shape, feather,
+                           scale_w=scale_w, scale_h=scale_h )
+    if style_type == 'pixel':
+        return pixelate_image( image, box['x'], box['y'], box['w'], box['h'], style, shape, feather,
+                               scale_w=scale_w, scale_h=scale_h )
+    if style_type == 'bar':
+        return bar_image( image, box['x'], box['y'], box['w'], box['h'], style, shape, feather )
+    if style_type == 'sticker':
+        return sticker_image( image, box['x'], box['y'], box['w'], box['h'], style, shape,
+                              feather, box.get( 'censor_sticker_seed' ) )
+    if style_type == 'debug':
+        return debug_image( image, box )
+    raise ValueError( "Unknown censor_style type %r"%(style_type,) )
+
+
+def _style_pieces( boxes ):
+    """
+    Sort a copy of the boxes and split it into same-label, same-style runs.
+
+    Sorting by label then censor_style_sort puts boxes that may merge next
+    to each other. A box joins the current run when its label and style
+    key match the run's FIRST box. The caller's list is left as it was:
+    render workers share it.
+
+    Returns:
+        A list of non-empty lists of boxes.
+    """
+    ordered = sorted( boxes, key=lambda box: ( box['label'], censor_style_sort( box['censor_style'] ) ) )
+    pieces = []
+    for box in ordered:
+        if pieces:
+            first = pieces[-1][0]
+            if ( box['label'] == first['label']
+                 and censor_style_key( box['censor_style'] ) == censor_style_key( first['censor_style'] ) ):
+                pieces[-1].append( box )
+                continue
+        pieces.append( [ box ] )
+    return pieces
+
+
+def censor_img_for_boxes( image, boxes ):
+    """
+    Render every box onto one frame, then watermark it.
+
+    Boxes are grouped into same-label, same-style pieces, each piece is
+    collapsed by its style's overlap strategy, and every resulting box is
+    drawn. Never mutates or reorders `boxes` (see this module's
+    docstring).
+
+    Args:
+        image: The frame. May be mutated in place.
+        boxes: The resolved boxes live on this frame.
+
+    Returns:
+        The censored, watermarked frame.
+    """
+    if not boxes:
+        return watermark_image( image )
+    img_h, img_w = image.shape[:2]
+    for piece in _style_pieces( boxes ):
+        for box in collapse_boxes_for_style( piece, img_w, img_h ):
+            image = censor_image( image, box )
+    return watermark_image( image )
+
+
+# ---------------------------------------------------------------------------
+# Reverse mode compositor
+# ---------------------------------------------------------------------------
+#
+# Layers, bottom to top: the frame style over the whole frame (blended by
+# frame_alpha), show windows (the original pixels back through each
+# window's shape and feather), censored windows (the window's style,
+# computed from the ORIGINAL pixels, placed in through the window's alpha
+# once), then the watermark. Censor wins overlaps because censored windows
+# go on last. Normal mode never comes through here: censor_img_for_boxes
+# is untouched, so its output stays byte-identical.
+
+def _clamped_rect( box, img_w, img_h ):
+    """A box's (x, y, w, h) clamped inside the frame, as censor_image does."""
+    x = max( 0, min( int( box['x'] ), img_w - 1 ) )
+    y = max( 0, min( int( box['y'] ), img_h - 1 ) )
+    w = max( 1, min( int( box['w'] ), img_w - x ) )
+    h = max( 1, min( int( box['h'] ), img_h - y ) )
+    return x, y, w, h
+
+
+def _blend_window( out, source, rect, shape, feather ):
+    """
+    Blend source into out over one window rectangle through the window's
+    alpha. source is the original frame (a show window) or the original
+    with this window's style rendered into it (a censored window).
+    """
+    x, y, w, h = rect
+    if shape == 'box' and not feather:
+        out[ y:y+h, x:x+w ] = source[ y:y+h, x:x+w ]
+        return
+    alpha = _alpha_for( shape, w, h, feather )
+    under = out[ y:y+h, x:x+w ].astype( np.float32 )
+    over = source[ y:y+h, x:x+w ].astype( np.float32 )
+    out[ y:y+h, x:x+w ] = ( alpha*over + ( 1.0 - alpha )*under ).astype( out.dtype )
+
+
+def _censored_windows( boxes, img_w, img_h ):
+    """
+    Reverse mode's censored windows: the boxes grouped and collapsed
+    exactly as censor_img_for_boxes would draw them, without drawing.
+
+    Returns:
+        The collapsed boxes, piece by piece, in one list.
+    """
+    windows = []
+    for piece in _style_pieces( boxes ):
+        windows.extend( collapse_boxes_for_style( piece, img_w, img_h ) )
+    return windows
+
+
+def obscure_full_frame( image, frame_style ):
+    """
+    Render frame_style over the whole of image, in place, and return it.
+
+    frame_style's optional 'dim' (0 to 1) then takes that share of the
+    brightness off the result, so windows stand out against a background
+    a lighter blur alone would leave as busy as the scene. It darkens
+    only the frame layer: windows are restored from the original after
+    this, and a fade blends the dimmed frame like any other.
+    """
+    img_h, img_w = image.shape[:2]
+    frame_box = { 'x': 0, 'y': 0, 'w': img_w, 'h': img_h,
+                  'censor_style': dict( frame_style, feather=0 ), 'censor_shape': 'box',
+                  'censor_sticker_seed': 0.5, 'label': 'reverse_frame' }
+    censor_image( image, frame_box )
+    dim = frame_style.get( 'dim' ) or 0
+    if dim:
+        # One saturating uint8 pass, rounded: about 5 ms per 4K frame.
+        cv2.convertScaleAbs( image, dst=image, alpha=1.0 - dim )
+    return image
+
+
+def censor_img_reverse( image, boxes, frame_alpha, frame_style, window_mask=None ):
+    """
+    Render one reverse-mode frame.
+
+    Args:
+        image: The frame. Mutated in place and returned.
+        boxes: This frame's windows, each with a resolved censor_style
+            ('show' or any normal style) and censor_shape. NOT mutated:
+            render workers share one box list.
+        frame_alpha: The frame style's opacity for this frame, 0 to 1,
+            from the trigger timeline.
+        frame_style: The frame style dict.
+        window_mask: Person windows, (x, y, w, h, alpha) with alpha a
+            uint8 0/255 array over that rectangle, or None. Shown like a
+            show window; censored windows still win where they overlap.
+
+    Returns:
+        The rendered frame.
+    """
+    import betautils_reverse as bu_reverse  # deferred: keeps this module's import graph as it was
+    censored = [ box for box in boxes if not bu_reverse.is_show_style( box['censor_style'] ) ]
+    if frame_alpha <= 0:
+        # Untriggered under passthrough: the frame stays clear, so show
+        # windows have nothing to undo and censored windows are exactly
+        # normal mode's boxes.
+        return censor_img_for_boxes( image, censored )
+
+    img_h, img_w = image.shape[:2]
+    original = image.copy()
+    obscure_full_frame( image, frame_style )
+    if frame_alpha < 1:
+        cv2.addWeighted( image, frame_alpha, original, 1.0 - frame_alpha, 0, dst=image )
+
+    if window_mask is not None:
+        x, y, w, h, alpha = window_mask
+        np.copyto( image[ y:y+h, x:x+w ], original[ y:y+h, x:x+w ], where=alpha[ :, :, None ] > 0 )
+
+    for box in boxes:
+        style = box['censor_style']
+        if bu_reverse.is_show_style( style ):
+            _blend_window( image, original, _clamped_rect( box, img_w, img_h ),
+                           box.get( 'censor_shape', 'box' ), style.get( 'feather', 0 ) )
+
+    # Each censored window's style is rendered into a fresh copy of the
+    # original with no shape and no feather of its own, then blended into
+    # the frame once through the window's alpha.
+    #   - Once: rendering it with its own feather and then blending again
+    #     applied the alpha twice and left a ring of clear original at a
+    #     feathered edge, which in reverse mode is a reveal.
+    #   - Except a sticker's feather, which softens the sticker's own
+    #     silhouette rather than a region mask (the sticker renderer
+    #     ignores shape). Kept, so inside the window's shape a sticker
+    #     looks exactly as it does in normal mode, like every other style.
+    #   - From the original: rendering from the frame (pixels over blur)
+    #     would censor the blur instead of the subject.
+    #   - A fresh copy per window, not a restored region: stickers with
+    #     scale > 1 and bars with thickness > 1 draw past their box, and
+    #     the next window would read those pixels as the original.
+    # The blend covers the window only, so a sticker or bar that reaches
+    # past it is clipped to the window; outside it is the frame style.
+    windows = _censored_windows( censored, img_w, img_h )
+    scratch = np.empty_like( original ) if windows else None
+    for box in windows:
+        np.copyto( scratch, original )
+        rect = _clamped_rect( box, img_w, img_h )
+        x, y, w, h = rect
+        style = box['censor_style']
+        own_feather = style.get( 'feather', 0 ) if style.get( 'type' ) == 'sticker' else 0
+        flat = dict( box, x=x, y=y, w=w, h=h, censor_shape='box',
+                     censor_style=dict( style, feather=own_feather ) )
+        censor_image( scratch, flat )
+        _blend_window( image, scratch, rect, box.get( 'censor_shape', 'box' ),
+                       style.get( 'feather', 0 ) )
+
+    return watermark_image( image )

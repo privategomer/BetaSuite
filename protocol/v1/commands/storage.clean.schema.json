@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/storage.clean.schema.json",
+  "title": "storage.clean",
+  "description": "Remove the named categories. Only safe, costly and resume ones can be removed (storage.not_cleanable); costly and resume need confirm: true (storage.needs_confirm); a category a running job writes is refused while the queue is busy (storage.busy). Nothing is removed unless every named category may be. freed says what each removal freed. Cleared files go to the system trash (trashed: true), so they can be put back; with storage_delete_permanently they are removed for good (trashed: false). A kind the trash cannot take answers storage.trash_failed and nothing of it is removed.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "categories"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "freed",
+        "trashed"
+      ],
+      "properties": {
+        "freed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "bytes",
+              "files"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "trashed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

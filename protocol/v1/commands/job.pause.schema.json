@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.pause.schema.json",
+  "title": "job.pause",
+  "description": "Pause the running job: it stops at the pipeline's next safe point, keeping its detection checkpoint and finished render chunks, and the queue waits behind it. The job.state event 'paused' says when it has stopped. state in the result is the job's state when the request was taken (running). job.bad_state for a job that is not running, job.unknown for an id the engine does not know.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "job"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "job",
+        "state"
+      ],
+      "properties": {
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "paused",
+            "completed",
+            "cancelled",
+            "stopped"
+          ]
+        }
+      }
+    }
+  }
+}

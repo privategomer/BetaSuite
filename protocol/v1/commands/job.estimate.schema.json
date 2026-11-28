@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://betasuite.invalid/protocol/v1/commands/job.estimate.schema.json",
+  "title": "job.estimate",
+  "description": "How long a job with these files and overrides would take, before it is submitted, from the timings of earlier processed runs on this machine whose detector, model, sizes, batch size, GPU switch, reverse mode and encode preset match. Detection rates come only from runs that detected from scratch; a file whose detections are all cached costs no detection time. seconds is null for a file that cannot be probed, or when no comparable run gives a rate it needs; the job's seconds is null when any file's is. basis is 'history' when at least one rate came from earlier runs, 'none' when none did; runs counts the runs each rate came from. look_seen says whether an earlier run used the look this job would render (its censor key). While a job is queued, running or paused, the settings taken when the queue became busy are used, with only preview_mode_enabled and preview_max_seconds applied from overrides. Refused like job.submit for bad files and overrides, and with config.invalid when the settings with these overrides are not valid. When no earlier run is comparable and the queue is idle, it starts a probe that measures this machine's detect and render speed on a few seconds of one of the files, through the code a run uses, writing nothing the app keeps (probing true); jobs submitted meanwhile wait for it, and job.probed says when it has ended. Rates from a probe fill in only where the history has none (basis probe). missing lists the rates neither gave.",
+  "$defs": {
+    "data": {
+      "type": "object",
+      "required": [
+        "files"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An absolute path to an existing file."
+          }
+        },
+        "overrides": {
+          "type": "object"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "files",
+        "seconds",
+        "basis",
+        "runs",
+        "look_seen",
+        "probing",
+        "missing"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "seconds",
+              "detect_cache"
+            ],
+            "properties": {
+              "seconds": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "detect_cache": {
+                "enum": [
+                  "fresh",
+                  "partial",
+                  "cached",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        "seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "basis": {
+          "enum": [
+            "history",
+            "probe",
+            "none"
+          ]
+        },
+        "runs": {
+          "type": "object",
+          "required": [
+            "detect",
+            "render"
+          ],
+          "properties": {
+            "detect": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "render": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "look_seen": {
+          "type": "boolean"
+        },
+        "probing": {
+          "type": "boolean"
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "detect",
+              "render"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
